@@ -9,6 +9,20 @@ export default function Coordinator({ user }) {
   const [rows, setRows] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [orderForm, setOrderForm] = useState({
+    date: "",
+    driver: "",
+    vehicleGroup: "",
+    phone: "",
+    customer: "",
+    weight: "",
+    distance: "",
+    fare: "",
+    pickup: "",
+    delivery: "",
+    note: "",
+  });
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -22,6 +36,45 @@ export default function Coordinator({ user }) {
       activeTab === "new" ? trip.status === "Mới" : trip.status === "Đang chờ",
     );
   }, [activeTab, trips]);
+
+  const handleFormChange = (event) => {
+    const { name, value } = event.target;
+    setOrderForm((currentForm) => ({
+      ...currentForm,
+      [name]: value,
+    }));
+  };
+
+  const handleCreateOrder = (event) => {
+    event.preventDefault();
+
+    const nextTrip = {
+      id: `ORD-${String(trips.length + 1).padStart(3, "0")}`,
+      status: "Mới",
+      title: orderForm.customer || "Đơn hàng mới",
+      pickup: orderForm.pickup || "Chưa nhập điểm lấy hàng",
+      delivery: orderForm.delivery || "Chưa nhập điểm giao hàng",
+      weight: orderForm.weight ? `${orderForm.weight} kg` : "Chưa nhập",
+      cargoType: orderForm.vehicleGroup || "Chưa chọn nhóm xe",
+    };
+
+    setTrips((currentTrips) => [nextTrip, ...currentTrips]);
+    setOrderForm({
+      date: "",
+      driver: "",
+      vehicleGroup: "",
+      phone: "",
+      customer: "",
+      weight: "",
+      distance: "",
+      fare: "",
+      pickup: "",
+      delivery: "",
+      note: "",
+    });
+    setIsCreateOpen(false);
+    setMessage("Đã tạo đơn hàng mới.");
+  };
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -97,7 +150,9 @@ export default function Coordinator({ user }) {
                 hidden
               />
             </label>
-            <button className="primary-btn">+ Tạo đơn hàng</button>
+            <button className="primary-btn" onClick={() => setIsCreateOpen(true)}>
+              + Tạo đơn hàng
+            </button>
             <div className="avatar">{user?.full_name?.[0] || "A"}</div>
           </div>
         </header>
@@ -128,6 +183,158 @@ export default function Coordinator({ user }) {
             </button>
           </div>
         </section>
+
+        {isCreateOpen && (
+          <section className="create-order-panel" aria-label="Form tạo đơn hàng">
+            <div className="create-order-card">
+              <div className="create-order-head">
+                <div>
+                  <h2>Tạo đơn hàng</h2>
+                  <p>Nhập thông tin đơn vận chuyển theo từng hàng để tránh bị tràn form.</p>
+                </div>
+                <button
+                  className="close-btn"
+                  type="button"
+                  onClick={() => setIsCreateOpen(false)}
+                  aria-label="Đóng form tạo đơn hàng"
+                >
+                  ×
+                </button>
+              </div>
+
+              <form className="create-order-form" onSubmit={handleCreateOrder}>
+                <div className="form-row form-row-three">
+                  <label className="form-field">
+                    <span>Ngày tháng</span>
+                    <input
+                      type="date"
+                      name="date"
+                      value={orderForm.date}
+                      onChange={handleFormChange}
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Tài xế</span>
+                    <input
+                      name="driver"
+                      value={orderForm.driver}
+                      onChange={handleFormChange}
+                      placeholder="Nhập tên tài xế"
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Nhóm xe</span>
+                    <select
+                      name="vehicleGroup"
+                      value={orderForm.vehicleGroup}
+                      onChange={handleFormChange}
+                    >
+                      <option value="">Chọn nhóm xe</option>
+                      <option value="Xe tải nhỏ">Xe tải nhỏ</option>
+                      <option value="Xe tải trung">Xe tải trung</option>
+                      <option value="Xe tải lớn">Xe tải lớn</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="form-row form-row-phone-customer">
+                  <label className="form-field form-field-short">
+                    <span>SĐT</span>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={orderForm.phone}
+                      onChange={handleFormChange}
+                      placeholder="090..."
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Khách hàng</span>
+                    <input
+                      name="customer"
+                      value={orderForm.customer}
+                      onChange={handleFormChange}
+                      placeholder="Nhập tên khách hàng"
+                    />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-metrics">
+                  <label className="form-field form-field-short">
+                    <span>Khối lượng</span>
+                    <input
+                      type="number"
+                      min="0"
+                      name="weight"
+                      value={orderForm.weight}
+                      onChange={handleFormChange}
+                      placeholder="Kg"
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Quãng đường</span>
+                    <input
+                      name="distance"
+                      value={orderForm.distance}
+                      onChange={handleFormChange}
+                      placeholder="Nhập quãng đường"
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Cước xe</span>
+                    <input
+                      name="fare"
+                      value={orderForm.fare}
+                      onChange={handleFormChange}
+                      placeholder="Nhập cước xe"
+                    />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-two">
+                  <label className="form-field">
+                    <span>Điểm lấy hàng</span>
+                    <input
+                      name="pickup"
+                      value={orderForm.pickup}
+                      onChange={handleFormChange}
+                      placeholder="Địa chỉ lấy hàng"
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Điểm giao hàng</span>
+                    <input
+                      name="delivery"
+                      value={orderForm.delivery}
+                      onChange={handleFormChange}
+                      placeholder="Địa chỉ giao hàng"
+                    />
+                  </label>
+                </div>
+
+                <label className="form-field form-field-note">
+                  <span>Note</span>
+                  <textarea
+                    name="note"
+                    value={orderForm.note}
+                    onChange={handleFormChange}
+                    placeholder="Ghi chú thêm"
+                    rows="3"
+                  />
+                </label>
+
+                <div className="form-actions">
+                  <button className="cancel-btn" type="button" onClick={() => setIsCreateOpen(false)}>
+                    Hủy
+                  </button>
+                  <button className="primary-btn" type="submit">
+                    Lưu đơn hàng
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+        )}
 
         {message && <div className="notice">{message}</div>}
 
