@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
 
@@ -32,6 +32,7 @@ const requiredFields = [
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
 const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
 const isFiniteNumber = (value) => Number.isFinite(Number(value));
+const ORDERS_PER_PAGE = 10;
 
 function extractDriverName(notes) {
   const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
@@ -63,45 +64,33 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: ORDERS_PER_PAGE, totalPages: 1 });
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  useEffect(() => {
+  const loadOrders = useCallback(async () => {
     try {
-      const storedTrips = localStorage.getItem("coordinatorTrips");
-      if (!storedTrips) return;
+      const token = localStorage.getItem("token");
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(ORDERS_PER_PAGE),
+      });
+      const query = deferredSearchQuery.trim();
+      if (query) params.set("search", query);
+      if (activeTab !== "all") params.set("status", activeTab);
 
-      const parsedTrips = JSON.parse(storedTrips);
-      if (Array.isArray(parsedTrips)) {
-        setTrips(parsedTrips);
-      }
+      const data = await apiRequest(`/api/orders?${params.toString()}`, { token });
+      setTrips((data.orders || []).map(buildTripFromOrder));
+      setPagination(data.pagination || { total: 0, page: currentPage, limit: ORDERS_PER_PAGE, totalPages: 1 });
     } catch (error) {
-      console.error("Failed to load trips:", error);
+      setMessage(error.message || "Unable to load order list.");
+      setMessageType("error");
     }
-  }, []);
+  }, [activeTab, currentPage, deferredSearchQuery]);
 
   useEffect(() => {
-    localStorage.setItem("coordinatorTrips", JSON.stringify(trips));
-  }, [trips]);
-
-  useEffect(() => {
-    const loadOrders = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const data = await apiRequest("/api/orders", { token });
-        const dbTrips = (data.orders || []).map(buildTripFromOrder);
-
-        setTrips((currentTrips) => {
-          const customTrips = currentTrips.filter((trip) => String(trip.id).startsWith("tmp-"));
-          return [...dbTrips, ...customTrips];
-        });
-      } catch (error) {
-        setMessage(error.message || "Unable to load order list.");
-        setMessageType("error");
-      }
-    };
-
     loadOrders();
-  }, []);
+  }, [loadOrders]);
 
   useEffect(() => {
     const loadDrivers = async () => {
@@ -140,23 +129,18 @@ export default function CoordinatorPage({ user, onLogout }) {
     window.location.reload();
   };
 
-  const filteredTrips = useMemo(() => {
-    const query = deferredSearchQuery.trim().toLowerCase();
+  const totalPages = Math.max(1, pagination.totalPages || 1);
+  const totalOrders = pagination.total || 0;
+  const pageStart = totalOrders === 0 ? 0 : (currentPage - 1) * ORDERS_PER_PAGE + 1;
+  const pageEnd = Math.min(currentPage * ORDERS_PER_PAGE, totalOrders);
 
-    return trips.filter((trip) => {
-      const matchesTab =
-        activeTab === "all" ||
-        (activeTab === "new" && trip.status === "New") ||
-        (activeTab === "waiting" && trip.status === "Waiting");
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, deferredSearchQuery]);
 
-      if (!matchesTab) return false;
-      if (!query) return true;
-
-      return [trip.id, trip.title, trip.pickup, trip.delivery, trip.driverName, trip.status]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query));
-    });
-  }, [activeTab, deferredSearchQuery, trips]);
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const validateForm = () => {
     const errors = {};
@@ -301,19 +285,8 @@ export default function CoordinatorPage({ user, onLogout }) {
         },
       });
 
-      setTrips((currentTrips) => [
-        {
-          id: `tmp-${data.order.id}`,
-          orderId: data.order.id,
-          title: data.order.cargo_name,
-          status: data.order.status,
-          pickup: data.order.pickup_address,
-          delivery: data.order.delivery_address,
-          weight: `${data.order.cargo_weight_kg ?? ""}kg`,
-          driverName: selectedDriver?.full_name || extractDriverName(data.order.notes) || "",
-        },
-        ...currentTrips.filter((trip) => trip.orderId !== data.order.id),
-      ]);
+      setCurrentPage(1);
+      await loadOrders();
 
       setCreateOpen(false);
       setMessage(data.message || "Order created successfully.");
@@ -340,10 +313,10 @@ export default function CoordinatorPage({ user, onLogout }) {
             </div>
           </div>
           <nav className="nav">
-            <button className="nav-item active">Orders</button>
-            <button className="nav-item">Map</button>
+            <button className="nav-item active">Đơn hàng</button>
+            {/* <button className="nav-item">Map</button>
             <button className="nav-item">Drivers</button>
-            <button className="nav-item">Reports</button>
+            <button className="nav-item">Reports</button> */}
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
@@ -358,7 +331,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search order, ID, or route..."
+              placeholder="Tên sản phẩm, điểm lấy hàng, giao hàng, tài xế, trạng thái"
             />
           </div>
           <div className="topbar-actions">
@@ -380,12 +353,12 @@ export default function CoordinatorPage({ user, onLogout }) {
           </div> */}
           <div></div>
           <div className="filters">
-            <button
+            {/* <button
               className={activeTab === "all" ? "filter active" : "filter"}
               onClick={() => setActiveTab("all")}
             >
               All
-            </button>
+            </button> */}
             {/* <button
               className={activeTab === "new" ? "filter active" : "filter"}
               onClick={() => setActiveTab("new")}
@@ -635,14 +608,14 @@ export default function CoordinatorPage({ user, onLogout }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredTrips.length === 0 ? (
+                {trips.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="empty-table-cell">
-                      Chưa có đơn. Tạo đơn mới hoặc import từ excel
+                      No orders yet. Create an order or import an Excel file to load data.
                     </td>
                   </tr>
                 ) : (
-                  filteredTrips.map((trip) => (
+                  trips.map((trip) => (
                     <tr key={trip.id}>
                       <td>
                         <span className="trip-id">
@@ -670,6 +643,33 @@ export default function CoordinatorPage({ user, onLogout }) {
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="pagination-bar">
+            <span>
+              Hiển thị {pageStart}-{pageEnd} / {totalOrders} đơn
+            </span>
+            <div className="pagination-actions">
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Trước
+              </button>
+              <span className="pagination-page">
+                Trang {currentPage} / {totalPages}
+              </span>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Sau
+              </button>
+            </div>
           </div>
         </section>
 

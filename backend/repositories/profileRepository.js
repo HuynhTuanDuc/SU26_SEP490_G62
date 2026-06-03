@@ -125,15 +125,55 @@ const getProfileById = async (profileId) => {
     return result.rows[0];
 };
 
-const getAllUsers = async () => {
-    const result = await pool.query(
-        `SELECT a.id, a.email, p.full_name, p.phone, r.name AS role, a.is_active, a.last_login_at
+const USER_SORT_COLUMNS = Object.freeze({
+    id: 'a.id',
+    email: 'a.email',
+    full_name: 'p.full_name',
+    phone: 'p.phone',
+    role: 'r.name',
+    is_active: 'a.is_active',
+    last_login_at: 'a.last_login_at',
+});
+
+const getAllUsers = async ({ limit = 15, offset = 0, search = '', sortField = 'id', sortDir = 'asc' } = {}) => {
+    const values = [];
+    const filters = [];
+
+    if (search) {
+        values.push(`%${search}%`);
+        const searchParam = `$${values.length}`;
+        filters.push(`(
+            CAST(a.id AS TEXT) ILIKE ${searchParam}
+            OR a.email ILIKE ${searchParam}
+            OR p.full_name ILIKE ${searchParam}
+            OR p.phone ILIKE ${searchParam}
+            OR r.name ILIKE ${searchParam}
+        )`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const sortColumn = USER_SORT_COLUMNS[sortField] || USER_SORT_COLUMNS.id;
+    const direction = String(sortDir).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const baseFrom = `
          FROM accounts a
          JOIN profiles p ON a.id = p.id
          JOIN roles r ON a.role_id = r.id
-         ORDER BY a.id ASC`
+         ${whereClause}`;
+
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total ${baseFrom}`, values);
+
+    const pageValues = [...values, limit, offset];
+    const limitParam = `$${pageValues.length - 1}`;
+    const offsetParam = `$${pageValues.length}`;
+    const result = await pool.query(
+        `SELECT a.id, a.email, p.full_name, p.phone, r.name AS role, a.is_active, a.last_login_at
+         ${baseFrom}
+         ORDER BY ${sortColumn} ${direction}, a.id ASC
+         LIMIT ${limitParam} OFFSET ${offsetParam}`,
+        pageValues,
     );
-    return result.rows;
+
+    return { rows: result.rows, total: countResult.rows[0]?.total ?? 0 };
 };
 
 const getRoleIdByName = async (roleName) => {

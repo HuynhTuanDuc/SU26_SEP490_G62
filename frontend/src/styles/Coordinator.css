@@ -203,6 +203,42 @@ th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
   color: #5d6475;
 }
 
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 14px;
+  color: #50586a;
+  font-size: 14px;
+}
+
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pagination-btn {
+  border: 1px solid rgba(20, 30, 70, 0.16);
+  border-radius: 12px;
+  background: #fff;
+  color: #18227f;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.pagination-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.pagination-page {
+  color: #2a3144;
+  font-weight: 700;
+}
+
 .coordinator-table-shell .content {
   display: flex;
   flex-direction: column;
@@ -426,5 +462,9 @@ th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
 }
 
 @media (max-width: 760px) {
-  .topbar, .hero, .panel-head { flex-direction: column; align-items: stretch; }
+  .topbar, .hero, .panel-head, .pagination-bar { flex-direction: column; align-items: stretch; }
+
+  .pagination-actions {
+    justify-content: space-between;
+  }
 }

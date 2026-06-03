@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import UserModal from "./UserModal";
 import "../../pages/Admin/UserModal.css";
@@ -55,24 +55,9 @@ function ToastContainer({ toasts }) {
   );
 }
 
-function sortUsers(users, sortField, sortDir) {
-  return [...users].sort((a, b) => {
-    let valueA = a[sortField] ?? "";
-    let valueB = b[sortField] ?? "";
-
-    if (typeof valueA === "boolean") {
-      valueA = valueA ? 1 : 0;
-      valueB = valueB ? 1 : 0;
-    }
-
-    if (valueA < valueB) return sortDir === "asc" ? -1 : 1;
-    if (valueA > valueB) return sortDir === "asc" ? 1 : -1;
-    return 0;
-  });
-}
 
 export default function UserList() {
-  const [allUsers, setAllUsers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -86,54 +71,48 @@ export default function UserList() {
   const [sortField, setSortField] = useState("id");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
   const deferredSearch = useDeferredValue(search);
   const { toasts, addToast } = useToast();
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const token = localStorage.getItem("token");
-      const data = await apiRequest("/api/admin/users", { token });
-      setAllUsers(data.users || []);
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PAGE_SIZE),
+        sortField,
+        sortDir,
+      });
+      const query = deferredSearch.trim();
+      if (query) params.set("search", query);
+
+      const data = await apiRequest(`/api/admin/users?${params.toString()}`, { token });
+      setUsers(data.users || []);
+      setPagination(data.pagination || { total: 0, page, limit: PAGE_SIZE, totalPages: 1 });
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [deferredSearch, page, sortDir, sortField]);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
-  const filteredUsers = useMemo(() => {
-    const query = deferredSearch.trim().toLowerCase();
-    if (!query) {
-      return allUsers;
-    }
+  useEffect(() => {
+    setPage(1);
+  }, [deferredSearch]);
 
-    return allUsers.filter((user) => {
-      return (
-        String(user.id).includes(query) ||
-        (user.full_name || "").toLowerCase().includes(query) ||
-        (user.email || "").toLowerCase().includes(query) ||
-        (user.phone || "").toLowerCase().includes(query) ||
-        (user.role || "").toLowerCase().includes(query)
-      );
-    });
-  }, [allUsers, deferredSearch]);
+  useEffect(() => {
+    setPage((current) => Math.min(current, pagination.totalPages || 1));
+  }, [pagination.totalPages]);
 
-  const sortedUsers = useMemo(
-    () => sortUsers(filteredUsers, sortField, sortDir),
-    [filteredUsers, sortField, sortDir],
-  );
-
-  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / PAGE_SIZE));
+  const totalPages = Math.max(1, pagination.totalPages || 1);
   const safePage = Math.min(page, totalPages);
-
-  const pageUsers = useMemo(() => {
-    return sortedUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  }, [safePage, sortedUsers]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -228,7 +207,7 @@ export default function UserList() {
         <div>
           <h2>User accounts</h2>
           <span className="user-count">
-            Total: {filteredUsers.length} / {allUsers.length} users
+            Total: {pagination.total} users
           </span>
         </div>
         <button className="btn-add" onClick={handleOpenAdd}>
@@ -272,7 +251,7 @@ export default function UserList() {
             </tr>
           </thead>
           <tbody>
-            {pageUsers.map((user) => (
+            {users.map((user) => (
               <tr key={user.id}>
                 <td className="text-bold">#{user.id}</td>
                 <td>
@@ -304,7 +283,7 @@ export default function UserList() {
                 </td>
               </tr>
             ))}
-            {pageUsers.length === 0 && (
+            {users.length === 0 && (
               <tr>
                 <td colSpan="7" className="text-center empty-state">
                   No data.
