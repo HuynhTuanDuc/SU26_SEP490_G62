@@ -3,8 +3,26 @@ const bcrypt = require('bcryptjs');
 
 const getAllUsers = async (req, res) => {
     try {
-        const users = await profileRepository.getAllUsers();
-        res.json({ users });
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 15));
+        const { rows, total } = await profileRepository.getAllUsers({
+            page,
+            limit,
+            offset: (page - 1) * limit,
+            search: String(req.query.search || '').trim(),
+            sortField: req.query.sortField || 'id',
+            sortDir: req.query.sortDir || 'asc',
+        });
+
+        res.json({
+            users: rows,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.max(1, Math.ceil(total / limit)),
+            },
+        });
     } catch (err) {
         console.error('Error fetching all users:', err);
         res.status(500).json({ error: 'Failed to fetch users', details: err.message });
