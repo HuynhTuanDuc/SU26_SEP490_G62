@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
+const { buildPaginationMeta } = require('../utils/pagination');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 const normalizeNumber = (value) => {
@@ -95,12 +96,7 @@ const listOrders = async ({ page = 1, limit = 10, search = '', status = '' } = {
 
     return {
         orders: rows,
-        pagination: {
-            total,
-            page: safePage,
-            limit: safeLimit,
-            totalPages: Math.max(1, Math.ceil(total / safeLimit)),
-        },
+        pagination: buildPaginationMeta({ total, page: safePage, limit: safeLimit }),
     };
 };
 

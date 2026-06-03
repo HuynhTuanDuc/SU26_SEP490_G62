@@ -1,4 +1,5 @@
 const tripRepository = require('../repositories/tripRepository');
+const { buildPaginationMeta } = require('../utils/pagination');
 const {
     SHIPMENT_STATUS,
     ALLOWED_TRANSITIONS,
@@ -116,12 +117,7 @@ const getOrderHistory = async (driverId, page = 1, limit = 30) => {
     const { rows, total } = await tripRepository.getDriverOrderHistory(driverId, { limit, offset });
     return {
         orders: rows,
-        pagination: {
-            total,
-            page,
-            limit,
-            totalPages: Math.ceil(total / limit),
-        },
+        pagination: buildPaginationMeta({ total, page, limit }),
     };
 };
 

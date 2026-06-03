@@ -1,4 +1,5 @@
 const tripService = require('../services/tripService');
+const { parsePaginationQuery } = require('../utils/pagination');
 
 // GET /api/trips/pool
 const getTripPool = async (req, res) => {
@@ -129,8 +130,7 @@ const getDriverStats = async (req, res) => {
 // GET /api/trips/history?page=1&limit=20
 const getOrderHistory = async (req, res) => {
     try {
-        const page  = Math.max(1, Number(req.query.page)  || 1);
-        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+        const { page, limit } = parsePaginationQuery(req.query, { defaultLimit: 20, maxLimit: 50 });
         const result = await tripService.getOrderHistory(req.user.userId, page, limit);
         res.json(result);
     } catch (err) {

@@ -1,14 +1,14 @@
 const profileRepository = require('../repositories/profileRepository');
+const { parsePaginationQuery, buildPaginationMeta } = require('../utils/pagination');
 const bcrypt = require('bcryptjs');
 
 const getAllUsers = async (req, res) => {
     try {
-        const page = Math.max(1, Number(req.query.page) || 1);
-        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 15));
+        const { page, limit, offset } = parsePaginationQuery(req.query, { defaultLimit: 15, maxLimit: 100 });
         const { rows, total } = await profileRepository.getAllUsers({
             page,
             limit,
-            offset: (page - 1) * limit,
+            offset,
             search: String(req.query.search || '').trim(),
             sortField: req.query.sortField || 'id',
             sortDir: req.query.sortDir || 'asc',
@@ -16,12 +16,7 @@ const getAllUsers = async (req, res) => {
 
         res.json({
             users: rows,
-            pagination: {
-                total,
-                page,
-                limit,
-                totalPages: Math.max(1, Math.ceil(total / limit)),
-            },
+            pagination: buildPaginationMeta({ total, page, limit }),
         });
     } catch (err) {
         console.error('Error fetching all users:', err);

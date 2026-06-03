@@ -1,9 +1,9 @@
 const orderService = require('../services/orderService');
+const { parsePaginationQuery } = require('../utils/pagination');
 
 const listOrders = async (req, res) => {
     try {
-        const page = Math.max(1, Number(req.query.page) || 1);
-        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 10));
+        const { page, limit } = parsePaginationQuery(req.query, { defaultLimit: 10, maxLimit: 100 });
         const result = await orderService.listOrders({
             page,
             limit,
