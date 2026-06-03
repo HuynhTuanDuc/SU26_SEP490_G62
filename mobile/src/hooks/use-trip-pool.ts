@@ -1,64 +1,99 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { tripService } from '@/services/trip-service';
-import type { TripPoolItem, VehicleGroup } from '@/types/trip';
+import type { OrderHistoryPagination, TripPoolItem, VehicleGroup } from '@/types/trip';
 
+const LIMIT = 20;
 const POLL_MS = 10_000;
 
 type State = {
-  allTrips: TripPoolItem[];
+  trips: TripPoolItem[];
   vehicleGroups: VehicleGroup[];
+  pagination: OrderHistoryPagination | null;
   isLoading: boolean;
+  isLoadingMore: boolean;
   error: string | null;
 };
 
 export function useTripPool() {
   const [state, setState] = useState<State>({
-    allTrips: [],
+    trips: [],
     vehicleGroups: [],
+    pagination: null,
     isLoading: true,
+    isLoadingMore: false,
     error: null,
   });
   const [groupFilter, setGroupFilter] = useState<number | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pageRef = useRef(1);
+  const latestGroupFilter = useRef<number | null>(null);
 
-  const fetchAll = useCallback(async (showSpinner = true) => {
-    if (showSpinner) {
+  useEffect(() => {
+    latestGroupFilter.current = groupFilter;
+  }, [groupFilter]);
+
+  const load = useCallback(async (page: number, showSpinner = true, append = false) => {
+    const isFirstPage = page === 1;
+
+    if (showSpinner && isFirstPage) {
       setState((current) => ({ ...current, isLoading: true, error: null }));
+    } else if (append) {
+      setState((current) => ({ ...current, isLoadingMore: true }));
     }
 
     try {
-      const { trips, vehicleGroups } = await tripService.getPool();
+      const { trips, vehicleGroups, pagination } = await tripService.getPool(
+        page,
+        LIMIT,
+        latestGroupFilter.current,
+      );
+
       setState((current) => ({
         ...current,
-        allTrips: trips ?? [],
-        vehicleGroups: vehicleGroups ?? [],
+        trips: append ? [...current.trips, ...(trips ?? [])] : (trips ?? []),
+        vehicleGroups: vehicleGroups ?? current.vehicleGroups,
+        pagination,
         isLoading: false,
+        isLoadingMore: false,
         error: null,
       }));
+      pageRef.current = page;
     } catch (error) {
       const message = error instanceof Error ? error.message : ERROR_MESSAGES.tripPoolLoadFailed;
       setState((current) => ({
         ...current,
         isLoading: false,
+        isLoadingMore: false,
         ...(showSpinner ? { error: message } : {}),
       }));
     }
   }, []);
 
+  const refresh = useCallback((showSpinner = true) => load(1, showSpinner, false), [load]);
+
+  const loadMore = useCallback(() => {
+    if (state.isLoading || state.isLoadingMore || !state.pagination) return;
+    if (pageRef.current >= state.pagination.totalPages) return;
+    load(pageRef.current + 1, false, true);
+  }, [load, state.isLoading, state.isLoadingMore, state.pagination]);
+
   const removeOrder = useCallback((orderId: number) => {
     setState((current) => ({
       ...current,
-      allTrips: current.allTrips.filter((trip) => trip.order_id !== orderId),
+      trips: current.trips.filter((trip) => trip.order_id !== orderId),
+      pagination: current.pagination
+        ? { ...current.pagination, total: Math.max(0, current.pagination.total - 1) }
+        : current.pagination,
     }));
   }, []);
 
   const startPolling = useCallback(() => {
     if (pollTimer.current) clearInterval(pollTimer.current);
-    pollTimer.current = setInterval(() => fetchAll(false), POLL_MS);
-  }, [fetchAll]);
+    pollTimer.current = setInterval(() => refresh(false), POLL_MS);
+  }, [refresh]);
 
   const stopPolling = useCallback(() => {
     if (!pollTimer.current) return;
@@ -67,15 +102,18 @@ export function useTripPool() {
   }, []);
 
   useEffect(() => {
-    fetchAll(true);
+    refresh(true);
+  }, [groupFilter, refresh]);
+
+  useEffect(() => {
     startPolling();
     return stopPolling;
-  }, [fetchAll, startPolling, stopPolling]);
+  }, [startPolling, stopPolling]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       if (next === 'active') {
-        fetchAll(false);
+        refresh(false);
         startPolling();
       } else {
         stopPolling();
@@ -83,36 +121,24 @@ export function useTripPool() {
     });
 
     return () => sub.remove();
-  }, [fetchAll, startPolling, stopPolling]);
+  }, [refresh, startPolling, stopPolling]);
 
-  const vehicleGroups = useMemo<VehicleGroup[]>(() => {
-    if (state.vehicleGroups.length > 0) return state.vehicleGroups;
-
-    const seen = new Map<number, string>();
-    for (const trip of state.allTrips) {
-      seen.set(trip.vehicle_group_id, trip.vehicle_group_name);
-    }
-
-    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
-  }, [state.vehicleGroups, state.allTrips]);
-
-  const trips = useMemo(
-    () =>
-      groupFilter !== null
-        ? state.allTrips.filter((trip) => trip.vehicle_group_id === groupFilter)
-        : state.allTrips,
-    [state.allTrips, groupFilter],
-  );
+  const totalCount = state.pagination?.total ?? state.trips.length;
+  const hasMore = state.pagination ? pageRef.current < state.pagination.totalPages : false;
 
   return {
-    trips,
-    totalCount: state.allTrips.length,
-    vehicleGroups,
+    trips: state.trips,
+    totalCount,
+    vehicleGroups: state.vehicleGroups,
     groupFilter,
     setGroupFilter,
+    pagination: state.pagination,
     isLoading: state.isLoading,
+    isLoadingMore: state.isLoadingMore,
+    hasMore,
     error: state.error,
-    refresh: fetchAll,
+    refresh,
+    loadMore,
     removeOrder,
   };
 }

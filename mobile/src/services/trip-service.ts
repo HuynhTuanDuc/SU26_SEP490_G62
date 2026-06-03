@@ -11,7 +11,11 @@ import type {
 } from '@/types/trip';
 
 export const tripService = {
-    getPool: () => apiClient.get<TripPoolResponse>('/api/trips/pool'),
+    getPool: (page = 1, limit = 20, vehicleGroupId?: number | null) => {
+        const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+        if (vehicleGroupId) params.set('vehicleGroupId', String(vehicleGroupId));
+        return apiClient.get<TripPoolResponse>(`/api/trips/pool?${params.toString()}`);
+    },
 
     getActiveTrip: () => apiClient.get<ActiveTripResponse>('/api/trips/active'),
 

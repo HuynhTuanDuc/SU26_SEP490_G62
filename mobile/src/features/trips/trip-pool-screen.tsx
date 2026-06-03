@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AlertTriangle, Inbox } from 'lucide-react-native';
@@ -25,7 +25,10 @@ export function TripPoolScreen() {
         groupFilter,
         setGroupFilter,
         isLoading,
+        isLoadingMore,
+        hasMore,
         refresh,
+        loadMore,
         removeOrder,
     } = useTripPool();
 
@@ -80,7 +83,7 @@ export function TripPoolScreen() {
     const countLabel = isLoading && trips.length === 0
         ? null
         : filterLabel
-            ? `${trips.length} đơn — ${filterLabel}`
+            ? `${totalCount} đơn — ${filterLabel}`
             : `${totalCount} đơn hàng`;
 
     return (
@@ -99,6 +102,13 @@ export function TripPoolScreen() {
 
             <ScrollView
                 style={{ flex: 1 }}
+                scrollEventThrottle={200}
+                onScroll={({ nativeEvent }) => {
+                    const distanceFromBottom = nativeEvent.contentSize.height
+                        - nativeEvent.layoutMeasurement.height
+                        - nativeEvent.contentOffset.y;
+                    if (distanceFromBottom < 220 && hasMore) loadMore();
+                }}
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
                     paddingTop: 10,
@@ -174,6 +184,13 @@ export function TripPoolScreen() {
                         claimDisabled={hasActiveTrip || claimingId !== null}
                     />
                 ))}
+
+                {isLoadingMore ? (
+                    <XStack alignItems="center" justifyContent="center" gap={8} paddingVertical={12}>
+                        <ActivityIndicator color={appTheme.colors.primary} />
+                        <AppText variant="caption" tone="muted">Đang tải thêm...</AppText>
+                    </XStack>
+                ) : null}
             </ScrollView>
         </View>
     );

@@ -6,12 +6,31 @@ const {
     RELEASABLE_STATUSES,
 } = require('../constants/tripConstants');
 
-const getTripPool = async (_driverId) => {
-    const [trips, vehicleGroups] = await Promise.all([
-        tripRepository.getAvailableOrders(),
+const getTripPool = async (_driverId, { page = 1, limit = 20, vehicleGroupId = null } = {}) => {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+    const normalizedVehicleGroupId = vehicleGroupId && Number(vehicleGroupId) > 0 ? Number(vehicleGroupId) : null;
+    const offset = (safePage - 1) * safeLimit;
+
+    const [{ rows, total }, vehicleGroups] = await Promise.all([
+        tripRepository.getAvailableOrders({
+            limit: safeLimit,
+            offset,
+            vehicleGroupId: normalizedVehicleGroupId,
+        }),
         tripRepository.getAllVehicleGroups(),
     ]);
-    return { trips, vehicleGroups };
+
+    return {
+        trips: rows,
+        vehicleGroups,
+        pagination: {
+            total,
+            page: safePage,
+            limit: safeLimit,
+            totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+        },
+    };
 };
 
 const getActiveTrip = async (driverId) => {

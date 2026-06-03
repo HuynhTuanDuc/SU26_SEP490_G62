@@ -61,6 +61,7 @@ export type ActiveTrip = {
 export type TripPoolResponse = {
     trips: TripPoolItem[];
     vehicleGroups: VehicleGroup[];
+    pagination: OrderHistoryPagination;
 };
 
 export type ActiveTripResponse = {

@@ -18,9 +18,39 @@ const getDriverVehicleGroupId = async (driverId) => {
 };
 
 // Pool hiển thị ORDERS (không phải shipments riêng lẻ).
-// Trả về TẤT CẢ orders available — không lọc theo vehicle_group.
+// Backend phân trang bằng LIMIT/OFFSET, có thể lọc theo vehicle_group của leg đầu tiên.
 // Metadata vehicle_group lấy từ leg đầu tiên của order.
-const getAvailableOrders = async () => {
+const getAvailableOrders = async ({ limit = 20, offset = 0, vehicleGroupId = null } = {}) => {
+    const values = [];
+    const filters = [`NOT EXISTS (
+        SELECT 1 FROM order_shipments oc
+        WHERE oc.order_id = o.id
+          AND (oc.status != 'available' OR oc.owner_driver_id IS NOT NULL)
+    )`];
+
+    if (vehicleGroupId) {
+        values.push(vehicleGroupId);
+        filters.push(`first_leg.vehicle_group_id = $${values.length}`);
+    }
+
+    const whereClause = `WHERE ${filters.join(' AND ')}`;
+    const baseFrom = `
+         FROM orders o
+         JOIN order_shipments first_leg
+              ON  first_leg.order_id       = o.id
+              AND first_leg.shipment_index = (
+                  SELECT MIN(si.shipment_index)
+                  FROM order_shipments si
+                  WHERE si.order_id = o.id
+              )
+         JOIN vehicle_groups vg ON first_leg.vehicle_group_id = vg.id
+         ${whereClause}`;
+
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total ${baseFrom}`, values);
+
+    const pageValues = [...values, limit, offset];
+    const limitParam = `$${pageValues.length - 1}`;
+    const offsetParam = `$${pageValues.length}`;
     const result = await pool.query(
         `SELECT
             o.id            AS order_id,
@@ -50,23 +80,13 @@ const getAvailableOrders = async () => {
             vg.id           AS vehicle_group_id,
             vg.name         AS vehicle_group_name,
             vg.max_load_weight_kg
-         FROM orders o
-         JOIN order_shipments first_leg
-              ON  first_leg.order_id       = o.id
-              AND first_leg.shipment_index = (
-                  SELECT MIN(si.shipment_index)
-                  FROM order_shipments si
-                  WHERE si.order_id = o.id
-              )
-         JOIN vehicle_groups vg ON first_leg.vehicle_group_id = vg.id
-         WHERE NOT EXISTS (
-               SELECT 1 FROM order_shipments oc
-               WHERE oc.order_id = o.id
-                 AND (oc.status != 'available' OR oc.owner_driver_id IS NOT NULL)
-           )
-         ORDER BY o.created_at ASC`,
+         ${baseFrom}
+         ORDER BY o.created_at ASC, o.id ASC
+         LIMIT ${limitParam} OFFSET ${offsetParam}`,
+        pageValues,
     );
-    return result.rows;
+
+    return { rows: result.rows, total: countResult.rows[0]?.total ?? 0 };
 };
 
 const getActiveTrip = async (driverId) => {

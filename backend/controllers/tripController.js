@@ -3,8 +3,20 @@ const tripService = require('../services/tripService');
 // GET /api/trips/pool
 const getTripPool = async (req, res) => {
     try {
-        const { trips, vehicleGroups } = await tripService.getTripPool(req.user.userId);
-        res.json({ trips, vehicleGroups });
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+        const vehicleGroupId = req.query.vehicleGroupId ? Number(req.query.vehicleGroupId) : null;
+
+        if (req.query.vehicleGroupId && (!Number.isInteger(vehicleGroupId) || vehicleGroupId <= 0)) {
+            return res.status(400).json({ error: 'Vehicle group ID không hợp lệ' });
+        }
+
+        const result = await tripService.getTripPool(req.user.userId, {
+            page,
+            limit,
+            vehicleGroupId,
+        });
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
