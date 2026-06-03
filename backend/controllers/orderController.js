@@ -1,9 +1,16 @@
 const orderService = require('../services/orderService');
 
-const listOrders = async (_req, res) => {
+const listOrders = async (req, res) => {
     try {
-        const orders = await orderService.listOrders();
-        res.json({ orders });
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 10));
+        const result = await orderService.listOrders({
+            page,
+            limit,
+            search: req.query.search || '',
+            status: req.query.status || '',
+        });
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

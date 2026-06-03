@@ -1,24 +1,33 @@
 const pool = require('../config/database');
 const { SHIPMENT_STATUS, ASSIGNMENT_TYPE } = require('../constants/tripConstants');
 
-const listOrders = async () => {
-    const result = await pool.query(
-        `SELECT
-            o.id,
-            o.customer_id,
-            o.cargo_name,
-            o.cargo_weight_kg,
-            o.pickup_address,
-            o.delivery_address,
-            o.estimated_price,
-            o.status,
-            o.notes,
-            o.created_at,
-            o.updated_at,
-            s.completed_at,
-            c.full_name AS customer_name,
-            c.phone AS customer_phone,
-            d.full_name AS driver_name
+const listOrders = async ({ limit = 10, offset = 0, search = '', status = '' } = {}) => {
+    const values = [];
+    const filters = [];
+
+    if (status) {
+        values.push(status);
+        filters.push(`o.status = $${values.length}`);
+    }
+
+    if (search) {
+        values.push(`%${search}%`);
+        const searchParam = `$${values.length}`;
+        filters.push(`(
+            CAST(o.id AS TEXT) ILIKE ${searchParam}
+            OR o.cargo_name ILIKE ${searchParam}
+            OR o.pickup_address ILIKE ${searchParam}
+            OR o.delivery_address ILIKE ${searchParam}
+            OR o.status ILIKE ${searchParam}
+            OR o.notes ILIKE ${searchParam}
+            OR c.full_name ILIKE ${searchParam}
+            OR c.phone ILIKE ${searchParam}
+            OR d.full_name ILIKE ${searchParam}
+        )`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+    const baseFrom = `
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
          LEFT JOIN LATERAL (
@@ -36,9 +45,37 @@ const listOrders = async () => {
             ORDER BY os.shipment_index ASC
             LIMIT 1
          ) d ON TRUE
-         ORDER BY o.created_at DESC`,
+         ${whereClause}`;
+
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total ${baseFrom}`, values);
+
+    const pageValues = [...values, limit, offset];
+    const limitParam = `$${pageValues.length - 1}`;
+    const offsetParam = `$${pageValues.length}`;
+    const result = await pool.query(
+        `SELECT
+            o.id,
+            o.customer_id,
+            o.cargo_name,
+            o.cargo_weight_kg,
+            o.pickup_address,
+            o.delivery_address,
+            o.estimated_price,
+            o.status,
+            o.notes,
+            o.created_at,
+            o.updated_at,
+            s.completed_at,
+            c.full_name AS customer_name,
+            c.phone AS customer_phone,
+            d.full_name AS driver_name
+         ${baseFrom}
+         ORDER BY o.created_at DESC
+         LIMIT ${limitParam} OFFSET ${offsetParam}`,
+        pageValues,
     );
-    return result.rows;
+
+    return { rows: result.rows, total: countResult.rows[0]?.total ?? 0 };
 };
 
 const getDriverById = async (client, driverId) => {

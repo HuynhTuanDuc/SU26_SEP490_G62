@@ -82,8 +82,26 @@ const findOrCreateCustomer = async (client, customerName, customerPhone) => {
     return orderRepository.findOrCreateCustomer(client, customerName, customerPhone, normalizePhone, safeTrim);
 };
 
-const listOrders = async () => {
-    return orderRepository.listOrders();
+const listOrders = async ({ page = 1, limit = 10, search = '', status = '' } = {}) => {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10));
+    const offset = (safePage - 1) * safeLimit;
+    const { rows, total } = await orderRepository.listOrders({
+        limit: safeLimit,
+        offset,
+        search: safeTrim(search),
+        status: safeTrim(status),
+    });
+
+    return {
+        orders: rows,
+        pagination: {
+            total,
+            page: safePage,
+            limit: safeLimit,
+            totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+        },
+    };
 };
 
 const createOrder = async (userId, payload) => {
