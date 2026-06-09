@@ -130,26 +130,29 @@
 .coordinator-shell .order-filters {
   width: 100%;
   justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .coordinator-shell .filter-field {
   display: grid;
   gap: 6px;
-  min-width: 150px;
+  flex: 0 1 140px;
+  min-width: 120px;
   color: #2a3144;
   font-size: 12px;
   font-weight: 700;
 }
 
 .coordinator-shell .filter-field-customer {
-  min-width: 220px;
+  flex-basis: 180px;
+  min-width: 160px;
 }
 
 .coordinator-shell .filter-field input {
-  min-height: 46px;
+  min-height: 42px;
   border: 1px solid rgba(20, 30, 70, 0.14);
   border-radius: 14px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: #fff;
   color: #2a3144;
   font: inherit;
@@ -370,7 +373,7 @@
 
 .coordinator-shell .sheet-caption {
   grid-column: 1 / -1;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 12px;
   background: linear-gradient(90deg, #f2f5ff 0%, #ffffff 100%);
   border: 1px solid #d9def0;
@@ -408,7 +411,7 @@
   grid-template-columns: 1fr;
 }
 .coordinator-shell .paid-toggle {
-  min-height: 46px;
+  min-height: 42px;
   border-radius: 14px;
   border: 1px solid #cfd6e6;
   background: #f7f9ff;
@@ -643,7 +646,7 @@
   color: #b91c1c;
   cursor: pointer;
   font-weight: 800;
-  padding: 10px 12px;
+  padding: 8px 10px;
   text-align: left;
 }
 

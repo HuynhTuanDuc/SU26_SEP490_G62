@@ -13,4 +13,13 @@ const importExcel = async (req, res) => {
   }
 };
 
-module.exports = { importExcel };
+const listVehicleOptions = async (_req, res) => {
+  try {
+    const vehicleGroups = await coordinatorService.listVehicleOptions();
+    res.json({ vehicleGroups });
+  } catch (err) {
+    res.status(422).json({ error: err.message });
+  }
+};
+
+module.exports = { importExcel, listVehicleOptions };

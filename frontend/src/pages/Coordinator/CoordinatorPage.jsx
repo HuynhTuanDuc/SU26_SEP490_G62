@@ -6,6 +6,7 @@ import { message as toast } from "antd";
 const emptyForm = {
   date: "",
   driver_id: "",
+  plate: "",
   customer_name: "",
   customer_phone: "",
   cargo_name: "",
@@ -13,6 +14,7 @@ const emptyForm = {
   distance: "",
   pickup_address: "",
   delivery_address: "",
+  delivery_addresses: "",
   estimated_price: "",
   vehicle_group_id: "",
   note: "",
@@ -24,7 +26,6 @@ const requiredFields = [
   
   { key: "customer_name", label: "Khách hàng" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
-  { key: "estimated_price", label: "Cước xe" },
   { key: "pickup_address", label: "Điểm lấy hàng" },
   { key: "delivery_address", label: "Điểm giao hàng" },
 ];
@@ -68,14 +69,20 @@ function extractDriverName(notes) {
   return match?.[1]?.trim() || "";
 }
 
+function extractDistance(notes) {
+  const match = String(notes ?? "").match(/Quãng đường:\s*([^|]+)/i);
+  return match?.[1]?.trim() || "";
+}
+
 function buildTripFromOrder(order) {
   const pickupAddress = order.pickup_address ||  "";
   const deliveryAddress = order.delivery_address ||  "";
   const date = (order.created_at ? new Date(order.created_at).toLocaleDateString('vi-VN') : "");
 
   return {
-    id: `#${order.id}`,
+    id: `#${order.id}-${order.shipment_id || 1}`,
     orderId: order.id,
+    shipmentId: order.shipment_id,
     date,
     dateInput: order.created_at,
     checkIn:  "",
@@ -90,7 +97,7 @@ function buildTripFromOrder(order) {
     pickupAddress,
     deliveryAddress,
     route:  (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
-    distance:  "",
+    distance: extractDistance(order.notes),
     fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: order.notes,
@@ -105,6 +112,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [drivers, setDrivers] = useState([]);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
@@ -157,18 +165,18 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, []);
 
   useEffect(() => {
-    const loadDrivers = async () => {
+    const loadVehicleOptions = async () => {
       try {
         const token = localStorage.getItem("token");
-        const data = await apiRequest("/api/drivers", { token });
-        setDrivers(data.drivers || []);
+        const data = await apiRequest("/api/coordinator/vehicle-options", { token });
+        setVehicleGroups(data.vehicleGroups || []);
       } catch (error) {
-        setMessage("Unable to load driver list.");
+        setMessage("Unable to load vehicle options.");
         setMessageType("error");
       }
     };
 
-    loadDrivers();
+    loadVehicleOptions();
   }, []);
 
   useEffect(() => {
@@ -290,20 +298,20 @@ export default function CoordinatorPage({ user, onLogout }) {
     }
   };
 
-  const vehicleGroups = useMemo(() => {
-    const seen = new Map();
-    drivers.forEach((driver) => {
-      if (!driver.vehicle_group_id) return;
-      const id = String(driver.vehicle_group_id);
-      if (!seen.has(id)) {
-        seen.set(id, {
-          id,
-          name: driver.vehicle_group_name || `Nhóm xe ${id}`,
-        });
-      }
-    });
-    return Array.from(seen.values());
-  }, [drivers]);
+  const selectedVehicleGroup = useMemo(() => vehicleGroups.find((group) => String(group.id) === String(form.vehicle_group_id)), [form.vehicle_group_id, vehicleGroups]);
+
+  const plateOptions = useMemo(() => {
+    if (!form.vehicle_group_id) return vehicleGroups.flatMap((group) => group.vehicles || []);
+    return selectedVehicleGroup?.vehicles || [];
+  }, [form.vehicle_group_id, selectedVehicleGroup, vehicleGroups]);
+
+  useEffect(() => {
+    const distance = normalizeDistanceText(form.distance);
+    const pricePerKm = Number(selectedVehicleGroup?.price_per_km || 0);
+    if (!distance || !isFiniteNumber(distance) || Number(distance) <= 0 || !pricePerKm) return;
+    const nextPrice = Math.round(Number(distance) * pricePerKm);
+    setForm((current) => (String(current.estimated_price) === String(nextPrice) ? current : { ...current, estimated_price: String(nextPrice) }));
+  }, [form.distance, selectedVehicleGroup]);
 
   const handleExcelImport = async (event) => {
     const file = event.target.files?.[0];
@@ -349,11 +357,11 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const openEditModal = (trip) => {
     const routeAddresses = splitRoute(trip.route);
-    const driver = drivers.find((item) => String(item.id) === String(trip.driverId));
     setEditingTrip(trip);
     setForm({
       date: trip.dateInput || formatDateForInput(trip.date),
-      driver_id: trip.driverId ? String(trip.driverId) : "",
+      driver_id: "",
+      plate: trip.plate || "",
       customer_name: trip.customerName || "",
       customer_phone: trip.customerPhone || "",
       cargo_name: trip.cargoName || "",
@@ -361,8 +369,9 @@ export default function CoordinatorPage({ user, onLogout }) {
       distance: trip.distance || "",
       pickup_address: trip.pickupAddress || routeAddresses.pickup,
       delivery_address: trip.deliveryAddress || routeAddresses.delivery,
+      delivery_addresses: trip.deliveryAddress || routeAddresses.delivery,
       estimated_price: trip.fare || "",
-      vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
+      vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : "",
       note: trip.notes || "",
     });
     setFormErrors({});
@@ -417,26 +426,21 @@ export default function CoordinatorPage({ user, onLogout }) {
 
     try {
       const token = localStorage.getItem("token");
-      const selectedDriver = drivers.find(
-        (driver) => String(driver.id) === String(form.driver_id),
-      );
-      const noteDriver = selectedDriver || (editingTrip ? {
-        plate_number: editingTrip.plate,
-        full_name: editingTrip.driverName,
-      } : null);
-      const selectedPlate = noteDriver?.plate_number || "";
-      const selectedVehicleGroupId = selectedDriver?.vehicle_group_id || form.vehicle_group_id || editingTrip?.vehicleGroupId || "";
+      const selectedPlate = form.plate || editingTrip?.plate || "";
+      const selectedVehicleGroupId = form.vehicle_group_id || editingTrip?.vehicleGroupId || "";
 
       const payload = {
         date: form.date,
         plate: selectedPlate,
-        driver_id: form.driver_id || "",
+        driver_id: "",
         customer_name: form.customer_name,
         customer_phone: form.customer_phone,
         cargo_name: form.cargo_name,
         cargo_weight_kg: form.cargo_weight_kg,
         pickup_address: form.pickup_address,
         delivery_address: form.delivery_address,
+        delivery_addresses: form.delivery_addresses || form.delivery_address,
+        distance: form.distance,
         estimated_price: form.estimated_price,
         vehicle_group_id: selectedVehicleGroupId,
         notes: form.note,
@@ -450,7 +454,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
       const savedTrip = buildTripFromOrder(data.order);
       setTrips((currentTrips) => editingTrip
-        ? currentTrips.map((trip) => (trip.orderId === savedTrip.orderId ? savedTrip : trip))
+        ? currentTrips.map((trip) => ((trip.shipmentId && savedTrip.shipmentId ? trip.shipmentId === savedTrip.shipmentId : trip.orderId === savedTrip.orderId) ? savedTrip : trip))
         : [savedTrip, ...currentTrips.filter((trip) => trip.orderId !== savedTrip.orderId)]
       );
 
@@ -633,42 +637,42 @@ export default function CoordinatorPage({ user, onLogout }) {
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
                   </label>
                   <label>
-                    <span>Tài xế</span>
+                    <span>BKS</span>
                     <select
-                      value={form.driver_id}
+                      value={form.plate}
                       onChange={(event) => {
-                        const driverId = event.target.value;
-                        const driver = drivers.find((item) => String(item.id) === String(driverId));
-                        updateField("driver_id", driverId);
-                        updateField(
-                          "vehicle_group_id",
-                          driver?.vehicle_group_id ? String(driver.vehicle_group_id) : "",
-                        );
+                        const plate = event.target.value;
+                        const vehicle = vehicleGroups
+                          .flatMap((group) => group.vehicles || [])
+                          .find((item) => item.plate_number === plate);
+                        updateField("plate", plate);
+                        if (vehicle?.vehicle_group_id) {
+                          updateField("vehicle_group_id", String(vehicle.vehicle_group_id));
+                        }
                       }}
-                      className={formErrors.driver_id ? "input-error" : ""}
                     >
-                      <option value="">Chọn tài xế</option>
-                      {drivers.map((driver) => (
-                        <option key={driver.id} value={driver.id}>
-                          {driver.full_name} {driver.plate_number ? `- ${driver.plate_number}` : ""}
+                      <option value="">Chọn BKS</option>
+                      {plateOptions.map((vehicle) => (
+                        <option key={vehicle.id} value={vehicle.plate_number}>
+                          {vehicle.plate_number}
                         </option>
                       ))}
                     </select>
-                    {formErrors.driver_id && (
-                      <div className="field-error">{formErrors.driver_id}</div>
-                    )}
                   </label>
                   <label>
                     <span>Nhóm xe</span>
                     <select
                       value={form.vehicle_group_id}
-                      onChange={(event) => updateField("vehicle_group_id", event.target.value)}
+                      onChange={(event) => {
+                          updateField("vehicle_group_id", event.target.value);
+                          updateField("plate", "");
+                        }}
                       className={formErrors.vehicle_group_id ? "input-error" : ""}
                     >
                       <option value="">Chọn nhóm xe</option>
                       {vehicleGroups.map((group) => (
                         <option key={group.id} value={group.id}>
-                          {group.name}
+                          {group.name} - {Number(group.price_per_km || 0).toLocaleString("vi-VN")} đ/km
                         </option>
                       ))}
                     </select>
@@ -753,6 +757,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       step="1000"
                       value={form.estimated_price}
                       onChange={(event) => updateField("estimated_price", event.target.value)}
+                      readOnly
                       className={formErrors.estimated_price ? "input-error" : ""}
                     />
                     {formErrors.estimated_price && (
@@ -775,9 +780,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                   <label>
                     <span>Điểm giao hàng</span>
-                    <input
-                      value={form.delivery_address}
-                      onChange={(event) => updateField("delivery_address", event.target.value)}
+                    <textarea
+                      value={form.delivery_addresses || form.delivery_address}
+                      onChange={(event) => {
+                        updateField("delivery_addresses", event.target.value);
+                        updateField("delivery_address", event.target.value.split(/\n|;/).map((item) => item.trim()).filter(Boolean)[0] || "");
+                      }}
+                      placeholder="Mỗi điểm giao hàng một dòng"
                       className={formErrors.delivery_address ? "input-error" : ""}
                     />
                     {formErrors.delivery_address && (

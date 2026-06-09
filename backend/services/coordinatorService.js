@@ -313,4 +313,30 @@ const importExcel = async (userId, fileBuffer) => {
   }
 };
 
-module.exports = { importExcel };
+
+const listVehicleOptions = async () => {
+  const result = await pool.query(`
+    SELECT
+      vg.id,
+      vg.name,
+      vg.price_per_km,
+      COALESCE(
+        json_agg(
+          json_build_object(
+            'id', v.id,
+            'plate_number', v.plate_number,
+            'vehicle_group_id', v.vehicle_group_id,
+            'status', v.status
+          ) ORDER BY v.plate_number
+        ) FILTER (WHERE v.id IS NOT NULL),
+        '[]'::json
+      ) AS vehicles
+    FROM vehicle_groups vg
+    LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id AND v.status = 'active'
+    GROUP BY vg.id, vg.name, vg.price_per_km
+    ORDER BY vg.name ASC, vg.id ASC
+  `);
+  return result.rows;
+};
+
+module.exports = { importExcel, listVehicleOptions };
