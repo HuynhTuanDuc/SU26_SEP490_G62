@@ -146,7 +146,9 @@ const createOrder = async (userId, payload) => {
 
     try {
         dbClient = await pool.connect();
+
         await dbClient.query('BEGIN');
+        
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
         const driver = normalizedDriverId ? await orderRepository.getDriverById(dbClient, normalizedDriverId) : null;
         const selectedVehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate) : null;
