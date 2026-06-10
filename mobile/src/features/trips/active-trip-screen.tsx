@@ -288,12 +288,15 @@ function StopsSection({ stops, tripStatus }: { stops: TripStop[]; tripStatus: Tr
 // Thay vào đó nhận receiptUri + onRequestCamera từ parent screen
 
 function PaymentModal({
-    visible, tripId, mode, receiptUri, onRequestCamera, onDeleteReceipt, onClose, onSuccess,
+    visible, tripId, mode, receiptUri, estimatedPrice, remainingAmount,
+    onRequestCamera, onDeleteReceipt, onClose, onSuccess,
 }: {
     visible: boolean;
     tripId: number;
     mode: 'cash' | 'unpaid';
     receiptUri: string | null;
+    estimatedPrice: number | null;
+    remainingAmount: number | null;
     onRequestCamera: () => void;
     onDeleteReceipt: () => void;
     onClose: () => void;
@@ -316,10 +319,19 @@ function PaymentModal({
     const apiError   = paymentError ?? unpaidError;
     const parsed     = Number(amount.replace(/\D/g, ''));
 
+    // Luôn dùng estimatedPrice làm tham chiếu — giá trị thực thu có thể khác
+    const refAmount = estimatedPrice ?? null;
+
     // Hiển thị số tiền có dấu chấm phân cách nghìn
     const handleAmountChange = (text: string) => {
         const digits = text.replace(/\D/g, '');
         setAmount(digits ? Number(digits).toLocaleString('vi-VN') : '');
+        if (apiError) { clearPayment(); clearUnpaid(); }
+    };
+
+    const fillRefAmount = () => {
+        if (!refAmount) return;
+        setAmount(refAmount.toLocaleString('vi-VN'));
         if (apiError) { clearPayment(); clearUnpaid(); }
     };
 
@@ -370,20 +382,53 @@ function PaymentModal({
 
                     <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={18} style={{ marginBottom: 14 }}>
                         {mode === 'cash'
-                            ? 'Khách trả tiền mặt cho bạn. Nhập số tiền và chụp ảnh biên lai (bắt buộc).'
+                            ? 'Nhập số tiền thực thu từ khách (có thể cao hơn hoặc thấp hơn giá ước tính). Chụp ảnh biên lai bắt buộc.'
                             : 'Khách chưa thanh toán. Hệ thống tạo công nợ để kế toán theo dõi.'}
                     </Text>
+
+                    {/* Giá trị tham chiếu */}
+                    {refAmount !== null && refAmount > 0 ? (
+                        <XStack
+                            padding={10} borderRadius={10}
+                            backgroundColor={appTheme.colors.primarySoft}
+                            borderWidth={1} borderColor={appTheme.colors.primaryMuted}
+                            alignItems="center" justifyContent="space-between"
+                            style={{ marginBottom: 14 }}
+                        >
+                            <YStack gap={2}>
+                                <Text fontSize={11} color={appTheme.colors.textMuted}>
+                                    Giá trị ước tính (tham khảo)
+                                </Text>
+                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.primary}>
+                                    {refAmount.toLocaleString('vi-VN')} ₫
+                                </Text>
+                                <Text fontSize={10} color={appTheme.colors.textMuted}>
+                                    Giá trị thực tế có thể khác — nhập đúng số tiền thu được
+                                </Text>
+                            </YStack>
+                            <Pressable
+                                onPress={fillRefAmount}
+                                style={{
+                                    paddingHorizontal: 12, paddingVertical: 7,
+                                    borderRadius: 8,
+                                    backgroundColor: appTheme.colors.primary,
+                                }}
+                            >
+                                <Text fontSize={12} fontWeight="700" color="#fff">Điền vào</Text>
+                            </Pressable>
+                        </XStack>
+                    ) : null}
 
                     {/* Amount */}
                     <View style={{ marginBottom: 14, gap: 6 }}>
                         <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            SỐ TIỀN (VNĐ) *
+                            SỐ TIỀN THỰC THU (VNĐ) *
                         </Text>
                         <TextInput
                             value={amount}
                             onChangeText={handleAmountChange}
                             keyboardType="numeric"
-                            placeholder="Nhập số tiền..."
+                            placeholder="Nhập số tiền khách trả thực tế..."
                             placeholderTextColor={appTheme.colors.textMuted}
                             returnKeyType="done"
                             style={s.amountInput}
@@ -1228,6 +1273,8 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     tripId={trip.id}
                     mode={showPayment}
                     receiptUri={paymentReceiptUri}
+                    estimatedPrice={trip.estimated_price ? Number(trip.estimated_price) : null}
+                    remainingAmount={paymentSummary?.remaining ?? null}
                     onRequestCamera={() => openCamera('paymentReceipt')}
                     onDeleteReceipt={() => setPaymentReceiptUri(null)}
                     onClose={() => { setShowPayment(null); setPaymentReceiptUri(null); }}
