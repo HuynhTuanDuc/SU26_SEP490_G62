@@ -115,7 +115,7 @@ CREATE TABLE orders (
     customer_id     INT REFERENCES customers(id),
     created_by      INT NOT NULL REFERENCES profiles(id),
     updated_by      INT REFERENCES profiles(id),
-
+    partner_name TEXT,
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),
     payment_type        TEXT CHECK (payment_type IN ('cash','bank_transfer','client_credit')),
@@ -146,7 +146,7 @@ CREATE TABLE order_shipments (
     vehicle_id          INT REFERENCES vehicles(id),
     estimated_price     NUMERIC(12,2),
     estimated_distance_km NUMERIC(10,2),
-    delivery_at         TIMESTAMPTZ,
+    actual_distance_km NUMERIC(10,2),
     actual_price        NUMERIC(12,2),
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),

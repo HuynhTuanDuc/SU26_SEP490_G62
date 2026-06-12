@@ -6,7 +6,6 @@ const getOrders = async (req, res) => {
             status: req.query.status,
             search: req.query.search,
         };
-
         const page = req.query.page ? Number(req.query.page) : null;
         const limit = req.query.limit ? Number(req.query.limit) : null;
 
@@ -18,39 +17,60 @@ const getOrders = async (req, res) => {
     }
 };
 
+const getVehicleDriverLookup = async (_req, res) => {
+    try {
+        const lookup = await accountantOrderService.getVehicleDriverLookup();
+        res.json(lookup);
+    } catch (err) {
+        console.error('Error fetching accountant lookup:', err);
+        res.status(500).json({ error: 'Failed to fetch lookup', details: err.message });
+    }
+};
+
 const createOrder = async (req, res) => {
     try {
+        const { shipments } = req.body;
+
+        if (!Array.isArray(shipments) || shipments.length === 0) {
+            return res.status(400).json({ error: 'Cần ít nhất 1 chuyến xe trong đơn.' });
+        }
+
         const {
-            customer_name,
-            customer_phone,
-            customer_company,
-            cargo_name,
-            cargo_weight,
-            pickup_address,
-            delivery_address,
-            estimated_price,
-            payment_type,
-            notes,
+            customer_name, customer_phone, customer_company,
+            customer_id,   // ← khi chọn đối tác từ danh sách
+            order_date, notes
         } = req.body;
 
-        if (!customer_name || !customer_phone || !pickup_address || !delivery_address) {
-            return res.status(400).json({ error: 'Customer name, phone, pickup and delivery addresses are required' });
+        if (!customer_name?.trim() && !customer_id) {
+            return res.status(400).json({ error: 'Tên khách hàng là bắt buộc khi tạo mới.' });
+        }
+        if (!customer_phone?.trim() && !customer_id) {
+            return res.status(400).json({ error: 'Số điện thoại là bắt buộc khi tạo mới.' });
+        }
+
+        for (let i = 0; i < shipments.length; i += 1) {
+            const s = shipments[i];
+            const pickups = (s.pickup_addresses || []).filter((p) => String(p || '').trim() !== '');
+            if (pickups.length === 0) {
+                return res.status(400).json({ error: `Chuyến ${i + 1}: cần ít nhất 1 điểm lấy hàng.` });
+            }
+            if (!s.delivery_address?.trim()) {
+                return res.status(400).json({ error: `Chuyến ${i + 1}: cần nhập điểm giao hàng.` });
+            }
+            if (Number(s.cargo_fee || 0) < 0 || Number(s.ticket_fee || 0) < 0) {
+                return res.status(400).json({ error: `Chuyến ${i + 1}: cước xe và vé phải là số không âm.` });
+            }
         }
 
         const createdByUserId = req.user.userId;
-
         const orderData = {
             customer_name,
             customer_phone,
             customer_company,
-            cargo_name,
-            cargo_weight: Number(cargo_weight),
-            pickup_address,
-            delivery_address,
-            estimated_price: Number(estimated_price),
-            payment_type,
-            status: 'pending',
+            customer_id: customer_id || null,
+            order_date,
             notes,
+            shipments,
             created_by: createdByUserId,
         };
 
@@ -65,7 +85,7 @@ const createOrder = async (req, res) => {
 const importOrders = async (req, res) => {
     try {
         const { orders } = req.body;
-        if (!orders || !Array.isArray(orders) || orders.length === 0) {
+        if (!Array.isArray(orders) || orders.length === 0) {
             return res.status(400).json({ error: 'A non-empty array of orders is required for import' });
         }
 
@@ -89,7 +109,6 @@ const getPayments = async (req, res) => {
         if (Number.isNaN(orderId)) {
             return res.status(400).json({ error: 'Invalid order id' });
         }
-
         const payments = await accountantOrderService.getPaymentsByOrderId(orderId);
         res.json(payments);
     } catch (err) {
@@ -130,10 +149,43 @@ const createPayment = async (req, res) => {
     }
 };
 
+const getShipments = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (Number.isNaN(orderId)) {
+            return res.status(400).json({ error: "Invalid order id" });
+        }
+        const shipments = await accountantOrderService.getOrderShipments(orderId);
+        res.json(shipments);
+    } catch (err) {
+        console.error("Error fetching shipments:", err);
+        res.status(500).json({ error: "Failed to fetch shipments", details: err.message });
+    }
+};
+
+const confirmDriverPayment = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.shipmentId);
+        if (Number.isNaN(shipmentId)) {
+            return res.status(400).json({ error: "Invalid shipment id" });
+        }
+        const { driver_payment_state, amount, payment_method } = req.body;
+        const confirmedBy = req.user.userId;
+        await accountantOrderService.confirmDriverPayment(shipmentId, driver_payment_state, amount, payment_method, confirmedBy);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error("Error confirming driver payment:", err);
+        res.status(500).json({ error: err.message || "Failed to confirm driver payment" });
+    }
+};
+
 module.exports = {
     getOrders,
+    getShipments,
+    getVehicleDriverLookup,
     createOrder,
     importOrders,
     getPayments,
     createPayment,
+    confirmDriverPayment,
 };

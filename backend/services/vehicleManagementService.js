@@ -1,4 +1,6 @@
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
+const notificationService = require('./notificationService');
+const notificationGateway = require('./notificationGateway');
 
 const VEHICLE_STATUSES = ['active', 'maintenance', 'broken', 'retired'];
 const FAILURE_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -357,7 +359,7 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         { vehicle, required: true },
     );
 
-    await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
+    const maintenanceResult = await vehicleManagementRepository.createMaintenanceRecordAndSetStatus({
         vehicleId: vehicle.id,
         managerId: parsePositiveInteger(managerId, 'manager_id'),
         maintenanceType,
@@ -368,6 +370,26 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         cost,
         note: normalizeString(payload.note) || description,
     });
+
+    // Notify driver via WS + persistent notification
+    if (performedBy) {
+        try {
+            await notificationService.createForUser(performedBy, {
+                title: 'Xe cần bảo dưỡng',
+                message: `Xe ${vehicle.plate_number} cần đưa đi bảo dưỡng. ${description}`,
+                type: 'MAINTENANCE_ASSIGNED',
+                entityType: 'maintenance_record',
+                entityId: maintenanceResult?.maintenanceId ?? null,
+                displayMode: 'alert',
+            });
+            // Typed event for maintenance screen real-time refresh
+            notificationGateway.broadcastToUser(performedBy, {
+                type: 'maintenance.assigned',
+                vehicleId: vehicle.id,
+                maintenanceRecordId: maintenanceResult?.maintenanceId ?? null,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
 
     return getVehicleDetail(vehicle.id);
 };

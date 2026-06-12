@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import "../../styles/PaymentModal.css";
 
 export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
@@ -13,8 +14,9 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
   const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
   const token = localStorage.getItem("token");
 
-  // Remaining unpaid debt amount
-  const remaining = order ? Number(order.debt_total || order.estimated_price || 0) - Number(order.debt_paid || 0) : 0;
+  const orderTotal = order ? Number(order.debt_total || order.estimated_price || 0) : 0;
+  const orderPaid = order ? Number(order.debt_paid || 0) : 0;
+  const remaining = Math.max(orderTotal - orderPaid, 0);
 
   useEffect(() => {
     if (isOpen && order) {
@@ -32,8 +34,8 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
     try {
       const response = await fetch(`${API_BASE}/accountant/orders/${order.id}/payments`, {
         headers: {
-          "Authorization": `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
       if (response.ok) {
         const data = await response.json();
@@ -53,13 +55,13 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
     setError("");
 
     const numericAmount = Number(amount);
-    if (isNaN(numericAmount) || numericAmount <= 0) {
+    if (Number.isNaN(numericAmount) || numericAmount <= 0) {
       setError("Vui lòng nhập số tiền thanh toán hợp lệ (phải lớn hơn 0).");
       return;
     }
 
     if (numericAmount > remaining + 0.01) {
-      setError(`Số tiền vượt quá dư nợ còn lại (${remaining.toLocaleString()}đ).`);
+      setError(`Số tiền vượt quá dư nợ còn lại (${remaining.toLocaleString("vi-VN")}đ).`);
       return;
     }
 
@@ -69,17 +71,16 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           amount: numericAmount,
           paymentMethod,
-          notes
-        })
+          notes,
+        }),
       });
 
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.error || "Ghi nhận thanh toán thất bại.");
       }
@@ -100,31 +101,30 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
       <div className="accountant-modal-card payment-modal-card">
         <div className="accountant-modal-header">
           <div>
-            <h3>Ghi nhận Phiếu thu (Thanh toán)</h3>
-            <span className="order-subtitle">Đơn hàng #VL-{order.id} &bull; Khách hàng: {order.customer_name}</span>
+            <h3>Ghi nhận phiếu thu</h3>
+            <span className="order-subtitle">Đơn {order.id} • Khách hàng: {order.customer_name}</span>
           </div>
           <button className="close-btn" onClick={onClose}>&times;</button>
         </div>
 
-        {/* Debt Status Summary Card */}
         <div className="debt-summary-box">
           <div className="summary-item">
-            <span className="summary-lbl">Tổng giá trị đơn</span>
-            <span className="summary-val">{Number(order.debt_total || order.estimated_price || 0).toLocaleString()}đ</span>
+            <span className="summary-lbl">Giá trị đơn</span>
+            <span className="summary-val">{orderTotal.toLocaleString("vi-VN")}đ</span>
           </div>
           <div className="summary-item">
             <span className="summary-lbl">Đã thu</span>
-            <span className="summary-val text-green">{Number(order.debt_paid || 0).toLocaleString()}đ</span>
+            <span className="summary-val text-green">{orderPaid.toLocaleString("vi-VN")}đ</span>
           </div>
           <div className="summary-item">
             <span className="summary-lbl">Còn phải thu</span>
-            <span className="summary-val text-red">{remaining.toLocaleString()}đ</span>
+            <span className="summary-val text-red">{remaining.toLocaleString("vi-VN")}đ</span>
           </div>
         </div>
 
         {remaining <= 0 ? (
           <div className="success-banner text-center mb-16">
-            🎉 Đơn hàng này đã được thu đủ toàn bộ số tiền!
+            Đơn hàng này đã được thu đủ.
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="accountant-modal-form">
@@ -144,8 +144,8 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
               <label className="full-width">
                 <span>Phương thức thu tiền</span>
                 <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-                  <option value="cash">Tiền mặt (Cash)</option>
-                  <option value="bank_transfer">Chuyển khoản ngân hàng (Bank Transfer)</option>
+                  <option value="cash">Tiền mặt</option>
+                  <option value="bank_transfer">Chuyển khoản</option>
                 </select>
               </label>
 
@@ -154,7 +154,7 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Mã chuyển khoản, người nộp tiền, số hóa đơn..."
+                  placeholder="Mã chuyển khoản, người nộp tiền, nội dung thu..."
                   rows={2}
                 />
               </label>
@@ -165,13 +165,12 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
             <div className="accountant-modal-actions mb-24">
               <button type="button" className="secondary-btn" onClick={onClose}>Hủy</button>
               <button type="submit" className="primary-btn" disabled={submitting}>
-                {submitting ? "Đang ghi thu..." : `Xác nhận thu ${Number(amount || 0).toLocaleString()}đ`}
+                {submitting ? "Đang ghi thu..." : `Xác nhận thu ${Number(amount || 0).toLocaleString("vi-VN")}đ`}
               </button>
             </div>
           </form>
         )}
 
-        {/* Lịch sử thanh toán */}
         <div className="payments-history-section">
           <h4>Lịch sử các lần thu tiền</h4>
           {loadingPayments ? (
@@ -186,18 +185,20 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
                     <th>Ngày thu</th>
                     <th>Số tiền</th>
                     <th>Phương thức</th>
+                    <th>Trạng thái</th>
                     <th>Ghi chú</th>
                     <th>Người lập</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paymentsList.map((p) => (
-                    <tr key={p.id}>
-                      <td>{new Date(p.paid_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</td>
-                      <td className="font-bold text-green">+{Number(p.amount).toLocaleString()}đ</td>
-                      <td>{p.payment_method === "cash" ? "Tiền mặt" : "Chuyển khoản"}</td>
-                      <td className="text-muted">{p.notes || "-"}</td>
-                      <td>{p.creator_name || "Hệ thống"}</td>
+                  {paymentsList.map((payment) => (
+                    <tr key={payment.id}>
+                      <td>{new Date(payment.paid_at).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</td>
+                      <td className="font-bold text-green">+{Number(payment.amount).toLocaleString("vi-VN")}đ</td>
+                      <td>{payment.payment_method === "bank_transfer" ? "Chuyển khoản" : "Tiền mặt"}</td>
+                      <td>{payment.status === "confirmed" ? "Đã xác nhận" : payment.status}</td>
+                      <td className="text-muted">{payment.notes || "-"}</td>
+                      <td>{payment.creator_name || "Hệ thống"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -209,3 +210,16 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
     </div>
   );
 }
+
+PaymentModal.propTypes = {
+  isOpen: PropTypes.bool,
+  onClose: PropTypes.func,
+  onPaymentRecorded: PropTypes.func,
+  order: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    customer_name: PropTypes.string,
+    debt_total: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    estimated_price: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    debt_paid: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  }),
+};

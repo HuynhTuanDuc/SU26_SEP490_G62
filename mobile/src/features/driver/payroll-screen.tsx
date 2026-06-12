@@ -13,8 +13,10 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }     from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
+import { PayrollSkeleton, SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
 import { usePayroll, usePayrollEstimate, useSalaryAdvance } from '@/hooks/use-payroll';
+import { useMoneyInput } from '@/hooks/use-money-input';
 import type { Payroll, PayrollEstimate, SalaryAdvance } from '@/services/payroll-service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -290,7 +292,7 @@ function AdvanceCard({ a }: { a: SalaryAdvance }) {
 function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
     month: number; year: number; maxAmount: number; onClose: () => void; onSuccess: () => void;
 }) {
-    const [amount, setAmount] = useState('');
+    const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange } = useMoneyInput();
     const [reason, setReason] = useState('');
     const { isSubmitting, error, request } = useSalaryAdvance();
 
@@ -298,7 +300,7 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
     const isToday25 = today.getDate() === 25;
 
     const handleSubmit = async () => {
-        const n = Number(amount.replace(/[^0-9]/g, ''));
+        const n = amountRaw;
         if (!n || n <= 0) { Alert.alert('Lỗi', 'Nhập số tiền hợp lệ'); return; }
         if (n > maxAmount) {
             Alert.alert('Lỗi', `Tối đa ${maxAmount.toLocaleString('vi-VN')}₫`);
@@ -349,7 +351,7 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
                     <TextInput
                         style={s.input}
                         value={amount}
-                        onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))}
+                        onChangeText={onAmountChange}
                         keyboardType="numeric"
                         placeholder={`Tối đa ${maxAmount.toLocaleString('vi-VN')}`}
                         placeholderTextColor={appTheme.colors.textMuted}
@@ -484,10 +486,7 @@ export function PayrollScreen() {
                         </XStack>
 
                         {estLoading ? (
-                            <YStack alignItems="center" paddingVertical={40}>
-                                <ActivityIndicator color={appTheme.colors.primary} />
-                                <AppText variant="caption" tone="muted" marginTop={12}>Đang tính lương...</AppText>
-                            </YStack>
+                            <PayrollSkeleton />
                         ) : estError ? (
                             <XStack
                                 padding={14} borderRadius={appTheme.radius.md}
@@ -508,9 +507,7 @@ export function PayrollScreen() {
                 {tab === 'history' ? (
                     <>
                         {histLoading ? (
-                            <YStack alignItems="center" paddingVertical={40}>
-                                <ActivityIndicator color={appTheme.colors.primary} />
-                            </YStack>
+                            <SimpleListSkeleton count={3} />
                         ) : histError ? (
                             <XStack
                                 padding={14} borderRadius={appTheme.radius.md}
@@ -573,7 +570,7 @@ export function PayrollScreen() {
                     </XStack>
 
                     {advLoading ? (
-                        <ActivityIndicator color={appTheme.colors.primary} size="small" />
+                        <SimpleListSkeleton count={2} />
                     ) : advances.length > 0 ? (
                         <YStack gap={8}>
                             {advances.slice(0, 5).map((a) => <AdvanceCard key={a.id} a={a} />)}

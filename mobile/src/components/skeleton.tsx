@@ -661,3 +661,153 @@ export function PoolOrderDetailSkeleton() {
         </YStack>
     );
 }
+
+// ─── SimpleCardSkeleton — generic horizontal card (leave, debt, collections) ──
+
+export function SimpleCardSkeleton() {
+    return (
+        <XStack
+            padding={14}
+            borderRadius={appTheme.radius.lg}
+            borderWidth={1}
+            borderColor={appTheme.colors.border}
+            backgroundColor={appTheme.colors.surface}
+            alignItems="center"
+            gap={12}
+            marginBottom={10}
+        >
+            <SkeletonBox width={40} height={40} borderRadius={14} />
+            <YStack flex={1} gap={6}>
+                <SkeletonLine width="55%" height={14} />
+                <SkeletonLine width="38%" height={11} />
+            </YStack>
+        </XStack>
+    );
+}
+
+export function SimpleListSkeleton({ count = 3 }: { count?: number }) {
+    return (
+        <YStack>
+            {Array.from({ length: count }).map((_, i) => <SimpleCardSkeleton key={i} />)}
+        </YStack>
+    );
+}
+
+// ─── KpiSkeleton — kpi-screen ─────────────────────────────────────────────────
+
+export function KpiSkeleton() {
+    return (
+        <YStack gap={14}>
+            {/* Stat row 1 */}
+            <StatRowSkeleton />
+            {/* Stat row 2 */}
+            <StatRowSkeleton />
+            {/* Bonus card */}
+            <YStack
+                padding={16}
+                borderRadius={appTheme.radius.lg}
+                borderWidth={1}
+                borderColor={appTheme.colors.border}
+                backgroundColor={appTheme.colors.surface}
+                gap={12}
+            >
+                <SkelRow>
+                    <SkeletonBox width={32} height={32} borderRadius={10} />
+                    <SkeletonLine width={120} height={14} />
+                </SkelRow>
+                <YStack gap={8}>
+                    <SkelRow style={{ justifyContent: 'space-between' }}>
+                        <SkeletonLine width="45%" height={12} />
+                        <SkeletonLine width="30%" height={12} />
+                    </SkelRow>
+                    <SkeletonBox height={8} borderRadius={4} />
+                    <SkelRow style={{ justifyContent: 'space-between' }}>
+                        <SkeletonLine width="35%" height={11} />
+                        <SkeletonLine width="25%" height={13} />
+                    </SkelRow>
+                </YStack>
+            </YStack>
+        </YStack>
+    );
+}
+
+// ─── PayrollSkeleton — payroll-screen ────────────────────────────────────────
+
+export function PayrollSkeleton() {
+    return (
+        <YStack gap={14}>
+            {/* Estimate card */}
+            <YStack
+                padding={20}
+                borderRadius={appTheme.radius.lg}
+                borderWidth={1}
+                borderColor={appTheme.colors.border}
+                backgroundColor={appTheme.colors.surface}
+                gap={14}
+            >
+                <SkeletonLine width={130} height={12} />
+                <SkeletonLine width={180} height={32} />
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <YStack gap={6}>
+                        <SkeletonLine width={60} height={10} />
+                        <SkeletonLine width={80} height={14} />
+                    </YStack>
+                    <YStack gap={6}>
+                        <SkeletonLine width={60} height={10} />
+                        <SkeletonLine width={80} height={14} />
+                    </YStack>
+                    <YStack gap={6}>
+                        <SkeletonLine width={60} height={10} />
+                        <SkeletonLine width={80} height={14} />
+                    </YStack>
+                </SkelRow>
+            </YStack>
+            {/* History rows */}
+            <SimpleCardSkeleton />
+            <SimpleCardSkeleton />
+            <SimpleCardSkeleton />
+        </YStack>
+    );
+}
+
+// ─── MaintenanceCardSkeleton — maintenance-screen ────────────────────────────
+
+export function MaintenanceCardSkeleton() {
+    return (
+        <YStack
+            borderRadius={appTheme.radius.lg}
+            borderWidth={1}
+            borderColor={appTheme.colors.border}
+            backgroundColor={appTheme.colors.surface}
+            overflow="hidden"
+            marginBottom={12}
+        >
+            <XStack
+                paddingHorizontal={14} paddingVertical={12}
+                alignItems="center" gap={10}
+            >
+                <SkeletonBox width={38} height={38} borderRadius={12} />
+                <YStack flex={1} gap={6}>
+                    <SkeletonLine width="50%" height={14} />
+                    <SkeletonLine width="70%" height={11} />
+                </YStack>
+                <SkeletonLine width={80} height={22} borderRadius={10} />
+            </XStack>
+            <YStack
+                paddingHorizontal={14} paddingBottom={14} paddingTop={4}
+                gap={10}
+                borderTopWidth={1} borderTopColor={appTheme.colors.border}
+            >
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <SkeletonLine width="30%" height={11} />
+                    <SkeletonLine width="40%" height={14} />
+                </SkelRow>
+                <SkelRow>
+                    <SkeletonBox width={72} height={72} borderRadius={10} />
+                    <SkeletonBox width={72} height={72} borderRadius={10} />
+                </SkelRow>
+                <SkeletonBox height={44} borderRadius={appTheme.radius.md} />
+            </YStack>
+        </YStack>
+    );
+}

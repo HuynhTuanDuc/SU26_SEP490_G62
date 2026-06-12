@@ -1178,9 +1178,36 @@ const listVehicleStatusHistory = async (vehicleId) => {
     return result.rows;
 };
 
+const getMaintenanceRecordsForDriver = async (driverId, db = pool) => {
+    const result = await db.query(
+        `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
+                mr.maintenance_type, mr.description, mr.cost, mr.maintenance_date,
+                mr.next_due_date, mr.status, mr.bill_pics, mr.started_at, mr.completed_at,
+                mr.created_by
+         FROM maintenance_records mr
+         JOIN vehicles v ON v.id = mr.vehicle_id
+         WHERE mr.performed_by = $1
+           AND mr.status IN ('open', 'pending_verification')
+         ORDER BY mr.started_at DESC`,
+        [driverId],
+    );
+    return result.rows;
+};
+
+const updateMaintenanceCost = async (maintenanceRecordId, cost, db = pool) => {
+    const result = await db.query(
+        `UPDATE maintenance_records
+         SET cost = $2, updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, cost`,
+        [maintenanceRecordId, cost],
+    );
+    return result.rows[0] ?? null;
+};
+
 const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = pool) => {
     const result = await db.query(
-        `SELECT id, vehicle_id, performed_by, status, bill_pics
+        `SELECT id, vehicle_id, performed_by, status, bill_pics, cost, created_by
          FROM maintenance_records
          WHERE vehicle_id = $1
            AND performed_by = $2
@@ -1230,5 +1257,7 @@ module.exports = {
     retireVehicle,
     listVehicleStatusHistory,
     getActiveMaintenanceRecordForDriver,
+    getMaintenanceRecordsForDriver,
     updateMaintenanceBillPics,
+    updateMaintenanceCost,
 };

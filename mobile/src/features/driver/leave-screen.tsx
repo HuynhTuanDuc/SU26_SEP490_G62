@@ -15,7 +15,9 @@ import { Text, XStack, YStack } from 'tamagui';
 import { AppText }     from '@/components/app-text';
 import { AppButton }   from '@/components/app-button';
 import { ScreenHeader } from '@/components/screen-header';
+import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
+import { useConfirm }  from '@/providers/ui-provider';
 import { useLeave, useCreateLeave, useDeleteLeave } from '@/hooks/use-leave';
 import type { LeaveRequest, LeaveType } from '@/services/leave-service';
 
@@ -96,6 +98,7 @@ function AttendanceSummary({ working, unpaid, paid }: {
 // ─── Leave card ───────────────────────────────────────────────────────────────
 
 function LeaveCard({ leave, onDelete }: { leave: LeaveRequest; onDelete: (id: number) => void }) {
+    const { showConfirm } = useConfirm();
     const isPaid    = leave.leave_type === 'paid';
     const isFuture  = isoToDate(leave.leave_date) >= new Date();
 
@@ -131,11 +134,14 @@ function LeaveCard({ leave, onDelete }: { leave: LeaveRequest; onDelete: (id: nu
 
             {isFuture ? (
                 <Pressable
-                    onPress={() => {
-                        Alert.alert('Huỷ đăng ký nghỉ', `Huỷ ngày ${fmtDate(leave.leave_date)}?`, [
-                            { text: 'Không', style: 'cancel' },
-                            { text: 'Huỷ', style: 'destructive', onPress: () => onDelete(leave.id) },
-                        ]);
+                    onPress={async () => {
+                        const ok = await showConfirm({
+                            title: 'Huỷ đăng ký nghỉ',
+                            message: `Huỷ ngày ${fmtDate(leave.leave_date)}?`,
+                            confirmLabel: 'Huỷ',
+                            danger: true,
+                        });
+                        if (ok) onDelete(leave.id);
                     }}
                     hitSlop={8}
                 >
@@ -398,11 +404,7 @@ export function LeaveScreen() {
                 ) : null}
 
                 {/* Loading */}
-                {isLoading ? (
-                    <YStack alignItems="center" paddingVertical={30}>
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                    </YStack>
-                ) : null}
+                {isLoading ? <SimpleListSkeleton count={3} /> : null}
 
                 {/* Leave list */}
                 {!isLoading ? (

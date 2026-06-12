@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Pressable, RefreshControl,
+    Pressable, RefreshControl,
     ScrollView, StyleSheet, View,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -13,6 +13,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }     from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
+import { KpiSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
 import { useKpi }      from '@/hooks/use-kpi';
 import type { KpiRecord } from '@/services/kpi-service';
@@ -405,12 +406,7 @@ export function KpiScreen() {
                     </XStack>
                 ) : null}
 
-                {isLoading ? (
-                    <YStack alignItems="center" paddingVertical={40} gap={12}>
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                        <AppText variant="caption" tone="muted">Đang tải KPI...</AppText>
-                    </YStack>
-                ) : null}
+                {isLoading ? <KpiSkeleton /> : null}
 
                 {!isLoading && !error ? (
                     record

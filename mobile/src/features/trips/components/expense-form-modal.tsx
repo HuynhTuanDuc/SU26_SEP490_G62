@@ -14,6 +14,7 @@ import { AppButton }  from '@/components/app-button';
 import { AppText }    from '@/components/app-text';
 import { FormField }  from '@/components/form-field';
 import { appTheme }   from '@/theme/app-theme';
+import { useMoneyInput } from '@/hooks/use-money-input';
 import { tripService } from '@/services/trip-service';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
@@ -82,7 +83,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
 
     // ── Form state ──
     const [expenseType,    setExpenseType]    = useState<ExpenseType>('fuel');
-    const [amount,         setAmount]         = useState('');
+    const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange, clear: clearAmount } = useMoneyInput();
     const [description,    setDescription]    = useState('');
     const [receiptUri,     setReceiptUri]     = useState<string | null>(null);
     const [showCamera,     setShowCamera]     = useState(false);
@@ -95,7 +96,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
 
     const reset = () => {
         setExpenseType('fuel');
-        setAmount('');
+        clearAmount();
         setDescription('');
         setReceiptUri(null);
         setShowCamera(false);
@@ -128,7 +129,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
 
     const handleSubmit = async () => {
         if (!receiptUri) { setFormError('Vui lòng chụp ảnh biên lai'); return; }
-        const amt = Number(amount.replace(/[^0-9]/g, ''));
+        const amt = amountRaw;
         if (!amt || amt <= 0) { setFormError('Số tiền phải lớn hơn 0'); return; }
 
         setFormError(null);
@@ -273,8 +274,8 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                             <FormField
                                 label="SỐ TIỀN (VNĐ)"
                                 value={amount}
-                                onChangeText={setAmount}
-                                placeholder="Ví dụ: 150000"
+                                onChangeText={onAmountChange}
+                                placeholder="Ví dụ: 150.000"
                                 keyboardType="numeric"
                             />
                         </YStack>

@@ -124,7 +124,23 @@
   background: #fff;
   padding: 14px 20px;
   border: 1px solid rgba(20, 30, 70, 0.14);
+  margin-top: 22px;
 }
+
+.coordinator-shell .filter-field input {
+  height: 45.6px;
+  min-height: 45.6px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 14px;
+  padding: 14px 20px;
+  box-sizing: border-box;
+  background: #fff;
+  color: #2a3144;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
 .coordinator-shell .filter.active { background: #18227f; color: #fff; }
 
 .coordinator-shell .order-filters {
@@ -145,18 +161,7 @@
   min-width: 220px;
 }
 
-.coordinator-shell .filter-field input {
-  height: 45.6px;
-  min-height: 45.6px;
-  border: 1px solid rgba(20, 30, 70, 0.14);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: #fff;
-  color: #2a3144;
-  font: inherit;
-  font-size: 14px;
-  outline: none;
-}
+
 
 .coordinator-shell .filter-field input:focus {
   border-color: #18227f;

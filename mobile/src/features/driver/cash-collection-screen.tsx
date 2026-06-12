@@ -12,9 +12,11 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }      from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
+import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }     from '@/theme/app-theme';
 import { CameraModal }  from '@/features/trips/components/camera-modal';
 import { useCashCollection, useCreateCollection } from '@/hooks/use-cash-collection';
+import { useMoneyInput } from '@/hooks/use-money-input';
 import type { CashCollection, CollectionPaymentMethod } from '@/services/cash-collection-service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -200,7 +202,7 @@ function CreateModal({
     onClose: () => void;
     onSuccess: () => void;
 }) {
-    const [amount,     setAmount]     = useState('');
+    const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange } = useMoneyInput();
     const [method,     setMethod]     = useState<CollectionPaymentMethod>('cash');
     const [notes,      setNotes]      = useState('');
     const [receiptUri, setReceiptUri] = useState<string | null>(null);
@@ -208,7 +210,7 @@ function CreateModal({
     const { isSubmitting, error, submit } = useCreateCollection();
 
     const handleSubmit = async () => {
-        const n = Number(amount.replace(/[^0-9]/g, ''));
+        const n = amountRaw;
         if (!n || n <= 0) {
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
@@ -264,7 +266,7 @@ function CreateModal({
                     <TextInput
                         style={s.input}
                         value={amount}
-                        onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))}
+                        onChangeText={onAmountChange}
                         keyboardType="numeric"
                         placeholder="Nhập số tiền khách trả..."
                         placeholderTextColor={appTheme.colors.textMuted}
@@ -397,12 +399,7 @@ export function CashCollectionScreen() {
                     </XStack>
                 ) : null}
 
-                {isLoading && collections.length === 0 ? (
-                    <YStack alignItems="center" paddingVertical={40} gap={12}>
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                        <AppText variant="caption" tone="muted">Đang tải...</AppText>
-                    </YStack>
-                ) : null}
+                {isLoading && collections.length === 0 ? <SimpleListSkeleton count={4} /> : null}
 
                 {/* Pending */}
                 {pending.length > 0 ? (

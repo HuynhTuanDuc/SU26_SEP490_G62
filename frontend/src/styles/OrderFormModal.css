@@ -1,385 +1,361 @@
-/* Modal styling with White + Dark Navy & Golden Brown Accent */
-
-.accountant-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 16px;
-  animation: fadeIn 0.25s ease-out;
+.accountant-order-drawer .ant-drawer-body {
+  padding: 20px 24px 90px;
+  background: #f1f5f9;
 }
 
-.accountant-modal-card {
-  background: #ffffff;
-  width: 100%;
-  max-width: 720px;
-  border-radius: 16px;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.15);
+.accountant-order-shell {
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
-  overflow: hidden;
-  animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.accountant-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 18px 24px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.accountant-modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  color: #1a2680; /* Dark Navy */
-}
-
-.accountant-modal-card .close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: #64748b;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.accountant-modal-card .close-btn:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
-
-.accountant-modal-tabs {
-  display: flex;
-  background: #f1f5f9;
-  padding: 4px;
-  margin: 16px 24px 8px 24px;
-  border-radius: 8px;
-}
-
-.accountant-modal-card .tab-btn {
-  flex: 1;
-  background: none;
-  border: none;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.accountant-modal-card .tab-btn.active {
-  background: #ffffff;
-  color: #1a2680;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-}
-
-.accountant-modal-form {
-  padding: 16px 24px 24px 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.accountant-modal-card .form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
-.accountant-modal-card .form-grid label {
+/* ── Shared input / select base size ── */
+.accountant-order-shell .ant-input,
+.accountant-order-shell .ant-input-affix-wrapper,
+.accountant-order-shell .ant-select-selector,
+.accountant-order-shell .ant-picker,
+.accountant-order-shell .ant-input-number {
+  height: 42px !important;
+  font-size: 14px !important;
+  border-radius: 10px !important;
+}
+
+.accountant-order-shell .ant-select-selection-search-input {
+  height: 40px !important;
+}
+
+.accountant-order-shell .ant-input[disabled],
+.accountant-order-shell .ant-select-disabled .ant-select-selector {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  font-weight: 500;
+}
+
+/* ── Select dropdown arrow ── */
+.accountant-order-shell .ant-select-arrow {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ── Input number ── */
+.accountant-order-shell .ant-input-number {
+  padding: 0 12px;
+}
+
+/* ── DatePicker ── */
+.accountant-order-shell .ant-picker {
+  padding: 0 12px;
+}
+
+.accountant-order-shell .ant-picker input {
+  font-size: 14px !important;
+}
+
+/* ── TextArea ── */
+.accountant-order-shell .ant-input-textarea textarea {
+  font-size: 14px !important;
+  min-height: 64px !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+}
+
+/* ── Order info card ── */
+.order-info-card {
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(15, 23, 42, 0.08);
+}
+
+.order-info-card .ant-card-head {
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(135deg, #1a2680 0%, #2d3599 100%);
+  border-bottom: none;
+  min-height: 50px;
+}
+
+.order-info-card .ant-card-head-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.3px;
+}
+
+.order-info-card .ant-card-body {
+  padding: 20px 20px 16px;
+}
+
+.order-info-card .ant-form-item {
+  margin-bottom: 0;
+}
+
+.order-info-card .ant-form-item-label > label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 4px;
+}
+
+.order-info-card .ant-form-item-label {
+  padding-bottom: 0 !important;
+  line-height: 1.2;
+}
+
+/* ── Statistic ── */
+.order-info-card .ant-statistic-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 2px;
+}
+
+.order-info-card .ant-statistic-content {
+  font-size: 22px !important;
+  font-weight: 800;
+}
+
+/* ── Shipments ── */
+.shipments-list {
   display: flex;
   flex-direction: column;
-  font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  text-align: left;
+  gap: 14px;
 }
 
-.accountant-modal-card .form-grid label.full-width {
-  grid-column: span 2;
+.shipment-card {
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
 }
 
-.accountant-modal-card .form-grid label span {
-  margin-bottom: 6px;
-}
-
-.accountant-modal-card .form-grid input,
-.accountant-modal-card .form-grid select,
-.accountant-modal-card .form-grid textarea {
-  padding: 10px 14px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #0f172a;
-  font-size: 14px;
-  font-family: inherit;
-  transition: all 0.2s;
-}
-
-.accountant-modal-card .form-grid input:focus,
-.accountant-modal-card .form-grid select:focus,
-.accountant-modal-card .form-grid textarea:focus {
-  outline: none;
-  border-color: #1a2680;
+.shipment-card .ant-card-head {
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(26, 38, 128, 0.1);
+  border-radius: 16px 16px 0 0;
+  min-height: 54px;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 0 20px;
 }
 
-.accountant-modal-card .form-grid textarea {
-  resize: vertical;
-}
-
-.accountant-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  border-top: 1px solid #f1f5f9;
-  padding-top: 16px;
-}
-
-.accountant-modal-card .secondary-btn {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.accountant-modal-card .secondary-btn:hover {
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.accountant-modal-card .primary-btn {
-  background: #8F4F06; /* Golden brown matching screenshot buttons */
-  border: none;
-  color: #ffffff;
-  padding: 10px 22px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(143, 79, 6, 0.15);
-  transition: all 0.2s;
-}
-
-.accountant-modal-card .primary-btn:hover {
-  background: #7a4305;
-  box-shadow: 0 4px 12px rgba(143, 79, 6, 0.25);
-}
-
-.accountant-modal-card .primary-btn:disabled {
-  background: #cbd5e1;
-  color: #94a3b8;
-  cursor: not-allowed;
+.shipment-card .ant-card-head .ant-badge .ant-badge-count {
+  font-size: 11px;
+  font-weight: 700;
   box-shadow: none;
 }
 
-.accountant-modal-card .error-message {
-  color: #ef4444;
-  background: #fef2f2;
-  border: 1px solid #fca5a5;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-top: 16px;
-  text-align: left;
+.shipment-card .ant-card-body {
+  padding: 18px 20px 16px;
 }
 
-/* Excel tab specific */
-.accountant-modal-card .excel-import-tab {
-  padding: 16px 24px 24px 24px;
-  overflow-y: auto;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+.shipment-card .ant-form-item {
+  margin-bottom: 0;
 }
 
-.accountant-modal-card .excel-instruction {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  padding: 12px 18px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-  gap: 16px;
-}
-
-.accountant-modal-card .excel-instruction p {
-  margin: 0;
-  font-size: 13px;
-  color: #1e3a8a;
-  line-height: 1.5;
-  text-align: left;
-}
-
-.accountant-modal-card .template-btn {
-  background: #ffffff;
-  border: 1px solid #3b82f6;
-  color: #2563eb;
-  padding: 8px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-  transition: all 0.2s;
-}
-
-.accountant-modal-card .template-btn:hover {
-  background: #eff6ff;
-}
-
-.accountant-modal-card .upload-box {
-  border: 2px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #f8fafc;
-  padding: 32px;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-bottom: 16px;
-}
-
-.accountant-modal-card .upload-box:hover {
-  border-color: #1a2680;
-  background: #f0f4ff;
-}
-
-.accountant-modal-card .upload-label {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  cursor: pointer;
-}
-
-.accountant-modal-card .upload-label svg {
-  color: #1a2680;
-  margin-bottom: 12px;
-}
-
-.accountant-modal-card .upload-label span {
-  font-size: 14px;
-  font-weight: 600;
+.shipment-card .ant-form-item-label > label {
+  font-size: 11px;
+  font-weight: 700;
   color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 4px;
 }
 
-.accountant-modal-card .preview-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 200px;
+.shipment-card .ant-form-item-label {
+  padding-bottom: 0 !important;
+  line-height: 1.2;
 }
 
-.accountant-modal-card .success-banner {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-bottom: 12px;
-  text-align: left;
-}
-
-.accountant-modal-card .table-wrapper {
-  max-height: 240px;
-  overflow-y: auto;
+/* ── Payment section ── */
+.shipment-card .payment-section {
+  background: #f8fafc;
   border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 4px;
+}
+
+.shipment-card .payment-section .ant-form-item {
+  margin-bottom: 0;
+}
+
+.shipment-card .payment-section .ant-form-item-label > label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 4px;
+}
+
+/* ── Pickup addresses ── */
+.pickup-address-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.pickup-address-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Expenses ── */
+.expenses-section {
+  padding: 14px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.expense-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* ── Fee summary ── */
+.fee-summary {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.fee-summary .ant-typography {
+  font-size: 14px;
+}
+
+/* ── Summary card ── */
+.summary-card {
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e2e8f0;
+}
+
+.summary-card .ant-card-head {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-radius: 16px 16px 0 0;
+  border-bottom: none;
+  min-height: 50px;
+}
+
+.summary-card .ant-card-head-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #166534;
+}
+
+.summary-card .ant-statistic-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* ── Radio button text ── */
+.ant-radio-button-wrapper {
+  font-size: 13px;
+  font-weight: 600;
+  height: 42px !important;
+  line-height: 40px !important;
+  padding: 0 16px !important;
+  border-radius: 10px !important;
+}
+
+/* ── Tag styling ── */
+.ant-tag {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
   border-radius: 8px;
 }
 
-.accountant-modal-card .preview-table {
-  width: 100%;
-  border-collapse: collapse;
+.ant-tag-blue {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.ant-tag-orange {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+/* ── Alert ── */
+.ant-alert {
+  border-radius: 10px;
   font-size: 13px;
-  text-align: left;
+  padding: 10px 14px;
 }
 
-.accountant-modal-card .preview-table th {
-  background: #f8fafc;
-  padding: 10px 12px;
+/* ── Add shipment button ── */
+.add-shipment-btn {
+  height: 56px;
+  font-size: 15px;
   font-weight: 700;
-  color: #475569;
-  border-bottom: 1px solid #e2e8f0;
-  position: sticky;
-  top: 0;
+  border-radius: 16px;
+  color: #1a2680;
+  border-color: #1a2680;
+  border-style: dashed;
 }
 
-.accountant-modal-card .preview-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #334155;
-  white-space: nowrap;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.add-shipment-btn:hover {
+  color: #2d3599 !important;
+  border-color: #2d3599 !important;
+  border-style: solid !important;
 }
 
-.accountant-modal-card .preview-table tr:hover {
-  background: #f8fafc;
+/* ── Drawer footer ── */
+.drawer-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 24px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+  border-radius: 0 0 14px 14px;
 }
 
-.accountant-modal-card .row-error {
-  background: #fef2f2;
-}
-
-.accountant-modal-card .row-error td {
-  border-bottom: 1px solid #fecaca;
-}
-
-.accountant-modal-card .text-red {
-  color: #ef4444;
-  font-style: normal;
+.drawer-footer-actions .ant-btn-primary {
+  background: #1a2680;
+  border-color: #1a2680;
   font-weight: 700;
+  font-size: 15px;
+  box-shadow: 0 4px 14px rgba(26, 38, 128, 0.35);
+  height: 44px;
+  padding: 0 32px;
+  border-radius: 10px;
 }
 
-.accountant-modal-card .mt-16 {
-  margin-top: 16px;
+.drawer-footer-actions .ant-btn-primary:hover {
+  background: #2d3599 !important;
+  border-color: #2d3599 !important;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ── Form required asterisk ── */
+.ant-form-item-required::before {
+  color: #dc2626 !important;
 }
 
-@keyframes scaleUp {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+/* ── Driver locked hint ── */
+.driver-locked-hint {
+  font-size: 11px;
+  color: #16a34a;
+  margin-top: 4px;
+  font-weight: 500;
 }
 
-@media (max-width: 640px) {
-  .accountant-modal-card .form-grid {
-    grid-template-columns: 1fr;
-  }
-  .accountant-modal-card .form-grid label.full-width {
-    grid-column: span 1;
+@media (max-width: 900px) {
+  .accountant-order-drawer .ant-drawer-content-wrapper {
+    width: 100% !important;
   }
 }

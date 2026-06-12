@@ -3,24 +3,26 @@ import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
 import { message as toast } from "antd";
 
-const emptyForm = {
-  date: "",
+//Đặt yêu cầu cho empty form 
+const getTodayStr = () => new Date().toISOString().slice(0, 10);
+
+const emptyForm = () => ({
+  date: getTodayStr(),
   customer_name: "",
   customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
-  pickup_address: "",
-  delivery_address: "",
   note: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "" }]
-};
+  is_partner: false,
+  partner_name: "",
+  partner_fee: "",
+  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+});
 
 const requiredFields = [
   { key: "date", label: "Ngày tháng" },
-  { key: "customer_name", label: "Khách hàng" },
+  { key: "customer_phone", label: "SĐT" },
   { key: "cargo_weight_kg", label: "Khối lượng" },
-  { key: "pickup_address", label: "Điểm lấy hàng" },
-  { key: "delivery_address", label: "Điểm giao hàng" },
 ];
 
 const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
@@ -86,37 +88,46 @@ function extractDistance(notes) {
 }
 
 function buildTripFromOrder(order) {
-  const pickupAddress = order.pickup_address ||  "";
-  const deliveryAddress = order.delivery_address ||  "";
-  const deliveryAt = order.delivery_at;
-  const date = (deliveryAt ? new Date(deliveryAt).toLocaleDateString('vi-VN') : "");
+  const pickupAddress = order.pickup_address || "";
+  const deliveryAddress = order.delivery_address || "";
+  const arrivedAt = order.arrived_at;
+  const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
+
+  const trips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
+    vehicle_group_id: order.vehicle_group_id || "",
+    plate: order.plate_number || "",
+    distance: order.estimated_distance_km || "",
+    pickup_address: pickupAddress,
+    delivery_address: deliveryAddress
+  }];
+
+  const totalDistance = trips.reduce((sum, t) => sum + (Number(t.distance) || 0), 0);
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
     date,
-    dateInput: order.delivery_at ? String(order.delivery_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
-    checkIn:  "",
+    dateInput: order.arrived_at ? String(order.arrived_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
+    checkIn: "",
     plate: order.plate_number || "",
     driverId: order.owner_driver_id || "",
     vehicleGroupId: order.vehicle_group_id || "",
-    driverName: order.driver_name ||  "",
+    driverName: order.driver_name || "",
     customerName: order.customer_name || "",
-    customerPhone: order.customer_phone ||  "",
+    customerPhone: order.customer_phone || "",
     cargoName: order.cargo_name || "",
     cargoWeightKg: order.cargo_weight_kg || "",
     pickupAddress,
     deliveryAddress,
-    route:  (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
-    distance: order.estimated_distance_km || "",
+    route: (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
+    distance: totalDistance || order.estimated_distance_km || "",
     fare: order.estimated_price || order.total_estimated_price || 0,
     status: order.status,
     notes: order.notes,
-    trips: Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
-      vehicle_group_id: order.vehicle_group_id || "",
-      plate: order.plate_number || "",
-      distance: order.estimated_distance_km || ""
-    }],
+    is_partner: !!order.partner_name,
+    partner_name: order.partner_name || "",
+    partner_fee: order.total_actual_price || "",
+    trips,
   };
 }
 
@@ -144,27 +155,27 @@ export default function CoordinatorPage({ user, onLogout }) {
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
 
-  
+
 
   useEffect(() => {
-  if (!message) return;
+    if (!message) return;
 
-  switch (messageType) {
-    case "success":
-      toast.success(message);
-      break;
-    case "error":
-      toast.error(message);
-      break;
-    case "warning":
-      toast.warning(message);
-      break;
-    default:
-      toast.info(message);
-  }
+    switch (messageType) {
+      case "success":
+        toast.success(message);
+        break;
+      case "error":
+        toast.error(message);
+        break;
+      case "warning":
+        toast.warning(message);
+        break;
+      default:
+        toast.info(message);
+    }
 
-  setMessage("");
-}, [message, messageType]);
+    setMessage("");
+  }, [message, messageType]);
   const loadOrders = async (page = pagination.page) => {
     try {
       const token = localStorage.getItem("token");
@@ -266,7 +277,7 @@ export default function CoordinatorPage({ user, onLogout }) {
     });
   }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearchQuery, trips]);
 
-  
+
 
   const validateForm = () => {
     const errors = {};
@@ -302,6 +313,8 @@ export default function CoordinatorPage({ user, onLogout }) {
       form.trips.forEach((trip, index) => {
         if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
         if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.pickup_address || "").trim()) errors[`trip_${index}_pickup_address`] = `Điểm lấy hàng chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.delivery_address || "").trim()) errors[`trip_${index}_delivery_address`] = `Điểm giao hàng chuyến ${index + 1} là bắt buộc`;
         const dist = normalizeNumericText(trip.distance);
         if (!dist) {
           errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
@@ -342,9 +355,10 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   const addTrip = () => {
-    setForm((current) => ({
-      ...current,
-      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "" }]
+    setForm((current) => ({ //current là state hiện tại của form, dùng setForm thì current = form 
+      ...current,//Tạo object mới có thông tin từ form 
+      //sau đó ghi đè trips. Lấy trip  hiện tại, tạo thêm trips từ {}, rỗng vẫn tạo 
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
     }));
   };
 
@@ -409,7 +423,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const openCreateModal = () => {
     setEditingTrip(null);
-    setForm(emptyForm);
+    setForm(emptyForm());
     setFormErrors({});
     setCreateOpen(true);
   };
@@ -427,12 +441,16 @@ export default function CoordinatorPage({ user, onLogout }) {
       cargo_name: trip.cargoName || "",
       cargo_weight_kg: trip.cargoWeightKg || "",
       distance: trip.distance || "",
-      pickup_address: trip.pickupAddress || routeAddresses.pickup,
-      delivery_address: trip.deliveryAddress || routeAddresses.delivery,
-      trips: trip.trips?.length > 0 ? trip.trips : [{
+      trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
+        ...t,
+        pickup_address: t.pickup_address || trip.pickupAddress || routeAddresses.pickup || "",
+        delivery_address: t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || "",
+      })) : [{
         vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
         plate: trip.plate || "",
-        distance: trip.distance || ""
+        distance: trip.distance || "",
+        pickup_address: trip.pickupAddress || routeAddresses.pickup || "",
+        delivery_address: trip.deliveryAddress || routeAddresses.delivery || "",
       }],
       note: trip.notes || "",
     });
@@ -443,7 +461,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const closeOrderModal = () => {
     setCreateOpen(false);
     setEditingTrip(null);
-    setForm(emptyForm);
+    setForm(emptyForm());
     setFormErrors({});
   };
 
@@ -494,10 +512,13 @@ export default function CoordinatorPage({ user, onLogout }) {
         customer_phone: form.customer_phone,
         cargo_name: form.cargo_name,
         cargo_weight_kg: form.cargo_weight_kg,
-        pickup_address: form.pickup_address,
-        delivery_address: form.delivery_address,
-        delivery_at: form.date,
+        pickup_address: form.trips[0]?.pickup_address || "",
+        delivery_address: form.trips[0]?.delivery_address || "",
+        arrived_at: form.date,
         notes: form.note,
+        is_partner: form.is_partner,
+        partner_name: form.is_partner ? form.partner_name : null,
+        partner_fee: form.is_partner ? form.partner_fee : null,
         trips: form.trips,
       };
 
@@ -514,7 +535,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       setEditingTrip(null);
       setMessage(data.message || (editingTrip ? "Order updated successfully." : "Order created successfully."));
       setMessageType("success");
-      setForm(emptyForm);
+      setForm(emptyForm());
       setFormErrors({});
     } catch (err) {
       setMessage(err.message || "Unable to create order.");
@@ -523,7 +544,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       setCreating(false);
     }
   };
-  
+
   return (
     <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
@@ -609,6 +630,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 type="date"
                 value={dateFromFilter}
                 onChange={(event) => setDateFromFilter(event.target.value)}
+
               />
             </label>
             <label className="filter-field">
@@ -626,6 +648,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 value={customerFilter}
                 onChange={(event) => setCustomerFilter(event.target.value)}
                 placeholder="Lọc theo khách hàng"
+
               />
             </label>
             <button
@@ -676,7 +699,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               <form className="create-form" onSubmit={handleCreateOrder}>
                 <div className="sheet-caption full">Thông tin đơn hàng</div>
 
-                <div className="form-row form-row-1">
+                <div className="form-row form-row-3">
                   <label>
                     <span>Ngày giao hàng</span>
                     <input
@@ -688,9 +711,6 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                     {formErrors.date && <div className="field-error">{formErrors.date}</div>}
                   </label>
-                </div>
-
-                <div className="form-row form-row-3">
                   <label>
                     <span>SĐT</span>
                     <input
@@ -702,6 +722,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.customer_phone}</div>
                     )}
                   </label>
+
                   <label>
                     <span>Khách hàng</span>
                     <input
@@ -713,19 +734,20 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.customer_name}</div>
                     )}
                   </label>
+                </div>
+
+                <div className="form-row form-row-2">
                   <label>
-                    <span>Sản phẩm</span>
+                    <span>Hàng hóa</span>
                     <input
                       value={form.cargo_name}
                       onChange={(event) => updateField("cargo_name", event.target.value)}
                       placeholder="Không bắt buộc"
                     />
                   </label>
-                </div>
 
-                <div className="form-row form-row-2">
                   <label>
-                    <span>Khối lượng (tấn)</span>
+                    <span>Khối lượng (kg)</span>
                     <input
                       type="number"
                       min="0"
@@ -738,34 +760,46 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <div className="field-error">{formErrors.cargo_weight_kg}</div>
                     )}
                   </label>
-                  <label>
-                    <span>Điểm lấy hàng</span>
+                </div>
+
+                <div className="sheet-caption full" style={{ marginTop: 12 }}>Tùy chọn đối tác</div>
+                <div className="form-row full" style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#2a3144', fontWeight: 600 }}>
                     <input
-                      value={form.pickup_address}
-                      onChange={(event) => updateField("pickup_address", event.target.value)}
-                      className={formErrors.pickup_address ? "input-error" : ""}
+                      type="checkbox"
+                      checked={form.is_partner}
+                      onChange={(e) => updateField("is_partner", e.target.checked)}
+                      style={{ width: 18, height: 18 }}
                     />
-                    {formErrors.pickup_address && (
-                      <div className="field-error">{formErrors.pickup_address}</div>
-                    )}
+                    Tạo cho đối tác
                   </label>
                 </div>
 
-                <div className="form-row form-row-1" style={{maxWidth:'100%'}}>
-                  <label>
-                    <span>Điểm giao hàng</span>
-                    <input
-                      value={form.delivery_address}
-                      onChange={(event) => updateField("delivery_address", event.target.value)}
-                      className={formErrors.delivery_address ? "input-error" : ""}
-                    />
-                    {formErrors.delivery_address && (
-                      <div className="field-error">{formErrors.delivery_address}</div>
-                    )}
-                  </label>
-                </div>
+                {form.is_partner && (
+                  <div className="form-row form-row-2">
+                    <label>
+                      <span>Bên liên kết (Tên đối tác)</span>
+                      <input
+                        value={form.partner_name}
+                        onChange={(event) => updateField("partner_name", event.target.value)}
+                        placeholder="Nhập tên bên liên kết"
+                      />
+                    </label>
+                    <label>
+                      <span>Cước phí đối tác</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.partner_fee}
+                        onChange={(event) => updateField("partner_fee", event.target.value)}
+                        placeholder="Ví dụ: 500000"
+                      />
+                    </label>
+                  </div>
+                )}
 
-                <div className="sheet-caption full" style={{marginTop: 12}}>Chuyến xe</div>
+                <div className="sheet-caption full" style={{ marginTop: 12 }}>Chuyến xe</div>
 
                 {form.trips && form.trips.map((trip, index) => (
                   <div key={index} className="trip-row full" style={{
@@ -777,20 +811,21 @@ export default function CoordinatorPage({ user, onLogout }) {
                     gap: 12,
                     position: 'relative'
                   }}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 4}}>
-                      <strong style={{color:'#18227f', fontSize: 13}}>Chuyến {index + 1}</strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <strong style={{ color: '#18227f', fontSize: 13 }}>Chuyến {index + 1}</strong>
                       {form.trips.length > 1 && (
                         <button
                           type="button"
                           onClick={() => removeTrip(index)}
-                          style={{border:'none', background:'#fee2e2', color:'#b91c1c', borderRadius:8, padding:'4px 10px', cursor:'pointer', fontWeight:700, fontSize:13}}
+                          style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}
                         >
                           Xóa
                         </button>
                       )}
                     </div>
-                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12}}>
-                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
                         <span>Nhóm xe</span>
                         <select
                           value={trip.vehicle_group_id}
@@ -799,7 +834,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                             updateTripField(index, 'plate', '');
                           }}
                           className={formErrors[`trip_${index}_vehicle_group_id`] ? 'input-error' : ''}
-                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                         >
                           <option value="">Chọn nhóm xe</option>
                           {vehicleGroups.map((group) => (
@@ -810,14 +845,15 @@ export default function CoordinatorPage({ user, onLogout }) {
                           <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`]}</div>
                         )}
                       </label>
-                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
                         <span>BKS</span>
                         <select
                           value={trip.plate}
                           onChange={(e) => updateTripField(index, 'plate', e.target.value)}
                           disabled={!trip.vehicle_group_id}
                           className={formErrors[`trip_${index}_plate`] ? 'input-error' : ''}
-                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                         >
                           <option value="">{trip.vehicle_group_id ? 'Chọn BKS' : 'Chọn nhóm xe trước'}</option>
                           {getAvailablePlates(trip.vehicle_group_id).map((v) => (
@@ -828,7 +864,8 @@ export default function CoordinatorPage({ user, onLogout }) {
                           <div className="field-error">{formErrors[`trip_${index}_plate`]}</div>
                         )}
                       </label>
-                      <label style={{display:'grid', gap:6, fontSize:14, color:'#2a3144'}}>
+
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
                         <span>Quãng đường (km)</span>
                         <input
                           type="number"
@@ -838,31 +875,61 @@ export default function CoordinatorPage({ user, onLogout }) {
                           onChange={(e) => updateTripField(index, 'distance', e.target.value)}
                           placeholder="VD: 120"
                           className={formErrors[`trip_${index}_distance`] ? 'input-error' : ''}
-                          style={{width:'100%', border:'1px solid #cfd6e6', borderRadius:14, padding:'13px 14px', font:'inherit', background:'#fff', outline:'none', boxSizing:'border-box'}}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                         />
                         {formErrors[`trip_${index}_distance`] && (
                           <div className="field-error">{formErrors[`trip_${index}_distance`]}</div>
                         )}
                       </label>
                     </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 4 }}>
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                        <span>Điểm lấy hàng</span>
+                        <input
+                          value={trip.pickup_address || ""}
+                          onChange={(e) => updateTripField(index, 'pickup_address', e.target.value)}
+                          placeholder="Địa chỉ lấy hàng"
+                          className={formErrors[`trip_${index}_pickup_address`] ? 'input-error' : ''}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        {formErrors[`trip_${index}_pickup_address`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_pickup_address`]}</div>
+                        )}
+                      </label>
+
+                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                        <span>Điểm giao hàng</span>
+                        <input
+                          value={trip.delivery_address || ""}
+                          onChange={(e) => updateTripField(index, 'delivery_address', e.target.value)}
+                          placeholder="Địa chỉ giao hàng"
+                          className={formErrors[`trip_${index}_delivery_address`] ? 'input-error' : ''}
+                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        {formErrors[`trip_${index}_delivery_address`] && (
+                          <div className="field-error">{formErrors[`trip_${index}_delivery_address`]}</div>
+                        )}
+                      </label>
+                    </div>
                     {getTripFare(trip) && (
-                      <div style={{fontSize:13, color:'#18227f', fontWeight:600}}>
+                      <div style={{ fontSize: 13, color: '#18227f', fontWeight: 600 }}>
                         Cước: {Number(getTripFare(trip)).toLocaleString('vi-VN')} đ
                       </div>
                     )}
                   </div>
                 ))}
 
-                <div className="full" style={{display:'flex', gap:10, alignItems:'center', justifyContent:'space-between'}}>
+                <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
                   <button
                     type="button"
                     onClick={addTrip}
-                    style={{border:'1px dashed #18227f', background:'#eef1ff', color:'#18227f', borderRadius:14, padding:'10px 20px', cursor:'pointer', fontWeight:700, fontSize:14}}
+                    style={{ border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 14, padding: '10px 20px', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
                   >
                     + Thêm chuyến
                   </button>
                   {totalFare > 0 && (
-                    <div style={{fontWeight:700, fontSize:15, color:'#0f1d70'}}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: '#0f1d70' }}>
                       Tổng cước: {totalFare.toLocaleString('vi-VN')} đ
                     </div>
                   )}
@@ -900,7 +967,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           </section>
         )}
 
-        
+
 
         <section className="orders-panel">
           <div className="panel-head">
@@ -1009,5 +1076,5 @@ export default function CoordinatorPage({ user, onLogout }) {
       </main>
     </div>
   );
-  
+
 }

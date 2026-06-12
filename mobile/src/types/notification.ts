@@ -8,6 +8,8 @@ export type NotificationType =
   | 'ADVANCE_APPROVED'
   | 'ADVANCE_REJECTED'
   | 'PAYSLIP_PUBLISHED'
+  | 'MAINTENANCE_ASSIGNED'
+  | 'MAINTENANCE_COMPLETED'
   | 'SYSTEM_ALERT';
 
 export type AppNotification = {
@@ -33,7 +35,10 @@ export type NotificationsResponse = {
 
 export type NotificationEvent =
   | { type: 'notification.connected' }
-  | { type: 'notification.created'; notification: AppNotification };
+  | { type: 'notification.created'; notification: AppNotification }
+  | { type: 'maintenance.assigned'; vehicleId: number; maintenanceRecordId: number | null }
+  | { type: 'maintenance.completed'; vehicleId: number; maintenanceRecordId: number }
+  | { type: 'pong' };
 
 export type MarkNotificationReadResponse = {
   notification: AppNotification;

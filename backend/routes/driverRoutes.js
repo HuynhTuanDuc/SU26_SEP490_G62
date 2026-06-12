@@ -15,12 +15,25 @@ function handleUpload(middleware) {
 }
 
 router.get('/', verifyToken, requireRole('coordinator', 'admin'), driverController.getAllDrivers);
+
+router.get(
+    '/maintenance',
+    verifyToken,
+    requireRole('driver'),
+    driverController.listMaintenance,
+);
 router.post(
     '/maintenance/:vehicleId/bills',
     verifyToken,
     requireRole('driver'),
     handleUpload(uploadMaintenanceBill.single('bill')),
     driverController.uploadMaintenanceBill,
+);
+router.patch(
+    '/maintenance/:vehicleId/cost',
+    verifyToken,
+    requireRole('driver'),
+    driverController.updateMaintenanceCost,
 );
 router.post(
     '/maintenance/:vehicleId/complete',

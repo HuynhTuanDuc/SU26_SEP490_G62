@@ -1,5 +1,5 @@
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, View } from 'react-native';
-import { Camera, ChevronRight, LogOut, Settings, Shield, User } from 'lucide-react-native';
+import { Camera, ChevronRight, LogOut, Settings, Shield, User, Wrench } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Text, XStack, YStack } from 'tamagui';
@@ -136,6 +136,16 @@ export function ProfileScreen() {
                         <XStack height={1} backgroundColor={appTheme.colors.border} marginLeft={64} />
                         <MenuRow icon={<Shield size={17} color={appTheme.colors.primary} />}
                             label="Đổi mật khẩu" onPress={() => router.push('/change-password')} />
+                    </YStack>
+
+                    {/* Công việc */}
+                    <YStack marginHorizontal={appTheme.spacing.screenX} borderRadius={appTheme.radius.lg}
+                        borderWidth={1} borderColor={appTheme.colors.border} overflow="hidden" marginBottom={14}>
+                        <XStack paddingHorizontal={16} paddingVertical={10} backgroundColor={appTheme.colors.surfaceSoft}>
+                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>CÔNG VIỆC</Text>
+                        </XStack>
+                        <MenuRow icon={<Wrench size={17} color={appTheme.colors.warning} />}
+                            label="Bảo dưỡng xe" onPress={() => router.push('/maintenance')} />
                     </YStack>
 
                     {/* Hệ thống */}

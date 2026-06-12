@@ -3,6 +3,8 @@ import {
     ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable,
     RefreshControl, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
+import { useConfirm } from '@/providers/ui-provider';
+import { useMoneyInput } from '@/hooks/use-money-input';
 import { StatusBar } from 'expo-status-bar';
 import {
     AlertTriangle, Camera, CheckCircle2, ChevronDown,
@@ -13,6 +15,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { AppText }      from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
 import { CameraModal }  from '@/features/trips/components/camera-modal';
+import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }     from '@/theme/app-theme';
 import { useDebt, useDebtPayments, useSubmitRepayment } from '@/hooks/use-debt';
 import type { DriverDebt, DebtPayment, RepaymentStatus } from '@/services/debt-service';
@@ -111,7 +114,7 @@ type RepayOverlayProps = {
 };
 
 function RepayOverlay({ debt, receiptUri, onRequestCamera, onDeleteReceipt, onClose, onSuccess }: RepayOverlayProps) {
-    const [amount, setAmount] = useState('');
+    const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange } = useMoneyInput();
     const [method, setMethod] = useState<'cash' | 'bank_transfer'>('cash');
     const [notes, setNotes]   = useState('');
     const { isSubmitting, error, submit } = useSubmitRepayment();
@@ -119,7 +122,7 @@ function RepayOverlay({ debt, receiptUri, onRequestCamera, onDeleteReceipt, onCl
     const remaining = Number(debt.remaining);
 
     const handleSubmit = async () => {
-        const amt = Number(amount);
+        const amt = amountRaw;
         if (!amt || amt <= 0) {
             Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
             return;
@@ -193,7 +196,7 @@ function RepayOverlay({ debt, receiptUri, onRequestCamera, onDeleteReceipt, onCl
                             placeholder={`Tối đa ${fmtMoneyFull(remaining)}`}
                             keyboardType="numeric"
                             value={amount}
-                            onChangeText={setAmount}
+                            onChangeText={onAmountChange}
                             placeholderTextColor={appTheme.colors.textMuted}
                         />
                     </YStack>
@@ -341,6 +344,7 @@ function DebtCard({
     const [expanded, setExpanded] = useState(false);
     const { payments, isLoading, reload } = useDebtPayments(debt.id);
     const { cancel } = useSubmitRepayment();
+    const { showConfirm } = useConfirm();
     const badge = DEBT_BADGE[debt.status] ?? DEBT_BADGE.unpaid;
 
     const handleExpand = () => {
@@ -349,15 +353,15 @@ function DebtCard({
     };
 
     const handleCancel = async (paymentId: number) => {
-        Alert.alert('Huỷ yêu cầu', 'Bạn có chắc muốn huỷ yêu cầu nộp tiền này?', [
-            { text: 'Không' },
-            {
-                text: 'Huỷ yêu cầu', style: 'destructive', onPress: async () => {
-                    await cancel(paymentId);
-                    reload();
-                },
-            },
-        ]);
+        const ok = await showConfirm({
+            title: 'Huỷ yêu cầu',
+            message: 'Bạn có chắc muốn huỷ yêu cầu nộp tiền này?',
+            confirmLabel: 'Huỷ yêu cầu',
+            danger: true,
+        });
+        if (!ok) return;
+        await cancel(paymentId);
+        reload();
     };
 
     const canRepay = debt.status !== 'paid';
@@ -514,12 +518,7 @@ export function DebtScreen() {
                     </XStack>
                 ) : null}
 
-                {isLoading && debts.length === 0 ? (
-                    <YStack alignItems="center" paddingVertical={40} gap={12}>
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                        <AppText variant="caption" tone="muted">Đang tải công nợ...</AppText>
-                    </YStack>
-                ) : null}
+                {isLoading && debts.length === 0 ? <SimpleListSkeleton count={4} /> : null}
 
                 {!isLoading && openDebts.length === 0 && !error ? (
                     <YStack
