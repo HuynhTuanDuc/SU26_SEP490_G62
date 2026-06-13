@@ -502,9 +502,13 @@ export default function OrderDetailModal({ isOpen, onClose, order, apiBase, toke
                     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                       {shipments.map((s) => {
                         const pickups = Array.isArray(s.pickup_addresses) ? s.pickup_addresses.filter(Boolean) : [];
-                        const cargoFee = Number(s.cargo_fee || s.estimated_price || 0);
-                        const revenue = Number(s.revenue || 0);
-                        const driverState = s.driver_payment_state || "pending";
+                        const cargoFee = Number(s.cargo_fee || 0);
+                        const actualPrice = Number(s.actual_price || 0);
+                        const driverDebtStatus = s.driver_payment_state || null;
+                        const driverState = driverDebtStatus === 'paid' ? 'settled'
+                          : driverDebtStatus === 'unpaid' ? 'holding'
+                          : driverDebtStatus === 'partial' ? 'pending'
+                          : 'pending';
                         const driverTotal = s.driver_total;
                         const driverPaid = s.driver_paid || 0;
                         const driverRemaining = driverTotal != null ? Math.max(driverTotal - driverPaid, 0) : null;
@@ -583,25 +587,24 @@ export default function OrderDetailModal({ isOpen, onClose, order, apiBase, toke
                                   Thông tin tài chính
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                                  {/* Revenue / Cước */}
+                                  {/* Thực thu */}
                                   <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px" }}>
-                                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700, marginBottom: 4 }}>Cước xe / Doanh thu</div>
-                                    <div style={{ fontSize: 15, fontWeight: 700, color: "#1e40af" }}>{fmt(revenue)}đ</div>
-                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Chi phí: {fmt(cargoFee)}đ</div>
+                                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700, marginBottom: 4 }}>Thực thu</div>
+                                    <div style={{ fontSize: 15, fontWeight: 700, color: "#1e40af" }}>{fmt(actualPrice)}đ</div>
+                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Cước xe: {fmt(cargoFee)}đ</div>
                                   </div>
 
-                                  {/* Chi phí */}
+                                  {/* Chi phí chuyến */}
                                   <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "10px 12px" }}>
-                                    <div style={{ fontSize: 11, color: "#c2410c", fontWeight: 700, marginBottom: 4 }}>Tổng chi phí</div>
+                                    <div style={{ fontSize: 11, color: "#c2410c", fontWeight: 700, marginBottom: 4 }}>Chi phí chuyến</div>
                                     <div style={{ fontSize: 15, fontWeight: 700, color: "#9a3412" }}>{fmt(totalExpenses)}đ</div>
                                     {hasExpenseBreakdown && (
                                       <div style={{ fontSize: 11, color: "#64748b", marginTop: 4, display: "flex", flexDirection: "column", gap: 2 }}>
                                         {expenses.fuel > 0 && <span>Xăng dầu: {fmt(expenses.fuel)}đ</span>}
-                                        {expenses.toll > 0 && <span>Cầu đường: {fmt(expenses.toll)}đ</span>}
-                                        {expenses.parking > 0 && <span>Đỗ xe: {fmt(expenses.parking)}đ</span>}
+                                        {expenses.toll > 0 && <span>BOT / Phà / Vé bến / Hầm: {fmt(expenses.toll)}đ</span>}
+                                        {expenses.parking > 0 && <span>Đỗ xe / Bến bãi: {fmt(expenses.parking)}đ</span>}
                                         {expenses.repair > 0 && <span>Sửa chữa: {fmt(expenses.repair)}đ</span>}
                                         {expenses.maintenance > 0 && <span>Bảo dưỡng: {fmt(expenses.maintenance)}đ</span>}
-                                        {expenses.depreciation > 0 && <span>Khấu hao: {fmt(expenses.depreciation)}đ</span>}
                                         {expenses.other > 0 && <span>Khác: {fmt(expenses.other)}đ</span>}
                                       </div>
                                     )}

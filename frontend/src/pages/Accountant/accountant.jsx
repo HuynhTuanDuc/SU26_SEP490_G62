@@ -398,6 +398,10 @@ export default function Accountant({ user, onLogout }) {
           setSelectedOrderForDetail(null);
         }}
         order={selectedOrderForDetail}
+        apiBase={API_BASE}
+        token={token}
+        onOpenPayment={handleOpenPayment}
+        onRefresh={refreshData}
       />
     </div>
   );

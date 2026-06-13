@@ -142,14 +142,17 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     return shipmentId;
 };
 
+const PASS_THROUGH_EXPENSE_TYPES = new Set(['toll', 'parking']);
+
 const insertDebtForShipment = async (client, {
     shipmentId, orderId, driverId, customerId,
-    estimatedPrice, revenue,
+    actualPrice,
     driverPaymentState, paymentType,
     createdByUserId,
 }) => {
+    // Tài xế giữ tiền → tạo công nợ tài xế
     if (driverPaymentState === 'driver_holding') {
-        const debtStatus = buildDebtStatus(0, estimatedPrice);
+        const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
                 debt_type, driver_id, customer_id, order_id, shipment_id,
@@ -160,57 +163,30 @@ const insertDebtForShipment = async (client, {
                 CURRENT_DATE + INTERVAL '30 days', $6,
                 'Tai xe da thu nhung chua mang tien ve cong ty',
                 $7, NOW(), NOW())`,
-            [driverId, customerId, orderId, shipmentId, estimatedPrice, debtStatus, createdByUserId]
+            [driverId, customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     } else if (paymentType === 'debt') {
-        const debtStatus = buildDebtStatus(0, estimatedPrice);
+        // Khách nợ → tạo công nợ khách
+        const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
-                debt_type, customer_id, order_id, shipment_id,
+                debt_type, driver_id, customer_id, order_id, shipment_id,
                 total_amount, paid_amount, due_date, status, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('customer', $1, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
-                'Khach chua thanh toan', $6, NOW(), NOW())`,
-            [customerId, orderId, shipmentId, estimatedPrice, debtStatus, createdByUserId]
+             VALUES ('customer', $1, $2, $3, $4, $5, 0,
+                CURRENT_DATE + INTERVAL '30 days', $6,
+                'Khach chua thanh toan', $7, NOW(), NOW())`,
+            [driverId, customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
         await client.query(
             `UPDATE customers
              SET current_debt = current_debt + $1, updated_at = NOW()
              WHERE id = $2`,
-            [estimatedPrice, customerId]
+            [actualPrice, customerId]
         );
-    } else if (estimatedPrice > 0) {
-        const debtStatus = buildDebtStatus(revenue, estimatedPrice);
-        await client.query(
-            `INSERT INTO debts (
-                debt_type, customer_id, order_id, shipment_id,
-                total_amount, paid_amount, due_date, status, notes,
-                updated_by, created_at, updated_at
-            )
-             VALUES ('customer', $1, $2, $3, $4, $5,
-                CURRENT_DATE + INTERVAL '30 days', $6,
-                'Don da hoan thanh, tien da thu', $7, NOW(), NOW())`,
-            [customerId, orderId, shipmentId, estimatedPrice, revenue, debtStatus, createdByUserId]
-        );
-
-        if (revenue > 0) {
-            const paymentMethod = paymentType === 'bank_transfer' ? 'bank_transfer' : 'cash';
-            await client.query(
-                `INSERT INTO debt_payments (
-                    debt_id, amount, payment_method, status,
-                    paid_at, confirmed_at, confirmed_by, created_by, notes
-                )
-                 VALUES (
-                    (SELECT id FROM debts WHERE order_id = $1 AND debt_type = 'customer' AND shipment_id = $2 LIMIT 1),
-                    $3, $4, 'confirmed', NOW(), NOW(), $5, $5,
-                    'Da thu luc nhap don boi ke toan'
-                )`,
-                [orderId, shipmentId, revenue, paymentMethod, createdByUserId]
-            );
-        }
     }
+    // Nếu đã thu đủ (cash/bank_transfer + company_received) → không tạo công nợ, không ghi payment
 };
 
 const createOrderWithShipments = async (orderData) => {
@@ -228,10 +204,16 @@ const createOrderWithShipments = async (orderData) => {
               });
 
         const vehicleGroupId = await getDefaultVehicleGroupId(client);
-        const totalEstimatedPrice = (orderData.shipments || []).reduce(
-            (sum, s) => sum + (Number(s.cargo_fee) || 0) + (Number(s.ticket_fee) || 0),
-            0
-        );
+
+        const computeActualPrice = (shipment) => {
+            const passThrough = (shipment.expenses || []).reduce(
+                (sum, e) => sum + (PASS_THROUGH_EXPENSE_TYPES.has(e.expense_type) ? Number(e.amount || 0) : 0),
+                0
+            );
+            return Number(shipment.cargo_fee || 0) + passThrough;
+        };
+
+        const totalActualPrice = (orderData.shipments || []).reduce((sum, s) => sum + computeActualPrice(s), 0);
         const orderNotes = buildOrderNotes(orderData);
 
         const orderResult = await client.query(
@@ -241,14 +223,13 @@ const createOrderWithShipments = async (orderData) => {
                 total_estimated_price, total_actual_price,
                 derived_status, notes, created_at, updated_at
             )
-             VALUES ($1, $2, $2, $3, 'cash', $4, $5, 0, 'completed', $6, NOW(), NOW())
+             VALUES ($1, $2, $2, $3, 'cash', $4, $4, 'completed', $5, NOW(), NOW())
              RETURNING *`,
             [
                 customerId,
                 orderData.created_by,
                 orderData.customer_name || null,
-                vehicleGroupId,
-                totalEstimatedPrice,
+                totalActualPrice,
                 orderNotes,
             ]
         );
@@ -259,8 +240,7 @@ const createOrderWithShipments = async (orderData) => {
             const s = orderData.shipments[i];
             const vehicleId = await findVehicleByPlate(client, s.vehicle_plate);
             const driverId = await findDriverByName(client, s.driver_name);
-            const estimatedPrice = (Number(s.cargo_fee) || 0) + (Number(s.ticket_fee) || 0);
-            const revenue = Number(s.revenue || s.cargo_fee || 0);
+            const actualPrice = computeActualPrice(s);
             const shipmentNotes = buildShipmentNotes(s);
             const pickupAddresses = (s.pickup_addresses || []).filter((p) => String(p || '').trim() !== '');
 
@@ -270,8 +250,8 @@ const createOrderWithShipments = async (orderData) => {
                 vehicleGroupId,
                 vehicleId,
                 driverId,
-                estimatedPrice,
-                actualPrice: revenue,
+                estimatedPrice: actualPrice,
+                actualPrice,
                 cargoName: s.cargo_name,
                 cargoWeight: s.cargo_weight,
                 shipmentNotes,
@@ -288,8 +268,7 @@ const createOrderWithShipments = async (orderData) => {
                 orderId: newOrder.id,
                 driverId,
                 customerId,
-                estimatedPrice,
-                revenue,
+                actualPrice,
                 driverPaymentState: s.driver_payment_state || 'company_received',
                 paymentType: s.payment_type || 'cash',
                 createdByUserId: orderData.created_by,
@@ -451,7 +430,6 @@ const getOrderShipments = async (orderId) => {
                 COALESCE(SUM(CASE WHEN expense_type = 'parking' THEN amount ELSE 0 END), 0) AS parking,
                 COALESCE(SUM(CASE WHEN expense_type = 'repair' THEN amount ELSE 0 END), 0) AS repair,
                 COALESCE(SUM(CASE WHEN expense_type = 'maintenance' THEN amount ELSE 0 END), 0) AS maintenance,
-                COALESCE(SUM(CASE WHEN expense_type = 'depreciation' THEN amount ELSE 0 END), 0) AS depreciation,
                 COALESCE(SUM(CASE WHEN expense_type = 'other' THEN amount ELSE 0 END), 0) AS other
             FROM expenses
             WHERE shipment_id = os.id
@@ -460,6 +438,8 @@ const getOrderShipments = async (orderId) => {
         ORDER BY os.shipment_index ASC`,
         [orderId]
     );
+
+    const shipments = [];
     for (const row of shipmentResult.rows) {
         const stopsResult = await pool.query(
             `SELECT stop_type, address, contact_name, contact_phone
@@ -506,7 +486,7 @@ const getOrderShipments = async (orderId) => {
             cargo_name: row.cargo_name,
             cargo_weight: row.cargo_weight_kg,
             cargo_fee: row.estimated_price,
-            revenue: row.actual_price,
+            actual_price: Number(row.actual_price) || 0,
             total_expenses: Number(row.total_expenses) || 0,
             expenses: {
                 fuel: Number(row.fuel) || 0,
@@ -514,7 +494,6 @@ const getOrderShipments = async (orderId) => {
                 parking: Number(row.parking) || 0,
                 repair: Number(row.repair) || 0,
                 maintenance: Number(row.maintenance) || 0,
-                depreciation: Number(row.depreciation) || 0,
                 other: Number(row.other) || 0,
             },
             status: row.status,
@@ -564,37 +543,27 @@ const updateOrder = async (orderId, orderData) => {
             orderData.notes,
         ].filter(Boolean).join(' | ') || null;
 
-        const orderResult = await client.query(
+        await client.query(
             `UPDATE orders SET
                 cargo_name = COALESCE($1, cargo_name),
                 notes = $2,
                 updated_at = NOW()
-             WHERE id = $3
-             RETURNING *`,
+             WHERE id = $3`,
             [orderData.customer_name || null, orderNotes, orderId]
         );
 
         await client.query('COMMIT');
 
-        // Fetch updated data
         const result = await pool.query(
             `SELECT
-                o.id, o.cargo_name, o.payment_type,
-                o.total_estimated_price, o.derived_status, o.notes,
-                o.created_at,
-                c.full_name AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone,
-                COUNT(DISTINCT os.id) AS shipment_count,
-                SUM(os.estimated_price) AS total_shipment_price,
-                (SELECT SUM(e.amount) FROM expenses e WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = o.id)) AS total_expenses
+                o.id, o.cargo_name, o.notes, o.derived_status, o.created_at,
+                c.full_name AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone
              FROM orders o
              LEFT JOIN customers c ON c.id = o.customer_id
-             LEFT JOIN order_shipments os ON os.order_id = o.id
-             WHERE o.id = $1
-             GROUP BY o.id, c.full_name, c.company_name, c.phone`,
+             WHERE o.id = $1`,
             [orderId]
         );
-
-        return result.rows[0];
+        return result.rows[0] || { id: orderId };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

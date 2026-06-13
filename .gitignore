@@ -44,6 +44,7 @@ db.md
 CLAUDE.md
 .claude
 BUSINESS_SPECIFICATION.md
+SPEC-accountant-revenue-import.md
 AGENTS.md
 .cache/
 dist/
