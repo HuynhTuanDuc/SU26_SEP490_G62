@@ -54,8 +54,10 @@ const STATUS_QUERY = {
   waiting: "claimed,picking,loaded,transit,arrived,returning",
 };
 const canCancelTrip = (trip) => {
-  const status = normalizeStatus(trip.status);
-  return Boolean(trip.orderId) && !["completed", "cancelled", "failed"].includes(status);
+  const statuses = Array.isArray(trip.trips) && trip.trips.length > 0
+    ? trip.trips.map((item) => normalizeStatus(item.status))
+    : [normalizeStatus(trip.status)];
+  return Boolean(trip.orderId) && statuses.some((status) => !["completed", "cancelled", "failed"].includes(status));
 };
 const shouldHighlightNoCheckIn = (trip) => {
   const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.notes ?? ""));
@@ -63,6 +65,26 @@ const shouldHighlightNoCheckIn = (trip) => {
 };
 
 
+
+const getDistinctValues = (items, key) => [
+  ...new Set(items.map((item) => String(item?.[key] ?? "").trim()).filter(Boolean)),
+];
+
+const getSummaryValue = (items, key, emptyLabel = "-") => {
+  const values = getDistinctValues(items, key);
+  if (values.length === 0) return emptyLabel;
+  if (values.length === 1) return values[0];
+  return `${values.length} khac nhau`;
+};
+
+const getOrderStatusLabel = (order, trips) => {
+  if (!Array.isArray(trips) || trips.length <= 1) {
+    return trips?.[0]?.status || order.status || order.first_shipment_status || order.order_status || "-";
+  }
+  const statuses = getDistinctValues(trips, "status");
+  if (statuses.length === 1) return statuses[0];
+  return `${statuses.length} trang thai`;
+};
 
 const splitRoute = (route) => {
   const text = String(route ?? "").trim();
@@ -88,41 +110,76 @@ function extractDistance(notes) {
 }
 
 function buildTripFromOrder(order) {
-  const pickupAddress = order.pickup_address || "";
-  const deliveryAddress = order.delivery_address || "";
-  const arrivedAt = order.arrived_at;
-  const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
-
-  const trips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [{
+  const sourceTrips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [];
+  const trips = sourceTrips.length > 0 ? sourceTrips.map((trip, index) => ({
+    shipment_id: trip.shipment_id || "",
+    shipment_index: trip.shipment_index || index + 1,
+    trip_code: trip.trip_code || "",
+    vehicle_group_id: trip.vehicle_group_id || "",
+    owner_driver_id: trip.owner_driver_id || "",
+    vehicle_id: trip.vehicle_id || "",
+    plate: trip.plate || "",
+    distance: trip.distance ?? "",
+    arrived_at: trip.arrived_at || "",
+    pickup_address: trip.pickup_address || "",
+    delivery_address: trip.delivery_address || "",
+    fare: trip.fare ?? "",
+    status: trip.status || "",
+    driverName: trip.driverName || "",
+  })) : [{
+    shipment_id: order.shipment_id || "",
+    shipment_index: 1,
+    trip_code: order.trip_code || "",
     vehicle_group_id: order.vehicle_group_id || "",
+    owner_driver_id: order.owner_driver_id || "",
+    vehicle_id: order.vehicle_id || "",
     plate: order.plate_number || "",
     distance: order.estimated_distance_km || "",
-    pickup_address: pickupAddress,
-    delivery_address: deliveryAddress
+    arrived_at: order.arrived_at || "",
+    pickup_address: order.pickup_address || "",
+    delivery_address: order.delivery_address || "",
+    fare: order.estimated_price || order.total_estimated_price || "",
+    status: order.status || "",
+    driverName: order.driver_name || "",
   }];
 
+  const firstTrip = trips[0] || {};
+  const pickupAddress = firstTrip.pickup_address || order.pickup_address || "";
+  const deliveryAddress = firstTrip.delivery_address || order.delivery_address || "";
+  const arrivedAt = firstTrip.arrived_at || order.arrived_at;
+  const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
+
   const totalDistance = trips.reduce((sum, t) => sum + (Number(t.distance) || 0), 0);
+  const totalFare = trips.reduce((sum, t) => sum + (Number(t.fare) || 0), 0);
+  const isMultiShipment = trips.length > 1;
 
   return {
     id: `#${order.id}`,
     orderId: order.id,
+    rowType: "order",
+    shipmentCount: trips.length,
+    orderStatus: order.order_status || order.derived_status || "",
+    statusLabel: getOrderStatusLabel(order, trips),
     date,
-    dateInput: order.arrived_at ? String(order.arrived_at).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
+    dateInput: arrivedAt ? String(arrivedAt).substring(0, 10) : (order.created_at ? String(order.created_at).substring(0, 10) : ""),
     checkIn: "",
-    plate: order.plate_number || "",
-    driverId: order.owner_driver_id || "",
-    vehicleGroupId: order.vehicle_group_id || "",
-    driverName: order.driver_name || "",
+    plate: isMultiShipment ? `${trips.length} chuyen` : (firstTrip.plate || order.plate_number || ""),
+    driverId: firstTrip.owner_driver_id || order.owner_driver_id || "",
+    vehicleGroupId: firstTrip.vehicle_group_id || order.vehicle_group_id || "",
+    driverName: isMultiShipment ? getSummaryValue(trips, "driverName", "Chua gan") : (firstTrip.driverName || order.driver_name || ""),
     customerName: order.customer_name || "",
     customerPhone: order.customer_phone || "",
     cargoName: order.cargo_name || "",
     cargoWeightKg: order.cargo_weight_kg || "",
     pickupAddress,
     deliveryAddress,
-    route: (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
+    route: isMultiShipment
+      ? `${trips.length} chuyen - mo chi tiet de xem tung chuyen`
+      : (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
     distance: totalDistance || order.estimated_distance_km || "",
-    fare: order.estimated_price || order.total_estimated_price || 0,
-    status: order.status,
+    fare: totalFare || order.estimated_price || order.total_estimated_price || 0,
+    status: getOrderStatusLabel(order, trips),
+    statusClass: isMultiShipment ? "partial" : normalizeStatus(firstTrip.status || order.status || order.first_shipment_status || order.order_status),
     notes: order.notes,
     is_partner: !!order.partner_name,
     partner_name: order.partner_name || "",
@@ -151,6 +208,16 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [expandedRows, setExpandedRows] = useState(new Set());
+
+  const toggleRow = (orderId) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -245,15 +312,25 @@ export default function CoordinatorPage({ user, onLogout }) {
     const customer = customerFilter.trim().toLowerCase();
 
     return trips.filter((trip) => {
-      const normalizedStatus = normalizeStatus(trip.status);
+      const shipmentStatuses = Array.isArray(trip.trips) && trip.trips.length > 0
+        ? trip.trips.map((item) => normalizeStatus(item.status))
+        : [normalizeStatus(trip.status)];
       const allowedStatuses = STATUS_TABS[activeTab];
-      const matchesTab = !allowedStatuses || allowedStatuses.has(normalizedStatus);
+      const matchesTab = !allowedStatuses || shipmentStatuses.some((status) => allowedStatuses.has(status));
 
       if (!matchesTab) return false;
 
-      const tripDate = trip.dateInput || formatDateForInput(trip.date);
-      if (dateFromFilter && (!tripDate || tripDate < dateFromFilter)) return false;
-      if (dateToFilter && (!tripDate || tripDate > dateToFilter)) return false;
+      const shipmentDates = Array.isArray(trip.trips) && trip.trips.length > 0
+        ? trip.trips
+            .map((item) => (item.arrived_at ? String(item.arrived_at).substring(0, 10) : ""))
+            .filter(Boolean)
+        : [];
+      const candidateDates = shipmentDates.length > 0
+        ? shipmentDates
+        : [trip.dateInput || formatDateForInput(trip.date)].filter(Boolean);
+      if ((dateFromFilter || dateToFilter) && !candidateDates.some((date) => (
+        (!dateFromFilter || date >= dateFromFilter) && (!dateToFilter || date <= dateToFilter)
+      ))) return false;
 
       if (customer && !String(trip.customerName || "").toLowerCase().includes(customer)) {
         return false;
@@ -856,8 +933,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                           style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                         >
                           <option value="">{trip.vehicle_group_id ? 'Chọn BKS' : 'Chọn nhóm xe trước'}</option>
+                          {trip.plate && !getAvailablePlates(trip.vehicle_group_id).some((v) => v.plate_number === trip.plate) && (
+                            <option value={trip.plate}>{trip.plate}</option>
+                          )}
                           {getAvailablePlates(trip.vehicle_group_id).map((v) => (
-                            <option key={v.id} value={v.plate_number}>{v.plate_number}</option>
+                            <option key={v.id} value={v.plate_number}>
+                              {v.assigned_driver_name ? `${v.plate_number} - ${v.assigned_driver_name}` : v.plate_number}
+                            </option>
                           ))}
                         </select>
                         {formErrors[`trip_${index}_plate`] && (
@@ -1003,47 +1085,82 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </tr>
                 ) : (
                   filteredTrips.map((trip) => (
-                    <tr key={trip.id} className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
-                      <td>
-                        <span className="trip-id">
-                          #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
-                        </span>
-                      </td>
-                      <td>{trip.date || "-"}</td>
-                      <td>{trip.plate || "-"}</td>
-                      <td>{trip.driverName || "Unassigned"}</td>
-                      <td>{trip.customerName || "-"}</td>
-                      <td className="table-route-cell">{trip.route || "-"}</td>
-                      <td>{trip.distance || "-"}</td>
-                      <td>
-                        {typeof trip.fare === "number"
-                          ? trip.fare.toLocaleString("vi-VN") + " đ"
-                          : trip.fare || "-"}
-                      </td>
-                      <td className="table-address-cell">{trip.notes}</td>
-                      <td>
-                        <span className={`trip-status status-${(trip.status || "").toLowerCase()}`}>
-                          {trip.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
-                            ✎
-                          </button>
-                          <button
-                            className="table-cancel-btn"
-                            type="button"
-                            aria-label="Cancel order"
-                            title="Hủy đơn"
-                            disabled={!canCancelTrip(trip)}
-                            onClick={() => handleCancelOrder(trip)}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={trip.id}>
+                      <tr className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
+                        <td>
+                          {trip.trips && trip.trips.length > 1 && (
+                            <button
+                              onClick={() => toggleRow(trip.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: 8, color: '#18227f', fontWeight: 'bold' }}
+                            >
+                              {expandedRows.has(trip.id) ? '▼' : '▶'}
+                            </button>
+                          )}
+                          <span className="trip-id">
+                            #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
+                          </span>
+                        </td>
+                        <td>{trip.date || "-"}</td>
+                        <td>{trip.plate || "-"}</td>
+                        <td>{trip.driverName || "Unassigned"}</td>
+                        <td>{trip.customerName || "-"}</td>
+                        <td className="table-route-cell">{trip.route || "-"}</td>
+                        <td>{trip.distance || "-"}</td>
+                        <td>
+                          {typeof trip.fare === "number"
+                            ? trip.fare.toLocaleString("vi-VN") + " đ"
+                            : trip.fare || "-"}
+                        </td>
+                        <td className="table-address-cell">{trip.notes}</td>
+                        <td>
+                          <span className={`trip-status status-${trip.statusClass || normalizeStatus(trip.status)}`}>
+                            {trip.statusLabel || trip.status}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="table-actions">
+                            <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
+                              ✎
+                            </button>
+                            <button
+                              className="table-cancel-btn"
+                              type="button"
+                              aria-label="Cancel order"
+                              title="Hủy đơn"
+                              disabled={!canCancelTrip(trip)}
+                              onClick={() => handleCancelOrder(trip)}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedRows.has(trip.id) && trip.trips && trip.trips.length > 1 && trip.trips.map((subTrip, idx) => (
+                        <tr key={`${trip.id}-sub-${idx}`} style={{ backgroundColor: '#f9faff' }}>
+                          <td style={{ paddingLeft: 40, color: '#6b7280', fontSize: 13 }}>↳ Chuyến {idx + 1}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>-</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.plate || "-"}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.driverName || "Chưa gán"}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{trip.customerName }</td>
+                          <td className="table-route-cell" style={{ color: '#6b7280', fontSize: 13 }}>
+                            {subTrip.pickup_address && subTrip.delivery_address ? `${subTrip.pickup_address} - ${subTrip.delivery_address}` : "-"}
+                          </td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.distance || "-"}</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>
+                            {typeof subTrip.fare === "number"
+                              ? subTrip.fare.toLocaleString("vi-VN") + " đ"
+                              : subTrip.fare || "-"}
+                          </td>
+                          <td className="table-address-cell" style={{ color: '#6b7280', fontSize: 13 }}>-</td>
+                          <td>
+                            <span className={`trip-status status-${normalizeStatus(subTrip.status || trip.status)}`}>
+                              {subTrip.status || trip.status}
+                            </span>
+                          </td>
+                          <td></td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))
                 )}
               </tbody>

@@ -9,7 +9,7 @@ const {
     MAX_IMAGES_PER_INCIDENT,
 } = require('../constants/incidentConstants');
 
-const ACTIVE_STATUSES = ['claimed', 'picking', 'loaded', 'transit', 'arrived', 'failed', 'returning'];
+const ACTIVE_STATUSES = ['claimed', 'picking', 'transit', 'arrived', 'failed', 'returning'];
 
 const TYPE_LABEL = {
     vehicle_breakdown: 'Sự cố xe',

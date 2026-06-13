@@ -6,6 +6,7 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
   const [form] = Form.useForm();
   const [driverOptions, setDriverOptions] = useState([]);
   const [loadingDrivers, setLoadingDrivers] = useState(false);
+  const canEditDriverAssignment = !editingVehicle || editingVehicle.status === "active";
 
   useEffect(() => {
     if (!open) return;
@@ -135,9 +136,10 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
           <Select
             allowClear
             loading={loadingDrivers}
+            disabled={!canEditDriverAssignment}
             placeholder="Select driver"
             options={driverOptions.map((driver) => ({
-              label: `${driver.full_name} - ${driver.email}${driver.current_vehicle_plate ? ` (${driver.current_vehicle_plate})` : ""}${driver.is_assignable ? "" : " - unavailable"}`,
+              label: `${driver.full_name} - ${driver.email}${driver.current_vehicle_plate ? ` (${driver.current_vehicle_plate})` : ""}${driver.has_active_shipment ? " - delivering" : ""}${driver.has_unverified_maintenance ? " - pending maintenance verification" : ""}${driver.is_assignable ? "" : " - unavailable"}`,
               value: driver.id,
               disabled: !driver.is_assignable,
             }))}

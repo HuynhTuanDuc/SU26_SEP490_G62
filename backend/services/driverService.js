@@ -9,6 +9,14 @@ const createError = (message, statusCode) => {
     return error;
 };
 
+const parsePositiveAmount = (value, fieldName) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        throw createError(`${fieldName} must be greater than 0`, 400);
+    }
+    return parsed;
+};
+
 const getAllDrivers = async () => driverRepository.getAllDrivers();
 
 const listMaintenanceForDriver = async (driverId) => {
@@ -56,11 +64,13 @@ const updateMaintenanceCost = async (driverId, vehicleId, cost) => {
     return { maintenanceRecordId: record.id, cost: parsedCost };
 };
 
-const completeMaintenance = async (driverId, vehicleId) => {
+const completeMaintenance = async (driverId, vehicleId, payload) => {
     const parsedVehicleId = Number(vehicleId);
     if (!Number.isInteger(parsedVehicleId) || parsedVehicleId <= 0) {
         throw createError('vehicle_id must be a positive integer', 400);
     }
+
+    const cost = parsePositiveAmount(payload?.cost, 'cost');
 
     const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
     if (!record) {
@@ -78,6 +88,7 @@ const completeMaintenance = async (driverId, vehicleId) => {
         driverId,
         billPics,
         performedBy: driverId,
+        cost,
     });
 
     // Notify manager role via WS for real-time dashboard update

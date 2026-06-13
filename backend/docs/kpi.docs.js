@@ -225,7 +225,6 @@
  *         driver_name:         { type: string }
  *         completed_shipments: { type: integer }
  *         total_revenue:       { type: string }
- *         on_time_rate:        { type: string }
  *         incident_count:      { type: integer }
  *         revenue_rank:        { type: integer }
  *         trips_rank:          { type: integer }

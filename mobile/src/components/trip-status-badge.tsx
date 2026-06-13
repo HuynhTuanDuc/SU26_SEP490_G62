@@ -15,7 +15,6 @@ const STATUS_CONFIG: Record<TripStatus, StatusConfig> = {
     available:  { bg: c.successSoft,          text: c.successText,        dot: c.success },
     claimed:    { bg: c.primarySoft,          text: c.primary,            dot: c.primary },
     picking:    { bg: c.statusPickingSoft,    text: c.statusPickingText,  dot: c.statusPicking },
-    loaded:     { bg: c.statusPickingSoft,    text: c.statusPickingText,  dot: c.statusPicking },
     transit:    { bg: c.statusTransitSoft,    text: c.statusTransitText,  dot: c.statusTransit },
     arrived:    { bg: c.successSoft,          text: c.successText,        dot: c.success },
     completed:  { bg: c.successSoft,          text: c.successText,        dot: c.success },

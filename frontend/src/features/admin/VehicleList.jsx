@@ -75,6 +75,11 @@ const normalizeBillPics = (value) => {
   return value.filter((item) => typeof item === "string" && item.trim());
 };
 
+const canAssignDriverToVehicle = (record) => record.status === "active";
+
+const canUnassignDriverFromVehicle = (record) =>
+  Boolean(record.assigned_driver_id) && ["active", "maintenance", "broken"].includes(record.status);
+
 const buildActionMenuItems = (record, handlers) => {
   const items = [
     {
@@ -89,14 +94,25 @@ const buildActionMenuItems = (record, handlers) => {
       label: "Edit",
       onClick: () => handlers.handleOpenEdit(record),
     },
-    {
+  ];
+
+  if (record.assigned_driver_id) {
+    items.push({
+      key: "unassign",
+      icon: <UserSwitchOutlined />,
+      label: "Unassign Driver",
+      disabled: !canUnassignDriverFromVehicle(record),
+      onClick: () => handlers.handleDriverToggle(record),
+    });
+  } else {
+    items.push({
       key: "assign",
       icon: <UserSwitchOutlined />,
-      label: record.assigned_driver_id ? "Unassign Driver" : "Assign Driver",
-      disabled: record.status !== "active",
+      label: "Assign Driver",
+      disabled: !canAssignDriverToVehicle(record),
       onClick: () => handlers.handleDriverToggle(record),
-    },
-  ];
+    });
+  }
 
   if (record.status === "active") {
     items.push(
@@ -132,12 +148,20 @@ const buildActionMenuItems = (record, handlers) => {
   }
 
   if (record.status === "broken") {
-    items.push({
-      key: "restore",
-      icon: <ToolOutlined />,
-      label: "Restore",
-      onClick: () => handlers.handleRestore(record),
-    });
+    items.push(
+      {
+        key: "maintenance",
+        icon: <ToolOutlined />,
+        label: "Send to Maintenance",
+        onClick: () => handlers.handleSendToMaintenance(record),
+      },
+      {
+        key: "restore",
+        icon: <ToolOutlined />,
+        label: "Restore",
+        onClick: () => handlers.handleRestore(record),
+      }
+    );
   }
 
   return items;
@@ -208,7 +232,7 @@ export default function VehicleList() {
   };
 
   const maintenanceDriverSelectOptions = maintenanceDriverOptions.map((driver) => ({
-    label: `${driver.full_name} - ${driver.email}${driver.is_selected_vehicle_driver ? " (assigned driver)" : ""}${driver.has_active_shipment ? " - delivering" : ""}`,
+    label: `${driver.full_name} - ${driver.email}${driver.is_selected_vehicle_driver ? " (assigned driver)" : ""}${driver.has_active_shipment ? " - delivering" : ""}${driver.has_unverified_maintenance ? " - during other maintenance" : ""}`,
     value: driver.id,
     disabled: !driver.is_maintenance_eligible,
   }));
@@ -508,13 +532,13 @@ export default function VehicleList() {
     && !vehicleGroups.some((group) => Number(group.id) === Number(editingVehicle.vehicle_group_id));
   const selectableVehicleGroups = currentEditingGroupMissing
     ? [
-        ...vehicleGroups,
-        {
-          id: editingVehicle.vehicle_group_id,
-          name: editingVehicle.vehicle_group_name || `Group #${editingVehicle.vehicle_group_id}`,
-          status: editingVehicle.vehicle_group_status || "hidden",
-        },
-      ]
+      ...vehicleGroups,
+      {
+        id: editingVehicle.vehicle_group_id,
+        name: editingVehicle.vehicle_group_name || `Group #${editingVehicle.vehicle_group_id}`,
+        status: editingVehicle.vehicle_group_status || "hidden",
+      },
+    ]
     : vehicleGroups;
 
   return (
@@ -671,9 +695,6 @@ export default function VehicleList() {
           </Form.Item>
           <Form.Item label="Maintenance Date" name="maintenance_date" rules={[{ required: true, message: "Maintenance date is required" }]}>
             <Input type="date" />
-          </Form.Item>
-          <Form.Item label="Cost" name="cost">
-            <InputNumber style={{ width: "100%" }} min={0} precision={2} />
           </Form.Item>
           <Form.Item
             label="Performed By"

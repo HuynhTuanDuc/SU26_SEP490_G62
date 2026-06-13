@@ -2,7 +2,6 @@ const SHIPMENT_STATUS = Object.freeze({
     AVAILABLE: 'available',
     CLAIMED: 'claimed',
     PICKING: 'picking',
-    LOADED: 'loaded',
     TRANSIT: 'transit',
     ARRIVED: 'arrived',
     COMPLETED: 'completed',
@@ -21,7 +20,6 @@ const ASSIGNMENT_TYPE = Object.freeze({
 const ACTIVE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
     SHIPMENT_STATUS.PICKING,
-    SHIPMENT_STATUS.LOADED,
     SHIPMENT_STATUS.TRANSIT,
     SHIPMENT_STATUS.ARRIVED,
     SHIPMENT_STATUS.RETURNING,
@@ -30,16 +28,14 @@ const ACTIVE_STATUSES = Object.freeze([
 const CANCELLABLE_STATUSES = Object.freeze([
     SHIPMENT_STATUS.CLAIMED,
     SHIPMENT_STATUS.PICKING,
-    SHIPMENT_STATUS.LOADED,
     SHIPMENT_STATUS.TRANSIT,
 ]);
 
 // Strict forward-only transitions via PATCH /status endpoint
-// ARRIVED→COMPLETED goes through POST /complete (completeWithProof)
+// PICKING → TRANSIT goes through POST /start-transit (with mandatory loading proof, BR-013/014)
+// ARRIVED → COMPLETED goes through POST /complete (with 2 mandatory photos)
 const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.CLAIMED]:   [SHIPMENT_STATUS.PICKING],
-    [SHIPMENT_STATUS.PICKING]:   [SHIPMENT_STATUS.LOADED],
-    [SHIPMENT_STATUS.LOADED]:    [SHIPMENT_STATUS.TRANSIT],
     [SHIPMENT_STATUS.TRANSIT]:   [SHIPMENT_STATUS.ARRIVED],
     [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
     [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING],
@@ -54,7 +50,6 @@ const RELEASABLE_STATUSES = Object.freeze([
 // Status → lifecycle timestamp column (must cover every writable status)
 const STATUS_TIMESTAMP_COL = Object.freeze({
     [SHIPMENT_STATUS.PICKING]:   'picking_at',
-    [SHIPMENT_STATUS.LOADED]:    'loaded_at',
     [SHIPMENT_STATUS.TRANSIT]:   'transit_at',
     [SHIPMENT_STATUS.ARRIVED]:   'arrived_at',
     [SHIPMENT_STATUS.COMPLETED]: 'completed_at',

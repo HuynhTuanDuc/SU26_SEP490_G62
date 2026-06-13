@@ -49,13 +49,11 @@ function MaintenanceCard({
 }: {
     record: MaintenanceRecord;
     onBillUploaded: (vehicleId: number, uri: string) => Promise<void>;
-    onCostUpdated:  (vehicleId: number, cost: number) => Promise<void>;
-    onCompleted:    (vehicleId: number) => Promise<void>;
+    onCompleted:    (vehicleId: number, cost: number) => Promise<void>;
 }) {
     const [expanded,    setExpanded]    = useState(record.status === 'open');
     const [showCamera,  setShowCamera]  = useState(false);
     const [uploading,   setUploading]   = useState(false);
-    const [savingCost,  setSavingCost]  = useState(false);
     const [completing,  setCompleting]  = useState(false);
 
     const { displayValue: cost, rawValue: costRaw, onChangeText: onCostChange } = useMoneyInput(record.cost ?? '');
@@ -77,24 +75,13 @@ function MaintenanceCard({
         }
     };
 
-    const handleSaveCost = async () => {
-        if (!costRaw || costRaw < 0) {
-            Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+    const handleComplete = async () => {
+        if (!costRaw || costRaw <= 0) {
+            Alert.alert('Thiếu chi phí', 'Vui lòng nhập số tiền bảo dưỡng');
             return;
         }
-        setSavingCost(true);
-        try {
-            await onCostUpdated(record.vehicle_id, costRaw);
-        } catch (err) {
-            Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể lưu chi phí');
-        } finally {
-            setSavingCost(false);
-        }
-    };
-
-    const handleComplete = async () => {
         if (record.bill_pics.length === 0) {
-            Alert.alert('Thiếu hóa đơn', 'Vui lòng tải lên ít nhất một hóa đơn trước khi hoàn thành');
+            Alert.alert('Thiếu hóa đơn', 'Vui lòng chụp ít nhất một ảnh hóa đơn');
             return;
         }
         const ok = await showConfirm({
@@ -105,7 +92,7 @@ function MaintenanceCard({
         if (!ok) return;
         setCompleting(true);
         try {
-            await onCompleted(record.vehicle_id);
+            await onCompleted(record.vehicle_id, costRaw);
         } catch (err) {
             Alert.alert('Lỗi', err instanceof Error ? err.message : 'Không thể hoàn thành');
         } finally {
@@ -173,25 +160,14 @@ function MaintenanceCard({
                         <YStack gap={6}>
                             <Text fontSize={12} color={appTheme.colors.textMuted}>Chi phí bảo dưỡng</Text>
                             {isOpen ? (
-                                <XStack gap={8} alignItems="center">
-                                    <TextInput
-                                        style={s.costInput}
-                                        placeholder="Nhập số tiền (VND)"
-                                        placeholderTextColor={appTheme.colors.textMuted}
-                                        keyboardType="numeric"
-                                        value={cost}
-                                        onChangeText={onCostChange}
-                                    />
-                                    <Pressable
-                                        style={[s.saveBtn, savingCost && { opacity: 0.6 }]}
-                                        onPress={handleSaveCost}
-                                        disabled={savingCost}
-                                    >
-                                        {savingCost
-                                            ? <ActivityIndicator size="small" color="#fff" />
-                                            : <Text fontSize={13} fontWeight="700" color="#fff">Lưu</Text>}
-                                    </Pressable>
-                                </XStack>
+                                <TextInput
+                                    style={s.costInput}
+                                    placeholder="Nhập số tiền (VND)"
+                                    placeholderTextColor={appTheme.colors.textMuted}
+                                    keyboardType="numeric"
+                                    value={cost}
+                                    onChangeText={onCostChange}
+                                />
                             ) : (
                                 <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
                                     {fmtMoney(record.cost)}
@@ -299,13 +275,8 @@ export function MaintenanceScreen() {
         await reload(false);
     };
 
-    const handleCostUpdated = async (vehicleId: number, cost: number) => {
-        await maintenanceService.updateCost(vehicleId, cost);
-        await reload(false);
-    };
-
-    const handleCompleted = async (vehicleId: number) => {
-        await maintenanceService.complete(vehicleId);
+    const handleCompleted = async (vehicleId: number, cost: number) => {
+        await maintenanceService.complete(vehicleId, cost);
         await reload(false);
     };
 
@@ -351,7 +322,6 @@ export function MaintenanceScreen() {
                         key={record.id}
                         record={record}
                         onBillUploaded={handleBillUploaded}
-                        onCostUpdated={handleCostUpdated}
                         onCompleted={handleCompleted}
                     />
                 ))}
@@ -377,15 +347,6 @@ const s = StyleSheet.create({
         fontSize: 14,
         color: appTheme.colors.text,
         backgroundColor: appTheme.colors.background,
-    },
-    saveBtn: {
-        height: 40,
-        paddingHorizontal: 16,
-        borderRadius: 10,
-        backgroundColor: appTheme.colors.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        minWidth: 60,
     },
     uploadBtn: {
         flexDirection: 'row',

@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
     AlertTriangle, Award, ChevronLeft, ChevronRight,
-    Clock, Star, TrendingUp, Trophy, Truck,
+    Star, TrendingUp, Trophy, Truck,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -263,14 +263,8 @@ function KpiSection({ record }: { record: KpiRecord }) {
                 />
             </XStack>
 
-            {/* On-Time KPI + Incidents */}
+            {/* Incidents */}
             <XStack gap={12}>
-                <StatCard
-                    icon={<Clock size={18} color={Number(record.on_time_rate) >= 90 ? appTheme.colors.success : appTheme.colors.warning} />}
-                    label="Giao đúng hạn"
-                    value={`${record.on_time_rate}%`}
-                    color={Number(record.on_time_rate) >= 90 ? appTheme.colors.success : appTheme.colors.warning}
-                />
                 <StatCard
                     icon={<AlertTriangle size={18} color={record.incident_count > 0 ? appTheme.colors.danger : appTheme.colors.success} />}
                     label="Sự cố tháng này"

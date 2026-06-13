@@ -7,7 +7,6 @@ export type TripStatus =
     | 'available'
     | 'claimed'
     | 'picking'
-    | 'loaded'
     | 'transit'
     | 'arrived'
     | 'completed'
@@ -62,7 +61,6 @@ export type ActiveTrip = {
     version: number;
     claimed_at: string | null;
     picking_at: string | null;
-    loaded_at: string | null;
     transit_at: string | null;
     arrived_at: string | null;
     completed_at: string | null;
@@ -151,7 +149,6 @@ export type ShipmentWithPhotos = {
     cancel_reason: string | null;
     claimed_at: string | null;
     picking_at: string | null;
-    loaded_at: string | null;
     transit_at: string | null;
     arrived_at: string | null;
     completed_at: string | null;
@@ -268,11 +265,21 @@ export type CreateExpenseResponse = {
     expenses: Expense[];
 };
 
+export type ReceiptRequestStatus = 'pending' | 'processing' | 'approved' | 'rejected';
+
+export type ReceiptRequest = {
+    id: number;
+    shipment_id: number;
+    actual_km: string | null;
+    status: ReceiptRequestStatus;
+    requested_at: string;
+    coordinator_notes: string | null;
+};
+
 export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
     available: 'Chờ nhận',
     claimed: 'Đã nhận',
     picking: 'Đang lấy hàng',
-    loaded: 'Đã lấy hàng',
     transit: 'Đang vận chuyển',
     arrived: 'Đã đến nơi',
     completed: 'Hoàn thành',
@@ -288,10 +295,10 @@ export type NextAction = {
 };
 
 export const NEXT_ACTIONS: Partial<Record<TripStatus, NextAction>> = {
-    claimed:   { label: 'Bắt đầu lấy hàng',      nextStatus: 'picking',   tone: 'primary'   },
-    loaded:    { label: 'Bắt đầu vận chuyển',     nextStatus: 'transit',   tone: 'primary'   },
-    transit:   { label: 'Xác nhận đã đến',        nextStatus: 'arrived',   tone: 'primary'   },
-    failed:    { label: 'Bắt đầu hoàn hàng',      nextStatus: 'returning', tone: 'secondary' },
-    // picking → loaded: requires loading proof photo (use-loading-proof hook)
-    // returning → completed: use return-complete screen with optional photo
+    claimed:   { label: 'Bắt đầu lấy hàng',  nextStatus: 'picking',   tone: 'primary'   },
+    transit:   { label: 'Xác nhận đã đến',    nextStatus: 'arrived',   tone: 'primary'   },
+    failed:    { label: 'Bắt đầu hoàn hàng',  nextStatus: 'returning', tone: 'secondary' },
+    // picking → transit: requires loading proof photo (use-loading-proof hook → POST /start-transit)
+    // arrived → completed: requires delivery proof + receipt (use-completion-proof → POST /complete)
+    // returning → completed: use return-complete with optional photo
 };

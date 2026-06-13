@@ -54,7 +54,6 @@ const getPendingRepayments = async () => {
             d.total_amount::text,
             d.driver_id,
             u.full_name  AS driver_name,
-            os.trip_code,
             o.cargo_name
          FROM debt_payments dp
          JOIN debts d ON d.id = dp.debt_id

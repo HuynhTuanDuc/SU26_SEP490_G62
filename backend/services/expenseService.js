@@ -3,7 +3,7 @@ const tripRepository    = require('../repositories/tripRepository');
 
 // Trạng thái trip cho phép thêm chi phí (chưa kết thúc)
 const EXPENSE_ALLOWED_STATUSES = [
-    'claimed', 'picking', 'loaded', 'transit', 'arrived', 'failed', 'returning',
+    'claimed', 'picking', 'transit', 'arrived', 'failed', 'returning',
 ];
 
 const ALLOWED_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];

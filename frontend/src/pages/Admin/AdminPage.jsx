@@ -1,17 +1,12 @@
 import React, { useState } from "react";
-import { Layout, Menu, Typography, Dropdown, Space, Avatar } from "antd";
-import {
-  CarOutlined,
-  DashboardOutlined,
-  LogoutOutlined,
-  SettingOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
+import { Typography } from "antd";
+import AppHeader from "../../components/layout/AppHeader";
+import AppSidebar from "../../components/layout/AppSidebar";
 import UserList from "../../features/admin/UserList";
 import VehicleList from "../../features/admin/VehicleList";
+import { C } from "../../styles/theme";
 import "../../styles/admin/Admin.css";
 
-const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 
 export default function AdminPage({ user, onLogout }) {
@@ -29,108 +24,43 @@ export default function AdminPage({ user, onLogout }) {
     window.location.reload();
   };
 
-  const menuItems = [
-    {
-      key: "dashboard",
-      icon: <DashboardOutlined />,
-      label: "Tong quan",
-      disabled: true,
-    },
-    {
-      key: "users",
-      icon: <UserOutlined />,
-      label: "Nguoi dung",
-    },
-    {
-      key: "vehicles",
-      icon: <CarOutlined />,
-      label: "Xe",
-    },
-    {
-      key: "settings",
-      icon: <SettingOutlined />,
-      label: "Cai dat",
-      disabled: true,
-    },
-  ];
-
-  const userMenu = {
-    items: [
-      {
-        key: "1",
-        label: <Text strong>{user?.full_name || user?.email}</Text>,
-        disabled: true,
-      },
-      { type: "divider" },
-      {
-        key: "2",
-        icon: <LogoutOutlined />,
-        label: "Dang xuat",
-        onClick: handleLogout,
-        danger: true,
-      },
-    ],
+  const pageTitleMap = {
+    users: "Quan ly nguoi dung",
+    vehicles: "Quan ly xe",
   };
 
-  const pageTitleMap = {
-    users: "Quan ly Nguoi dung",
-    vehicles: "Quan ly Nhom Xe va Xe",
+  const pageSubtitleMap = {
+    users: "Quan ly tai khoan, vai tro va trang thai truy cap.",
+    vehicles: "Theo doi phuong tien, tai xe duoc gan va trang thai bao tri.",
   };
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Sider
-        collapsible
+    <div style={{ minHeight: "100vh", display: "flex", background: C.surface }}>
+      <AppSidebar
+        user={user}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         collapsed={collapsed}
-        onCollapse={(value) => setCollapsed(value)}
-        theme="dark"
-        width={250}
-        style={{
-          boxShadow: "2px 0 8px 0 rgba(29,35,41,.05)",
-        }}
-      >
-        <div style={{ height: "64px", display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0" }}>
-          <Title level={4} style={{ color: "#fff", margin: 0 }}>
-            {collapsed ? "G62" : "Admin Panel"}
-          </Title>
-        </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[activeTab]}
-          onClick={(event) => setActiveTab(event.key)}
-          items={menuItems}
-        />
-      </Sider>
+        onCollapse={setCollapsed}
+      />
 
-      <Layout>
-        <Header
-          style={{
-            padding: "0 24px",
-            background: "#fff",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            boxShadow: "0 1px 4px rgba(0,21,41,.08)",
-          }}
-        >
-          <Title level={4} style={{ margin: 0 }}>
-            {pageTitleMap[activeTab] || "Trang chu"}
-          </Title>
+      <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <AppHeader user={user} onLogout={handleLogout} />
 
-          <Dropdown menu={userMenu} placement="bottomRight" arrow>
-            <Space style={{ cursor: "pointer" }}>
-              <Avatar style={{ backgroundColor: "#1890ff" }} icon={<UserOutlined />} />
-              <Text strong>{user?.full_name || "Admin"}</Text>
-            </Space>
-          </Dropdown>
-        </Header>
+        <section style={{ padding: 24, flex: 1, overflow: "auto" }}>
+          <div style={{ marginBottom: 20 }}>
+            <Title level={3} style={{ margin: 0, color: C.onSurface }}>
+              {pageTitleMap[activeTab] || "Trang chu"}
+            </Title>
+            <Text style={{ color: C.onSurfaceVariant }}>
+              {pageSubtitleMap[activeTab] || "Chon mot chuc nang tu thanh dieu huong."}
+            </Text>
+          </div>
 
-        <Content style={{ margin: "24px 16px", padding: 0, minHeight: 280 }}>
           {activeTab === "users" && <UserList />}
           {activeTab === "vehicles" && <VehicleList />}
-        </Content>
-      </Layout>
-    </Layout>
+        </section>
+      </main>
+    </div>
   );
 }

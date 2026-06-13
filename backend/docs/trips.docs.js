@@ -171,7 +171,7 @@
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [picking, loaded, transit, arrived, failed, returning]
+ *                 enum: [picking, transit, arrived, failed, returning]
  *                 example: transit
  *     responses:
  *       200:
@@ -277,10 +277,10 @@
 
 /**
  * @swagger
- * /api/trips/{id}/loaded:
+ * /api/trips/{id}/start-transit:
  *   post:
  *     tags: [Trips]
- *     summary: Xác nhận đã lấy hàng — PICKING → LOADED (bắt buộc ảnh, BR-013/014)
+ *     summary: Xác nhận đã lấy hàng, bắt đầu vận chuyển — PICKING → TRANSIT (bắt buộc ảnh, BR-013/014)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -302,7 +302,7 @@
  *                 description: Ảnh chụp thực tế khi lấy hàng (camera realtime)
  *     responses:
  *       200:
- *         description: Trip chuyển sang LOADED
+ *         description: Trip chuyển sang TRANSIT
  *       422:
  *         description: Thiếu ảnh hoặc trip không ở trạng thái PICKING
  */

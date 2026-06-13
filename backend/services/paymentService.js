@@ -1,11 +1,11 @@
 const paymentRepository = require('../repositories/paymentRepository');
 const tripRepository    = require('../repositories/tripRepository');
 
-const PAYMENT_ALLOWED_STATUSES = ['arrived', 'transit', 'loaded', 'completed'];
+const PAYMENT_ALLOWED_STATUSES = ['arrived', 'transit', 'completed'];
 
 const fmtVND = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
 
-// TH2: Khách thanh toán tiền mặt cho Driver → ghi nhận shipment_payments + tạo driver debt ngay (§15, BR-018)
+// TH2: Khách thanh toán tiền mặt cho Driver → ghi nhận shipment_receipts + tạo driver debt ngay (§15, BR-018)
 const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, receiptUrl) => {
     if (!receiptUrl) throw new Error('Ảnh biên lai thanh toán là bắt buộc (BR-018)');
 

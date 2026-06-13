@@ -37,9 +37,7 @@ const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
             END                                                 AS kpi_bonus_achieved,
 
             -- Rule 4: Thưởng lái xe xuất sắc nhất tháng — lấy rule đầu tiên active
-            br_top.reward_amount::text                          AS top_driver_bonus_reward,
-
-            k.on_time_rate::text
+            br_top.reward_amount::text                          AS top_driver_bonus_reward
 
          FROM kpi_records k
          JOIN vehicle_groups vg ON vg.id = k.vehicle_group_id
@@ -105,7 +103,6 @@ const getLeaderboard = async (driverId, vehicleGroupId, { month, year }) => {
                 driver_id, driver_name,
                 completed_shipments,
                 total_revenue::text,
-                on_time_rate::text,
                 incident_count,
                 revenue_rank,
                 trips_rank,
@@ -129,7 +126,6 @@ const getLeaderboard = async (driverId, vehicleGroupId, { month, year }) => {
                     driver_id, driver_name,
                     completed_shipments,
                     total_revenue::text,
-                    on_time_rate::text,
                     incident_count,
                     revenue_rank,
                     trips_rank,
@@ -165,11 +161,9 @@ const getAllDriversKPI = async ({ month, year, vehicleGroupId = null }) => {
             k.month, k.year,
             k.completed_shipments,
             k.total_revenue::text,
-            k.late_deliveries,
             k.incident_count,
             k.major_incident_count,
             k.critical_incident_count,
-            k.on_time_rate::text,
             vg.name AS vehicle_group_name
          FROM kpi_records k
          JOIN profiles p       ON p.id  = k.driver_id
@@ -194,11 +188,9 @@ const getDriverKPIById = async (driverId, { month = null, year = null } = {}) =>
             k.id, k.driver_id, k.month, k.year,
             k.completed_shipments,
             k.total_revenue::text,
-            k.late_deliveries,
             k.incident_count,
             k.major_incident_count,
             k.critical_incident_count,
-            k.on_time_rate::text,
             p.full_name AS driver_name,
             vg.name AS vehicle_group_name
          FROM kpi_records k
@@ -243,19 +235,6 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     );
     const { completed_shipments, total_revenue } = shipRes.rows[0];
 
-    // Tỷ lệ giao đúng hạn: schema chưa có cột deadline_at nên tất cả completed = đúng hạn
-    const otRes = await pool.query(
-        `SELECT
-            CASE WHEN COUNT(*) = 0 THEN 100 ELSE 100 END AS on_time_rate
-         FROM order_shipments
-         WHERE owner_driver_id = $1
-           AND status = 'completed'
-           AND EXTRACT(MONTH FROM completed_at) = $2
-           AND EXTRACT(YEAR  FROM completed_at) = $3`,
-        [driverId, month, year],
-    );
-    const onTimeRate = Number(otRes.rows[0].on_time_rate ?? 100);
-
     const incRes = await pool.query(
         `SELECT
             COUNT(*)                                               AS incident_count,
@@ -273,13 +252,11 @@ const recalculateDriverKPI = async (driverId, month, year) => {
         `INSERT INTO kpi_records
             (driver_id, vehicle_group_id, month, year,
              completed_shipments, total_revenue,
-             late_deliveries, on_time_rate,
              incident_count, major_incident_count, critical_incident_count)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (driver_id, month, year) DO UPDATE SET
              completed_shipments     = EXCLUDED.completed_shipments,
              total_revenue           = EXCLUDED.total_revenue,
-             on_time_rate            = EXCLUDED.on_time_rate,
              incident_count          = EXCLUDED.incident_count,
              major_incident_count    = EXCLUDED.major_incident_count,
              critical_incident_count = EXCLUDED.critical_incident_count,
@@ -288,7 +265,6 @@ const recalculateDriverKPI = async (driverId, month, year) => {
         [
             driverId, vehicleGroupId, month, year,
             Number(completed_shipments), Number(total_revenue),
-            onTimeRate,
             Number(incident_count), Number(major_incident_count), Number(critical_incident_count),
         ],
     );

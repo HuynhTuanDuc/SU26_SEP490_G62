@@ -708,6 +708,10 @@
   background: #fce7f3;
   color: #be185d;
 }
+.coordinator-shell .trip-status.status-partial {
+  background: #ede9fe;
+  color: #6d28d9;
+}
 
 /* Absent driver (no check-in) row styling */
 .coordinator-shell .orders-table tr.row-no-checkin {

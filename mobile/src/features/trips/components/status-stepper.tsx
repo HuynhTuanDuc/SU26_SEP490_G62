@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import {
     CheckCircle, MapPin, Navigation,
-    Package, PackageCheck, RotateCcw,
+    Package, RotateCcw,
     Truck, X, XCircle,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -11,16 +11,15 @@ import type { TripStatus } from '@/types/trip';
 
 // ─── Flow definitions ─────────────────────────────────────────────────────────
 
-const MAIN_FLOW: TripStatus[]      = ['claimed', 'picking', 'loaded', 'transit', 'arrived', 'completed'];
+const MAIN_FLOW: TripStatus[]      = ['claimed', 'picking', 'transit', 'arrived', 'completed'];
 const RETURN_FLOW: TripStatus[]    = ['failed', 'returning', 'completed'];
-const CANCELLED_FLOW: TripStatus[] = ['claimed', 'picking', 'loaded', 'transit', 'arrived', 'cancelled'];
+const CANCELLED_FLOW: TripStatus[] = ['claimed', 'picking', 'transit', 'arrived', 'cancelled'];
 
 // ─── Exported accent + banner (used in active-trip-screen) ───────────────────
 
 export const STATUS_ACCENT: Partial<Record<TripStatus, { bg: string; text: string; border: string }>> = {
     claimed:   { bg: appTheme.colors.primarySoft,  text: appTheme.colors.primary,     border: appTheme.colors.primaryMuted },
     picking:   { bg: appTheme.colors.warningSoft,  text: appTheme.colors.warningText, border: appTheme.colors.warningBorder },
-    loaded:    { bg: appTheme.colors.warningSoft,  text: appTheme.colors.warningText, border: appTheme.colors.warningBorder },
     transit:   { bg: appTheme.colors.primarySoft,  text: appTheme.colors.primary,     border: appTheme.colors.primaryMuted },
     arrived:   { bg: appTheme.colors.successSoft,  text: appTheme.colors.success,     border: '#a7f3d0' },
     completed: { bg: appTheme.colors.successSoft,  text: appTheme.colors.success,     border: '#a7f3d0' },
@@ -30,10 +29,9 @@ export const STATUS_ACCENT: Partial<Record<TripStatus, { bg: string; text: strin
 };
 
 export const STATUS_BANNER: Partial<Record<TripStatus, { icon: React.ReactNode; text: string }>> = {
-    claimed:   { icon: <Package     size={14} color={appTheme.colors.primary} />,     text: 'Di chuyển đến điểm lấy hàng' },
-    picking:   { icon: <Truck       size={14} color={appTheme.colors.warningText} />, text: 'Đang bốc xếp hàng lên xe' },
-    loaded:    { icon: <PackageCheck size={14} color={appTheme.colors.warningText} />,text: 'Hàng đã lên xe — sẵn sàng khởi hành' },
-    transit:   { icon: <Navigation  size={14} color={appTheme.colors.primary} />,     text: 'Đang vận chuyển đến điểm giao' },
+    claimed:   { icon: <Package    size={14} color={appTheme.colors.primary} />,     text: 'Di chuyển đến điểm lấy hàng' },
+    picking:   { icon: <Truck      size={14} color={appTheme.colors.warningText} />, text: 'Chụp ảnh lấy hàng để xác nhận và bắt đầu vận chuyển' },
+    transit:   { icon: <Navigation size={14} color={appTheme.colors.primary} />,     text: 'Đang vận chuyển đến điểm giao' },
     arrived:   { icon: <MapPin      size={14} color={appTheme.colors.success} />,     text: 'Đã đến — chụp ảnh biên lai rồi hoàn thành' },
     failed:    { icon: <XCircle     size={14} color={appTheme.colors.danger} />,      text: 'Giao hàng thất bại — bắt đầu hoàn hàng về' },
     returning: { icon: <RotateCcw   size={14} color={appTheme.colors.textMuted} />,   text: 'Đang hoàn hàng về điểm lấy hàng ban đầu' },
@@ -44,15 +42,14 @@ export const STATUS_BANNER: Partial<Record<TripStatus, { icon: React.ReactNode; 
 function StepIcon({ status, size, color }: { status: TripStatus; size: number; color: string }) {
     const props = { size, color };
     switch (status) {
-        case 'claimed':   return <Package      {...props} />;
-        case 'picking':   return <Truck        {...props} />;
-        case 'loaded':    return <PackageCheck {...props} />;
-        case 'transit':   return <Navigation   {...props} />;
-        case 'arrived':   return <MapPin       {...props} />;
-        case 'completed': return <CheckCircle  {...props} />;
-        case 'failed':    return <XCircle      {...props} />;
-        case 'returning': return <RotateCcw    {...props} />;
-        case 'cancelled': return <X            {...props} />;
+        case 'claimed':   return <Package    {...props} />;
+        case 'picking':   return <Truck      {...props} />;
+        case 'transit':   return <Navigation {...props} />;
+        case 'arrived':   return <MapPin     {...props} />;
+        case 'completed': return <CheckCircle {...props} />;
+        case 'failed':    return <XCircle    {...props} />;
+        case 'returning': return <RotateCcw  {...props} />;
+        case 'cancelled': return <X          {...props} />;
         default:          return null;
     }
 }
@@ -62,7 +59,6 @@ function StepIcon({ status, size, color }: { status: TripStatus; size: number; c
 const STEP_LABEL: Partial<Record<TripStatus, string>> = {
     claimed:   'Đã nhận',
     picking:   'Lấy hàng',
-    loaded:    'Đã chất',
     transit:   'Vận chuyển',
     arrived:   'Đã đến',
     completed: 'Hoàn thành',

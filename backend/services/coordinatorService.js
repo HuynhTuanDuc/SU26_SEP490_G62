@@ -289,12 +289,12 @@ const importExcel = async (userId, fileBuffer) => {
           delivery_address: deliveryAddress,
           estimated_price: fare || 0,
           payment_type: 'cash',
+          vehicle_group_id: finalVehicleGroupId,
           customer_name: customerName,
           customer_phone: customerPhone,
           notes,
         },
         shipmentData: {
-          vehicle_group_id: finalVehicleGroupId,
           owner_driver_id: finalDriverId,
           vehicle_id: finalVehicleId,
           pickup_address: pickupAddress,
@@ -303,7 +303,7 @@ const importExcel = async (userId, fileBuffer) => {
           cargo_weight_kg: null,
           estimated_price: fare || 0,
           estimated_distance_km: distanceValue,
-          delivery_at: date,
+          arrived_at: date,
           plate_number: vehicle?.plate_number || plate,
           status: shipmentStatus,
           payment_type: 'cash',
@@ -326,4 +326,155 @@ const importExcel = async (userId, fileBuffer) => {
   }
 };
 
-module.exports = { importExcel, listVehicleGroups };
+// ─── Receipt Request Management ───────────────────────────────────────────────
+
+const VALID_PAYMENT_TYPES = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
+
+// GET danh sách yêu cầu phiếu thu (mặc định: pending + processing)
+const getReceiptRequests = async ({ status = null } = {}) => {
+    const conditions = [];
+    const params = [];
+
+    if (status) {
+        params.push(status);
+        conditions.push(`rr.status = $${params.length}`);
+    } else {
+        conditions.push(`rr.status IN ('pending', 'processing')`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await pool.query(
+        `SELECT
+            rr.id,
+            rr.shipment_id,
+            rr.driver_id,
+            rr.actual_km,
+            rr.status,
+            rr.requested_at,
+            rr.processed_at,
+            rr.coordinator_notes,
+            p.full_name          AS driver_name,
+            os.estimated_price,
+            os.actual_price,
+            o.cargo_name,
+            o.id                 AS order_id,
+            os.shipment_index,
+            os.status            AS shipment_status
+         FROM shipment_receipt_requests rr
+         JOIN profiles p       ON p.id  = rr.driver_id
+         JOIN order_shipments os ON os.id = rr.shipment_id
+         JOIN orders o          ON o.id  = os.order_id
+         ${where}
+         ORDER BY rr.requested_at DESC`,
+        params,
+    );
+    return result.rows;
+};
+
+// POST approve — tạo shipment_receipts + cập nhật request status
+const approveReceiptRequest = async (requestId, coordinatorId, { payment_type, amount, notes, qr_code_data } = {}) => {
+    if (!payment_type || !VALID_PAYMENT_TYPES.includes(payment_type)) {
+        throw new Error(`payment_type không hợp lệ. Chọn một trong: ${VALID_PAYMENT_TYPES.join(', ')}`);
+    }
+    const amt = Number(amount);
+    if (!amt || amt <= 0) throw new Error('Số tiền phải lớn hơn 0');
+
+    const reqResult = await pool.query(
+        `SELECT rr.*, os.owner_driver_id
+         FROM shipment_receipt_requests rr
+         JOIN order_shipments os ON os.id = rr.shipment_id
+         WHERE rr.id = $1`,
+        [requestId],
+    );
+    const req = reqResult.rows[0];
+    if (!req) throw new Error('Yêu cầu phiếu thu không tồn tại');
+    if (req.status === 'approved') throw new Error('Yêu cầu này đã được duyệt rồi');
+    if (req.status === 'rejected') throw new Error('Yêu cầu này đã bị từ chối');
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Tạo shipment_receipts
+        const receiptResult = await client.query(
+            `INSERT INTO shipment_receipts
+                (shipment_id, payment_type, amount, notes, qr_code_data,
+                 receipt_request_id, created_by, collected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+             RETURNING *`,
+            [req.shipment_id, payment_type, amt, notes ?? null, qr_code_data ?? null, requestId, coordinatorId],
+        );
+
+        // Cập nhật actual_price + actual_distance_km vào order_shipments
+        // actual_price = giá chốt thực tế do coordinator xác nhận
+        // actual_distance_km = km thực tế driver nhập lúc yêu cầu phiếu thu
+        await client.query(
+            `UPDATE order_shipments
+             SET actual_price        = $1,
+                 actual_distance_km  = COALESCE($2, actual_distance_km),
+                 updated_at          = NOW()
+             WHERE id = $3`,
+            [amt, req.actual_km ?? null, req.shipment_id],
+        );
+
+        // Cập nhật trạng thái request → approved
+        await client.query(
+            `UPDATE shipment_receipt_requests
+             SET status = 'approved', processed_by = $1, processed_at = NOW()
+             WHERE id = $2`,
+            [coordinatorId, requestId],
+        );
+
+        await client.query('COMMIT');
+
+        // Notify driver
+        const notificationService = require('./notificationService');
+        notificationService.createForUser(req.driver_id, {
+            title: 'Phiếu thu đã được tạo',
+            message: `Coordinator đã tạo phiếu thu cho chuyến #${req.shipment_id}.`,
+            type: 'RECEIPT_APPROVED',
+            entityType: 'shipments',
+            entityId: req.shipment_id,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        return receiptResult.rows[0];
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+// POST reject — từ chối yêu cầu phiếu thu
+const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) => {
+    const reqResult = await pool.query(
+        `SELECT * FROM shipment_receipt_requests WHERE id = $1`,
+        [requestId],
+    );
+    const req = reqResult.rows[0];
+    if (!req) throw new Error('Yêu cầu phiếu thu không tồn tại');
+    if (req.status === 'approved') throw new Error('Yêu cầu này đã được duyệt rồi');
+    if (req.status === 'rejected') throw new Error('Yêu cầu này đã bị từ chối rồi');
+
+    await pool.query(
+        `UPDATE shipment_receipt_requests
+         SET status = 'rejected', processed_by = $1, processed_at = NOW(), coordinator_notes = $2
+         WHERE id = $3`,
+        [coordinatorId, notes ?? null, requestId],
+    );
+
+    const notificationService = require('./notificationService');
+    notificationService.createForUser(req.driver_id, {
+        title: 'Yêu cầu phiếu thu bị từ chối',
+        message: `Yêu cầu phiếu thu cho chuyến #${req.shipment_id} bị từ chối${notes ? `: ${notes}` : ''}.`,
+        type: 'RECEIPT_REJECTED',
+        entityType: 'shipments',
+        entityId: req.shipment_id,
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    return { success: true };
+};
+
+module.exports = { importExcel, listVehicleGroups, getReceiptRequests, approveReceiptRequest, rejectReceiptRequest };

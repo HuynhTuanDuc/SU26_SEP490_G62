@@ -104,9 +104,6 @@ function DriverRow({ row, sortMode, position }: {
                     <Text fontSize={11} color={appTheme.colors.textMuted}>
                         {row.completed_shipments} chuyến
                     </Text>
-                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                        {Number(row.on_time_rate).toFixed(0)}% đúng giờ
-                    </Text>
                     {row.incident_count > 0 ? (
                         <Text fontSize={11} color={appTheme.colors.danger}>
                             {row.incident_count} sự cố

@@ -126,12 +126,12 @@ describe('tripService', () => {
     });
 
     describe('submitLoadingProof', () => {
-        it('G62-FE-38: submitLoadingProof(5, formData) → POST /api/trips/5/loaded', async () => {
-            mockApi.postForm = jest.fn().mockResolvedValue({ message: 'OK', status: 'LOADED' });
+        it('G62-FE-38: submitLoadingProof(5, formData) → POST /api/trips/5/start-transit', async () => {
+            mockApi.postForm = jest.fn().mockResolvedValue({ message: 'OK', status: 'transit' });
 
             await tripService.submitLoadingProof(5, new FormData());
 
-            expect(mockApi.postForm).toHaveBeenCalledWith('/api/trips/5/loaded', expect.any(FormData));
+            expect(mockApi.postForm).toHaveBeenCalledWith('/api/trips/5/start-transit', expect.any(FormData));
         });
     });
 

@@ -41,8 +41,7 @@ function PhotoViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
 const TIMELINE_STEPS: { key: keyof ShipmentWithPhotos; label: string }[] = [
     { key: 'claimed_at',   label: 'Đã nhận đơn' },
     { key: 'picking_at',   label: 'Bắt đầu lấy hàng' },
-    { key: 'loaded_at',    label: 'Đã chất hàng' },
-    { key: 'transit_at',   label: 'Bắt đầu vận chuyển' },
+    { key: 'transit_at',   label: 'Đang vận chuyển' },
     { key: 'arrived_at',   label: 'Đã đến nơi' },
     { key: 'completed_at', label: 'Hoàn thành' },
     { key: 'cancelled_at', label: 'Hủy giao hàng' },

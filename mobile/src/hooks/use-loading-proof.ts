@@ -14,7 +14,7 @@ async function compress(uri: string): Promise<string> {
     return r.uri;
 }
 
-// PICKING → LOADED: ảnh lấy hàng bắt buộc (BR-013/014)
+// PICKING → TRANSIT: ảnh lấy hàng bắt buộc (BR-013/014)
 export function useLoadingProof(onSuccess?: (trip: ActiveTrip) => void) {
     const [state, setState] = useState<State>({ isUploading: false, error: null });
 

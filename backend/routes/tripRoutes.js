@@ -31,17 +31,17 @@ router.post('/:id/claim',   driverOnly, tripController.claimTrip);
 router.patch('/:id/status', driverOnly, tripController.updateStatus);
 router.post('/:id/release', driverOnly, tripController.releaseTrip);
 
-// ITEM 1: PICKING → LOADED — ảnh lấy hàng bắt buộc (BR-013/014)
+// ITEM 1: PICKING → TRANSIT — ảnh lấy hàng bắt buộc (BR-013/014)
 // Field: 'proof' | 'image' | 'photo'
 router.post(
-    '/:id/loaded',
+    '/:id/start-transit',
     driverOnly,
     handleUpload(uploadProof.fields([
         { name: 'proof', maxCount: 1 },
         { name: 'image', maxCount: 1 },
         { name: 'photo', maxCount: 1 },
     ])),
-    tripController.loadTrip,
+    tripController.startTransit,
 );
 
 // ITEM 2: TH3 — Driver báo khách chưa trả tiền → tạo Customer Debt
@@ -99,6 +99,11 @@ router.patch(
     ])),
     paymentController.updatePayment,
 );
+
+// Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến
+// Body: { actual_km?: number }
+router.post('/:id/request-receipt', driverOnly, tripController.requestReceipt);
+router.get('/:id/receipt-request',  driverOnly, tripController.getReceiptRequest);
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);

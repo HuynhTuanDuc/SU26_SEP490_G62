@@ -11,7 +11,7 @@ describe('kpiService', () => {
     describe('getMyKPI', () => {
         it('G62-FE-51: getMyKPI() → GET /api/kpi/me trả về records', async () => {
             mockApi.get = jest.fn().mockResolvedValue({
-                kpi: [{ id: 1, completed_shipments: 10, total_revenue: '5000000', on_time_rate: '90' }],
+                kpi: [{ id: 1, completed_shipments: 10, total_revenue: '5000000' }],
             });
 
             const result = await kpiService.getMyKPI();

@@ -1,10 +1,6 @@
 const cron = require('node-cron');
 const pool = require('../config/database');
 
-// ─── Tự động đánh dấu overdue cho công nợ quá hạn ────────────────────────────
-// Chạy 00:05 mỗi ngày
-// Điều kiện: status IN ('unpaid','partial') AND due_date < TODAY
-// → chuyển sang 'overdue' và ghi updated_at
 
 const markOverdueDebts = async () => {
     try {
@@ -25,8 +21,6 @@ const markOverdueDebts = async () => {
     }
 };
 
-// ─── Tự động reject leave request quá ngày mà chưa được duyệt/từ chối ────────
-// Chạy 00:05 mỗi ngày
 
 const rejectExpiredLeaveRequests = async () => {
     try {

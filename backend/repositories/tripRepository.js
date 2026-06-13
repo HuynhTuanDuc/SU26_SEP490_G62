@@ -24,6 +24,7 @@ const getDriverVehicleGroupId = async (driverId) => {
 const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = null } = {}) => {
     const offset = (page - 1) * limit;
 
+    // vehicle_group_id đã bị xoá khỏi order_shipments — lookup qua orders
     const rowsWhere  = vehicleGroupId
         ? `WHERE os.status = 'available' AND os.owner_driver_id IS NULL AND vg.id = $3`
         : `WHERE os.status = 'available' AND os.owner_driver_id IS NULL`;
@@ -57,7 +58,7 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
                 vg.max_load_weight_kg
              FROM order_shipments os
              JOIN orders o          ON o.id = os.order_id
-             JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
+             JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
              ${rowsWhere}
              ORDER BY os.created_at ASC
              LIMIT $1 OFFSET $2`,
@@ -66,7 +67,8 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
         pool.query(
             `SELECT COUNT(*)::int AS total
              FROM order_shipments os
-             JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
+             JOIN orders o ON o.id = os.order_id
+             JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
              ${countWhere}`,
             countParams,
         ),
@@ -93,7 +95,6 @@ const getActiveTrip = async (driverId) => {
             os.version,
             os.claimed_at,
             os.picking_at,
-            os.loaded_at,
             os.transit_at,
             os.arrived_at,
             os.completed_at,
@@ -146,6 +147,68 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+
+        const vehicleCheck = await client.query(
+            `SELECT
+                v.id,
+                v.plate_number,
+                v.status,
+                v.assigned_driver_id,
+                d.vehicle_id AS driver_vehicle_id
+             FROM vehicles v
+             JOIN drivers d ON d.profile_id = $2
+             WHERE v.id = $1
+             LIMIT 1`,
+            [vehicleId, driverId],
+        );
+        const vehicle = vehicleCheck.rows[0];
+        if (!vehicle || Number(vehicle.assigned_driver_id) !== Number(driverId) || Number(vehicle.driver_vehicle_id) !== Number(vehicleId)) {
+            await client.query('ROLLBACK');
+            throw new Error('DRIVER_VEHICLE_MISMATCH');
+        }
+        if (vehicle.status !== 'active') {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_UNAVAILABLE');
+        }
+
+        const vehicleMaintenanceCheck = await client.query(
+            `SELECT id
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [vehicleId],
+        );
+        if (vehicleMaintenanceCheck.rows[0]) {
+            await client.query('ROLLBACK');
+            throw new Error('VEHICLE_MAINTENANCE');
+        }
+
+        const driverMaintenanceCheck = await client.query(
+            `SELECT id
+             FROM maintenance_records
+             WHERE performed_by = $1
+               AND vehicle_id <> $2
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [driverId, vehicleId],
+        );
+        if (driverMaintenanceCheck.rows[0]) {
+            await client.query('ROLLBACK');
+            throw new Error('DRIVER_MAINTENANCE');
+        }
+
+        const activeVehicleCheck = await client.query(
+            `SELECT id FROM order_shipments
+             WHERE vehicle_id = $1
+               AND status = ANY($2::text[])
+             LIMIT 1`,
+            [vehicleId, ACTIVE_STATUSES],
+        );
+        if (activeVehicleCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
+            throw new Error('ACTIVE_VEHICLE_TRIP');
+        }
 
         const activeCheck = await client.query(
             `SELECT id FROM order_shipments
@@ -314,8 +377,8 @@ const updateTripStatus = async (tripId, newStatus, cancelReason = null) => {
                AND stop_index = (SELECT MIN(stop_index) FROM trip_stops WHERE shipment_id = $1 AND stop_type = 'pickup')`,
             [tripId],
         );
-    } else if (newStatus === 'loaded') {
-        // Driver đã lấy hàng xong → mark tất cả pickup stops là completed
+    } else if (newStatus === 'transit') {
+        // Driver bắt đầu vận chuyển → mark tất cả pickup stops là completed
         await pool.query(
             `UPDATE trip_stops SET arrived_at = COALESCE(arrived_at, NOW()), completed_at = NOW()
              WHERE shipment_id = $1 AND stop_type = 'pickup' AND completed_at IS NULL`,
@@ -527,7 +590,7 @@ const getAvailableShipmentDetail = async (shipmentId) => {
              WHERE os2.order_id = os.order_id) AS total_order_legs
          FROM order_shipments os
          JOIN orders o          ON o.id = os.order_id
-         JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
+         JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
          WHERE os.id = $1
            AND os.status = 'available'
            AND os.owner_driver_id IS NULL`,
@@ -565,7 +628,8 @@ const getAvailableOrderDetail = async (orderId) => {
             os.notes,
             vg.name AS vehicle_group_name
          FROM order_shipments os
-         JOIN vehicle_groups vg ON os.vehicle_group_id = vg.id
+         JOIN orders o2         ON o2.id = os.order_id
+         JOIN vehicle_groups vg ON vg.id = o2.vehicle_group_id
          WHERE os.order_id = $1
            AND os.status = 'available'
            AND os.owner_driver_id IS NULL
@@ -602,7 +666,6 @@ const getOrderWithShipments = async (orderId, driverId) => {
             os.cancel_reason,
             os.claimed_at,
             os.picking_at,
-            os.loaded_at,
             os.transit_at,
             os.arrived_at,
             os.completed_at,

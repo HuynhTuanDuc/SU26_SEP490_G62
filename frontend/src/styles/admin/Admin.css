@@ -1,15 +1,15 @@
 
 
 :root {
-  --admin-primary: #6366F1;
-  --admin-primary-dark: #4F46E5;
-  --admin-primary-light: #E0E7FF;
-  --admin-bg: #F3F4F6;
-  --admin-sidebar-bg: #1F2937;
-  --admin-text-main: #111827;
-  --admin-text-muted: #6B7280;
-  --admin-text-light: #F9FAFB;
-  --admin-border: #E5E7EB;
+  --admin-primary: #3B4FD8;
+  --admin-primary-dark: #2E40C0;
+  --admin-primary-light: #EFF6FF;
+  --admin-bg: #F8F9FF;
+  --admin-sidebar-bg: #F8F9FF;
+  --admin-text-main: #0B1C30;
+  --admin-text-muted: #424751;
+  --admin-text-light: #0B1C30;
+  --admin-border: #C2C6D3;
 }
 
 .admin-layout {
@@ -146,8 +146,9 @@
 
 .user-list-container {
   background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(194, 198, 211, 0.5);
+  box-shadow: 0 1px 3px rgba(11, 28, 48, 0.08);
   overflow: hidden;
 }
 
@@ -168,7 +169,7 @@
 .user-count {
   font-size: 0.9rem;
   color: var(--admin-text-muted);
-  background: var(--admin-bg);
+  background: var(--admin-primary-light);
   padding: 6px 12px;
   border-radius: 20px;
   font-weight: 500;
@@ -185,7 +186,7 @@
 }
 
 .admin-table th {
-  background-color: #F9FAFB;
+  background-color: #EFF4FF;
   padding: 14px 24px;
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -204,7 +205,7 @@
 }
 
 .admin-table tbody tr:hover {
-  background-color: #F9FAFB;
+  background-color: rgba(239, 244, 255, 0.5);
 }
 
 .admin-table tbody tr:last-child td {

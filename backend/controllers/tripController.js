@@ -110,9 +110,9 @@ const completeTrip = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/loaded — PICKING → LOADED với ảnh bắt buộc (BR-013/014)
+// POST /api/trips/:id/start-transit — PICKING → TRANSIT với ảnh lấy hàng bắt buộc (BR-013/014)
 // Field name linh hoạt: 'proof' | 'image' | 'photo'
-const loadTrip = async (req, res) => {
+const startTransit = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
@@ -124,7 +124,7 @@ const loadTrip = async (req, res) => {
             req.file?.path ??
             null;
 
-        const trip = await tripService.loadTrip(tripId, req.user.userId, proofUrl);
+        const trip = await tripService.startTransit(tripId, req.user.userId, proofUrl);
         res.json({ message: 'Xác nhận lấy hàng thành công', trip });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
@@ -294,6 +294,39 @@ const completeStop = async (req, res) => {
     }
 };
 
+// POST /api/trips/:id/request-receipt
+// Body: { actual_km?: number }  — chỉ gửi được 1 lần mỗi chuyến
+const requestReceipt = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const { actual_km } = req.body;
+        const receiptReq = await tripService.requestReceipt(tripId, req.user.userId, { actual_km });
+        res.status(201).json({ message: 'Đã gửi yêu cầu tạo phiếu thu. Coordinator sẽ xử lý sớm nhất.', request: receiptReq });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('đã được gửi') ? 409
+            : err.message.includes('Chỉ có thể') ? 422
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/:id/receipt-request
+const getReceiptRequest = async (req, res) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+
+        const receiptReq = await tripService.getReceiptRequest(tripId, req.user.userId);
+        res.json({ request: receiptReq });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -304,9 +337,11 @@ module.exports = {
     arriveAtStop,
     completeStop,
     completeTrip,
-    loadTrip,
+    startTransit,
     markUnpaid,
     returnComplete,
+    requestReceipt,
+    getReceiptRequest,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,

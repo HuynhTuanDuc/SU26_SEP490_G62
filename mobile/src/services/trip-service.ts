@@ -4,6 +4,7 @@ import type {
     CancelDeliveryResponse,
     ClaimTripResponse,
     CompleteTripResponse,
+    ReceiptRequest,
     ReleaseTripResponse,
     TripPoolResponse,
     TripStatus,
@@ -32,9 +33,9 @@ export const tripService = {
     completeWithProof: (tripId: number, formData: FormData) =>
         apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/complete`, formData),
 
-    // PICKING → LOADED: upload ảnh lấy hàng bắt buộc (BR-013/014)
+    // PICKING → TRANSIT: upload ảnh lấy hàng bắt buộc (BR-013/014)
     submitLoadingProof: (tripId: number, formData: FormData) =>
-        apiClient.postForm<UpdateStatusResponse>(`/api/trips/${tripId}/loaded`, formData),
+        apiClient.postForm<UpdateStatusResponse>(`/api/trips/${tripId}/start-transit`, formData),
 
     // RETURNING → COMPLETED: hoàn hàng với ảnh tuỳ chọn
     returnComplete: (tripId: number, formData: FormData) =>
@@ -82,4 +83,15 @@ export const tripService = {
         apiClient.patchForm<{ message: string; payment: import('@/types/trip').ShipmentPayment }>(
             `/api/trips/${tripId}/payments/${paymentId}`, formData,
         ),
+
+    // Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến
+    requestReceipt: (tripId: number, actualKm?: number) =>
+        apiClient.post<{ message: string; request: ReceiptRequest }>(
+            `/api/trips/${tripId}/request-receipt`,
+            { actual_km: actualKm ?? null },
+        ),
+
+    // Lấy trạng thái yêu cầu phiếu thu hiện tại của chuyến
+    getReceiptRequest: (tripId: number) =>
+        apiClient.get<{ request: ReceiptRequest | null }>(`/api/trips/${tripId}/receipt-request`),
 };

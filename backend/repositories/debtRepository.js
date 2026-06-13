@@ -25,7 +25,6 @@ const getDriverDebts = async (driverId, { status = null } = {}) => {
             d.created_at,
             d.updated_at,
             os.id        AS shipment_id,
-            os.trip_code,
             o.id         AS order_id,
             o.cargo_name
          FROM debts d
@@ -33,7 +32,7 @@ const getDriverDebts = async (driverId, { status = null } = {}) => {
          LEFT JOIN order_shipments os ON os.id = d.shipment_id
          LEFT JOIN orders o            ON o.id  = d.order_id
          WHERE d.debt_type = 'driver' AND d.driver_id = $1
-         GROUP BY d.id, os.id, os.trip_code, o.id, o.cargo_name`;
+         GROUP BY d.id, os.id, o.id, o.cargo_name`;
 
     if (status) {
         params.push(status);

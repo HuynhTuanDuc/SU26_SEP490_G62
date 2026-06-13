@@ -44,7 +44,10 @@ const updateOrder = async (req, res) => {
         const orderId = Number(req.params.id);
         if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
 
-        const updatedOrder = await orderService.updateOrder(orderId, req.body);
+        const updatedOrder = await orderService.updateOrder(orderId, {
+            ...req.body,
+            updated_by: req.user?.userId ?? null,
+        });
         if (!updatedOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
 
         res.json({ message: 'Cập nhật đơn hàng thành công', order: updatedOrder });

@@ -39,7 +39,7 @@ const updateMaintenanceCost = async (req, res) => {
 
 const completeMaintenance = async (req, res) => {
     try {
-        const result = await driverService.completeMaintenance(req.user.userId, req.params.vehicleId);
+        const result = await driverService.completeMaintenance(req.user.userId, req.params.vehicleId, req.body);
         res.json({ message: 'Maintenance marked ready for verification', ...result });
     } catch (err) {
         res.status(err.statusCode || 500).json({ error: err.message });

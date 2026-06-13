@@ -19,11 +19,6 @@ const STATUS_NOTIF = {
         message: 'Bạn đã bắt đầu di chuyển đến điểm lấy hàng.',
         type: 'TRIP_STATUS_UPDATED',
     },
-    loaded: {
-        title: 'Đã lấy hàng xong',
-        message: 'Hàng đã được lấy, chuẩn bị xuất phát giao hàng.',
-        type: 'TRIP_STATUS_UPDATED',
-    },
     transit: {
         title: 'Đang vận chuyển',
         message: 'Chuyến đang trên đường vận chuyển đến điểm giao.',
@@ -94,6 +89,21 @@ const claimTrip = async (shipmentId, driverId) => {
     } catch (err) {
         if (err.message === 'ACTIVE_TRIP') {
             throw new Error('Bạn đang có chuyến đang hoạt động, không thể nhận thêm chuyến mới');
+        }
+        if (err.message === 'ACTIVE_VEHICLE_TRIP') {
+            throw new Error('Xe dang co chuyen dang hoat dong, khong the nhan them chuyen moi');
+        }
+        if (err.message === 'VEHICLE_UNAVAILABLE') {
+            throw new Error('Xe hien khong san sang cho van hanh');
+        }
+        if (err.message === 'VEHICLE_MAINTENANCE') {
+            throw new Error('Xe dang trong bao tri, khong the nhan chuyen');
+        }
+        if (err.message === 'DRIVER_VEHICLE_MISMATCH') {
+            throw new Error('Tai xe chua duoc gan hop le voi xe nay');
+        }
+        if (err.message === 'DRIVER_MAINTENANCE') {
+            throw new Error('Tai xe dang phu trach bao tri xe khac');
         }
         if (err.message === 'SAME_ORDER') {
             throw new Error('SAME_ORDER:Bạn đã có một chuyến trong đơn hàng này rồi');
@@ -208,8 +218,8 @@ const completeTrip = async (tripId, driverId, proofFileUrl, receiptFileUrl) => {
     return completedTrip;
 };
 
-// ITEM 1 — PICKING → LOADED with mandatory loading proof (BR-013/014)
-const loadTrip = async (tripId, driverId, proofFileUrl) => {
+// PICKING → TRANSIT with mandatory loading proof (BR-013/014)
+const startTransit = async (tripId, driverId, proofFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
@@ -218,17 +228,79 @@ const loadTrip = async (tripId, driverId, proofFileUrl) => {
 
     await tripRepository.saveLoadingProof(tripId, driverId, proofFileUrl);
 
-    const updatedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.LOADED);
+    const updatedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.TRANSIT);
 
     notificationService.createForUser(driverId, {
-        title: 'Đã lấy hàng xong',
-        message: `Hàng đã được lấy tại chuyến #${tripId}, chuẩn bị xuất phát giao hàng.`,
+        title: 'Đang vận chuyển',
+        message: `Đã lấy hàng thành công — chuyến #${tripId} đang trên đường giao hàng.`,
         type: 'TRIP_STATUS_UPDATED',
         entityType: 'shipments',
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
 
     return updatedTrip;
+};
+
+// Driver gửi yêu cầu tạo phiếu thu — coordinator nhận và xử lý
+// Chỉ được gửi 1 lần mỗi chuyến (UNIQUE constraint trên shipment_id)
+const requestReceipt = async (tripId, driverId, { actual_km } = {}) => {
+    const trip = await tripRepository.getTripById(tripId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền yêu cầu phiếu thu cho chuyến này');
+    if (!['transit', 'arrived', 'completed'].includes(trip.status)) {
+        throw new Error('Chỉ có thể yêu cầu phiếu thu khi chuyến đang vận chuyển, đã đến nơi, hoặc đã hoàn thành');
+    }
+
+    const existing = await pool.query(
+        'SELECT id, status FROM shipment_receipt_requests WHERE shipment_id = $1',
+        [tripId],
+    );
+    if (existing.rows.length > 0) {
+        throw new Error('Yêu cầu tạo phiếu thu đã được gửi cho chuyến này rồi. Vui lòng chờ coordinator xử lý.');
+    }
+
+    const km = actual_km ? Number(actual_km) : null;
+    if (km !== null && (isNaN(km) || km <= 0)) {
+        throw new Error('Số km thực tế không hợp lệ');
+    }
+
+    const result = await pool.query(
+        `INSERT INTO shipment_receipt_requests (shipment_id, driver_id, actual_km, status, requested_at)
+         VALUES ($1, $2, $3, 'pending', NOW())
+         RETURNING *`,
+        [tripId, driverId, km],
+    );
+
+    // Notify all active coordinators
+    const coordResult = await pool.query(
+        `SELECT a.id FROM accounts a
+         JOIN roles r ON r.id = a.role_id
+         WHERE r.name = 'coordinator' AND a.is_active = TRUE`,
+    );
+    const coordIds = coordResult.rows.map(r => r.id);
+    if (coordIds.length > 0) {
+        notificationService.createForUsers(coordIds, {
+            title: 'Yêu cầu tạo phiếu thu',
+            message: `Tài xế yêu cầu phiếu thu cho chuyến #${tripId}${km ? ` (${km} km thực tế)` : ''} — Đơn #${trip.order_id}.`,
+            type: 'RECEIPT_REQUEST',
+            entityType: 'shipments',
+            entityId: tripId,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
+
+    return result.rows[0];
+};
+
+const getReceiptRequest = async (tripId, driverId) => {
+    const trip = await tripRepository.getTripById(tripId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền xem chuyến này');
+
+    const result = await pool.query(
+        'SELECT * FROM shipment_receipt_requests WHERE shipment_id = $1',
+        [tripId],
+    );
+    return result.rows[0] ?? null;
 };
 
 // ITEM 2 — TH3: Driver marks customer unpaid → creates Customer Debt
@@ -364,9 +436,11 @@ module.exports = {
     updateStatus,
     releaseTrip,
     completeTrip,
-    loadTrip,
+    startTransit,
     markUnpaid,
     returnComplete,
+    requestReceipt,
+    getReceiptRequest,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,

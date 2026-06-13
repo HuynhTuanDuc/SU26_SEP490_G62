@@ -242,7 +242,7 @@
  * /api/admin/vehicles/{id}/send-to-maintenance:
  *   post:
  *     tags: [Vehicle Management]
- *     summary: Create maintenance record and move vehicle to maintenance
+ *     summary: Create maintenance record and move active or broken vehicle to maintenance
  *     security:
  *       - bearerAuth: []
  * /api/admin/vehicles/{id}/verify-maintenance:
@@ -307,7 +307,7 @@
  * /api/admin/vehicles/{id}/driver-assignment:
  *   patch:
  *     tags: [Vehicle Management]
- *     summary: Assign or unassign driver from active vehicle
+ *     summary: Assign driver to active vehicle, or unassign driver from active, maintenance, or broken vehicle
  *     security:
  *       - bearerAuth: []
  *     parameters:

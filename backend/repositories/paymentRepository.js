@@ -2,7 +2,7 @@ const pool = require('../config/database');
 
 const recordCashPayment = async ({ shipmentId, amount, collectedBy, notes }) => {
     const result = await pool.query(
-        `INSERT INTO shipment_payments
+        `INSERT INTO shipment_receipts
              (shipment_id, payment_type, amount, collected_by, notes, collected_at)
          VALUES ($1, 'cash_collected', $2, $3, $4, NOW())
          RETURNING *`,
@@ -35,7 +35,7 @@ const getShipmentPayments = async (shipmentId) => {
                 FILTER (WHERE pr.id IS NOT NULL),
                 '[]'::json
             ) AS receipt_urls
-         FROM shipment_payments sp
+         FROM shipment_receipts sp
          LEFT JOIN payment_receipts pr ON pr.payment_id = sp.id
          WHERE sp.shipment_id = $1
          GROUP BY sp.id
@@ -57,7 +57,7 @@ const getShipmentFinancialSummary = async (shipmentId) => {
                           AND d.status NOT IN ('paid')), 0)           AS customer_debt_total
          FROM order_shipments os
          JOIN orders o ON o.id = os.order_id
-         LEFT JOIN shipment_payments sp ON sp.shipment_id = os.id
+         LEFT JOIN shipment_receipts sp ON sp.shipment_id = os.id
          LEFT JOIN debts d ON d.shipment_id = os.id
          WHERE os.id = $1
          GROUP BY os.id, os.actual_price, os.estimated_price, o.payment_type`,
@@ -95,7 +95,7 @@ const getPaymentById = async (paymentId) => {
         `SELECT sp.id, sp.shipment_id, sp.payment_type, sp.amount::text, sp.collected_by,
                 sp.notes, sp.collected_at,
                 COALESCE(json_agg(pr.file_url ORDER BY pr.uploaded_at) FILTER (WHERE pr.id IS NOT NULL), '[]'::json) AS receipt_urls
-         FROM shipment_payments sp
+         FROM shipment_receipts sp
          LEFT JOIN payment_receipts pr ON pr.payment_id = sp.id
          WHERE sp.id = $1
          GROUP BY sp.id`,
@@ -106,7 +106,7 @@ const getPaymentById = async (paymentId) => {
 
 const updateShipmentPayment = async (paymentId, newAmount) => {
     const result = await pool.query(
-        `UPDATE shipment_payments SET amount = $1 WHERE id = $2 RETURNING *`,
+        `UPDATE shipment_receipts SET amount = $1 WHERE id = $2 RETURNING *`,
         [newAmount, paymentId],
     );
     return result.rows[0];

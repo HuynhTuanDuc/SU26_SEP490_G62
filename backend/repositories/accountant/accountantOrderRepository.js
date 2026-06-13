@@ -82,16 +82,16 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 }) => {
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments (
-            order_id, shipment_index, vehicle_group_id,
+            order_id, shipment_index,
             vehicle_id, owner_driver_id,
             estimated_price, actual_price,
             cargo_name, cargo_weight_kg,
             status, notes, completed_at, created_at, updated_at
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'completed', $10, NOW(), NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9, NOW(), NOW(), NOW())
          RETURNING id`,
         [
-            orderId, shipmentIndex, vehicleGroupId,
+            orderId, shipmentIndex,
             vehicleId, driverId,
             estimatedPrice, actualPrice || null,
             cargoName || null, cargoWeight || 0,
@@ -237,16 +237,17 @@ const createOrderWithShipments = async (orderData) => {
         const orderResult = await client.query(
             `INSERT INTO orders (
                 customer_id, created_by, updated_by,
-                cargo_name, payment_type,
+                cargo_name, payment_type, vehicle_group_id,
                 total_estimated_price, total_actual_price,
                 derived_status, notes, created_at, updated_at
             )
-             VALUES ($1, $2, $2, $3, 'cash', $4, 0, 'completed', $5, NOW(), NOW())
+             VALUES ($1, $2, $2, $3, 'cash', $4, $5, 0, 'completed', $6, NOW(), NOW())
              RETURNING *`,
             [
                 customerId,
                 orderData.created_by,
                 orderData.customer_name || null,
+                vehicleGroupId,
                 totalEstimatedPrice,
                 orderNotes,
             ]

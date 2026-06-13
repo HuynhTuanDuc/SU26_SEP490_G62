@@ -22,7 +22,6 @@ const getDriverCollections = async (driverId, { status = null, shipmentId = null
             cc.reject_reason,
             cc.debt_id,
             cc.shipment_id,
-            os.trip_code,
             o.cargo_name
          FROM cash_collections cc
          LEFT JOIN order_shipments os ON os.id = cc.shipment_id
@@ -48,7 +47,6 @@ const getCollectionById = async (id, driverId) => {
             cc.reject_reason,
             cc.debt_id,
             cc.shipment_id,
-            os.trip_code,
             o.cargo_name
          FROM cash_collections cc
          LEFT JOIN order_shipments os ON os.id = cc.shipment_id

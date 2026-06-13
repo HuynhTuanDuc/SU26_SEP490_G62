@@ -4,7 +4,7 @@ import {
     Package, PackageCheck,
     TriangleAlert, Truck,
 } from 'lucide-react-native';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
@@ -24,9 +24,15 @@ import type { TripStatus } from '@/types/trip';
 
 // ─── Active trip banner ───────────────────────────────────────────────────────
 
-function ActiveTripBanner({ onPress }: { onPress: () => void }) {
-    const { trip, isLoading } = useActiveTrip();
-
+function ActiveTripBanner({
+    trip,
+    isLoading,
+    onPress,
+}: {
+    trip: import('@/types/trip').ActiveTrip | null;
+    isLoading: boolean;
+    onPress: () => void;
+}) {
     if (isLoading) return <ActiveTripBannerSkeleton />;
 
     if (!trip) {
@@ -116,6 +122,7 @@ function ActiveTripBanner({ onPress }: { onPress: () => void }) {
 
 type ActionItem = {
     route: string;
+    onPress?: () => void;
     icon: React.ReactNode;
     label: string;
     sub: string;
@@ -125,7 +132,7 @@ type ActionItem = {
 function GridAction({ item }: { item: ActionItem }) {
     return (
         <Pressable
-            onPress={() => router.push(item.route as never)}
+            onPress={item.onPress ?? (() => router.push(item.route as never))}
             style={({ pressed }) => [s.gridCard, pressed && { opacity: 0.75 }]}
         >
             <View style={[s.gridIcon, { backgroundColor: item.iconBg }]}>
@@ -143,48 +150,58 @@ function GridAction({ item }: { item: ActionItem }) {
 
 // ─── Home screen ──────────────────────────────────────────────────────────────
 
-const GRID_ACTIONS: ActionItem[] = [
-    {
-        route: '/trip-pool',
-        icon: <PackageCheck size={24} color={appTheme.colors.primary} />,
-        label: 'Nhận chuyến',
-        sub: 'Danh sách chuyến phù hợp',
-        iconBg: appTheme.colors.primarySoft,
-    },
-    {
-        route: '/debt',
-        icon: <Banknote size={24} color={appTheme.colors.danger} />,
-        label: 'Công nợ',
-        sub: 'Nộp tiền thu hộ về cty',
-        iconBg: appTheme.colors.dangerSoft,
-    },
-    {
-        route: '/leave',
-        icon: <CalendarOff size={24} color={appTheme.colors.warning} />,
-        label: 'Nghỉ phép',
-        sub: 'Đăng ký ngày nghỉ',
-        iconBg: appTheme.colors.warningSoft,
-    },
-    {
-        route: '/report-incident',
-        icon: <TriangleAlert size={24} color="#EA580C" />,
-        label: 'Báo sự cố',
-        sub: 'Tai nạn, hỏng xe...',
-        iconBg: '#FFF7ED',
-    },
-];
-
 export function DriverHomeScreen() {
     const insets = useSafeAreaInsets();
     const { profile, isLoading: profileLoading } = useProfile();
     const { stats } = useTripStats();
     const { unreadCount } = useNotifications();
     const { debt_remaining, open_incident_count, reload: reloadSummary } = useHomeSummary();
+    const { trip: activeTrip, isLoading: tripLoading } = useActiveTrip();
 
     // Load summary on mount
     useEffect(() => { reloadSummary(); }, [reloadSummary]);
 
     const displayName = profileLoading ? '...' : (profile?.full_name ?? 'Tài xế');
+
+    const handleReportIncident = () => {
+        if (!activeTrip) {
+            Alert.alert('Không có chuyến đang thực hiện', 'Bạn cần có chuyến đang hoạt động để báo sự cố.');
+            return;
+        }
+        router.push({ pathname: '/report-incident', params: { shipmentId: String(activeTrip.id) } });
+    };
+
+    const GRID_ACTIONS: ActionItem[] = [
+        {
+            route: '/trip-pool',
+            icon: <PackageCheck size={24} color={appTheme.colors.primary} />,
+            label: 'Nhận chuyến',
+            sub: 'Danh sách chuyến phù hợp',
+            iconBg: appTheme.colors.primarySoft,
+        },
+        {
+            route: '/debt',
+            icon: <Banknote size={24} color={appTheme.colors.danger} />,
+            label: 'Công nợ',
+            sub: 'Nộp tiền thu hộ về cty',
+            iconBg: appTheme.colors.dangerSoft,
+        },
+        {
+            route: '/leave',
+            icon: <CalendarOff size={24} color={appTheme.colors.warning} />,
+            label: 'Nghỉ phép',
+            sub: 'Đăng ký ngày nghỉ',
+            iconBg: appTheme.colors.warningSoft,
+        },
+        {
+            route: '/report-incident',
+            onPress: handleReportIncident,
+            icon: <TriangleAlert size={24} color="#EA580C" />,
+            label: 'Báo sự cố',
+            sub: 'Tai nạn, hỏng xe...',
+            iconBg: '#FFF7ED',
+        },
+    ];
 
     return (
         <>
@@ -226,7 +243,11 @@ export function DriverHomeScreen() {
                 </XStack>
 
                 {/* Active trip */}
-                <ActiveTripBanner onPress={() => router.push('/active-trip')} />
+                <ActiveTripBanner
+                    trip={activeTrip}
+                    isLoading={tripLoading}
+                    onPress={() => router.push('/active-trip')}
+                />
 
                 {/* Stats */}
                 {stats ? (
@@ -269,7 +290,7 @@ export function DriverHomeScreen() {
 
                 {/* Incident summary — BR spec §5 */}
                 {open_incident_count > 0 ? (
-                    <Pressable onPress={() => router.push('/incidents')} style={{ borderRadius: appTheme.radius.lg }}>
+                    <Pressable onPress={() => router.push('/incident-history')} style={{ borderRadius: appTheme.radius.lg }}>
                         <XStack
                             padding={16} borderRadius={appTheme.radius.lg}
                             backgroundColor="#FFF7ED"
