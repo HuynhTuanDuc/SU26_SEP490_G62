@@ -347,6 +347,31 @@ const getOrderReceiptRequest = async (req, res) => {
     }
 };
 
+// GET /api/trips/receipts  — danh sách phiếu thu của driver
+const getDriverReceipts = async (req, res) => {
+    try {
+        const page  = Math.max(1, Number(req.query.page)  || 1);
+        const limit = Math.min(50, Number(req.query.limit) || 20);
+        const receipts = await tripService.getDriverReceipts(req.user.userId, { page, limit });
+        res.json({ receipts });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/receipts/:receiptId  — chi tiết phiếu thu (show cho khách)
+const getDriverReceiptDetail = async (req, res) => {
+    try {
+        const receiptId = Number(req.params.receiptId);
+        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+        const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
+        res.json({ receipt });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -368,4 +393,6 @@ module.exports = {
     requestOrderReceipt,
     getOrderReceiptRequest,
     getPendingReceiptOrder,
+    getDriverReceipts,
+    getDriverReceiptDetail,
 };

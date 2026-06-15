@@ -444,6 +444,16 @@ const getPendingReceiptOrder = async (driverId) => {
     return tripRepository.getPendingReceiptOrder(driverId);
 };
 
+const getDriverReceipts = async (driverId, opts) => {
+    return tripRepository.getDriverReceipts(driverId, opts);
+};
+
+const getDriverReceiptDetail = async (receiptId, driverId) => {
+    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
+    if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền xem');
+    return receipt;
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -462,4 +472,6 @@ module.exports = {
     requestOrderReceipt,
     getOrderReceiptRequest,
     getPendingReceiptOrder,
+    getDriverReceipts,
+    getDriverReceiptDetail,
 };
