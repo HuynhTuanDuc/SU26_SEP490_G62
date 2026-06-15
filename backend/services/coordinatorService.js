@@ -774,9 +774,27 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     try {
         await client.query('BEGIN');
         const pricingSnapshot = await getShipmentPricingSnapshot(client, requestId);
-        const computed = computeReceiptAmount(pricingSnapshot);
         const targetShipment = pricingSnapshot?.primaryShipment;
         if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
+        const requestActualKm = Number(req.actual_km);
+        if (Number.isFinite(requestActualKm) && requestActualKm > 0) {
+            await client.query(
+                `UPDATE order_shipments
+                 SET actual_distance_km = $1,
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [requestActualKm, targetShipment.id],
+            );
+
+            targetShipment.actual_distance_km = requestActualKm;
+            const matchedShipment = pricingSnapshot?.shipments?.find(
+                (shipment) => Number(shipment.id) === Number(targetShipment.id),
+            );
+            if (matchedShipment) {
+                matchedShipment.actual_distance_km = requestActualKm;
+            }
+        }
+        const computed = computeReceiptAmount(pricingSnapshot);
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
         for (const expense of normalizedExpenses) {
@@ -838,14 +856,6 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                 coordinatorId,
             ],
         );
-
-        // Cập nhật actual_distance_km nếu driver đã nhập km thực tế
-        if (req.actual_km) {
-            await client.query(
-                `UPDATE order_shipments SET actual_distance_km = $1, updated_at = NOW() WHERE id = $2`,
-                [req.actual_km, targetShipment.id],
-            );
-        }
 
         await client.query('COMMIT');
 
