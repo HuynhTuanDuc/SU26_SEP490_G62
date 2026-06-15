@@ -14,10 +14,18 @@ function OrderCard({ order, onOpenPayment, onOpenDetail }) {
     order.debt_status ||
     (order.payment_type === "client_credit" ? "unpaid" : "paid");
   const statusCfg = DEBT_STATUS[debtStatus] || DEBT_STATUS.paid;
-  const total = Number(order.debt_total || order.estimated_price || 0);
+
+  // Giá trị thực tế (SUM order_shipments.actual_price) — là giá trị CHÍNH
+  const actual = Number(order.actual_price || 0);
+  // Giá trị ước tính (SUM order_shipments.estimated_price) — chỉ để tham khảo
+  const estimated = Number(order.estimated_price || 0);
+  // Tiền đã thu (SUM confirmed debt_payments cho debt thuộc đơn này)
   const paid = Number(order.debt_paid || 0);
-  const remaining = Number(order.debt_remaining || Math.max(total - paid, 0));
+  // Tiền còn nợ = actual - paid (công thức tổng quát, kể cả cash/bank)
+  const remaining = Number(order.debt_remaining ?? Math.max(actual - paid, 0));
   const shipmentCount = Number(order.shipment_count) || 0;
+  // Có chênh lệch giữa ước tính và thực tế không
+  const hasDiff = estimated > 0 && Math.abs(estimated - actual) > 0.01;
 
   const orderDate = order.created_at
     ? new Date(order.created_at).toLocaleDateString("vi-VN", {
@@ -90,9 +98,24 @@ function OrderCard({ order, onOpenPayment, onOpenDetail }) {
           <span style={{ fontSize: 12, color: "#64748b" }}>chuyến</span>
         </div>
 
-        <span style={{ fontWeight: 700, color: "#0f172a", textAlign: "right", fontSize: 13 }}>
-          {fmt(total)}đ
-        </span>
+        <div
+          title={hasDiff ? `Ước tính: ${fmt(estimated)}đ` : ""}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            cursor: hasDiff ? "help" : "default",
+          }}
+        >
+          <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 13 }}>
+            {fmt(actual)}đ
+          </span>
+          {hasDiff && (
+            <span style={{ fontSize: 10, color: "#94a3b8", textDecoration: "line-through" }}>
+              {fmt(estimated)}đ
+            </span>
+          )}
+        </div>
         <span style={{ fontWeight: 700, color: "#16a34a", textAlign: "right", fontSize: 13 }}>
           {fmt(paid)}đ
         </span>
@@ -233,7 +256,7 @@ export default function RevenueTable({ orders, loading, pagination, apiBase, tok
           <span>Khách hàng</span>
           <span>SĐT</span>
           <span>Chuyến</span>
-          <span style={{ textAlign: "right" }}>Tổng giá trị</span>
+          <span style={{ textAlign: "right" }} title="Giá trị thực tế (SUM order_shipments.actual_price)">Tổng giá trị</span>
           <span style={{ textAlign: "right" }}>Đã thu</span>
           <span style={{ textAlign: "right" }}>Còn nợ</span>
           <span style={{ textAlign: "center" }}>Trạng thái</span>

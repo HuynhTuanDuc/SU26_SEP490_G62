@@ -16,9 +16,20 @@ const DEBT_TYPE_CFG = {
 
 export default function DebtTable({ apiBase, token }) {
   const [debts, setDebts] = useState([]);
+  const [groupedDebts, setGroupedDebts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ currentPage: 1, totalPages: 1, totalItems: 0 });
   const [stats, setStats] = useState({ byType: {}, totalRemaining: 0 });
+
+  // View mode: 'detail' | 'grouped'
+  const [viewMode, setViewMode] = useState("grouped");
+
+  // Expanded rows (for grouped view)
+  const [expandedRows, setExpandedRows] = useState({});
+
+  // Detail view data for expanded row
+  const [personDebts, setPersonDebts] = useState({});
+  const [loadingPersonDebts, setLoadingPersonDebts] = useState({});
 
   // Filters
   const [debtTypeFilter, setDebtTypeFilter] = useState(""); // "" | "customer" | "driver"
@@ -54,6 +65,34 @@ export default function DebtTable({ apiBase, token }) {
     }
   };
 
+  const fetchGroupedDebts = async (page = 1) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page, limit: 20 });
+      if (debtTypeFilter) params.set("debt_type", debtTypeFilter);
+      if (statusFilter) params.set("status", statusFilter);
+      if (customerSearch.trim()) params.set("customer", customerSearch.trim());
+      if (driverSearch.trim()) params.set("driver", driverSearch.trim());
+
+      const res = await fetch(`${apiBase}/accountant/debts/grouped?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGroupedDebts(data.debts || []);
+        setPagination({
+          currentPage: data.currentPage,
+          totalPages: data.totalPages,
+          totalItems: data.totalPersons,
+        });
+      }
+    } catch (err) {
+      console.error("Không tải được công nợ nhóm:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchStats = async () => {
     try {
       const res = await fetch(`${apiBase}/accountant/debts/stats`, {
@@ -68,18 +107,55 @@ export default function DebtTable({ apiBase, token }) {
     }
   };
 
+  const fetchPersonDebts = async (personType, personKey, customerIds, driverId) => {
+    setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: true }));
+    try {
+      let url;
+      if (personType === "driver" && driverId) {
+        url = `${apiBase}/accountant/debts/person/driver/${driverId}`;
+      } else if (customerIds && customerIds.length > 0) {
+        url = `${apiBase}/accountant/debts/person/customer?customer_ids=${customerIds.join(",")}`;
+      } else {
+        return;
+      }
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPersonDebts((prev) => ({ ...prev, [personKey]: data.debts || [] }));
+      }
+    } catch (err) {
+      console.error("Không tải chi tiết công nợ:", err);
+    } finally {
+      setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: false }));
+    }
+  };
+
   useEffect(() => {
-    fetchDebts(1);
+    if (viewMode === "detail") {
+      fetchDebts(1);
+    } else {
+      fetchGroupedDebts(1);
+    }
     fetchStats();
-  }, [debtTypeFilter, statusFilter]);
+  }, [debtTypeFilter, statusFilter, viewMode]);
 
   const handlePageChange = (page) => {
-    fetchDebts(page);
+    if (viewMode === "detail") {
+      fetchDebts(page);
+    } else {
+      fetchGroupedDebts(page);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSearch = () => {
-    fetchDebts(1);
+    if (viewMode === "detail") {
+      fetchDebts(1);
+    } else {
+      fetchGroupedDebts(1);
+    }
   };
 
   const handleClearFilters = () => {
@@ -87,7 +163,30 @@ export default function DebtTable({ apiBase, token }) {
     setStatusFilter("");
     setCustomerSearch("");
     setDriverSearch("");
-    setTimeout(() => fetchDebts(1), 0);
+    setTimeout(() => {
+      if (viewMode === "detail") {
+        fetchDebts(1);
+      } else {
+        fetchGroupedDebts(1);
+      }
+    }, 0);
+  };
+
+  const toggleExpand = (debt, key) => {
+    if (expandedRows[key]) {
+      setExpandedRows((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    } else {
+      setExpandedRows((prev) => ({ ...prev, [key]: true }));
+      const personType = debt.debt_type;
+      const personKey = `${debt.debt_type}-${debt.customer_ids?.[0] || debt.driver_id}`;
+      if (!personDebts[key]) {
+        fetchPersonDebts(personType, key, debt.customer_ids, debt.driver_id);
+      }
+    }
   };
 
   // Build stat cards from stats.byType
@@ -132,6 +231,34 @@ export default function DebtTable({ apiBase, token }) {
           alignItems: "flex-end",
         }}
       >
+        {/* View mode toggle */}
+        <FilterGroup label="Chế độ xem">
+          <div style={{ display: "flex", gap: 4 }}>
+            <button
+              onClick={() => setViewMode("grouped")}
+              style={{
+                ...viewModeBtnStyle,
+                background: viewMode === "grouped" ? "#1d4ed8" : "#fff",
+                color: viewMode === "grouped" ? "#fff" : "#475569",
+                borderColor: viewMode === "grouped" ? "#1d4ed8" : "#e2e8f0",
+              }}
+            >
+              Nhóm theo người
+            </button>
+            <button
+              onClick={() => setViewMode("detail")}
+              style={{
+                ...viewModeBtnStyle,
+                background: viewMode === "detail" ? "#1d4ed8" : "#fff",
+                color: viewMode === "detail" ? "#fff" : "#475569",
+                borderColor: viewMode === "detail" ? "#1d4ed8" : "#e2e8f0",
+              }}
+            >
+              Chi tiết
+            </button>
+          </div>
+        </FilterGroup>
+
         <FilterGroup label="Loại nợ">
           <select
             value={debtTypeFilter}
@@ -198,250 +325,22 @@ export default function DebtTable({ apiBase, token }) {
         <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
           Đang tải dữ liệu công nợ...
         </div>
-      ) : debts.length === 0 ? (
-        <div style={{ padding: 60, textAlign: "center" }}>
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" style={{ marginBottom: 12 }}>
-            <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>
-          </svg>
-          <p style={{ color: "#64748b", margin: 0 }}>Không có khoản công nợ nào phù hợp.</p>
-        </div>
+      ) : viewMode === "grouped" ? (
+        <GroupedDebtView
+          debts={groupedDebts}
+          expandedRows={expandedRows}
+          personDebts={personDebts}
+          loadingPersonDebts={loadingPersonDebts}
+          toggleExpand={toggleExpand}
+          pagination={pagination}
+          handlePageChange={handlePageChange}
+        />
       ) : (
-        <>
-          <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid #e2e8f0" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
-                  {[
-                    "Loại",
-                    "Người nợ",
-                    "Thông tin liên hệ",
-                    "Đơn / Chuyến",
-                    "Tổng nợ",
-                    "Đã trả",
-                    "Còn nợ",
-                    "Hạn",
-                    "Trạng thái",
-                    "Ghi chú",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        padding: "12px 14px",
-                        textAlign: "left",
-                        fontWeight: 700,
-                        color: "#475569",
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {debts.map((debt) => {
-                  const total = Number(debt.total_amount || 0);
-                  const paid = Number(debt.paid_amount || 0);
-                  const remaining = Number(debt.remaining || 0);
-                  const typeCfg = DEBT_TYPE_CFG[debt.debt_type] || DEBT_TYPE_CFG.customer;
-                  const statusKey = debt.computed_status || "unpaid";
-                  const statusCfg = STATUS_CFG[statusKey] || STATUS_CFG.unpaid;
-
-                  const debtorName =
-                    debt.debt_type === "driver"
-                      ? debt.driver_name || "—"
-                      : debt.customer_name || "—";
-                  const debtorContact =
-                    debt.debt_type === "driver"
-                      ? ""
-                      : [
-                          debt.customer_phone && `📞 ${debt.customer_phone}`,
-                          debt.customer_company && `🏢 ${debt.customer_company}`,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || "—";
-
-                  const orderRef = debt.order_id
-                    ? `#${debt.order_id}${debt.shipment_id ? ` / #${debt.shipment_id}` : ""}`
-                    : "—";
-
-                  const dueDate = debt.due_date
-                    ? new Date(debt.due_date).toLocaleDateString("vi-VN")
-                    : "—";
-
-                  return (
-                    <tr
-                      key={debt.id}
-                      style={{ borderBottom: "1px solid #f1f5f9", transition: "background 0.15s" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      {/* Type */}
-                      <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: typeCfg.color,
-                            background: typeCfg.bg,
-                            border: `1px solid ${typeCfg.border}`,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {typeCfg.label}
-                        </span>
-                      </td>
-
-                      {/* Debtor name */}
-                      <td style={{ padding: "12px 14px", fontWeight: 600, color: "#0f172a", maxWidth: 160 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {debtorName}
-                        </div>
-                      </td>
-
-                      {/* Contact */}
-                      <td style={{ padding: "12px 14px", color: "#475569", fontSize: 12, maxWidth: 200 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {debtorContact || "—"}
-                        </div>
-                      </td>
-
-                      {/* Order / Shipment */}
-                      <td style={{ padding: "12px 14px", color: "#64748b", fontFamily: "monospace", fontSize: 12 }}>
-                        {orderRef}
-                      </td>
-
-                      {/* Total */}
-                      <td style={{ padding: "12px 14px", fontWeight: 700, color: "#0f172a", textAlign: "right", whiteSpace: "nowrap" }}>
-                        {fmt(total)}đ
-                      </td>
-
-                      {/* Paid */}
-                      <td style={{ padding: "12px 14px", fontWeight: 700, color: "#16a34a", textAlign: "right", whiteSpace: "nowrap" }}>
-                        {fmt(paid)}đ
-                      </td>
-
-                      {/* Remaining */}
-                      <td
-                        style={{
-                          padding: "12px 14px",
-                          fontWeight: remaining > 0 ? 700 : 500,
-                          color: remaining > 0 ? "#dc2626" : "#16a34a",
-                          textAlign: "right",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {fmt(remaining)}đ
-                      </td>
-
-                      {/* Due date */}
-                      <td style={{ padding: "12px 14px", color: "#475569", fontSize: 12, whiteSpace: "nowrap" }}>
-                        {dueDate}
-                      </td>
-
-                      {/* Status */}
-                      <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 10px",
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: statusCfg.color,
-                            background: statusCfg.bg,
-                            border: `1px solid ${statusCfg.border}`,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {statusCfg.label}
-                        </span>
-                      </td>
-
-                      {/* Notes */}
-                      <td style={{ padding: "12px 14px", color: "#64748b", fontSize: 12, maxWidth: 180 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {debt.notes || "—"}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {pagination.totalPages > 1 && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "16px 0 0",
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#64748b" }}>
-                Trang {pagination.currentPage} / {pagination.totalPages} — {pagination.totalItems} khoản nợ
-              </span>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  onClick={() => handlePageChange(pagination.currentPage - 1)}
-                  disabled={pagination.currentPage <= 1}
-                  style={{
-                    ...pageBtnStyle,
-                    opacity: pagination.currentPage <= 1 ? 0.5 : 1,
-                    cursor: pagination.currentPage <= 1 ? "not-allowed" : "pointer",
-                  }}
-                >
-                  ← Trước
-                </button>
-                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
-                  .filter(
-                    (p) =>
-                      p === 1 ||
-                      p === pagination.totalPages ||
-                      Math.abs(p - pagination.currentPage) <= 2,
-                  )
-                  .map((p, idx, arr) => (
-                    <React.Fragment key={p}>
-                      {idx > 0 && arr[idx - 1] !== p - 1 && (
-                        <span style={{ color: "#cbd5e1", padding: "0 2px" }}>…</span>
-                      )}
-                      <button
-                        onClick={() => handlePageChange(p)}
-                        style={{
-                          ...pageBtnStyle,
-                          background: p === pagination.currentPage ? "#1d4ed8" : "#fff",
-                          color: p === pagination.currentPage ? "#fff" : "#475569",
-                          borderColor: p === pagination.currentPage ? "#1d4ed8" : "#e2e8f0",
-                        }}
-                      >
-                        {p}
-                      </button>
-                    </React.Fragment>
-                  ))}
-                <button
-                  onClick={() => handlePageChange(pagination.currentPage + 1)}
-                  disabled={pagination.currentPage >= pagination.totalPages}
-                  style={{
-                    ...pageBtnStyle,
-                    opacity: pagination.currentPage >= pagination.totalPages ? 0.5 : 1,
-                    cursor: pagination.currentPage >= pagination.totalPages ? "not-allowed" : "pointer",
-                  }}
-                >
-                  Sau →
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        <DetailDebtView
+          debts={debts}
+          pagination={pagination}
+          handlePageChange={handlePageChange}
+        />
       )}
     </div>
   );
@@ -473,6 +372,326 @@ function DebtStatCard({ label, amount, count, color }) {
     </div>
   );
 }
+
+// Component view chi tiết từng khoản nợ (giữ nguyên bảng cũ)
+function DetailDebtView({ debts, pagination, handlePageChange }) {
+  if (debts.length === 0) {
+    return (
+      <div style={{ padding: 60, textAlign: "center" }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" style={{ marginBottom: 12 }}>
+          <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>
+        </svg>
+        <p style={{ color: "#64748b", margin: 0 }}>Không có khoản công nợ nào phù hợp.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+              {[
+                "Loại",
+                "Người nợ",
+                "Thông tin liên hệ",
+                "Đơn / Chuyến",
+                "Tổng nợ",
+                "Đã trả",
+                "Còn nợ",
+                "Hạn",
+                "Trạng thái",
+                "Ghi chú",
+              ].map((h) => (
+                <th key={h} style={thStyle}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {debts.map((debt) => {
+              const total = Number(debt.total_amount || 0);
+              const paid = Number(debt.paid_amount || 0);
+              const remaining = Number(debt.remaining || 0);
+              const typeCfg = DEBT_TYPE_CFG[debt.debt_type] || DEBT_TYPE_CFG.customer;
+              const statusKey = debt.computed_status || "unpaid";
+              const statusCfg = STATUS_CFG[statusKey] || STATUS_CFG.unpaid;
+
+              const debtorName =
+                debt.debt_type === "driver"
+                  ? debt.driver_name || "—"
+                  : debt.customer_name || "—";
+              const debtorContact =
+                debt.debt_type === "driver"
+                  ? ""
+                  : [
+                      debt.customer_phone && `📞 ${debt.customer_phone}`,
+                      debt.customer_company && `🏢 ${debt.customer_company}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "—";
+
+              const orderRef = debt.order_id
+                ? `#${debt.order_id}${debt.shipment_id ? ` / #${debt.shipment_id}` : ""}`
+                : "—";
+
+              const dueDate = debt.due_date
+                ? new Date(debt.due_date).toLocaleDateString("vi-VN")
+                : "—";
+
+              return (
+                <tr key={debt.id} style={trStyle}>
+                  <td style={tdStyle}>{renderBadge(typeCfg.label, typeCfg.color, typeCfg.bg, typeCfg.border)}</td>
+                  <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 160 }}>{debtorName}</td>
+                  <td style={{ ...tdStyle, color: "#475569", fontSize: 12, maxWidth: 200 }}>{debtorContact || "—"}</td>
+                  <td style={{ ...tdStyle, color: "#64748b", fontFamily: "monospace", fontSize: 12 }}>{orderRef}</td>
+                  <td style={{ ...tdStyle, fontWeight: 700, textAlign: "right" }}>{fmt(total)}đ</td>
+                  <td style={{ ...tdStyle, fontWeight: 700, color: "#16a34a", textAlign: "right" }}>{fmt(paid)}đ</td>
+                  <td style={{ ...tdStyle, fontWeight: remaining > 0 ? 700 : 500, color: remaining > 0 ? "#dc2626" : "#16a34a", textAlign: "right" }}>{fmt(remaining)}đ</td>
+                  <td style={{ ...tdStyle, color: "#475569", fontSize: 12 }}>{dueDate}</td>
+                  <td style={tdStyle}>{renderBadge(statusCfg.label, statusCfg.color, statusCfg.bg, statusCfg.border)}</td>
+                  <td style={{ ...tdStyle, color: "#64748b", fontSize: 12, maxWidth: 180 }}>{debt.notes || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <PaginationControls pagination={pagination} handlePageChange={handlePageChange} itemLabel="khoản nợ" />
+    </>
+  );
+}
+
+// Component view nhóm theo người
+function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts, toggleExpand, pagination, handlePageChange }) {
+  if (debts.length === 0) {
+    return (
+      <div style={{ padding: 60, textAlign: "center" }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" style={{ marginBottom: 12 }}>
+          <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>
+        </svg>
+        <p style={{ color: "#64748b", margin: 0 }}>Không có công nợ nào phù hợp.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {debts.map((debt) => {
+          const key = `${debt.debt_type}-${debt.customer_ids?.[0] || debt.driver_id}`;
+          const isExpanded = !!expandedRows[key];
+          const typeCfg = DEBT_TYPE_CFG[debt.debt_type] || DEBT_TYPE_CFG.customer;
+          const statusKey = debt.computed_status || "unpaid";
+          const statusCfg = STATUS_CFG[statusKey] || STATUS_CFG.unpaid;
+
+          const personName =
+            debt.debt_type === "driver"
+              ? debt.driver_name || "—"
+              : debt.customer_name || "—";
+          const personContact =
+            debt.debt_type === "driver"
+              ? ""
+              : debt.customer_phone
+                ? `📞 ${debt.customer_phone}`
+                : "";
+
+          const totalRemaining = Number(debt.total_remaining || 0);
+
+          return (
+            <div key={key} style={{ border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
+              {/* Header row */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  background: isExpanded ? "#f8fafc" : "#fff",
+                  cursor: "pointer",
+                  gap: 12,
+                }}
+                onClick={() => toggleExpand(debt, key)}
+              >
+                {/* Expand icon */}
+                <span style={{ fontSize: 14, color: "#64748b", width: 20 }}>
+                  {isExpanded ? "▼" : "▶"}
+                </span>
+
+                {/* Type badge */}
+                {renderBadge(typeCfg.label, typeCfg.color, typeCfg.bg, typeCfg.border)}
+
+                {/* Person info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>{personName}</span>
+                    <span style={{ color: "#64748b", fontWeight: 400, fontSize: 12 }}>
+                      ({debt.debt_count} chuyến)
+                    </span>
+                  </div>
+                  {personContact && (
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{personContact}</div>
+                  )}
+                </div>
+
+                {/* Amounts */}
+                <div style={{ textAlign: "right", minWidth: 200 }}>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Còn nợ</div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: totalRemaining > 0 ? "#dc2626" : "#16a34a" }}>
+                    {fmt(totalRemaining)}đ
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    Tổng: {fmt(Number(debt.total_amount))}đ · Đã trả: {fmt(Number(debt.total_paid))}đ
+                  </div>
+                </div>
+
+                {/* Status */}
+                {renderBadge(statusCfg.label, statusCfg.color, statusCfg.bg, statusCfg.border)}
+              </div>
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div style={{ borderTop: "1px solid #e2e8f0", background: "#fff" }}>
+                  {loadingPersonDebts[key] ? (
+                    <div style={{ padding: 20, textAlign: "center", color: "#64748b" }}>Đang tải chi tiết...</div>
+                  ) : (
+                    <div style={{ padding: 12, overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: "#f8fafc" }}>
+                            {["Đơn", "Chuyến", "Tên hàng", "Tổng nợ", "Đã trả", "Còn nợ", "Hạn", "Trạng thái", "Ghi chú"].map((h) => (
+                              <th key={h} style={{ ...thStyle, fontSize: 11, padding: "8px 10px" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(personDebts[key] || []).map((d) => {
+                            const dTotal = Number(d.total_amount || 0);
+                            const dPaid = Number(d.paid_amount || 0);
+                            const dRemaining = Number(d.remaining || 0);
+                            const dStatus = d.computed_status || "unpaid";
+                            const dStatusCfg = STATUS_CFG[dStatus] || STATUS_CFG.unpaid;
+                            const dueDate = d.due_date ? new Date(d.due_date).toLocaleDateString("vi-VN") : "—";
+
+                            return (
+                              <tr key={d.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                                <td style={{ ...tdStyle, fontFamily: "monospace" }}>#{d.order_id}</td>
+                                <td style={{ ...tdStyle, fontFamily: "monospace" }}>#{d.shipment_id}</td>
+                                <td style={{ ...tdStyle, maxWidth: 150 }}>{d.order_cargo_name || "—"}</td>
+                                <td style={{ ...tdStyle, fontWeight: 600, textAlign: "right" }}>{fmt(dTotal)}đ</td>
+                                <td style={{ ...tdStyle, color: "#16a34a", textAlign: "right" }}>{fmt(dPaid)}đ</td>
+                                <td style={{ ...tdStyle, fontWeight: dRemaining > 0 ? 700 : 500, color: dRemaining > 0 ? "#dc2626" : "#16a34a", textAlign: "right" }}>{fmt(dRemaining)}đ</td>
+                                <td style={{ ...tdStyle, color: "#64748b" }}>{dueDate}</td>
+                                <td style={tdStyle}>{renderBadge(dStatusCfg.label, dStatusCfg.color, dStatusCfg.bg, dStatusCfg.border)}</td>
+                                <td style={{ ...tdStyle, color: "#64748b", maxWidth: 150 }}>{d.notes || "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <PaginationControls pagination={pagination} handlePageChange={handlePageChange} itemLabel="người" />
+    </>
+  );
+}
+
+function PaginationControls({ pagination, handlePageChange, itemLabel }) {
+  if (pagination.totalPages <= 1) return null;
+
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0 0" }}>
+      <span style={{ fontSize: 12, color: "#64748b" }}>
+        Trang {pagination.currentPage} / {pagination.totalPages} — {pagination.totalItems} {itemLabel}
+      </span>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => handlePageChange(pagination.currentPage - 1)}
+          disabled={pagination.currentPage <= 1}
+          style={{
+            ...pageBtnStyle,
+            opacity: pagination.currentPage <= 1 ? 0.5 : 1,
+            cursor: pagination.currentPage <= 1 ? "not-allowed" : "pointer",
+          }}
+        >
+          ← Trước
+        </button>
+        {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
+          .filter((p) => p === 1 || p === pagination.totalPages || Math.abs(p - pagination.currentPage) <= 2)
+          .map((p, idx, arr) => (
+            <React.Fragment key={p}>
+              {idx > 0 && arr[idx - 1] !== p - 1 && <span style={{ color: "#cbd5e1", padding: "0 2px" }}>…</span>}
+              <button
+                onClick={() => handlePageChange(p)}
+                style={{
+                  ...pageBtnStyle,
+                  background: p === pagination.currentPage ? "#1d4ed8" : "#fff",
+                  color: p === pagination.currentPage ? "#fff" : "#475569",
+                  borderColor: p === pagination.currentPage ? "#1d4ed8" : "#e2e8f0",
+                }}
+              >
+                {p}
+              </button>
+            </React.Fragment>
+          ))}
+        <button
+          onClick={() => handlePageChange(pagination.currentPage + 1)}
+          disabled={pagination.currentPage >= pagination.totalPages}
+          style={{
+            ...pageBtnStyle,
+            opacity: pagination.currentPage >= pagination.totalPages ? 0.5 : 1,
+            cursor: pagination.currentPage >= pagination.totalPages ? "not-allowed" : "pointer",
+          }}
+        >
+          Sau →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function renderBadge(label, color, bg, border) {
+  return (
+    <span style={{
+      display: "inline-block",
+      padding: "3px 10px",
+      borderRadius: 999,
+      fontSize: 11,
+      fontWeight: 700,
+      color,
+      background: bg,
+      border: `1px solid ${border}`,
+      whiteSpace: "nowrap",
+    }}>
+      {label}
+    </span>
+  );
+}
+
+const thStyle = {
+  padding: "12px 14px",
+  textAlign: "left",
+  fontWeight: 700,
+  color: "#475569",
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  whiteSpace: "nowrap",
+};
+
+const tdStyle = {
+  padding: "12px 14px",
+};
+
+const trStyle = {
+  borderBottom: "1px solid #f1f5f9",
+  transition: "background 0.15s",
+};
 
 const selectStyle = {
   border: "1.5px solid #e2e8f0",
@@ -512,6 +731,15 @@ const pageBtnStyle = {
   borderRadius: 8,
   fontSize: 13,
   fontWeight: 700,
+};
+
+const viewModeBtnStyle = {
+  borderRadius: 6,
+  padding: "6px 12px",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  transition: "all 0.15s",
 };
 
 DebtTable.propTypes = {
