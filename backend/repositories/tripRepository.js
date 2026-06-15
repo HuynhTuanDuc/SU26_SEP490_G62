@@ -739,6 +739,80 @@ const getAllVehicleGroups = async () => {
     return result.rows;
 };
 
+// Tìm chuyến COMPLETED của driver cần nhập km hoặc tạo yêu cầu phiếu thu
+// Hai trường hợp:
+//   1. Chưa nhập km (actual_distance_km IS NULL) — mọi driver của cash order
+//   2. Driver cuối đã nhập km nhưng chưa gửi yêu cầu phiếu thu
+const getPendingReceiptOrder = async (driverId) => {
+    const result = await pool.query(
+        `SELECT
+            os.id              AS shipment_id,
+            os.order_id,
+            os.shipment_index,
+            os.estimated_price,
+            o.cargo_name,
+            ${PICKUP_SUBQ}     AS pickup_address,
+            ${DELIVERY_SUBQ}   AS delivery_address,
+            (
+                SELECT MAX(s2.shipment_index)
+                FROM order_shipments s2
+                WHERE s2.order_id = os.order_id
+            ) AS max_shipment_index
+         FROM order_shipments os
+         JOIN orders o ON o.id = os.order_id
+         WHERE os.owner_driver_id = $1
+           AND os.status = 'completed'
+           AND o.payment_type = 'cash'
+           AND (
+               os.actual_distance_km IS NULL
+               OR (
+                   os.shipment_index = (
+                       SELECT MAX(s2.shipment_index)
+                       FROM order_shipments s2
+                       WHERE s2.order_id = os.order_id
+                   )
+                   AND NOT EXISTS (
+                       SELECT 1 FROM order_receipt_requests orr
+                       WHERE orr.order_id = os.order_id
+                   )
+               )
+           )
+         ORDER BY os.completed_at DESC
+         LIMIT 1`,
+        [driverId],
+    );
+    return result.rows[0] ?? null;
+};
+
+// Ghi km thực tế vào order_shipments — dùng cho tất cả driver (final hay không)
+const saveShipmentActualKm = async (shipmentId, km) => {
+    await pool.query(
+        `UPDATE order_shipments SET actual_distance_km = $1, updated_at = NOW() WHERE id = $2`,
+        [km, shipmentId],
+    );
+};
+
+// Tạo yêu cầu phiếu thu cấp Order — chỉ driver cuối của cash order (BR-008B)
+// Km đã được lưu trước đó qua saveShipmentActualKm
+const createOrderReceiptRequest = async (orderId, driverId, shipmentId) => {
+    const result = await pool.query(
+        `INSERT INTO order_receipt_requests (order_id, requesting_shipment_id, driver_id)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [orderId, shipmentId, driverId],
+    );
+    return result.rows[0];
+};
+
+// Lấy trạng thái yêu cầu phiếu thu cấp Order (null nếu chưa gửi)
+const getOrderReceiptRequestByOrderId = async (orderId) => {
+    const result = await pool.query(
+        `SELECT * FROM order_receipt_requests WHERE order_id = $1`,
+        [orderId],
+    );
+    return result.rows[0] ?? null;
+};
+
 module.exports = {
     getDriverVehicleGroupId,
     getDriverVehicleId,
@@ -747,6 +821,10 @@ module.exports = {
     getActiveTrip,
     getTripById,
     getFullTripById,
+    getPendingReceiptOrder,
+    saveShipmentActualKm,
+    createOrderReceiptRequest,
+    getOrderReceiptRequestByOrderId,
     claimShipment,
     updateTripStatus,
     releaseShipmentToPool,

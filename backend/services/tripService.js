@@ -241,83 +241,6 @@ const startTransit = async (tripId, driverId, proofFileUrl) => {
     return updatedTrip;
 };
 
-// Driver gửi yêu cầu tạo phiếu thu — coordinator nhận và xử lý
-// actual_km nếu có sẽ được lưu trực tiếp vào shipment hiện tại
-const requestReceipt = async (tripId, driverId, { actual_km } = {}) => {
-    const trip = await tripRepository.getTripById(tripId);
-    if (!trip) throw new Error('Chuyến không tồn tại');
-    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền yêu cầu phiếu thu cho chuyến này');
-    if (!['transit', 'arrived', 'completed'].includes(trip.status)) {
-        throw new Error('Chỉ có thể yêu cầu phiếu thu khi chuyến đang vận chuyển, đã đến nơi, hoặc đã hoàn thành');
-    }
-    const isFinalShipment = await tripRepository.isFinalShipment(tripId);
-    if (!isFinalShipment) {
-        throw new Error('Chỉ chuyến cuối cùng của đơn hàng mới được tạo yêu cầu phiếu thu');
-    }
-
-    const existing = await pool.query(
-        'SELECT id, status FROM shipment_receipt_requests WHERE order_id = $1',
-        [trip.order_id],
-    );
-    if (existing.rows.length > 0) {
-        throw new Error('Yêu cầu tạo phiếu thu đã được gửi cho đơn hàng này rồi. Vui lòng chờ coordinator xử lý.');
-    }
-
-    const hasKm = actual_km !== undefined && actual_km !== null && String(actual_km).trim() !== '';
-    const km = hasKm ? Number(actual_km) : Number(trip.actual_distance_km ?? trip.estimated_distance_km);
-    if (hasKm && (isNaN(km) || km <= 0)) {
-        throw new Error('Số km thực tế không hợp lệ');
-    }
-    if (!Number.isFinite(km) || km <= 0) {
-        throw new Error('Chuyến chưa có số km thực tế hoặc số km ước tính hợp lệ');
-    }
-
-    await pool.query(
-        `UPDATE order_shipments
-         SET actual_distance_km = $1,
-             updated_at = NOW()
-         WHERE id = $2`,
-        [km, tripId],
-    );
-
-    const result = await pool.query(
-        `INSERT INTO shipment_receipt_requests (order_id, driver_id, status, requested_at)
-         VALUES ($1, $2, 'pending', NOW())
-         RETURNING *`,
-        [trip.order_id, driverId],
-    );
-
-    // Notify all active coordinators
-    const coordResult = await pool.query(
-        `SELECT a.id FROM accounts a
-         JOIN roles r ON r.id = a.role_id
-         WHERE r.name = 'coordinator' AND a.is_active = TRUE`,
-    );
-    const coordIds = coordResult.rows.map(r => r.id);
-    if (coordIds.length > 0) {
-        notificationService.createForUsers(coordIds, {
-            title: 'Yêu cầu tạo phiếu thu',
-            message: `Tài xế yêu cầu phiếu thu cho đơn #${trip.order_id} (chuyến #${tripId}, ${km} km).`,
-            type: 'RECEIPT_REQUEST',
-            entityType: 'orders',
-            entityId: trip.order_id,
-        }, { displayMode: 'alert' }).catch(() => {});
-    }
-
-    return result.rows[0];
-};
-
-const getReceiptRequest = async (tripId, driverId) => {
-    const trip = await tripRepository.getTripById(tripId);
-    if (!trip) throw new Error('Chuyến không tồn tại');
-    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền xem chuyến này');
-
-    const result = await pool.query(
-        'SELECT * FROM shipment_receipt_requests WHERE order_id = $1',
-        [trip.order_id],
-    );
-    return result.rows[0] ?? null;
-};
 
 // ITEM 2 — TH3: Driver marks customer unpaid → creates Customer Debt
 const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
@@ -445,6 +368,82 @@ const getOrderDetail = async (orderId, driverId) => {
     return detail;
 };
 
+// Tất cả driver của cash order phải nhập km; chỉ driver cuối mới tạo yêu cầu phiếu thu
+const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) => {
+    const shipment = await tripRepository.getTripById(shipmentId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+    if (Number(shipment.owner_driver_id) !== Number(driverId))
+        throw new Error('Bạn không có quyền gửi yêu cầu phiếu thu cho chuyến này');
+    if (shipment.status !== 'completed')
+        throw new Error('Chuyến phải ở trạng thái "completed" để gửi yêu cầu phiếu thu');
+    if (Number(shipment.order_id) !== Number(orderId))
+        throw new Error('Chuyến không thuộc đơn hàng này');
+
+    // km bắt buộc với mọi driver
+    const km = actualKm !== undefined && actualKm !== null && String(actualKm).trim() !== ''
+        ? Number(actualKm) : null;
+    if (km === null || isNaN(km) || km <= 0)
+        throw new Error('Số km thực tế là bắt buộc và phải lớn hơn 0');
+
+    // Xác định driver cuối (is_final_shipment)
+    const isFinal = await tripRepository.isFinalShipment(shipmentId);
+
+    // Lưu km vào order_shipments cho mọi driver
+    await tripRepository.saveShipmentActualKm(shipmentId, km);
+
+    // Driver không phải cuối: chỉ lưu km, không tạo yêu cầu phiếu thu
+    if (!isFinal) {
+        return { km_saved: true, receipt_request_created: false };
+    }
+
+    // Driver cuối: tạo yêu cầu phiếu thu cho toàn đơn (BR-018B — chỉ 1 lần)
+    const existing = await tripRepository.getOrderReceiptRequestByOrderId(orderId);
+    if (existing) throw new Error('Đơn hàng này đã có yêu cầu tạo phiếu thu rồi (BR-018B)');
+
+    let request;
+    try {
+        request = await tripRepository.createOrderReceiptRequest(orderId, driverId, shipmentId);
+    } catch (err) {
+        if (err.code === '23505') throw new Error('Đơn hàng này đã có yêu cầu tạo phiếu thu rồi (BR-018B)');
+        throw err;
+    }
+
+    // Thông báo cho coordinator
+    const coordResult = await pool.query(
+        `SELECT a.id FROM accounts a
+         JOIN roles r ON r.id = a.role_id
+         WHERE r.name IN ('coordinator', 'admin') AND a.is_active = TRUE`,
+    );
+    const coordIds = coordResult.rows.map(r => r.id);
+    if (coordIds.length > 0) {
+        notificationService.createForUsers(coordIds, {
+            title: 'Yêu cầu tạo phiếu thu',
+            message: `Tài xế yêu cầu phiếu thu cho đơn #${orderId} (${km} km).`,
+            type: 'RECEIPT_REQUEST',
+            entityType: 'orders',
+            entityId: orderId,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
+
+    notificationService.createForUser(driverId, {
+        title: 'Đã gửi yêu cầu tạo phiếu thu',
+        message: `Yêu cầu phiếu thu cho đơn #${orderId} đã được gửi. Coordinator sẽ xem xét sớm.`,
+        type: 'RECEIPT_REQUESTED',
+        entityType: 'orders',
+        entityId: orderId,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return { km_saved: true, receipt_request_created: true, request };
+};
+
+const getOrderReceiptRequest = async (orderId) => {
+    return tripRepository.getOrderReceiptRequestByOrderId(orderId);
+};
+
+const getPendingReceiptOrder = async (driverId) => {
+    return tripRepository.getPendingReceiptOrder(driverId);
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -455,11 +454,12 @@ module.exports = {
     startTransit,
     markUnpaid,
     returnComplete,
-    requestReceipt,
-    getReceiptRequest,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,
     getAvailableOrderDetail,
     getOrderDetail,
+    requestOrderReceipt,
+    getOrderReceiptRequest,
+    getPendingReceiptOrder,
 };

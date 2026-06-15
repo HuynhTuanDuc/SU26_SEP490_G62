@@ -23,9 +23,9 @@ export function CompletionProofScreen() {
     const cameraRef = useRef<CameraView>(null);
 
     const handleSuccess = useCallback((trip: ActiveTrip) => {
-        const isLastDriver = trip.is_final_shipment && trip.order_payment_type === 'cash';
-        if (isLastDriver) {
-            // Navigate to dedicated receipt request screen — replace so back returns to home
+        if (trip.order_payment_type === 'cash') {
+            // Tất cả driver của cash order phải nhập km thực tế
+            // Driver cuối thêm: tạo yêu cầu phiếu thu
             router.replace({
                 pathname: '/receipt-request',
                 params: {

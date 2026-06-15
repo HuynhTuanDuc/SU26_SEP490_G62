@@ -488,7 +488,7 @@ const getShipmentPricingSnapshot = async (db, requestId) => {
             rr.id,
             rr.order_id,
             rr.driver_id
-         FROM shipment_receipt_requests rr
+         FROM order_receipt_requests rr
          WHERE rr.id = $1`,
         [requestId],
     );
@@ -584,7 +584,7 @@ const getReceiptRequests = async ({ status = null } = {}) => {
             COALESCE(NULLIF(o.final_price, 0), revenue_summary.total_actual_price + COALESCE(exp.pass_through_expenses, 0), 0) AS final_price,
             primary_vehicle.plate_number,
             COALESCE(exp.total_expenses, 0) AS total_expenses
-         FROM shipment_receipt_requests rr
+         FROM order_receipt_requests rr
          JOIN profiles p       ON p.id  = rr.driver_id
          JOIN orders o         ON o.id  = rr.order_id
          LEFT JOIN customers c  ON c.id  = o.customer_id
@@ -664,7 +664,7 @@ const getReceiptRequestDetail = async (requestId) => {
             c.company_name             AS customer_company,
             c.address                  AS customer_address,
             d.full_name                AS driver_name
-         FROM shipment_receipt_requests rr
+         FROM order_receipt_requests rr
          JOIN orders o ON o.id = rr.order_id
          LEFT JOIN customers c ON c.id = o.customer_id
          LEFT JOIN profiles d ON d.id = rr.driver_id
@@ -733,7 +733,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
     const reqResult = await pool.query(
         `SELECT rr.*, o.customer_id
-         FROM shipment_receipt_requests rr
+         FROM order_receipt_requests rr
          JOIN orders o ON o.id = rr.order_id
          WHERE rr.id = $1`,
         [requestId],
@@ -787,7 +787,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
         // Cập nhật trạng thái request → approved
         await client.query(
-            `UPDATE shipment_receipt_requests
+            `UPDATE order_receipt_requests
              SET status = 'approved', processed_by = $1, processed_at = NOW(), coordinator_notes = $3
              WHERE id = $2`,
             [coordinatorId, requestId, notes ?? null],
@@ -822,7 +822,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 // POST reject — từ chối yêu cầu phiếu thu
 const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) => {
     const reqResult = await pool.query(
-        `SELECT * FROM shipment_receipt_requests WHERE id = $1`,
+        `SELECT * FROM order_receipt_requests WHERE id = $1`,
         [requestId],
     );
     const req = reqResult.rows[0];
@@ -831,7 +831,7 @@ const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) =>
     if (req.status === 'rejected') throw new Error('Yêu cầu này đã bị từ chối rồi');
 
     await pool.query(
-        `UPDATE shipment_receipt_requests
+        `UPDATE order_receipt_requests
          SET status = 'rejected', processed_by = $1, processed_at = NOW(), coordinator_notes = $2
          WHERE id = $3`,
         [coordinatorId, notes ?? null, requestId],

@@ -4,21 +4,16 @@ import {
     Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCameraPermissions } from 'expo-camera';
-import * as ImageManipulator from 'expo-image-manipulator';
-import { AlertTriangle, CheckCircle, FileText, Info, ReceiptText } from 'lucide-react-native';
+import { AlertTriangle, CheckCircle, FileText, Info, Save, XCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText }              from '@/components/app-text';
-import { LifecycleActionButton } from '@/components/lifecycle-action-button';
-import { ScreenHeader }         from '@/components/screen-header';
-import { appTheme }             from '@/theme/app-theme';
-import { useAppAlert, useToast } from '@/providers/ui-provider';
-import { tripService }          from '@/services/trip-service';
+import { AppText }               from '@/components/app-text';
+import { LifecycleActionButton }  from '@/components/lifecycle-action-button';
+import { ScreenHeader }          from '@/components/screen-header';
+import { appTheme }              from '@/theme/app-theme';
+import { useAppAlert }           from '@/providers/ui-provider';
+import { tripService }           from '@/services/trip-service';
 import type { OrderReceiptRequest } from '@/types/trip';
-
-import { CameraModal }     from './components/camera-modal';
-import { PhotoCaptureCard } from './components/photo-capture-card';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,21 +30,12 @@ type Params = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function compressImage(uri: string): Promise<string> {
-    const result = await ImageManipulator.manipulateAsync(
-        uri,
-        [{ resize: { width: 1200 } }],
-        { compress: 0.75, format: ImageManipulator.SaveFormat.JPEG },
-    );
-    return result.uri;
-}
-
 const fmt = (v: string | number | null | undefined) => {
     if (!v) return null;
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
 };
 
-// ─── Receipt request status display ──────────────────────────────────────────
+// ─── Existing request status banner (only shown to final driver) ──────────────
 
 function ExistingRequestBanner({ req }: { req: OrderReceiptRequest }) {
     if (req.status === 'pending' || req.status === 'processing') {
@@ -66,7 +52,7 @@ function ExistingRequestBanner({ req }: { req: OrderReceiptRequest }) {
                         Đã gửi yêu cầu — đang chờ coordinator
                     </Text>
                     <Text fontSize={11} color={appTheme.colors.warningText}>
-                        {req.actual_km ? `${req.actual_km} km · ` : ''}Phiếu thu sẽ được tạo sớm nhất
+                        Phiếu thu sẽ được tạo sớm nhất
                     </Text>
                 </YStack>
             </XStack>
@@ -98,7 +84,7 @@ function ExistingRequestBanner({ req }: { req: OrderReceiptRequest }) {
                 gap={6}
             >
                 <XStack alignItems="center" gap={10}>
-                    <AlertTriangle size={18} color={appTheme.colors.danger} />
+                    <XCircle size={18} color={appTheme.colors.danger} />
                     <Text fontSize={13} fontWeight="900" color={appTheme.colors.danger}>
                         Yêu cầu bị từ chối — liên hệ coordinator
                     </Text>
@@ -118,25 +104,27 @@ function ExistingRequestBanner({ req }: { req: OrderReceiptRequest }) {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function ReceiptRequestScreen() {
-    const params = useLocalSearchParams<Params>();
+    const params     = useLocalSearchParams<Params>();
     const orderId    = Number(params.orderId);
     const shipmentId = Number(params.shipmentId);
 
-    const [receiptUri,    setReceiptUri]    = useState<string | null>(null);
-    const [actualKm,      setActualKm]      = useState('');
-    const [isSubmitting,  setIsSubmitting]  = useState(false);
-    const [error,         setError]         = useState<string | null>(null);
-    const [showCamera,    setShowCamera]    = useState(false);
+    // Driver cuối = người có shipment_index cao nhất trong order
+    const isFinalShipment = Number(params.shipmentIndex) === Number(params.maxShipmentIndex);
 
-    // Existing request state (check on focus — driver may return after submitting)
-    const [existingReq,   setExistingReq]   = useState<OrderReceiptRequest | null>(null);
-    const [isLoadingReq,  setIsLoadingReq]  = useState(true);
+    const [actualKm,     setActualKm]     = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error,        setError]        = useState<string | null>(null);
+
+    // Chỉ cần check existing request cho driver cuối
+    const [existingReq,  setExistingReq]  = useState<OrderReceiptRequest | null>(null);
+    const [isLoadingReq, setIsLoadingReq] = useState(isFinalShipment);
 
     const { showAlert } = useAppAlert();
-    const [permission, requestPermission] = useCameraPermissions();
 
-    // ── Load existing request on focus ──────────────────────────────────────
+    // ── Load existing receipt request (final driver only) ───────────────────
     useFocusEffect(useCallback(() => {
+        if (!isFinalShipment) return;
+
         let active = true;
         const load = async () => {
             setIsLoadingReq(true);
@@ -151,81 +139,63 @@ export function ReceiptRequestScreen() {
         };
         void load();
         return () => { active = false; };
-    }, [orderId]));
-
-    // ── Camera ───────────────────────────────────────────────────────────────
-    const handleOpenCamera = async () => {
-        if (!permission?.granted) {
-            const res = await requestPermission();
-            if (!res.granted) return;
-        }
-        setShowCamera(true);
-    };
+    }, [orderId, isFinalShipment]));
 
     // ── Validate ─────────────────────────────────────────────────────────────
-    const validate = (): string | null => {
-        if (!receiptUri) return 'Vui lòng chụp ảnh biên lai trước khi gửi yêu cầu.';
-        const km = actualKm.trim() ? Number(actualKm.replace(',', '.')) : undefined;
-        if (km !== undefined && (isNaN(km) || km <= 0))
-            return 'Số km thực tế không hợp lệ — vui lòng nhập số lớn hơn 0.';
-        return null;
-    };
+    const kmNum   = actualKm.trim() ? Number(actualKm.replace(',', '.')) : undefined;
+    const kmValid = kmNum !== undefined && !isNaN(kmNum) && kmNum > 0;
+    const canSubmit = !isSubmitting && kmValid && (isFinalShipment ? !existingReq : true);
 
     // ── Submit ───────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
-        const validationError = validate();
-        if (validationError) { setError(validationError); return; }
+        if (!kmValid || kmNum === undefined) {
+            setError('Vui lòng nhập số km thực tế hợp lệ (lớn hơn 0).');
+            return;
+        }
 
         setIsSubmitting(true);
         setError(null);
 
         try {
-            const compressedReceipt = await compressImage(receiptUri!);
-            const km = actualKm.trim() ? Number(actualKm.replace(',', '.')) : undefined;
-
-            const formData = new FormData();
-            formData.append('shipment_id', String(shipmentId));
-            if (km !== undefined) formData.append('actual_km', String(km));
-            formData.append('receipt', {
-                uri: compressedReceipt,
-                type: 'image/jpeg',
-                name: 'receipt.jpg',
-            } as unknown as Blob);
-
-            const { request } = await tripService.requestOrderReceipt(orderId, formData);
-            setExistingReq(request);
-
-            await showAlert({
-                type:    'success',
-                title:   'Đã gửi yêu cầu!',
-                message: 'Coordinator sẽ xem xét và tạo phiếu thu. Bạn sẽ nhận thông báo khi có kết quả.',
-                okLabel: 'OK',
+            const result = await tripService.requestOrderReceipt(orderId, {
+                shipment_id: shipmentId,
+                actual_km:   kmNum,
             });
+
+            if (result.receipt_request_created && result.request) {
+                setExistingReq(result.request);
+                await showAlert({
+                    type:    'success',
+                    title:   'Đã gửi yêu cầu!',
+                    message: 'Coordinator sẽ xem xét và tạo phiếu thu. Bạn sẽ nhận thông báo khi có kết quả.',
+                    okLabel: 'OK',
+                });
+            } else {
+                await showAlert({
+                    type:    'success',
+                    title:   'Đã lưu số km!',
+                    message: `Số km thực tế ${kmNum} km đã được ghi nhận cho chuyến này.`,
+                    okLabel: 'OK',
+                });
+            }
 
             router.back();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Không thể gửi yêu cầu tạo phiếu thu');
+            setError(err instanceof Error ? err.message : 'Không thể thực hiện, vui lòng thử lại');
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    const kmNum    = actualKm.trim() ? Number(actualKm.replace(',', '.')) : undefined;
-    const kmValid  = kmNum === undefined || (!isNaN(kmNum) && kmNum > 0);
-    const canSubmit = !!receiptUri && !isSubmitting && !existingReq;
-
     // ── Render ───────────────────────────────────────────────────────────────
 
-    if (!permission) {
-        return (
-            <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
-                <ScreenHeader title="Yêu cầu tạo phiếu thu" showBack />
-                <YStack flex={1} alignItems="center" justifyContent="center" padding={24}>
-                    <AppText variant="body" tone="muted">Đang kiểm tra quyền camera...</AppText>
-                </YStack>
-            </View>
-        );
-    }
+    const screenTitle = isFinalShipment ? 'Yêu cầu tạo phiếu thu' : 'Nhập km thực tế';
+    const buttonLabel = isSubmitting
+        ? 'Đang xử lý...'
+        : isFinalShipment
+            ? 'Gửi yêu cầu tạo phiếu thu'
+            : 'Lưu số km thực tế';
+    const ButtonIcon = isFinalShipment ? FileText : Save;
 
     return (
         <KeyboardAvoidingView
@@ -233,7 +203,7 @@ export function ReceiptRequestScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
             <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
-                <ScreenHeader title="Yêu cầu tạo phiếu thu" showBack />
+                <ScreenHeader title={screenTitle} showBack />
 
                 <ScrollView
                     style={{ flex: 1 }}
@@ -276,67 +246,46 @@ export function ReceiptRequestScreen() {
                         ) : null}
                     </YStack>
 
-                    {/* ── Existing request status (if any) ── */}
-                    {!isLoadingReq && existingReq ? (
+                    {/* ── Existing request status (final driver only) ── */}
+                    {isFinalShipment && !isLoadingReq && existingReq ? (
                         <ExistingRequestBanner req={existingReq} />
                     ) : null}
 
-                    {/* ── Receipt photo (only if no existing request) ── */}
-                    {!existingReq ? (
+                    {/* ── Km input ── */}
+                    {(!isFinalShipment || !existingReq) ? (
                         <YStack
                             padding={14} borderRadius={appTheme.radius.lg}
                             backgroundColor={appTheme.colors.surface}
                             borderWidth={1}
-                            borderColor={receiptUri ? appTheme.colors.successBorder : appTheme.colors.border}
+                            borderColor={!kmValid && actualKm.trim() ? appTheme.colors.dangerBorder : appTheme.colors.border}
                             gap={10}
                         >
                             <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>
-                                ẢNH BIÊN LAI / HÓA ĐƠN (BẮT BUỘC)
-                            </Text>
-                            <AppText variant="caption" tone="muted">
-                                Chụp biên lai hoặc hóa đơn có chữ ký của khách hàng — ảnh realtime, không được upload từ thư viện.
-                            </AppText>
-                            <PhotoCaptureCard
-                                label="Ảnh biên lai"
-                                sublabel="Biên lai / hóa đơn có chữ ký khách"
-                                uri={receiptUri}
-                                required
-                                onCapture={handleOpenCamera}
-                                onDelete={() => setReceiptUri(null)}
-                            />
-                        </YStack>
-                    ) : null}
-
-                    {/* ── Actual km (only if no existing request) ── */}
-                    {!existingReq ? (
-                        <YStack
-                            padding={14} borderRadius={appTheme.radius.lg}
-                            backgroundColor={appTheme.colors.surface}
-                            borderWidth={1}
-                            borderColor={!kmValid ? appTheme.colors.dangerBorder : appTheme.colors.border}
-                            gap={10}
-                        >
-                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>
-                                SỐ KM THỰC TẾ (TUỲ CHỌN)
+                                SỐ KM THỰC TẾ (BẮT BUỘC)
                             </Text>
                             <TextInput
                                 value={actualKm}
                                 onChangeText={(t) => { setActualKm(t); setError(null); }}
                                 keyboardType="decimal-pad"
-                                placeholder="Bỏ trống = dùng km ước tính ban đầu"
+                                placeholder="Nhập số km thực tế của chuyến"
                                 placeholderTextColor={appTheme.colors.textMuted}
                                 returnKeyType="done"
-                                style={[styles.kmInput, !kmValid && styles.kmInputError]}
+                                style={[
+                                    styles.kmInput,
+                                    !kmValid && actualKm.trim() ? styles.kmInputError : null,
+                                ]}
                             />
-                            {kmNum !== undefined && kmNum > 0 && kmValid ? (
+                            {kmValid ? (
                                 <XStack gap={6} alignItems="center">
                                     <AlertTriangle size={11} color={appTheme.colors.warningText} />
                                     <Text fontSize={11} color={appTheme.colors.warningText} flex={1}>
-                                        Coordinator sẽ tính lại giá dựa trên {actualKm} km thực tế
+                                        {isFinalShipment
+                                            ? `Coordinator sẽ tính lại giá dựa trên ${actualKm} km thực tế`
+                                            : `${actualKm} km sẽ được ghi nhận cho chuyến này`}
                                     </Text>
                                 </XStack>
                             ) : null}
-                            {!kmValid ? (
+                            {!kmValid && actualKm.trim() ? (
                                 <Text fontSize={11} color={appTheme.colors.danger}>
                                     Số km phải lớn hơn 0
                                 </Text>
@@ -344,8 +293,8 @@ export function ReceiptRequestScreen() {
                         </YStack>
                     ) : null}
 
-                    {/* ── One-time warning ── */}
-                    {!existingReq ? (
+                    {/* ── Final driver warning (one-time, only for final driver) ── */}
+                    {isFinalShipment && !existingReq ? (
                         <XStack
                             padding={12} borderRadius={appTheme.radius.md}
                             backgroundColor={appTheme.colors.warningSoft}
@@ -355,7 +304,6 @@ export function ReceiptRequestScreen() {
                             <AlertTriangle size={14} color={appTheme.colors.warningText} style={{ marginTop: 1 }} />
                             <Text fontSize={11} color={appTheme.colors.warningText} flex={1} lineHeight={17}>
                                 Yêu cầu phiếu thu chỉ được gửi 1 lần cho mỗi đơn hàng.
-                                Kiểm tra kỹ ảnh biên lai trước khi xác nhận.
                             </Text>
                         </XStack>
                     ) : null}
@@ -374,35 +322,28 @@ export function ReceiptRequestScreen() {
                     ) : null}
 
                     {/* ── Submit ── */}
-                    {!existingReq ? (
+                    {(!isFinalShipment || !existingReq) ? (
                         <LifecycleActionButton
-                            label={isSubmitting ? 'Đang gửi yêu cầu...' : 'Xác nhận gửi yêu cầu tạo phiếu thu'}
+                            label={buttonLabel}
                             tone="primary"
                             onPress={handleSubmit}
                             isLoading={isSubmitting}
                             disabled={!canSubmit}
-                            icon={<FileText size={17} color={canSubmit ? '#fff' : appTheme.colors.textMuted} />}
+                            icon={<ButtonIcon size={17} color={canSubmit ? '#fff' : appTheme.colors.textMuted} />}
                         />
                     ) : null}
 
-                    {/* ── Skip / Back ── */}
+                    {/* ── Back / Close ── */}
                     <Pressable
                         style={styles.skipBtn}
                         onPress={() => router.back()}
                         disabled={isSubmitting}
                     >
                         <Text fontSize={13} color={appTheme.colors.textMuted}>
-                            {existingReq ? 'Đóng' : 'Bỏ qua — yêu cầu sau'}
+                            {(isFinalShipment && existingReq) ? 'Đóng' : 'Quay lại'}
                         </Text>
                     </Pressable>
                 </ScrollView>
-
-                <CameraModal
-                    visible={showCamera}
-                    label="Chụp ảnh biên lai / hóa đơn"
-                    onCapture={(uri) => { setReceiptUri(uri); setShowCamera(false); setError(null); }}
-                    onClose={() => setShowCamera(false)}
-                />
             </View>
         </KeyboardAvoidingView>
     );

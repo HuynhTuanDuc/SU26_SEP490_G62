@@ -265,6 +265,18 @@ export type CreateExpenseResponse = {
     expenses: Expense[];
 };
 
+// Đơn hàng cash cần driver gửi yêu cầu phiếu thu (dùng cho banner home)
+export type PendingReceiptOrder = {
+    shipment_id: number;
+    order_id: number;
+    shipment_index: number;
+    max_shipment_index: number;
+    estimated_price: string | null;
+    cargo_name: string | null;
+    pickup_address: string;
+    delivery_address: string;
+};
+
 export type ReceiptRequestStatus = 'pending' | 'processing' | 'approved' | 'rejected';
 
 // Per-shipment receipt request (single-driver order)
@@ -283,11 +295,17 @@ export type OrderReceiptRequest = {
     order_id: number;
     requesting_shipment_id: number;
     driver_id: number;
-    actual_km: string | null;
     driver_notes: string | null;
     status: ReceiptRequestStatus;
     requested_at: string;
     coordinator_notes: string | null;
+};
+
+export type RequestOrderReceiptResponse = {
+    message: string;
+    km_saved: boolean;
+    receipt_request_created: boolean;
+    request?: OrderReceiptRequest;
 };
 
 export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
