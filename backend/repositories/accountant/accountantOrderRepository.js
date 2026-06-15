@@ -63,18 +63,8 @@ const findDriverByName = async (client, name) => {
     return result.rows.length > 0 ? result.rows[0].id : null;
 };
 
-const getDefaultVehicleGroupId = async (client) => {
-    const fallback = await client.query(
-        `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`
-    );
-    if (fallback.rows.length === 0) {
-        throw new Error('Không tìm thấy nhóm xe mặc định');
-    }
-    return fallback.rows[0].id;
-};
-
 const insertShipmentWithStopsAndExpenses = async (client, {
-    orderId, shipmentIndex, vehicleGroupId,
+    orderId, shipmentIndex,
     vehicleId, driverId, estimatedPrice, actualPrice,
     cargoName, cargoWeight, shipmentNotes,
     pickupAddresses, deliveryAddress, contactName, contactPhone,
@@ -145,45 +135,63 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 const PASS_THROUGH_EXPENSE_TYPES = new Set(['toll', 'parking']);
 
 const insertDebtForShipment = async (client, {
-    shipmentId, orderId, driverId, customerId,
+    shipmentId, orderId, driverId, customerId, partnerId,
     actualPrice,
     driverPaymentState, paymentType,
     createdByUserId,
 }) => {
-    // Tài xế giữ tiền → tạo công nợ tài xế
+    // Map payment_type về schema DB mới (debt -> client_credit)
+    const normalizedPaymentType =
+        paymentType === 'debt' ? 'client_credit' : (paymentType || null);
+
+    // Tài xế giữ tiền → tạo công nợ tài xế (chỉ set driver_id, các FK khác = NULL)
     if (driverPaymentState === 'driver_holding') {
         const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
-                debt_type, driver_id, customer_id, order_id, shipment_id,
+                debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                 total_amount, paid_amount, due_date, status, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('driver', $1, $2, $3, $4, $5, 0,
-                CURRENT_DATE + INTERVAL '30 days', $6,
+             VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0,
+                CURRENT_DATE + INTERVAL '30 days', $5,
                 'Tai xe da thu nhung chua mang tien ve cong ty',
-                $7, NOW(), NOW())`,
-            [driverId, customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+                $6, NOW(), NOW())`,
+            [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
-    } else if (paymentType === 'debt') {
-        // Khách nợ → tạo công nợ khách
+    } else if (normalizedPaymentType === 'client_credit') {
+        // Khách nợ → tạo công nợ khách (chỉ set customer_id, các FK khác = NULL)
         const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
-                debt_type, driver_id, customer_id, order_id, shipment_id,
+                debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                 total_amount, paid_amount, due_date, status, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('customer', $1, $2, $3, $4, $5, 0,
-                CURRENT_DATE + INTERVAL '30 days', $6,
-                'Khach chua thanh toan', $7, NOW(), NOW())`,
-            [driverId, customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+             VALUES ('customer', NULL, $1, NULL, $2, $3, $4, 0,
+                CURRENT_DATE + INTERVAL '30 days', $5,
+                'Khach chua thanh toan', $6, NOW(), NOW())`,
+            [customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
         await client.query(
             `UPDATE customers
              SET current_debt = current_debt + $1, updated_at = NOW()
              WHERE id = $2`,
             [actualPrice, customerId]
+        );
+    } else if (partnerId && normalizedPaymentType === 'partner') {
+        // Đối tác nợ (chưa dùng — để cấu trúc sẵn cho sau)
+        const debtStatus = buildDebtStatus(0, actualPrice);
+        await client.query(
+            `INSERT INTO debts (
+                debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                total_amount, paid_amount, due_date, status, notes,
+                updated_by, created_at, updated_at
+            )
+             VALUES ('partner', NULL, NULL, $1, $2, $3, $4, 0,
+                CURRENT_DATE + INTERVAL '30 days', $5,
+                'Doi tac chua thanh toan', $6, NOW(), NOW())`,
+            [partnerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     }
     // Nếu đã thu đủ (cash/bank_transfer + company_received) → không tạo công nợ, không ghi payment
@@ -195,44 +203,43 @@ const createOrderWithShipments = async (orderData) => {
         await client.query('BEGIN');
 
         // Nếu đã có customer_id (chọn từ danh sách) → dùng trực tiếp, không tìm theo SĐT
-        const customerId = orderData.customer_id
-            ? Number(orderData.customer_id)
-            : await findOrCreateCustomer(client, {
-                  phone: orderData.customer_phone,
-                  name: orderData.customer_name,
-                  companyName: orderData.customer_company,
-              });
+    const customerId = orderData.customer_id
+        ? Number(orderData.customer_id)
+        : await findOrCreateCustomer(client, {
+              phone: orderData.customer_phone,
+              name: orderData.customer_name,
+              companyName: orderData.customer_company,
+          });
 
-        const vehicleGroupId = await getDefaultVehicleGroupId(client);
-
-        const computeActualPrice = (shipment) => {
-            const passThrough = (shipment.expenses || []).reduce(
-                (sum, e) => sum + (PASS_THROUGH_EXPENSE_TYPES.has(e.expense_type) ? Number(e.amount || 0) : 0),
-                0
-            );
-            return Number(shipment.cargo_fee || 0) + passThrough;
-        };
-
-        const totalActualPrice = (orderData.shipments || []).reduce((sum, s) => sum + computeActualPrice(s), 0);
-        const orderNotes = buildOrderNotes(orderData);
-
-        const orderResult = await client.query(
-            `INSERT INTO orders (
-                customer_id, created_by, updated_by,
-                cargo_name, payment_type, vehicle_group_id,
-                total_estimated_price, total_actual_price,
-                derived_status, notes, created_at, updated_at
-            )
-             VALUES ($1, $2, $2, $3, 'cash', $4, $4, 'completed', $5, NOW(), NOW())
-             RETURNING *`,
-            [
-                customerId,
-                orderData.created_by,
-                orderData.customer_name || null,
-                totalActualPrice,
-                orderNotes,
-            ]
+    const computeActualPrice = (shipment) => {
+        const passThrough = (shipment.expenses || []).reduce(
+            (sum, e) => sum + (PASS_THROUGH_EXPENSE_TYPES.has(e.expense_type) ? Number(e.amount || 0) : 0),
+            0
         );
+        return Number(shipment.cargo_fee || 0) + passThrough;
+    };
+
+    const totalActualPrice = (orderData.shipments || []).reduce((sum, s) => sum + computeActualPrice(s), 0);
+    const orderNotes = buildOrderNotes(orderData);
+
+    const orderResult = await client.query(
+        `INSERT INTO orders (
+            customer_id, created_by, updated_by,
+            cargo_name, payment_type,
+            total_estimated_price, total_actual_price,
+            derived_status, notes, created_at, updated_at
+        )
+         VALUES ($1, $2, $2, $3, $4, $5, $5, 'completed', $6, NOW(), NOW())
+         RETURNING *`,
+        [
+            customerId,
+            orderData.created_by,
+            orderData.customer_name || null,
+            orderData.payment_type || null,
+            totalActualPrice,
+            orderNotes,
+        ]
+    );
         const newOrder = orderResult.rows[0];
 
         const shipmentIds = [];
@@ -247,7 +254,6 @@ const createOrderWithShipments = async (orderData) => {
             const shipmentId = await insertShipmentWithStopsAndExpenses(client, {
                 orderId: newOrder.id,
                 shipmentIndex: i + 1,
-                vehicleGroupId,
                 vehicleId,
                 driverId,
                 estimatedPrice: actualPrice,
@@ -268,9 +274,10 @@ const createOrderWithShipments = async (orderData) => {
                 orderId: newOrder.id,
                 driverId,
                 customerId,
+                partnerId: s.partner_id || orderData.partner_id || null,
                 actualPrice,
                 driverPaymentState: s.driver_payment_state || 'company_received',
-                paymentType: s.payment_type || 'cash',
+                paymentType: s.payment_type || null,
                 createdByUserId: orderData.created_by,
             });
 
@@ -344,8 +351,8 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             o.id,
             o.cargo_name,
             o.payment_type,
-            o.total_estimated_price AS estimated_price,
-            o.total_actual_price AS actual_price,
+            COALESCE(est.estimated_price, 0) AS estimated_price,
+            COALESCE(act.actual_price, 0)    AS actual_price,
             o.derived_status AS status,
             o.notes,
             o.created_at,
@@ -354,7 +361,13 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             c.phone AS customer_phone,
             COALESCE(d_agg.debt_total, 0) AS debt_total,
             COALESCE(d_agg.debt_paid, 0) AS debt_paid,
-            GREATEST(COALESCE(d_agg.debt_total, 0) - COALESCE(d_agg.debt_paid, 0), 0) AS debt_remaining,
+            -- debt_remaining: chỉ tính khi đơn có customer debt (client_credit / debt)
+            -- Nếu không có customer debt (cash / bank_transfer), remaining = 0
+            CASE
+                WHEN COALESCE(d_agg.debt_total, 0) > 0
+                THEN GREATEST(COALESCE(d_agg.debt_total, 0) - COALESCE(d_agg.debt_paid, 0), 0)
+                ELSE 0
+            END AS debt_remaining,
             d_agg.debt_status AS debt_status,
             COALESCE(os_agg.shipment_count, 0) AS shipment_count
         ${baseQuery}
@@ -371,12 +384,26 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             WHERE order_id = o.id AND debt_type = 'customer'
         ) d_agg ON TRUE
         LEFT JOIN LATERAL (
+            SELECT
+                SUM(estimated_price) AS estimated_price,
+                SUM(COALESCE(actual_price, 0)) AS actual_price,
+                COUNT(*) AS shipment_count
+            FROM order_shipments
+            WHERE order_id = o.id
+        ) est ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT SUM(COALESCE(actual_price, 0)) AS actual_price
+            FROM order_shipments
+            WHERE order_id = o.id
+        ) act ON TRUE
+        LEFT JOIN LATERAL (
             SELECT COUNT(*) AS shipment_count
             FROM order_shipments
             WHERE order_id = o.id
         ) os_agg ON TRUE
         GROUP BY o.id, c.full_name, c.company_name, c.phone,
                  d_agg.debt_total, d_agg.debt_paid, d_agg.debt_status,
+                 est.estimated_price, act.actual_price,
                  os_agg.shipment_count
         ORDER BY o.created_at DESC
     `;

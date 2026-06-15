@@ -107,12 +107,16 @@ export default function DebtTable({ apiBase, token }) {
     }
   };
 
-  const fetchPersonDebts = async (personType, personKey, customerIds) => {
+  const fetchPersonDebts = async (personType, personKey, customerIds, driverId) => {
     setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: true }));
     try {
-      let url = `${apiBase}/accountant/debts/person/${personType}`;
-      if (customerIds && customerIds.length > 0) {
-        url += `?customer_ids=${customerIds.join(',')}`;
+      let url;
+      if (personType === "driver" && driverId) {
+        url = `${apiBase}/accountant/debts/person/driver/${driverId}`;
+      } else if (customerIds && customerIds.length > 0) {
+        url = `${apiBase}/accountant/debts/person/customer?customer_ids=${customerIds.join(",")}`;
+      } else {
+        return;
       }
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
@@ -178,9 +182,9 @@ export default function DebtTable({ apiBase, token }) {
     } else {
       setExpandedRows((prev) => ({ ...prev, [key]: true }));
       const personType = debt.debt_type;
-      const personKey = `${debt.debt_type}-${debt.normalized_phone || debt.driver_id}`;
+      const personKey = `${debt.debt_type}-${debt.customer_ids?.[0] || debt.driver_id}`;
       if (!personDebts[key]) {
-        fetchPersonDebts(personType, key, debt.customer_ids);
+        fetchPersonDebts(personType, key, debt.customer_ids, debt.driver_id);
       }
     }
   };
@@ -475,7 +479,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
     <>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {debts.map((debt) => {
-          const key = `${debt.debt_type}-${debt.normalized_phone || debt.driver_id}`;
+          const key = `${debt.debt_type}-${debt.customer_ids?.[0] || debt.driver_id}`;
           const isExpanded = !!expandedRows[key];
           const typeCfg = DEBT_TYPE_CFG[debt.debt_type] || DEBT_TYPE_CFG.customer;
           const statusKey = debt.computed_status || "unpaid";
@@ -490,9 +494,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
               ? ""
               : debt.customer_phone
                 ? `📞 ${debt.customer_phone}`
-                : debt.normalized_phone
-                  ? `📞 ${debt.normalized_phone}`
-                  : "";
+                : "";
 
           const totalRemaining = Number(debt.total_remaining || 0);
 

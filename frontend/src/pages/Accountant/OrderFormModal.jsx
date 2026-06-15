@@ -47,7 +47,7 @@ const PASS_THROUGH_TYPES = new Set(["toll", "parking"]);
 const CUSTOMER_PAYMENT_OPTIONS = [
   { value: "cash", label: "Tiền mặt" },
   { value: "bank_transfer", label: "Chuyển khoản" },
-  { value: "debt", label: "Ghi Nợ" },
+  { value: "client_credit", label: "Ghi Nợ" },
 ];
 
 const DRIVER_PAYMENT_OPTIONS = [
@@ -570,7 +570,7 @@ const ShipmentCard = ({
           </Row>
 
           {/* Alert messages */}
-          {shipment.payment_type === "debt" && (
+          {shipment.payment_type === "client_credit" && (
             <Alert type="info" showIcon message="Đơn ghi nợ — công nợ được theo dõi trong bảng công nợ." style={{ marginTop: 4 }} />
           )}
           {isDriverHolding && (
@@ -625,6 +625,8 @@ const ShipmentCard = ({
 export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -640,6 +642,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     customerName: false,
     customerPhone: false,
     orderDate: false,
+    vehicleGroup: false,
   });
 
   const clearFieldError = (field) => {
@@ -651,6 +654,12 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
   const token = localStorage.getItem("token");
 
   const lookupMaps = useMemo(() => buildLookupMaps(vehicles, drivers), [vehicles, drivers]);
+
+  // Lọc xe theo nhóm xe đã chọn ở header
+  const vehiclesInSelectedGroup = useMemo(() => {
+    if (!selectedGroupId) return vehicles;
+    return vehicles.filter((v) => Number(v.vehicle_group_id) === Number(selectedGroupId));
+  }, [vehicles, selectedGroupId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -664,6 +673,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
         if (!response.ok) throw new Error(data.error || data.details || "Không tải được danh sách xe/tài xế");
         setVehicles(data.vehicles || []);
         setDrivers(data.drivers || []);
+        setVehicleGroups(data.vehicle_groups || []);
       } catch (err) {
         message.error(err.message || "Không tải được dữ liệu xe/tài xế.");
       }
@@ -677,8 +687,9 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     setCustomerPhone("");
     setCustomerCompany("");
     setOrderNotes("");
+    setSelectedGroupId(null);
     setFormError("");
-    setFieldErrors({ customerName: false, customerPhone: false, orderDate: false });
+    setFieldErrors({ customerName: false, customerPhone: false, orderDate: false, vehicleGroup: false });
   }, [API_BASE, isOpen, token]);
 
   if (!isOpen) return null;
@@ -862,7 +873,8 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
       setCustomerCompany("");
       setOrderDate(null);
       setOrderNotes("");
-      setFieldErrors({ customerName: false, customerPhone: false, orderDate: false });
+      setSelectedGroupId(null);
+      setFieldErrors({ customerName: false, customerPhone: false, orderDate: false, vehicleGroup: false });
       onOrderCreated?.(data.order);
       onClose();
     } catch (err) {
@@ -962,6 +974,52 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
               </button>
             </span>
           </div>
+
+          {/* Row 1.5: Nhóm xe (chọn trước khi chọn xe) */}
+          <Row gutter={12} align="middle" style={{ marginTop: 12 }}>
+            <Col span={12}>
+              <Form.Item label="Nhóm xe" style={{ marginBottom: 0 }}>
+                <Select
+                  value={selectedGroupId}
+                  onChange={(val) => {
+                    setSelectedGroupId(val);
+                    clearFieldError("vehicleGroup");
+                    // Đổi nhóm xe → clear xe đã chọn ở tất cả các chuyến (xe có thể không thuộc nhóm mới)
+                    setShipments((prev) => prev.map((s) => ({ ...s, vehicle_plate: null, driver_name: null, _driverLocked: false })));
+                  }}
+                  placeholder="Chọn nhóm xe (không bắt buộc)"
+                  allowClear
+                  options={vehicleGroups.map((g) => ({
+                    value: g.id,
+                    label: `${g.name}${g.description ? ` · ${g.description}` : ""}`,
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                  size="middle"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              {selectedGroupId ? (
+                <div
+                  style={{
+                    background: "#e5eeff",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    color: "#00236f",
+                    border: "1px solid #d3e4fe",
+                  }}
+                >
+                  Đang lọc {vehiclesInSelectedGroup.length} xe thuộc nhóm đã chọn.
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#757682", fontStyle: "italic" }}>
+                  Chưa chọn nhóm xe — danh sách xe hiển thị toàn bộ. Có thể chọn nhóm để lọc xe theo nhóm.
+                </div>
+              )}
+            </Col>
+          </Row>
 
           {/* Row 2: Ngày · Tên khách hàng input */}
           <Row gutter={12} align="middle">
@@ -1068,7 +1126,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
               shipment={shipment}
               index={index}
               canRemove={shipments.length > 1}
-              vehicles={vehicles}
+              vehicles={vehiclesInSelectedGroup}
               drivers={drivers}
               lookupMaps={lookupMaps}
               onUpdate={(updated) => updateShipment(index, updated)}

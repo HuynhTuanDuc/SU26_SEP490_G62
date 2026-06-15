@@ -78,13 +78,15 @@ function buildTuyenLabels(pickups, deliveryAddress) {
   return labels;
 }
 
-function getBadgeBg(isRed, isGreen) {
+function getBadgeBg(isRed, isGreen, isMuted) {
+  if (isMuted) return "#f8fafc";
   if (isRed) return "#fff7ed";
   if (isGreen) return "#f0fdf4";
   return "#f8fafc";
 }
 
-function getBadgeColor(isRed, isGreen) {
+function getBadgeColor(isRed, isGreen, isMuted) {
+  if (isMuted) return "#94a3b8";
   if (isRed) return "#c2410c";
   if (isGreen) return "#16a34a";
   return "#0f172a";
@@ -108,9 +110,10 @@ export default function OrderDetailModal({ isOpen, onClose, order, apiBase, toke
   const [confirmLoading, setConfirmLoading] = useState(false);
 
   const debtStatus = order?.debt_status || (order?.payment_type === "client_credit" ? "unpaid" : "paid");
-  const totalValue = Number(order?.debt_total || order?.estimated_price || 0);
+  const actualValue = Number(order?.actual_price || 0);
+  const estimatedValue = Number(order?.estimated_price || 0);
   const totalPaid = Number(order?.debt_paid || 0);
-  const totalDue = Number(order?.debt_remaining || Math.max(totalValue - totalPaid, 0));
+  const totalDue = Number(order?.debt_remaining ?? Math.max(actualValue - totalPaid, 0));
 
   useEffect(() => {
     if (!isOpen || !order) return;
@@ -201,7 +204,8 @@ export default function OrderDetailModal({ isOpen, onClose, order, apiBase, toke
     { label: "Khách hàng", value: order.customer_name || "Khách lẻ" },
     { label: "SĐT", value: order.customer_phone || "—" },
     { label: "Trạng thái", value: <DebtBadge status={debtStatus} /> },
-    { label: "Tổng giá trị", value: `${fmt(totalValue)}đ` },
+    { label: "Ước tính", value: `${fmt(estimatedValue)}đ`, muted: true },
+    { label: "Tổng giá trị", value: `${fmt(actualValue)}đ` },
     { label: "Đã thu", value: `${fmt(totalPaid)}đ`, green: true },
     { label: "Còn nợ", value: `${fmt(totalDue)}đ`, red: totalDue > 0 },
   ];
@@ -344,8 +348,8 @@ export default function OrderDetailModal({ isOpen, onClose, order, apiBase, toke
           <div className="detail-modal-body">
             <div className="detail-stats-row">
               {stats.map((item) => {
-                const bg = getBadgeBg(item.red, item.green);
-                const color = getBadgeColor(item.red, item.green);
+                const bg = getBadgeBg(item.red, item.green, item.muted);
+                const color = getBadgeColor(item.red, item.green, item.muted);
                 return (
                   <div key={item.label} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: "12px 14px", background: bg }}>
                     <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
@@ -589,9 +593,11 @@ export default function OrderDetailModal({ isOpen, onClose, order, apiBase, toke
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                                   {/* Thực thu */}
                                   <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 12px" }}>
-                                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700, marginBottom: 4 }}>Thực thu</div>
+                                    <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700, marginBottom: 4 }}>Thực tế (giá trị chính)</div>
                                     <div style={{ fontSize: 15, fontWeight: 700, color: "#1e40af" }}>{fmt(actualPrice)}đ</div>
-                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Cước xe: {fmt(cargoFee)}đ</div>
+                                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                                      Cước xe (ước tính): <span style={{ textDecoration: cargoFee > 0 && Math.abs(cargoFee - actualPrice) > 0.01 ? "line-through" : "none", color: "#94a3b8" }}>{fmt(cargoFee)}đ</span>
+                                    </div>
                                   </div>
 
                                   {/* Chi phí chuyến */}

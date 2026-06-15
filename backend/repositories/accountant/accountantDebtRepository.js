@@ -221,7 +221,7 @@ const getDebtsGroupedByPerson = async ({
             MAX(sub.driver_id)        AS driver_id,
             MAX(sub.customer_name)    AS customer_name,
             MAX(sub.customer_company) AS customer_company,
-            sub.normalized_phone,
+            MAX(sub.customer_phone)   AS customer_phone,
             MAX(sub.driver_name)      AS driver_name,
             COUNT(*)::int                                 AS debt_count,
             SUM(sub.total_amount)::text                   AS total_amount,
@@ -239,7 +239,7 @@ const getDebtsGroupedByPerson = async ({
                 d.driver_id,
                 c.full_name    AS customer_name,
                 c.company_name AS customer_company,
-                REGEXP_REPLACE(LOWER(TRIM(c.phone)), '\\s+', '', 'g') AS normalized_phone,
+                c.phone        AS customer_phone,
                 dr.full_name   AS driver_name,
                 d.total_amount,
                 d.paid_amount,
@@ -281,7 +281,7 @@ const getDebtsGroupedByPerson = async ({
             driver_id: row.driver_id,
             customer_name: row.customer_name,
             customer_company: row.customer_company,
-            normalized_phone: row.normalized_phone,
+            customer_phone: row.customer_phone,
             driver_name: row.driver_name,
             debt_count: Number(row.debt_count),
             total_amount: totalAmount,
@@ -349,7 +349,7 @@ const getDebtsByPerson = async (personType, personId) => {
     }));
 };
 
-// Lấy chi tiết công nợ của nhiều customer (gộp từ normalized phone)
+// Lấy chi tiết công nợ của nhiều customer (gộp từ danh sách customer_id)
 const getDebtsByCustomerIds = async (customerIds) => {
     const result = await pool.query(`
         SELECT

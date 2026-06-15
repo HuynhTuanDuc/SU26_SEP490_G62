@@ -88,3 +88,6 @@ scratch/
 *.doc
 *.ppt
 *.pptx
+
+# Personal accountant notes (not for team)
+docs/accountant-business-notes.md

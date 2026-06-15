@@ -252,7 +252,7 @@ export default function Accountant({ user, onLogout }) {
                     </svg>
                   </div>
                   <div className="stat-card-info">
-                    <span className="stat-card-label">Tổng doanh thu dự tính</span>
+                    <span className="stat-card-label" title="SUM order_shipments.actual_price">Tổng doanh thu</span>
                     <span className="stat-card-value">{Number(stats.total_revenue).toLocaleString()}đ</span>
                   </div>
                 </div>
@@ -264,7 +264,7 @@ export default function Accountant({ user, onLogout }) {
                     </svg>
                   </div>
                   <div className="stat-card-info">
-                    <span className="stat-card-label">Thực thu</span>
+                    <span className="stat-card-label" title="SUM confirmed debt_payments (gồm customer + driver)">Thực thu</span>
                     <span className="stat-card-value text-green">{Number(stats.total_collected).toLocaleString()}đ</span>
                   </div>
                 </div>
@@ -276,7 +276,7 @@ export default function Accountant({ user, onLogout }) {
                     </svg>
                   </div>
                   <div className="stat-card-info">
-                    <span className="stat-card-label">Công nợ phải thu</span>
+                    <span className="stat-card-label" title="Tổng giá trị đơn - Thực thu = số tiền còn phải thu">Công nợ phải thu</span>
                     <span className="stat-card-value text-red">{Number(stats.total_receivables).toLocaleString()}đ</span>
                   </div>
                 </div>
