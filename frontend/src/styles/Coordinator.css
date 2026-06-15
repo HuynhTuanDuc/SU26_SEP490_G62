@@ -196,6 +196,15 @@
   box-shadow: 0 8px 18px rgba(32, 40, 71, 0.07);
 }
 
+.coordinator-shell .section-tag {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #eef1ff;
+  color: #18227f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .coordinator-shell .trip-id {
   display: inline-flex;
   background: #ececf7;
@@ -543,9 +552,38 @@
   gap: 18px;
 }
 
+.coordinator-shell .receipt-overview-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
 .coordinator-shell .receipt-section {
   display: grid;
   gap: 14px;
+  align-content: start;
+}
+
+.coordinator-shell .receipt-shipments-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.coordinator-shell .receipt-shipment-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #dde2f3;
+  border-radius: 18px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.coordinator-shell .receipt-shipment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .coordinator-shell .receipt-info-grid {
@@ -619,19 +657,72 @@
 }
 
 .coordinator-shell .receipt-expense-editor {
-  grid-template-columns: 1.1fr 0.8fr 1.4fr auto;
+  grid-template-columns: 1.2fr 1fr 0.8fr 1.4fr auto;
+}
+
+.coordinator-shell .receipt-payment-row {
+  max-width: 360px;
+}
+
+.coordinator-shell .receipt-notes-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #dde2f3;
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(180deg, #fcfcff 0%, #f6f8ff 100%);
+}
+
+.coordinator-shell .receipt-field-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.coordinator-shell .receipt-field-head strong {
+  display: block;
+  margin-top: 4px;
+  color: #1f2430;
+  font-size: 15px;
+}
+
+.coordinator-shell .receipt-field-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef1ff;
+  color: #314096;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.coordinator-shell .receipt-notes-textarea {
+  width: 100%;
+  min-height: 128px;
+  border: 1px solid #cfd6e6;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: #fff;
+  color: #22304d;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.coordinator-shell .receipt-notes-textarea:focus {
+  border-color: #18227f;
+  box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
 }
 
 .coordinator-shell .receipt-expense-editor .table-cancel-btn {
   min-width: 44px;
   height: 44px;
-}
-
-.coordinator-shell .receipt-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 6px;
 }
 
 .coordinator-shell .receipt-summary-card.emphasis {
@@ -643,6 +734,15 @@
   color: #b42318;
 }
 
+.coordinator-shell .receipt-summary-card strong {
+  font-size: 16px;
+}
+
+.coordinator-shell .receipt-summary-card > div {
+  display: grid;
+  gap: 6px;
+}
+
 @media (max-width: 720px) {
   .coordinator-shell .modal-card {
     padding: 18px;
@@ -652,8 +752,8 @@
   .coordinator-shell .form-row-3,
   .coordinator-shell .form-row-2,
   .coordinator-shell .form-row-address,
+  .coordinator-shell .receipt-overview-grid,
   .coordinator-shell .receipt-info-grid,
-  .coordinator-shell .receipt-summary-grid,
   .coordinator-shell .receipt-expense-editor {
     grid-template-columns: 1fr;
   }
@@ -676,6 +776,10 @@
 @media (max-width: 1024px) {
   .coordinator-shell .modal-card {
     width: min(100%, calc(100vw - 24px));
+  }
+
+  .coordinator-shell .receipt-overview-grid {
+    grid-template-columns: 1fr;
   }
 }
 

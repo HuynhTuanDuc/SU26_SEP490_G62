@@ -47,7 +47,7 @@ const getReceiptRequestDetail = async (req, res) => {
 };
 
 // POST /api/coordinator/receipt-requests/:id/approve
-// Body: { payment_type, amount, notes?, qr_code_data?, expenses?[] }
+// Body: { notes?, expenses?[] }
 const approveReceiptRequest = async (req, res) => {
     try {
         const requestId = Number(req.params.id);

@@ -330,7 +330,6 @@ const importExcel = async (userId, fileBuffer) => {
 
 // ─── Receipt Request Management ───────────────────────────────────────────────
 
-const VALID_PAYMENT_TYPES = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
 const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
 
 const normalizeAmount = (value, fieldLabel = 'Số tiền') => {
@@ -350,10 +349,19 @@ const normalizeExpenses = (expenses = []) => {
             throw new Error(`Loại chi phí #${index + 1} không hợp lệ`);
         }
 
+        const shipmentIdRaw = expense?.shipment_id ?? expense?.shipmentId ?? null;
+        const shipmentId = shipmentIdRaw === null || shipmentIdRaw === undefined || shipmentIdRaw === ''
+            ? null
+            : Number(shipmentIdRaw);
+        if (shipmentId !== null && (!Number.isInteger(shipmentId) || shipmentId <= 0)) {
+            throw new Error(`Chuyến xe cho chi phí #${index + 1} không hợp lệ`);
+        }
+
         return {
             expense_type: expenseType,
             amount: normalizeAmount(expense?.amount, `Số tiền chi phí #${index + 1}`),
             description: String(expense?.description ?? '').trim() || null,
+            shipment_id: shipmentId,
         };
     });
 };
@@ -372,48 +380,133 @@ const updateOrderActualIncome = async (client, orderId) => {
     );
 };
 
-const getShipmentPricingSnapshot = async (db, requestId) => {
-    const result = await db.query(
+const getOrderShipmentsForReceipt = async (db, orderId) => {
+    const shipmentResult = await db.query(
         `SELECT
-            rr.actual_km,
-            os.id AS shipment_id,
+            os.id,
+            os.order_id,
+            os.shipment_index,
+            os.owner_driver_id,
+            os.vehicle_id,
+            os.status,
+            os.cargo_name,
+            os.cargo_weight_kg,
             os.estimated_distance_km,
             os.actual_distance_km,
             os.estimated_price,
             os.actual_price,
-            o.id AS order_id,
+            os.notes,
+            v.plate_number,
+            p.full_name AS driver_name,
             COALESCE(vg_vehicle.id, vg_order.id) AS vehicle_group_id,
             COALESCE(vg_vehicle.name, vg_order.name) AS vehicle_group_name,
             COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
-         FROM shipment_receipt_requests rr
-         JOIN order_shipments os ON os.id = rr.shipment_id
-         JOIN orders o ON o.id = os.order_id
+         FROM order_shipments os
          LEFT JOIN vehicles v ON v.id = os.vehicle_id
+         LEFT JOIN profiles p ON p.id = os.owner_driver_id
+         LEFT JOIN orders o ON o.id = os.order_id
          LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
          LEFT JOIN vehicle_groups vg_order ON vg_order.id = o.vehicle_group_id
+         WHERE os.order_id = $1
+         ORDER BY os.shipment_index ASC`,
+        [orderId],
+    );
+
+    const shipments = [];
+    for (const shipment of shipmentResult.rows) {
+        const stopsResult = await db.query(
+            `SELECT stop_type, stop_index, address, contact_name, contact_phone
+             FROM trip_stops
+             WHERE shipment_id = $1
+             ORDER BY stop_index ASC`,
+            [shipment.id],
+        );
+        const expenses = await expenseRepository.getShipmentExpenses(shipment.id);
+        const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+        const pickupStops = stopsResult.rows.filter((stop) => stop.stop_type === 'pickup');
+        const deliveryStop = stopsResult.rows.find((stop) => stop.stop_type === 'delivery') ?? null;
+
+        shipments.push({
+            ...shipment,
+            expenses,
+            total_expenses: totalExpenses,
+            stops: stopsResult.rows,
+            pickup_address: pickupStops[0]?.address || null,
+            pickup_addresses: pickupStops,
+            delivery_address: deliveryStop?.address || null,
+            delivery_contact_name: deliveryStop?.contact_name || null,
+            delivery_contact_phone: deliveryStop?.contact_phone || null,
+        });
+    }
+
+    return shipments;
+};
+
+const resolvePrimaryReceiptShipment = (shipments, driverId) => {
+    if (!Array.isArray(shipments) || shipments.length === 0) return null;
+    return shipments.find((shipment) => Number(shipment.owner_driver_id) === Number(driverId))
+        || shipments[0];
+};
+
+const getShipmentPricingSnapshot = async (db, requestId) => {
+    const result = await db.query(
+        `SELECT
+            rr.id,
+            rr.order_id,
+            rr.driver_id
+         FROM shipment_receipt_requests rr
          WHERE rr.id = $1`,
         [requestId],
     );
-    return result.rows[0] ?? null;
+    const request = result.rows[0] ?? null;
+    if (!request) return null;
+
+    const shipments = await getOrderShipmentsForReceipt(db, request.order_id);
+    const primaryShipment = resolvePrimaryReceiptShipment(shipments, request.driver_id);
+
+    return {
+        ...request,
+        shipments,
+        primaryShipment,
+    };
 };
 
 const computeReceiptAmount = (pricingSnapshot) => {
-    if (!pricingSnapshot) throw new Error('Không thể lấy cấu hình giá cho chuyến');
+    const shipments = Array.isArray(pricingSnapshot?.shipments) ? pricingSnapshot.shipments : [];
+    if (shipments.length === 0) throw new Error('Không thể lấy cấu hình giá cho đơn hàng');
 
-    const actualKm = pricingSnapshot.actual_km ?? pricingSnapshot.actual_distance_km ?? pricingSnapshot.estimated_distance_km;
-    const pricePerKm = Number(pricingSnapshot.price_per_km || 0);
+    const shipmentBreakdown = shipments.map((shipment) => {
+        const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
+        const pricePerKm = Number(shipment.price_per_km || 0);
 
-    if (actualKm === null || actualKm === undefined || Number.isNaN(Number(actualKm)) || Number(actualKm) <= 0) {
-        throw new Error('Yêu cầu phiếu thu chưa có số km thực tế hợp lệ để tính thu nhập');
-    }
-    if (!pricePerKm || Number.isNaN(pricePerKm) || pricePerKm <= 0) {
-        throw new Error('Chuyến chưa có đơn giá xe hợp lệ để tính thu nhập thực tế');
-    }
+        if (actualKm === null || actualKm === undefined || Number.isNaN(Number(actualKm)) || Number(actualKm) <= 0) {
+            throw new Error(`Chuyến #${shipment.id} chưa có số km thực tế hợp lệ để tính thu nhập`);
+        }
+        if (!pricePerKm || Number.isNaN(pricePerKm) || pricePerKm <= 0) {
+            throw new Error(`Chuyến #${shipment.id} chưa có đơn giá xe hợp lệ để tính thu nhập thực tế`);
+        }
+
+        return {
+            shipment_id: shipment.id,
+            actual_km: Number(actualKm),
+            price_per_km: pricePerKm,
+            actual_income: Number(actualKm) * pricePerKm,
+        };
+    });
+
+    const totalActualKm = shipmentBreakdown.reduce((sum, item) => sum + item.actual_km, 0);
+    const totalActualIncome = shipmentBreakdown.reduce((sum, item) => sum + item.actual_income, 0);
+    const primaryShipment = pricingSnapshot?.primaryShipment ?? null;
+    const primaryBreakdown = primaryShipment
+        ? shipmentBreakdown.find((item) => Number(item.shipment_id) === Number(primaryShipment.id)) ?? shipmentBreakdown[0]
+        : shipmentBreakdown[0];
 
     return {
-        actual_km: Number(actualKm),
-        price_per_km: pricePerKm,
-        actual_income: Number(actualKm) * pricePerKm,
+        shipment_id: primaryBreakdown?.shipment_id ?? null,
+        actual_km: totalActualKm,
+        price_per_km: primaryBreakdown?.price_per_km ?? 0,
+        actual_income: totalActualIncome,
+        shipment_breakdown: shipmentBreakdown,
     };
 };
 
@@ -434,34 +527,55 @@ const getReceiptRequests = async ({ status = null } = {}) => {
     const result = await pool.query(
         `SELECT
             rr.id,
-            rr.shipment_id,
+            rr.order_id,
             rr.driver_id,
-            rr.actual_km,
             rr.status,
             rr.requested_at,
             rr.processed_at,
             rr.coordinator_notes,
             p.full_name          AS driver_name,
-            os.estimated_price,
-            os.actual_price,
             o.cargo_name,
             o.id                 AS order_id,
             c.full_name          AS customer_name,
             c.phone              AS customer_phone,
-            os.shipment_index,
-            os.status            AS shipment_status,
-            v.plate_number,
+            c.company_name       AS customer_company,
+            COALESCE(shipments.shipment_count, 0) AS shipment_count,
+            primary_shipment.id  AS shipment_id,
+            primary_shipment.shipment_index,
+            primary_shipment.status AS shipment_status,
+            primary_shipment.actual_distance_km,
+            COALESCE(distance_summary.total_actual_distance_km, 0) AS total_actual_distance_km,
+            primary_shipment.estimated_price,
+            primary_shipment.actual_price,
+            primary_vehicle.plate_number,
             COALESCE(exp.total_expenses, 0) AS total_expenses
          FROM shipment_receipt_requests rr
          JOIN profiles p       ON p.id  = rr.driver_id
-         JOIN order_shipments os ON os.id = rr.shipment_id
-         JOIN orders o          ON o.id  = os.order_id
+         JOIN orders o         ON o.id  = rr.order_id
          LEFT JOIN customers c  ON c.id  = o.customer_id
-         LEFT JOIN vehicles v   ON v.id  = os.vehicle_id
+         LEFT JOIN LATERAL (
+            SELECT COUNT(*) AS shipment_count
+            FROM order_shipments os_count
+            WHERE os_count.order_id = rr.order_id
+         ) shipments ON TRUE
+         LEFT JOIN LATERAL (
+            SELECT SUM(COALESCE(os_distance.actual_distance_km, 0)) AS total_actual_distance_km
+            FROM order_shipments os_distance
+            WHERE os_distance.order_id = rr.order_id
+         ) distance_summary ON TRUE
+         LEFT JOIN LATERAL (
+            SELECT os_primary.*
+            FROM order_shipments os_primary
+            WHERE os_primary.order_id = rr.order_id
+            ORDER BY CASE WHEN os_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
+            LIMIT 1
+         ) primary_shipment ON TRUE
+         LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id
          LEFT JOIN LATERAL (
             SELECT SUM(e.amount) AS total_expenses
             FROM expenses e
-            WHERE e.shipment_id = rr.shipment_id
+            JOIN order_shipments os_exp ON os_exp.id = e.shipment_id
+            WHERE os_exp.order_id = rr.order_id
          ) exp ON TRUE
          ${where}
          ORDER BY rr.requested_at DESC`,
@@ -474,25 +588,15 @@ const getReceiptRequestDetail = async (requestId) => {
     const result = await pool.query(
         `SELECT
             rr.id,
-            rr.shipment_id,
+            rr.order_id,
             rr.driver_id,
-            rr.actual_km,
             rr.status,
             rr.requested_at,
             rr.processed_at,
             rr.coordinator_notes,
             rr.processed_by,
-            os.order_id,
-            os.shipment_index,
-            os.owner_driver_id,
-            os.vehicle_id,
-            os.status                  AS shipment_status,
-            os.estimated_distance_km,
-            os.actual_distance_km,
-            os.estimated_price,
-            os.actual_price,
-            os.notes                   AS shipment_notes,
             o.cargo_name,
+            o.cargo_weight_kg,
             o.notes                    AS order_notes,
             o.payment_type             AS order_payment_type,
             o.total_actual_price       AS order_actual_income,
@@ -502,10 +606,6 @@ const getReceiptRequestDetail = async (requestId) => {
             c.company_name             AS customer_company,
             c.address                  AS customer_address,
             d.full_name                AS driver_name,
-            v.plate_number,
-            COALESCE(vg_vehicle.id, vg_order.id) AS vehicle_group_id,
-            COALESCE(vg_vehicle.name, vg_order.name) AS vehicle_group_name,
-            COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km,
             sp.id                      AS receipt_id,
             sp.payment_type            AS receipt_payment_type,
             sp.amount                  AS receipt_amount,
@@ -513,13 +613,9 @@ const getReceiptRequestDetail = async (requestId) => {
             sp.qr_code_data,
             sp.collected_at
          FROM shipment_receipt_requests rr
-         JOIN order_shipments os ON os.id = rr.shipment_id
-         JOIN orders o ON o.id = os.order_id
+         JOIN orders o ON o.id = rr.order_id
          LEFT JOIN customers c ON c.id = o.customer_id
          LEFT JOIN profiles d ON d.id = rr.driver_id
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
-         LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
-         LEFT JOIN vehicle_groups vg_order ON vg_order.id = o.vehicle_group_id
          LEFT JOIN shipment_receipts sp ON sp.receipt_request_id = rr.id
          WHERE rr.id = $1`,
         [requestId],
@@ -527,38 +623,28 @@ const getReceiptRequestDetail = async (requestId) => {
     const row = result.rows[0];
     if (!row) throw new Error('Yêu cầu phiếu thu không tồn tại');
 
-    const stopsResult = await pool.query(
-        `SELECT stop_type, stop_index, address, contact_name, contact_phone
-         FROM trip_stops
-         WHERE shipment_id = $1
-         ORDER BY stop_index ASC`,
-        [row.shipment_id],
-    );
-    const expenses = await expenseRepository.getShipmentExpenses(row.shipment_id);
-    const payments = await paymentRepository.getShipmentPayments(row.shipment_id);
-    const computed = computeReceiptAmount({
-        actual_km: row.actual_km,
-        actual_distance_km: row.actual_distance_km,
-        estimated_distance_km: row.estimated_distance_km,
-        price_per_km: row.price_per_km,
-    });
+    const shipments = await getOrderShipmentsForReceipt(pool, row.order_id);
+    const primaryShipment = resolvePrimaryReceiptShipment(shipments, row.driver_id);
+    const payments = primaryShipment ? await paymentRepository.getShipmentPayments(primaryShipment.id) : [];
+    const computed = computeReceiptAmount({ shipments, primaryShipment });
 
-    const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-    const suggestedAmount = Number(row.receipt_amount ?? row.actual_price ?? computed.actual_income ?? 0);
-    const actualIncome = Number(row.receipt_amount ?? row.actual_price ?? computed.actual_income ?? 0);
+    const expenses = shipments.flatMap((shipment) => shipment.expenses || []);
+    const totalExpenses = shipments.reduce((sum, shipment) => sum + Number(shipment.total_expenses || 0), 0);
+    const suggestedAmount = Number(row.receipt_amount ?? row.order_actual_income ?? computed.actual_income ?? 0);
+    const actualIncome = Number(row.receipt_amount ?? row.order_actual_income ?? computed.actual_income ?? 0);
 
     return {
         request: {
             id: row.id,
-            shipment_id: row.shipment_id,
+            order_id: row.order_id,
+            shipment_id: primaryShipment?.id ?? null,
             driver_id: row.driver_id,
             driver_name: row.driver_name,
-            actual_km: row.actual_km,
             status: row.status,
             requested_at: row.requested_at,
             processed_at: row.processed_at,
             coordinator_notes: row.coordinator_notes,
-            plate_number: row.plate_number,
+            plate_number: primaryShipment?.plate_number || null,
             receipt: row.receipt_id ? {
                 id: row.receipt_id,
                 payment_type: row.receipt_payment_type,
@@ -578,25 +664,13 @@ const getReceiptRequestDetail = async (requestId) => {
         order: {
             id: row.order_id,
             cargo_name: row.cargo_name,
+            cargo_weight_kg: row.cargo_weight_kg,
             payment_type: row.order_payment_type,
             notes: row.order_notes,
             total_actual_income: row.order_actual_income,
         },
-        shipment: {
-            id: row.shipment_id,
-            shipment_index: row.shipment_index,
-            status: row.shipment_status,
-            plate_number: row.plate_number,
-            vehicle_group_id: row.vehicle_group_id,
-            vehicle_group_name: row.vehicle_group_name,
-            price_per_km: row.price_per_km,
-            estimated_distance_km: row.estimated_distance_km,
-            actual_distance_km: row.actual_distance_km,
-            estimated_price: row.estimated_price,
-            actual_price: row.actual_price,
-            notes: row.shipment_notes,
-            stops: stopsResult.rows,
-        },
+        shipment: primaryShipment,
+        shipments,
         expenses,
         payments,
         summary: {
@@ -606,22 +680,20 @@ const getReceiptRequestDetail = async (requestId) => {
             actual_income: actualIncome,
             total_expenses: totalExpenses,
             net_after_expenses: actualIncome - totalExpenses,
+            shipment_count: shipments.length,
+            shipment_breakdown: computed.shipment_breakdown,
         },
     };
 };
 
-// POST approve — tạo shipment_receipts + cập nhật request status
-const approveReceiptRequest = async (requestId, coordinatorId, { payment_type, notes, qr_code_data, expenses = [] } = {}) => {
-    if (!payment_type || !VALID_PAYMENT_TYPES.includes(payment_type)) {
-        throw new Error(`payment_type không hợp lệ. Chọn một trong: ${VALID_PAYMENT_TYPES.join(', ')}`);
-    }
+// POST approve — chốt actual income/expenses + cập nhật request status
+const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses = [] } = {}) => {
     const normalizedExpenses = normalizeExpenses(expenses);
 
     const reqResult = await pool.query(
-        `SELECT rr.*, os.owner_driver_id, os.vehicle_id, os.order_id, o.customer_id
+        `SELECT rr.*, o.customer_id
          FROM shipment_receipt_requests rr
-         JOIN order_shipments os ON os.id = rr.shipment_id
-         JOIN orders o ON o.id = os.order_id
+         JOIN orders o ON o.id = rr.order_id
          WHERE rr.id = $1`,
         [requestId],
     );
@@ -635,35 +707,24 @@ const approveReceiptRequest = async (requestId, coordinatorId, { payment_type, n
         await client.query('BEGIN');
         const pricingSnapshot = await getShipmentPricingSnapshot(client, requestId);
         const computed = computeReceiptAmount(pricingSnapshot);
+        const targetShipment = pricingSnapshot?.primaryShipment;
+        if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
         const amt = computed.actual_income;
-
-        // Tạo shipment_receipts
-        const receiptResult = await client.query(
-            `INSERT INTO shipment_receipts
-                (shipment_id, payment_type, amount, notes, qr_code_data,
-                 receipt_request_id, created_by, collected_by, collected_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-             RETURNING *`,
-            [
-                req.shipment_id,
-                payment_type,
-                amt,
-                notes ?? null,
-                qr_code_data ?? null,
-                requestId,
-                coordinatorId,
-                payment_type === 'cash_collected' ? req.driver_id : null,
-            ],
-        );
+        const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
         for (const expense of normalizedExpenses) {
+            const expenseShipmentId = expense.shipment_id ?? targetShipment.id;
+            if (!validShipmentIds.has(Number(expenseShipmentId))) {
+                throw new Error('Chi phí có chuyến xe không thuộc đơn hàng này');
+            }
+            const expenseVehicleId = pricingSnapshot.shipments.find((shipment) => Number(shipment.id) === Number(expenseShipmentId))?.vehicle_id ?? null;
             await client.query(
                 `INSERT INTO expenses
                     (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, created_at, updated_at)
                  VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, NOW(), NOW())`,
                 [
-                    req.shipment_id,
-                    req.vehicle_id ?? null,
+                    expenseShipmentId,
+                    expenseVehicleId,
                     coordinatorId,
                     expense.expense_type,
                     expense.amount,
@@ -672,63 +733,17 @@ const approveReceiptRequest = async (requestId, coordinatorId, { payment_type, n
             );
         }
 
-        // Cập nhật actual_price + actual_distance_km vào order_shipments
-        // actual_price = giá chốt thực tế do coordinator xác nhận
-        // actual_distance_km = km thực tế driver nhập lúc yêu cầu phiếu thu
-        await client.query(
-            `UPDATE order_shipments
-             SET actual_price        = $1,
-                 actual_distance_km  = $2,
-                 updated_at          = NOW()
-             WHERE id = $3`,
-            [amt, computed.actual_km, req.shipment_id],
-        );
-
-        await updateOrderActualIncome(client, req.order_id);
-
-        if (payment_type === 'cash_collected') {
+        for (const shipmentSummary of computed.shipment_breakdown) {
             await client.query(
-                `INSERT INTO debts
-                    (debt_type, driver_id, customer_id, order_id, shipment_id, total_amount, paid_amount, status, notes, updated_by, created_at, updated_at)
-                 VALUES ('driver', $1, $2, $3, $4, $5, 0, 'unpaid', $6, $7, NOW(), NOW())`,
-                [
-                    req.driver_id,
-                    req.customer_id ?? null,
-                    req.order_id,
-                    req.shipment_id,
-                    amt,
-                    notes?.trim() || 'Coordinator tạo phiếu thu: tài xế đang giữ tiền khách',
-                    coordinatorId,
-                ],
-            );
-        }
-
-        if (payment_type === 'client_credit') {
-            if (!req.customer_id) {
-                throw new Error('Không thể ghi nợ khách hàng vì đơn chưa có thông tin khách hàng');
-            }
-
-            await client.query(
-                `INSERT INTO debts
-                    (debt_type, customer_id, order_id, shipment_id, total_amount, paid_amount, status, notes, updated_by, created_at, updated_at)
-                 VALUES ('customer', $1, $2, $3, $4, 0, 'unpaid', $5, $6, NOW(), NOW())`,
-                [
-                    req.customer_id,
-                    req.order_id,
-                    req.shipment_id,
-                    amt,
-                    notes?.trim() || 'Coordinator tạo phiếu thu theo hình thức khách nợ',
-                    coordinatorId,
-                ],
-            );
-            await client.query(
-                `UPDATE customers
-                 SET current_debt = COALESCE(current_debt, 0) + $1,
+                `UPDATE order_shipments
+                 SET actual_price = $1,
                      updated_at = NOW()
                  WHERE id = $2`,
-                [amt, req.customer_id],
+                [shipmentSummary.actual_income, shipmentSummary.shipment_id],
             );
         }
+
+        await updateOrderActualIncome(client, req.order_id);
 
         // Cập nhật trạng thái request → approved
         await client.query(
@@ -744,15 +759,14 @@ const approveReceiptRequest = async (requestId, coordinatorId, { payment_type, n
         const notificationService = require('./notificationService');
         notificationService.createForUser(req.driver_id, {
             title: 'Phiếu thu đã được tạo',
-            message: `Coordinator đã tạo phiếu thu cho chuyến #${req.shipment_id}.`,
+            message: `Coordinator đã tạo phiếu thu cho đơn #${req.order_id}.`,
             type: 'RECEIPT_APPROVED',
-            entityType: 'shipments',
-            entityId: req.shipment_id,
+            entityType: 'orders',
+            entityId: req.order_id,
         }, { displayMode: 'alert' }).catch(() => {});
 
         const detail = await getReceiptRequestDetail(requestId);
         return {
-            ...receiptResult.rows[0],
             actual_income: detail.summary.actual_income,
             total_expenses: detail.summary.total_expenses,
             net_after_expenses: detail.summary.net_after_expenses,
@@ -786,10 +800,10 @@ const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) =>
     const notificationService = require('./notificationService');
     notificationService.createForUser(req.driver_id, {
         title: 'Yêu cầu phiếu thu bị từ chối',
-        message: `Yêu cầu phiếu thu cho chuyến #${req.shipment_id} bị từ chối${notes ? `: ${notes}` : ''}.`,
+        message: `Yêu cầu phiếu thu cho đơn #${req.order_id} bị từ chối${notes ? `: ${notes}` : ''}.`,
         type: 'RECEIPT_REJECTED',
-        entityType: 'shipments',
-        entityId: req.shipment_id,
+        entityType: 'orders',
+        entityId: req.order_id,
     }, { displayMode: 'alert' }).catch(() => {});
 
     return { success: true };

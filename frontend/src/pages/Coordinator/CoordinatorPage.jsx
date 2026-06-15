@@ -44,12 +44,6 @@ const formatDateForInput = (dateStr) => {
 
 const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
-const receiptPaymentOptions = [
-  { value: "cash_collected", label: "Tiền mặt tài xế thu" },
-  { value: "bank_transfer", label: "Chuyển khoản công ty" },
-  { value: "client_credit", label: "Khách nợ" },
-  { value: "qr_transfer", label: "QR chuyển khoản" },
-];
 const expenseTypeOptions = [
   { value: "fuel", label: "Nhiên liệu" },
   { value: "toll", label: "Cầu đường" },
@@ -65,10 +59,7 @@ const newReceiptExpense = () => ({
   description: "",
 });
 const emptyReceiptForm = () => ({
-  payment_type: "cash_collected",
-  amount: "",
   notes: "",
-  qr_code_data: "",
   expenses: [],
 });
 const STATUS_TABS = {
@@ -375,8 +366,8 @@ export default function CoordinatorPage({ user, onLogout }) {
 
       const shipmentDates = Array.isArray(trip.trips) && trip.trips.length > 0
         ? trip.trips
-            .map((item) => (item.arrived_at ? String(item.arrived_at).substring(0, 10) : ""))
-            .filter(Boolean)
+          .map((item) => (item.arrived_at ? String(item.arrived_at).substring(0, 10) : ""))
+          .filter(Boolean)
         : [];
       const candidateDates = shipmentDates.length > 0
         ? shipmentDates
@@ -616,15 +607,8 @@ export default function CoordinatorPage({ user, onLogout }) {
         ?? detail?.shipment?.actual_price
         ?? detail?.shipment?.estimated_price
         ?? "";
-      const orderPaymentType = detail?.order?.payment_type;
-      const defaultPaymentType = detail?.request?.receipt?.payment_type
-        || (orderPaymentType === "bank_transfer" ? "bank_transfer" : orderPaymentType === "client_credit" ? "client_credit" : "cash_collected");
-
       setReceiptForm({
-        payment_type: defaultPaymentType,
-        amount: suggestedAmount ? String(suggestedAmount) : "",
         notes: detail?.request?.receipt?.notes || "",
-        qr_code_data: detail?.request?.receipt?.qr_code_data || "",
         expenses: [],
       });
     } catch (error) {
@@ -656,6 +640,15 @@ export default function CoordinatorPage({ user, onLogout }) {
     }));
   };
 
+  const updateReceiptExpenseShipment = (index, value) => {
+    setReceiptForm((current) => ({
+      ...current,
+      expenses: current.expenses.map((expense, expenseIndex) => (
+        expenseIndex === index ? { ...expense, shipment_id: value } : expense
+      )),
+    }));
+  };
+
   const removeReceiptExpense = (index) => {
     setReceiptForm((current) => ({
       ...current,
@@ -670,15 +663,14 @@ export default function CoordinatorPage({ user, onLogout }) {
     try {
       const token = localStorage.getItem("token");
       const payload = {
-        payment_type: receiptForm.payment_type,
         notes: receiptForm.notes,
-        qr_code_data: receiptForm.qr_code_data,
         expenses: receiptForm.expenses
           .filter((expense) => String(expense.amount || "").trim() !== "")
           .map((expense) => ({
             expense_type: expense.expense_type,
             amount: Number(expense.amount),
             description: expense.description,
+            shipment_id: expense.shipment_id || null,
           })),
       };
 
@@ -708,11 +700,21 @@ export default function CoordinatorPage({ user, onLogout }) {
     () => receiptForm.expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
     [receiptForm.expenses],
   );
-  const totalReceiptExpenses = existingReceiptExpensesTotal + draftReceiptExpensesTotal;
-  const receiptActualKm = Number(selectedReceiptDetail?.summary?.actual_km || selectedReceiptDetail?.request?.actual_km || selectedReceiptDetail?.shipment?.actual_distance_km || 0);
-  const receiptPricePerKm = Number(selectedReceiptDetail?.summary?.price_per_km || selectedReceiptDetail?.shipment?.price_per_km || 0);
-  const receiptActualIncome = receiptActualKm * receiptPricePerKm;
-  const receiptNetIncome = receiptActualIncome - totalReceiptExpenses;
+  const receiptShipments = selectedReceiptDetail?.shipments || (selectedReceiptDetail?.shipment ? [selectedReceiptDetail.shipment] : []);
+  const receiptPrimaryShipment = selectedReceiptDetail?.shipment || receiptShipments[0] || null;
+  const receiptActualRevenue = Number(selectedReceiptDetail?.order?.total_actual_income || selectedReceiptDetail?.summary?.actual_income || 0);
+  const orderPassThroughExpenses = useMemo(() => (
+    [...(selectedReceiptDetail?.expenses || []), ...receiptForm.expenses]
+      .filter((expense) => ["parking", "toll", "depreciation"].includes(String(expense.expense_type || "").trim()))
+      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0)
+  ), [receiptForm.expenses, selectedReceiptDetail]);
+  const receiptFinalPrice = receiptActualRevenue + orderPassThroughExpenses;
+  const formatRouteLabel = (shipment) => {
+    if (!shipment) return "-";
+    const pickup = shipment.pickup_address || shipment.stops?.find((stop) => stop.stop_type === "pickup")?.address || "-";
+    const delivery = shipment.delivery_address || shipment.stops?.find((stop) => stop.stop_type === "delivery")?.address || "-";
+    return `${pickup} → ${delivery}`;
+  };
 
   const handleCancelOrder = async (trip) => {
     if (!canCancelTrip(trip)) return;
@@ -1229,7 +1231,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   <h2>Tạo phiếu thu</h2>
                   <p>
                     {selectedReceiptDetail?.request
-                      ? `Yêu cầu #${selectedReceiptDetail.request.id} · Chuyến #${selectedReceiptDetail.shipment?.id} · Đơn #${selectedReceiptDetail.order?.id}`
+                      ? `Yêu cầu #${selectedReceiptDetail.request.id} · Đơn #${selectedReceiptDetail.order?.id}`
                       : "Đang tải thông tin yêu cầu phiếu thu"}
                   </p>
                 </div>
@@ -1242,122 +1244,143 @@ export default function CoordinatorPage({ user, onLogout }) {
                 <div className="receipt-loading">Đang tải chi tiết phiếu thu...</div>
               ) : (
                 <div className="receipt-layout">
-                  <div className="receipt-section">
-                    <div className="sheet-caption full">Thông tin khách hàng</div>
-                    <div className="receipt-info-grid">
-                      <div>
-                        <span className="receipt-info-label">Khách hàng</span>
-                        <strong>{selectedReceiptDetail.customer?.full_name || "Khách lẻ"}</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">Số điện thoại</span>
-                        <strong>{selectedReceiptDetail.customer?.phone || "-"}</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">Công ty</span>
-                        <strong>{selectedReceiptDetail.customer?.company_name || "-"}</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">Tài xế</span>
-                        <strong>{selectedReceiptDetail.request?.driver_name || "-"}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="receipt-section">
-                    <div className="sheet-caption full">Thông tin đơn hàng và phiếu thu</div>
-                    <div className="receipt-info-grid">
-                      <div>
-                        <span className="receipt-info-label">Hàng hóa</span>
-                        <strong>{selectedReceiptDetail.order?.cargo_name || "-"}</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">Biển số</span>
-                        <strong>{selectedReceiptDetail.shipment?.plate_number || "-"}</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">KM ước tính</span>
-                        <strong>{selectedReceiptDetail.shipment?.estimated_distance_km || "-"} km</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">KM thực tế</span>
-                        <strong>{receiptActualKm || "-"} km</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">Cước dự kiến</span>
-                        <strong>{formatCurrency(selectedReceiptDetail.shipment?.estimated_price || 0)}</strong>
-                      </div>
-                      <div>
-                        <span className="receipt-info-label">Đơn giá xe</span>
-                        <strong>{formatCurrency(receiptPricePerKm)}</strong>
+                  <div className="receipt-overview-grid">
+                    <div className="receipt-section">
+                      <div className="sheet-caption full">Customer</div>
+                      <div className="receipt-info-grid">
+                        <div>
+                          <span className="receipt-info-label">Khách hàng</span>
+                          <strong>{selectedReceiptDetail.customer?.full_name || "Khách lẻ"}</strong>
+                        </div>
+                        <div>
+                          <span className="receipt-info-label">Số điện thoại</span>
+                          <strong>{selectedReceiptDetail.customer?.phone || "-"}</strong>
+                        </div>
+                        <div>
+                          <span className="receipt-info-label">Công ty</span>
+                          <strong>{selectedReceiptDetail.customer?.company_name || "-"}</strong>
+                        </div>
+                        <div>
+                          <span className="receipt-info-label">Tài xế</span>
+                          <strong>{selectedReceiptDetail.request?.driver_name || "-"}</strong>
+                        </div>
+                        <div>
+                          <span className="receipt-info-label">Đơn hàng</span>
+                          <strong>#{selectedReceiptDetail.order?.id || "-"}</strong>
+                        </div>
+                        <div>
+                          <span className="receipt-info-label">Số chuyến</span>
+                          <strong>{receiptShipments.length || 0}</strong>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="form-row form-row-2" style={{ marginTop: 16 }}>
-                      <label>
-                        <span>Hình thức thanh toán</span>
-                        <select
-                          value={receiptForm.payment_type}
-                          onChange={(event) => updateReceiptField("payment_type", event.target.value)}
-                        >
-                          {receiptPaymentOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    {receiptForm.payment_type === "qr_transfer" && (
-                      <div className="form-row form-row-1" style={{ maxWidth: "100%" }}>
-                        <label>
-                          <span>QR / nội dung chuyển khoản</span>
-                          <input
-                            value={receiptForm.qr_code_data}
-                            onChange={(event) => updateReceiptField("qr_code_data", event.target.value)}
-                            placeholder="Nhập nội dung QR hoặc dữ liệu thanh toán"
-                          />
-                        </label>
+                    <div className="receipt-section">
+                      <div className="sheet-caption full">Order's info</div>
+                      <div className="receipt-info-grid">
+                        <div>
+                          <span className="receipt-info-label">Hàng hóa</span>
+                          <strong>{selectedReceiptDetail.order?.cargo_name || "-"}</strong>
+                        </div>
+                        <div>
+                          <span className="receipt-info-label">Khối lượng</span>
+                          <strong>{selectedReceiptDetail.order?.cargo_weight_kg ? `${selectedReceiptDetail.order.cargo_weight_kg} kg` : "-"}</strong>
+                        </div>
                       </div>
-                    )}
 
-                    <div className="form-row form-row-note">
-                      <label>
-                        <span>Ghi chú phiếu thu</span>
-                        <textarea
-                          value={receiptForm.notes}
-                          onChange={(event) => updateReceiptField("notes", event.target.value)}
-                        />
-                      </label>
-                    </div>
-
-                    <div className="receipt-expense-head">
-                      <div>
-                        <strong>Chi phí liên quan</strong>
-                        <p>Coordinator có thể thêm chi phí phát sinh trước khi publish receipt.</p>
-                      </div>
-                      <button type="button" className="filter" onClick={addReceiptExpense}>
-                        + Thêm chi phí
-                      </button>
-                    </div>
-
-                    {(selectedReceiptDetail.expenses || []).length > 0 && (
-                      <div className="receipt-expense-list">
-                        {selectedReceiptDetail.expenses.map((expense) => (
-                          <div key={expense.id} className="receipt-expense-item readonly">
-                            <div>
-                              <strong>{expenseTypeOptions.find((option) => option.value === expense.expense_type)?.label || expense.expense_type}</strong>
-                              <span>{expense.description || "Chi phí đã ghi nhận"}</span>
+                      <div className="receipt-shipments-stack">
+                        {receiptShipments.map((shipment) => (
+                          <div key={shipment.id} className="receipt-shipment-card">
+                            <div className="receipt-shipment-head">
+                              <strong>Chuyến #{shipment.id} · {shipment.shipment_index || "-"}</strong>
+                              <span className={`trip-status status-${normalizeStatus(shipment.status)}`}>{shipment.status || "-"}</span>
                             </div>
-                            <strong>{formatCurrency(expense.amount)}</strong>
+                            <div className="receipt-info-grid">
+                              <div>
+                                <span className="receipt-info-label">Tài xế</span>
+                                <strong>{shipment.driver_name || "-"}</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">Biển số</span>
+                                <strong>{shipment.plate_number || "-"}</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">Nhóm xe</span>
+                                <strong>{shipment.vehicle_group_name || "-"}</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">Đơn giá/km</span>
+                                <strong>{formatCurrency(shipment.price_per_km)}</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">KM thực tế</span>
+                                <strong>{shipment.actual_distance_km || "-"} km</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">Doanh thu</span>
+                                <strong>{formatCurrency(shipment.actual_price || 0)}</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">Lộ trình</span>
+                                <strong>{formatRouteLabel(shipment)}</strong>
+                              </div>
+                              <div>
+                                <span className="receipt-info-label">Chi phí chuyến</span>
+                                <strong>{formatCurrency(shipment.total_expenses)}</strong>
+                              </div>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    )}
+                    </div>
 
-                    {receiptForm.expenses.length > 0 && (
+                    <div className="receipt-section">
+                      <div className="sheet-caption full">Publish</div>
+                      <div className="receipt-expense-head">
+                        <div>
+                          <strong>Chi phí đơn hàng</strong>
+                          <p>Chi phí hiện có và chi phí coordinator thêm mới cho phiếu thu.</p>
+                        </div>
+                        <button type="button" className="assign-btn" onClick={addReceiptExpense}>
+                          + Thêm chi phí
+                        </button>
+                      </div>
+                      {(selectedReceiptDetail.expenses || []).length > 0 && (
+                        <div className="receipt-expense-list">
+                          {selectedReceiptDetail.expenses.map((expense) => (
+                            <div key={expense.id} className="receipt-expense-item readonly">
+                              <div>
+                                <strong>{expenseTypeOptions.find((option) => option.value === expense.expense_type)?.label || expense.expense_type}</strong>
+                                <span>
+                                  {expense.description || "Chi phí đã ghi nhận"}
+                                  {expense.shipment_id ? ` · Chuyến #${expense.shipment_id}` : ""}
+                                </span>
+                              </div>
+                              <strong>{formatCurrency(expense.amount)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="receipt-expense-head">
+                        <div>
+                          <strong>Chi phí mới</strong>
+                          <p>Nhập thêm chi phí cho từng chuyến thuộc đơn hàng.</p>
+                        </div>
+                      </div>
                       <div className="receipt-expense-list">
                         {receiptForm.expenses.map((expense, index) => (
                           <div key={`expense-${index}`} className="receipt-expense-editor">
+                            <select
+                              value={expense.shipment_id || receiptPrimaryShipment?.id || ""}
+                              onChange={(event) => updateReceiptExpenseShipment(index, event.target.value)}
+                            >
+                              {receiptShipments.map((shipment) => (
+                                <option key={shipment.id} value={shipment.id}>
+                                  {`Chuyến #${shipment.id} · ${shipment.plate_number || shipment.driver_name || "Chưa gán"}`}
+                                </option>
+                              ))}
+                            </select>
                             <select
                               value={expense.expense_type}
                               onChange={(event) => updateReceiptExpense(index, "expense_type", event.target.value)}
@@ -1385,31 +1408,42 @@ export default function CoordinatorPage({ user, onLogout }) {
                           </div>
                         ))}
                       </div>
-                    )}
 
-                    <div className="receipt-summary-grid">
-                      <div className="receipt-summary-card">
-                        <span>Tổng chi phí</span>
-                        <strong>{formatCurrency(totalReceiptExpenses)}</strong>
+                      <div className="receipt-notes-card">
+                        <div className="receipt-field-head">
+                          <div>
+                            <span className="receipt-info-label">Ghi chú phiếu thu</span>
+                            <strong>Thông tin nội bộ cho coordinator</strong>
+                          </div>
+                          <span className="receipt-field-chip">Optional</span>
+                        </div>
+                        <textarea
+                          className="receipt-notes-textarea"
+                          value={receiptForm.notes}
+                          onChange={(event) => updateReceiptField("notes", event.target.value)}
+                          placeholder="Ví dụ: đối soát theo km thực tế, thêm chi phí cầu đường..."
+                        />
                       </div>
+
                       <div className="receipt-summary-card emphasis">
-                        <span>Thu nhập thực tế</span>
-                        <strong>{formatCurrency(receiptActualIncome)}</strong>
-                      </div>
-                      <div className={`receipt-summary-card ${receiptNetIncome < 0 ? "negative" : ""}`}>
-                        <span>Thu nhập sau chi phí</span>
-                        <strong>{formatCurrency(receiptNetIncome)}</strong>
+                        <div>
+                          <span>Chuyến dùng để chốt phiếu thu</span>
+                          <strong>{receiptPrimaryShipment ? `#${receiptPrimaryShipment.id} · ${receiptPrimaryShipment.plate_number || receiptPrimaryShipment.driver_name || "-"}` : "-"}</strong>
+                        </div>
+                        <div>
+                          <span>Tổng thu</span>
+                          <strong>{formatCurrency(receiptFinalPrice)}</strong>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="form-actions full">
-                      <button type="button" className="filter" onClick={closeReceiptModal}>
-                        Đóng
-                      </button>
-                      <button type="button" className="primary-btn" disabled={receiptPublishing} onClick={publishReceipt}>
-                        {receiptPublishing ? "Đang publish..." : "Publish receipt"}
-                      </button>
-                    </div>
+                  </div>
+                  <div className="form-actions full">
+                    <button type="button" className="filter" onClick={closeReceiptModal}>
+                      Đóng
+                    </button>
+                    <button type="button" className="primary-btn" disabled={receiptPublishing} onClick={publishReceipt}>
+                      {receiptPublishing ? "Đang publish..." : "Publish receipt"}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1424,6 +1458,9 @@ export default function CoordinatorPage({ user, onLogout }) {
             <div>
               <h2>Yêu cầu phiếu thu</h2>
               <p>Driver gửi yêu cầu tạo phiếu thu, coordinator kiểm tra và publish receipt.</p>
+            </div>
+            <div className="upload-hint">
+              {receiptRequestsLoading ? "Đang tải..." : `${receiptRequests.length} yêu cầu`}
             </div>
           </div>
 
@@ -1456,10 +1493,10 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <tr key={request.id}>
                       <td>#{request.id}</td>
                       <td>#{request.order_id}</td>
-                      <td>#{request.shipment_id}</td>
+                      <td>{request.shipment_id ? `#${request.shipment_id}` : `${request.shipment_count || 0} chuyến`}</td>
                       <td>{request.customer_name || "-"}</td>
                       <td>{request.driver_name || "-"}</td>
-                      <td>{request.actual_km || "-"} km</td>
+                      <td>{Number(request.total_actual_distance_km || 0) > 0 ? `${request.total_actual_distance_km} km` : "-"}</td>
                       <td>{formatCurrency(request.actual_price || request.estimated_price || 0)}</td>
                       <td>
                         <span className={`trip-status status-${normalizeStatus(request.status)}`}>
@@ -1484,7 +1521,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
           <div className="panel-head">
             <div>
-              <h2>Danh sách chuyến</h2>
+              <h2>Danh sách đơn hàng</h2>
               <p>Hiển thị đơn hàng dạng bảng để dễ theo dõi và điều phối.</p>
             </div>
           </div>
@@ -1571,7 +1608,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                           <td style={{ color: '#6b7280', fontSize: 13 }}>-</td>
                           <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.plate || "-"}</td>
                           <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.driverName || "Chưa gán"}</td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>{trip.customerName }</td>
+                          <td style={{ color: '#6b7280', fontSize: 13 }}>{trip.customerName}</td>
                           <td className="table-route-cell" style={{ color: '#6b7280', fontSize: 13 }}>
                             {subTrip.pickup_address && subTrip.delivery_address ? `${subTrip.pickup_address} - ${subTrip.delivery_address}` : "-"}
                           </td>
