@@ -1,12 +1,13 @@
 const pool = require('../../config/database');
 
 const getVehicleDriverLookup = async () => {
-    const [vehiclesResult, driversResult, customersResult] = await Promise.all([
+    const [vehiclesResult, driversResult, customersResult, groupsResult] = await Promise.all([
         pool.query(
             `SELECT
                 v.id,
                 v.plate_number,
                 v.status,
+                v.vehicle_group_id,
                 v.assigned_driver_id,
                 vg.name AS vehicle_group_name,
                 p.full_name AS assigned_driver_name
@@ -37,12 +38,20 @@ const getVehicleDriverLookup = async () => {
              ORDER BY full_name ASC
              LIMIT 200`
         ),
+        // Vehicle groups (cho dropdown chọn nhóm xe trên form)
+        pool.query(
+            `SELECT id, name, description, max_load_weight_kg, price_per_km, status
+             FROM vehicle_groups
+             WHERE status = 'active'
+             ORDER BY name ASC`
+        ),
     ]);
 
     return {
         vehicles: vehiclesResult.rows,
         drivers: driversResult.rows,
         customers: customersResult.rows,
+        vehicle_groups: groupsResult.rows,
     };
 };
 

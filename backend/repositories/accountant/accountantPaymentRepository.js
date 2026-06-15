@@ -7,9 +7,7 @@ const getPaymentsByOrderId = async (orderId) => {
             dp.debt_id,
             dp.amount,
             dp.payment_method,
-            dp.status,
-            dp.receipt_url,
-            dp.reject_reason,
+            d.status,
             dp.paid_at,
             dp.confirmed_at,
             dp.confirmed_by,
@@ -200,9 +198,9 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
             if (shipmentRes.rows.length === 0) throw new Error('Shipment not found');
             const s = shipmentRes.rows[0];
             await client.query(
-                `INSERT INTO debts (debt_type, driver_id, customer_id, order_id, shipment_id, total_amount, paid_amount, status, updated_by, created_at, updated_at)
-                 VALUES ('driver', $1, $2, $3, $4, $5, 0, 'unpaid', $6, NOW(), NOW())`,
-                [s.owner_driver_id, s.customer_id, s.order_id, shipmentId, amount, confirmedBy]
+                `INSERT INTO debts (debt_type, driver_id, customer_id, partner_id, order_id, shipment_id, total_amount, paid_amount, status, updated_by, created_at, updated_at)
+                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0, 'unpaid', $5, NOW(), NOW())`,
+                [s.owner_driver_id, s.order_id, shipmentId, amount, confirmedBy]
             );
         } else {
             // Cập nhật status debt

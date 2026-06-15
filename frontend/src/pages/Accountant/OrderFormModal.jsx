@@ -34,19 +34,20 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const EXPENSE_TYPES = [
-  { value: "fuel", label: "Đổ dầu / Xăng" },
-  { value: "toll", label: "BOT / Phí cầu đường" },
-  { value: "parking", label: "Đỗ xe / Bến bãi" },
-  { value: "repair", label: "Sửa xe" },
-  { value: "maintenance", label: "Bảo dưỡng" },
-  { value: "depreciation", label: "Khấu hao" },
-  { value: "other", label: "Khác" },
+  { value: "fuel", label: "Đổ dầu / Xăng", group: "driver" },
+  { value: "toll", label: "BOT / Phí cầu đường / Phà / Vé bến / Hầm", group: "pass_through" },
+  { value: "parking", label: "Đỗ xe / Bến bãi", group: "driver" },
+  { value: "repair", label: "Sửa xe / Sự cố", group: "driver" },
+  { value: "maintenance", label: "Bảo dưỡng", group: "driver" },
+  { value: "other", label: "Khác", group: "other" },
 ];
+
+const PASS_THROUGH_TYPES = new Set(["toll", "parking"]);
 
 const CUSTOMER_PAYMENT_OPTIONS = [
   { value: "cash", label: "Tiền mặt" },
   { value: "bank_transfer", label: "Chuyển khoản" },
-  { value: "debt", label: "Ghi Nợ" },
+  { value: "client_credit", label: "Ghi Nợ" },
 ];
 
 const DRIVER_PAYMENT_OPTIONS = [
@@ -68,6 +69,30 @@ const formatCurrency = (value) =>
 const parseCurrency = (value) =>
   Number(String(value).replace(/,/g, "")) || 0;
 
+const CurrencyInput = ({ value, onChange, size = "middle", ...props }) => {
+  const [display, setDisplay] = useState(() => formatCurrency(value));
+  useEffect(() => {
+    setDisplay(formatCurrency(value));
+  }, [value]);
+  return (
+    <Input
+      {...props}
+      value={display}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^0-9]/g, "");
+        setDisplay(raw ? formatCurrency(raw) : "");
+        onChange(raw ? parseCurrency(raw) : 0);
+      }}
+      onBlur={() => {
+        const num = parseCurrency(display);
+        setDisplay(formatCurrency(num));
+        onChange(num);
+      }}
+      size={size}
+    />
+  );
+};
+
 const newShipment = () => ({
   id: newTempId(),
   vehicle_plate: null,
@@ -77,7 +102,6 @@ const newShipment = () => ({
   cargo_name: "",
   cargo_weight: 0,
   cargo_fee: 0,
-  ticket_fee: 0,
   payment_type: "cash",
   driver_payment_state: "company_received",
   notes: "",
@@ -102,14 +126,6 @@ const buildLookupMaps = (vehicles = [], drivers = []) => {
 };
 
 const ExpenseRow = ({ expense, onRemove, onChange }) => {
-  const [amountError, setAmountError] = useState(false);
-
-  const handleAmountChange = (val) => {
-    const parsed = parseCurrency(val);
-    setAmountError(parsed > 0 ? false : expense.amount > 0 ? false : true);
-    onChange({ ...expense, amount: parsed });
-  };
-
   return (
     <div className="expense-row">
       <Select
@@ -119,16 +135,12 @@ const ExpenseRow = ({ expense, onRemove, onChange }) => {
         style={{ width: 160 }}
         size="small"
       />
-      <InputNumber
+      <CurrencyInput
         value={expense.amount}
-        onChange={handleAmountChange}
+        onChange={(val) => onChange({ ...expense, amount: val })}
         placeholder="Số tiền"
-        min={0}
-        formatter={formatCurrency}
-        parser={parseCurrency}
         style={{ width: 130 }}
         size="small"
-        status={amountError ? "error" : undefined}
       />
       <Input
         value={expense.description}
@@ -199,7 +211,11 @@ const ShipmentCard = ({
     onUpdate({ ...shipment, pickup_addresses: updated });
   };
 
-  const totalShipmentFee = (shipment.cargo_fee || 0) + (shipment.ticket_fee || 0);
+  const passThrough = (shipment.expenses || []).reduce(
+    (sum, e) => sum + (PASS_THROUGH_TYPES.has(e.expense_type) ? (e.amount || 0) : 0),
+    0
+  );
+  const actualPrice = (shipment.cargo_fee || 0) + passThrough;
 
   const isDriverHolding = shipment.driver_payment_state === "driver_holding";
 
@@ -244,13 +260,13 @@ const ShipmentCard = ({
           )}
         </Space>
         <Space size={8}>
-          {totalShipmentFee > 0 && (
+          {actualPrice > 0 && (
             <Tag
               color={isDriverHolding ? "orange" : "blue"}
               icon={<DollarOutlined />}
               style={{ fontWeight: 600, fontSize: 13 }}
             >
-              {totalShipmentFee.toLocaleString()}đ
+              {actualPrice.toLocaleString()}đ
             </Tag>
           )}
           {isDriverHolding && (
@@ -442,56 +458,47 @@ const ShipmentCard = ({
           </div>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Cước xe / Doanh thu (VND)" style={{ marginBottom: 8 }}>
-                <InputNumber
+              <Form.Item label="Cước xe (VND)" style={{ marginBottom: 8 }}>
+                <CurrencyInput
                   value={shipment.cargo_fee}
-                  onChange={(val) => onUpdate({ ...shipment, cargo_fee: parseCurrency(val) })}
-                  min={0}
+                  onChange={(val) => onUpdate({ ...shipment, cargo_fee: val })}
                   style={{ width: "100%" }}
-                  formatter={formatCurrency}
-                  parser={parseCurrency}
-                  size="middle"
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Vé / Phụ phí (VND)" style={{ marginBottom: 8 }}>
-                <InputNumber
-                  value={shipment.ticket_fee}
-                  onChange={(val) => onUpdate({ ...shipment, ticket_fee: parseCurrency(val) })}
-                  min={0}
-                  style={{ width: "100%" }}
-                  formatter={formatCurrency}
-                  parser={parseCurrency}
-                  size="middle"
                 />
               </Form.Item>
             </Col>
           </Row>
-          {/* 2-col summary bg */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              background: "#e5eeff",
-              borderRadius: 8,
-              overflow: "hidden",
-              border: "1px solid #d3e4fe",
-            }}
-          >
-            <div style={{ textAlign: "center", padding: "8px 8px", borderRight: "1px solid #d3e4fe" }}>
-              <div style={{ fontSize: 10, color: "#444651", marginBottom: 2 }}>Doanh thu ghi nhận</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#00236f" }}>
-                {(shipment.cargo_fee || 0).toLocaleString()}đ
+          {/* Summary: Thực thu = cargo_fee + pass_through expenses */}
+          {(() => {
+            const passThrough = (shipment.expenses || []).reduce(
+              (sum, e) => sum + (PASS_THROUGH_TYPES.has(e.expense_type) ? (e.amount || 0) : 0),
+              0
+            );
+            const actualPrice = (shipment.cargo_fee || 0) + passThrough;
+            return (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  background: "#e5eeff",
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: "1px solid #d3e4fe",
+                }}
+              >
+                <div style={{ textAlign: "center", padding: "8px 8px" }}>
+                  <div style={{ fontSize: 10, color: "#444651", marginBottom: 2 }}>Thực thu (cước + phí đi qua)</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#0058be" }}>
+                    {actualPrice.toLocaleString()}đ
+                  </div>
+                  {passThrough > 0 && (
+                    <div style={{ fontSize: 10, color: "#757682", marginTop: 2 }}>
+                      (cước xe {((shipment.cargo_fee) || 0).toLocaleString()}đ + phí đi qua {passThrough.toLocaleString()}đ)
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            <div style={{ textAlign: "center", padding: "8px 8px" }}>
-              <div style={{ fontSize: 10, color: "#444651", marginBottom: 2 }}>Thực thu (cước + vé)</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#0058be" }}>
-                {totalShipmentFee.toLocaleString()}đ
-              </div>
-            </div>
-          </div>
+            );
+          })()}
         </div>
 
         {/* Row 5: Thanh toán */}
@@ -563,7 +570,7 @@ const ShipmentCard = ({
           </Row>
 
           {/* Alert messages */}
-          {shipment.payment_type === "debt" && (
+          {shipment.payment_type === "client_credit" && (
             <Alert type="info" showIcon message="Đơn ghi nợ — công nợ được theo dõi trong bảng công nợ." style={{ marginTop: 4 }} />
           )}
           {isDriverHolding && (
@@ -618,6 +625,8 @@ const ShipmentCard = ({
 export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -633,6 +642,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     customerName: false,
     customerPhone: false,
     orderDate: false,
+    vehicleGroup: false,
   });
 
   const clearFieldError = (field) => {
@@ -644,6 +654,12 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
   const token = localStorage.getItem("token");
 
   const lookupMaps = useMemo(() => buildLookupMaps(vehicles, drivers), [vehicles, drivers]);
+
+  // Lọc xe theo nhóm xe đã chọn ở header
+  const vehiclesInSelectedGroup = useMemo(() => {
+    if (!selectedGroupId) return vehicles;
+    return vehicles.filter((v) => Number(v.vehicle_group_id) === Number(selectedGroupId));
+  }, [vehicles, selectedGroupId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -657,6 +673,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
         if (!response.ok) throw new Error(data.error || data.details || "Không tải được danh sách xe/tài xế");
         setVehicles(data.vehicles || []);
         setDrivers(data.drivers || []);
+        setVehicleGroups(data.vehicle_groups || []);
       } catch (err) {
         message.error(err.message || "Không tải được dữ liệu xe/tài xế.");
       }
@@ -670,8 +687,9 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     setCustomerPhone("");
     setCustomerCompany("");
     setOrderNotes("");
+    setSelectedGroupId(null);
     setFormError("");
-    setFieldErrors({ customerName: false, customerPhone: false, orderDate: false });
+    setFieldErrors({ customerName: false, customerPhone: false, orderDate: false, vehicleGroup: false });
   }, [API_BASE, isOpen, token]);
 
   if (!isOpen) return null;
@@ -720,17 +738,29 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     setShipments(next);
   };
 
-  const totalRevenue = shipments.reduce((sum, s) => sum + (s.cargo_fee || 0), 0);
   const totalCargoFee = shipments.reduce((sum, s) => sum + (s.cargo_fee || 0), 0);
-  const totalTicketFee = shipments.reduce((sum, s) => sum + (s.ticket_fee || 0), 0);
+  const totalPassThrough = shipments.reduce(
+    (sum, s) =>
+      sum +
+      (s.expenses || []).reduce(
+        (es, e) => es + (PASS_THROUGH_TYPES.has(e.expense_type) ? (e.amount || 0) : 0),
+        0
+      ),
+    0
+  );
   const totalExpenses = shipments.reduce(
     (sum, s) => sum + (s.expenses || []).reduce((es, e) => es + (e.amount || 0), 0),
     0
   );
-  const totalDriverDebt = shipments.reduce(
-    (sum, s) => sum + (s.driver_payment_state === "driver_holding" ? (s.cargo_fee || 0) : 0),
-    0
-  );
+  const totalActualPrice = totalCargoFee + totalPassThrough;
+  const totalDriverDebt = shipments.reduce((sum, s) => {
+    if (s.driver_payment_state !== "driver_holding") return sum;
+    const passThrough = (s.expenses || []).reduce(
+      (es, e) => es + (PASS_THROUGH_TYPES.has(e.expense_type) ? (e.amount || 0) : 0),
+      0
+    );
+    return sum + (s.cargo_fee || 0) + passThrough;
+  }, 0);
 
   const handleSubmit = async () => {
     setFormError("");
@@ -762,7 +792,6 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
       if (validPickups.length === 0) se.missingPickup = true;
       if (!s.delivery_address?.trim()) se.missingDelivery = true;
       if ((s.cargo_fee || 0) < 0) se.negativeCargoFee = true;
-      if ((s.ticket_fee || 0) < 0) se.negativeTicketFee = true;
       if ((s.cargo_weight || 0) < 0) se.negativeWeight = true;
 
       const expenseErrors = (s.expenses || []).map((e, ei) => {
@@ -788,7 +817,6 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
         if (err.missingPickup) parts.push("thiếu điểm lấy hàng");
         if (err.missingDelivery) parts.push("thiếu điểm giao hàng");
         if (err.negativeCargoFee) parts.push("cước xe không được âm");
-        if (err.negativeTicketFee) parts.push("vé phí không được âm");
         if (err.negativeWeight) parts.push("khối lượng không được âm");
         if (err.expenseErrors?.length > 0) {
           parts.push(`chi phí dòng ${err.expenseErrors.map((ei) => ei + 1).join(", ")} không hợp lệ`);
@@ -806,26 +834,23 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
       customer_company: customerCompany || null,
       notes: orderNotes || null,
       shipments: shipments.map((s) => ({
-        vehicle_plate: s.vehicle_plate || null,
-        driver_name: s.driver_name || null,
-        pickup_addresses: (s.pickup_addresses || []).filter((p) => String(p || "").trim() !== ""),
-        delivery_address: s.delivery_address,
-        cargo_name: s.cargo_name || null,
-        cargo_weight: Number(s.cargo_weight || 0),
-        cargo_fee: Number(s.cargo_fee || 0),
-        ticket_fee: Number(s.ticket_fee || 0),
-        revenue: Number(s.cargo_fee || 0),
-        // payment_type: gửi thực tế per shipment (cash / bank_transfer / debt)
-        payment_type: s.payment_type || "cash",
-        driver_payment_state: s.driver_payment_state || "company_received",
-        notes: s.notes || null,
-        expenses: (s.expenses || [])
-          .filter((e) => e.amount > 0)
-          .map((e) => ({
-            expense_type: e.expense_type,
-            amount: Number(e.amount),
-            description: e.description || null,
-          })),
+          vehicle_plate: s.vehicle_plate || null,
+          driver_name: s.driver_name || null,
+          pickup_addresses: (s.pickup_addresses || []).filter((p) => String(p || "").trim() !== ""),
+          delivery_address: s.delivery_address,
+          cargo_name: s.cargo_name || null,
+          cargo_weight: Number(s.cargo_weight || 0),
+          cargo_fee: Number(s.cargo_fee || 0),
+          payment_type: s.payment_type || "cash",
+          driver_payment_state: s.driver_payment_state || "company_received",
+          notes: s.notes || null,
+          expenses: (s.expenses || [])
+            .filter((e) => e.amount > 0)
+            .map((e) => ({
+              expense_type: e.expense_type,
+              amount: Number(e.amount),
+              description: e.description || null,
+            })),
       })),
     };
 
@@ -848,7 +873,8 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
       setCustomerCompany("");
       setOrderDate(null);
       setOrderNotes("");
-      setFieldErrors({ customerName: false, customerPhone: false, orderDate: false });
+      setSelectedGroupId(null);
+      setFieldErrors({ customerName: false, customerPhone: false, orderDate: false, vehicleGroup: false });
       onOrderCreated?.(data.order);
       onClose();
     } catch (err) {
@@ -874,7 +900,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
           <Space>
             <Button onClick={onClose}>Hủy</Button>
             <Button type="primary" loading={submitting} onClick={handleSubmit}>
-              Lưu đơn · {totalCargoFee.toLocaleString()}đ
+              Lưu đơn · {totalActualPrice.toLocaleString()}đ
             </Button>
           </Space>
         </div>
@@ -948,6 +974,52 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
               </button>
             </span>
           </div>
+
+          {/* Row 1.5: Nhóm xe (chọn trước khi chọn xe) */}
+          <Row gutter={12} align="middle" style={{ marginTop: 12 }}>
+            <Col span={12}>
+              <Form.Item label="Nhóm xe" style={{ marginBottom: 0 }}>
+                <Select
+                  value={selectedGroupId}
+                  onChange={(val) => {
+                    setSelectedGroupId(val);
+                    clearFieldError("vehicleGroup");
+                    // Đổi nhóm xe → clear xe đã chọn ở tất cả các chuyến (xe có thể không thuộc nhóm mới)
+                    setShipments((prev) => prev.map((s) => ({ ...s, vehicle_plate: null, driver_name: null, _driverLocked: false })));
+                  }}
+                  placeholder="Chọn nhóm xe (không bắt buộc)"
+                  allowClear
+                  options={vehicleGroups.map((g) => ({
+                    value: g.id,
+                    label: `${g.name}${g.description ? ` · ${g.description}` : ""}`,
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                  size="middle"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              {selectedGroupId ? (
+                <div
+                  style={{
+                    background: "#e5eeff",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    color: "#00236f",
+                    border: "1px solid #d3e4fe",
+                  }}
+                >
+                  Đang lọc {vehiclesInSelectedGroup.length} xe thuộc nhóm đã chọn.
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#757682", fontStyle: "italic" }}>
+                  Chưa chọn nhóm xe — danh sách xe hiển thị toàn bộ. Có thể chọn nhóm để lọc xe theo nhóm.
+                </div>
+              )}
+            </Col>
+          </Row>
 
           {/* Row 2: Ngày · Tên khách hàng input */}
           <Row gutter={12} align="middle">
@@ -1054,7 +1126,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
               shipment={shipment}
               index={index}
               canRemove={shipments.length > 1}
-              vehicles={vehicles}
+              vehicles={vehiclesInSelectedGroup}
               drivers={drivers}
               lookupMaps={lookupMaps}
               onUpdate={(updated) => updateShipment(index, updated)}
@@ -1090,8 +1162,8 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
             </Col>
             <Col span={6}>
               <Statistic
-                title="Tổng vé / phí"
-                value={totalTicketFee}
+                title="Phí đi qua (BOT/vé)"
+                value={totalPassThrough}
                 precision={0}
                 prefix="₫"
                 valueStyle={{ color: "#646cff" }}
@@ -1099,8 +1171,8 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
             </Col>
             <Col span={6}>
               <Statistic
-                title="Thực thu (cước + vé)"
-                value={totalRevenue}
+                title="Thực thu"
+                value={totalActualPrice}
                 precision={0}
                 prefix="₫"
                 valueStyle={{ color: "#52c41a" }}
