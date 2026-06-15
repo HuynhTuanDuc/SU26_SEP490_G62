@@ -816,24 +816,32 @@ const getOrderReceiptRequestByOrderId = async (orderId) => {
 // Danh sách phiếu thu của driver (đã được coordinator tạo)
 const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
     const offset = (page - 1) * limit;
+    // Query từ order_receipt_requests (source of truth) + LEFT JOIN shipment_receipts
+    // để hiển thị cả dữ liệu cũ (approve trước khi có INSERT receipt) lẫn dữ liệu mới
     const result = await pool.query(
         `SELECT
-            sr.id                        AS receipt_id,
-            sr.payment_type,
-            sr.amount,
-            sr.collected_at,
-            sr.notes,
-            o.id                         AS order_id,
+            COALESCE(sr.id, orr.id)                       AS receipt_id,
+            COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
+            COALESCE(sr.amount,
+                (SELECT SUM(os2.actual_price)
+                 FROM order_shipments os2
+                 WHERE os2.order_id = orr.order_id
+                   AND os2.actual_price IS NOT NULL)
+            )                                             AS amount,
+            COALESCE(sr.collected_at, orr.processed_at)  AS collected_at,
+            COALESCE(sr.notes, orr.coordinator_notes)     AS notes,
+            o.id                                          AS order_id,
             o.cargo_name,
-            c.full_name                  AS customer_name,
-            c.company_name               AS customer_company,
-            c.phone                      AS customer_phone
-         FROM shipment_receipts sr
-         JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
-         JOIN orders o                   ON o.id   = orr.order_id
-         LEFT JOIN customers c           ON c.id   = o.customer_id
+            c.full_name                                   AS customer_name,
+            c.company_name                                AS customer_company,
+            c.phone                                       AS customer_phone
+         FROM order_receipt_requests orr
+         JOIN orders o                   ON o.id  = orr.order_id
+         LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
+         LEFT JOIN customers c           ON c.id  = o.customer_id
          WHERE orr.driver_id = $1
-         ORDER BY sr.collected_at DESC
+           AND orr.status = 'approved'
+         ORDER BY COALESCE(sr.collected_at, orr.processed_at) DESC
          LIMIT $2 OFFSET $3`,
         [driverId, limit, offset],
     );
@@ -841,14 +849,19 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
 };
 
 // Chi tiết 1 phiếu thu — driver dùng để show cho khách
+// Hỗ trợ 2 trường hợp:
+//   1. receiptId = shipment_receipts.id  (dữ liệu mới, sau khi có INSERT trong approve)
+//   2. receiptId = order_receipt_requests.id (dữ liệu cũ, approve trước khi có INSERT)
 const getDriverReceiptDetail = async (receiptId, driverId) => {
-    const result = await pool.query(
-        `SELECT
-            sr.id                        AS receipt_id,
-            sr.payment_type,
-            sr.amount,
-            sr.collected_at,
-            sr.notes,
+    const COLS = `
+            COALESCE(sr.id, orr.id)      AS receipt_id,
+            COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
+            COALESCE(sr.amount,
+                (SELECT SUM(os2.actual_price) FROM order_shipments os2
+                 WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
+            )                            AS amount,
+            COALESCE(sr.collected_at, orr.processed_at) AS collected_at,
+            COALESCE(sr.notes, orr.coordinator_notes)   AS notes,
             o.id                         AS order_id,
             o.cargo_name,
             o.cargo_weight_kg,
@@ -871,16 +884,35 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             (SELECT ts.address FROM trip_stops ts
              WHERE ts.shipment_id = orr.requesting_shipment_id
                AND ts.stop_type = 'delivery'
-             ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address
-         FROM shipment_receipts sr
-         JOIN order_receipt_requests orr ON orr.id  = sr.order_receipt_request_id
+             ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address`;
+
+    const JOINS = `
          JOIN orders o                   ON o.id    = orr.order_id
          LEFT JOIN customers c           ON c.id    = o.customer_id
          JOIN order_shipments os         ON os.id   = orr.requesting_shipment_id
          LEFT JOIN profiles p_driver     ON p_driver.id = orr.driver_id
-         LEFT JOIN vehicles v            ON v.id    = os.vehicle_id
+         LEFT JOIN vehicles v            ON v.id    = os.vehicle_id`;
+
+    // Thử tìm qua shipment_receipts.id trước
+    let result = await pool.query(
+        `SELECT ${COLS}
+         FROM shipment_receipts sr
+         JOIN order_receipt_requests orr ON orr.id  = sr.order_receipt_request_id
+         ${JOINS}
          LEFT JOIN profiles p_coord      ON p_coord.id  = sr.created_by
          WHERE sr.id = $1 AND orr.driver_id = $2`,
+        [receiptId, driverId],
+    );
+    if (result.rows[0]) return result.rows[0];
+
+    // Fallback: dữ liệu cũ — receiptId là order_receipt_requests.id
+    result = await pool.query(
+        `SELECT ${COLS}
+         FROM order_receipt_requests orr
+         LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
+         ${JOINS}
+         LEFT JOIN profiles p_coord      ON p_coord.id  = orr.processed_by
+         WHERE orr.id = $1 AND orr.driver_id = $2 AND orr.status = 'approved'`,
         [receiptId, driverId],
     );
     return result.rows[0] ?? null;

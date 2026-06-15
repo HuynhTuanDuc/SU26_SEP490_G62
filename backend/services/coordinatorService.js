@@ -732,7 +732,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     const normalizedExpenses = normalizeExpenses(expenses);
 
     const reqResult = await pool.query(
-        `SELECT rr.*, o.customer_id
+        `SELECT rr.*, o.customer_id, o.payment_type AS order_payment_type
          FROM order_receipt_requests rr
          JOIN orders o ON o.id = rr.order_id
          WHERE rr.id = $1`,
@@ -792,6 +792,33 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
              WHERE id = $2`,
             [coordinatorId, requestId, notes ?? null],
         );
+
+        // Tạo phiếu thu để driver xem trong tab Phiếu thu
+        const totalAmount = computed.shipment_breakdown.reduce(
+            (sum, s) => sum + Number(s.actual_income), 0,
+        );
+        await client.query(
+            `INSERT INTO shipment_receipts
+                 (shipment_id, payment_type, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+            [
+                targetShipment.id,
+                req.order_payment_type ?? 'cash_collected',
+                totalAmount,
+                req.driver_id,
+                notes ?? null,
+                requestId,
+                coordinatorId,
+            ],
+        );
+
+        // Cập nhật actual_distance_km nếu driver đã nhập km thực tế
+        if (req.actual_km) {
+            await client.query(
+                `UPDATE order_shipments SET actual_distance_km = $1, updated_at = NOW() WHERE id = $2`,
+                [req.actual_km, targetShipment.id],
+            );
+        }
 
         await client.query('COMMIT');
 
