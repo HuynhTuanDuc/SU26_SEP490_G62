@@ -103,6 +103,10 @@ router.patch(
 // Đơn cash đã hoàn thành nhưng driver chưa gửi yêu cầu phiếu thu (dùng cho banner home)
 router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder);
 
+// Phiếu thu (coordinator đã tạo) — driver xem + show cho khách
+router.get('/receipts',             driverOnly, tripController.getDriverReceipts);
+router.get('/receipts/:receiptId',  driverOnly, tripController.getDriverReceiptDetail);
+
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);

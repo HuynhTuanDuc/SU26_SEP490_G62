@@ -92,4 +92,15 @@ export const tripService = {
         apiClient.get<{ request: import('@/types/trip').OrderReceiptRequest | null }>(
             `/api/orders/${orderId}/receipt-request`,
         ),
+
+    // Phiếu thu đã được coordinator tạo — driver xem + show cho khách
+    getDriverReceipts: (page = 1, limit = 20) =>
+        apiClient.get<{ receipts: import('@/types/trip').DriverReceiptSummary[] }>(
+            `/api/trips/receipts?page=${page}&limit=${limit}`,
+        ),
+
+    getDriverReceiptDetail: (receiptId: number) =>
+        apiClient.get<{ receipt: import('@/types/trip').DriverReceiptDetail }>(
+            `/api/trips/receipts/${receiptId}`,
+        ),
 };

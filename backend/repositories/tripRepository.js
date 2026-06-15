@@ -813,6 +813,79 @@ const getOrderReceiptRequestByOrderId = async (orderId) => {
     return result.rows[0] ?? null;
 };
 
+// Danh sách phiếu thu của driver (đã được coordinator tạo)
+const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
+    const offset = (page - 1) * limit;
+    const result = await pool.query(
+        `SELECT
+            sr.id                        AS receipt_id,
+            sr.payment_type,
+            sr.amount,
+            sr.collected_at,
+            sr.notes,
+            o.id                         AS order_id,
+            o.cargo_name,
+            c.full_name                  AS customer_name,
+            c.company_name               AS customer_company,
+            c.phone                      AS customer_phone
+         FROM shipment_receipts sr
+         JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
+         JOIN orders o                   ON o.id   = orr.order_id
+         LEFT JOIN customers c           ON c.id   = o.customer_id
+         WHERE orr.driver_id = $1
+         ORDER BY sr.collected_at DESC
+         LIMIT $2 OFFSET $3`,
+        [driverId, limit, offset],
+    );
+    return result.rows;
+};
+
+// Chi tiết 1 phiếu thu — driver dùng để show cho khách
+const getDriverReceiptDetail = async (receiptId, driverId) => {
+    const result = await pool.query(
+        `SELECT
+            sr.id                        AS receipt_id,
+            sr.payment_type,
+            sr.amount,
+            sr.collected_at,
+            sr.notes,
+            o.id                         AS order_id,
+            o.cargo_name,
+            o.cargo_weight_kg,
+            c.full_name                  AS customer_name,
+            c.company_name               AS customer_company,
+            c.phone                      AS customer_phone,
+            c.address                    AS customer_address,
+            os.actual_distance_km,
+            os.estimated_distance_km,
+            os.actual_price,
+            os.estimated_price,
+            p_driver.full_name           AS driver_name,
+            p_driver.phone               AS driver_phone,
+            v.plate_number,
+            p_coord.full_name            AS coordinator_name,
+            (SELECT ts.address FROM trip_stops ts
+             WHERE ts.shipment_id = orr.requesting_shipment_id
+               AND ts.stop_type = 'pickup'
+             ORDER BY ts.stop_index ASC  LIMIT 1) AS pickup_address,
+            (SELECT ts.address FROM trip_stops ts
+             WHERE ts.shipment_id = orr.requesting_shipment_id
+               AND ts.stop_type = 'delivery'
+             ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address
+         FROM shipment_receipts sr
+         JOIN order_receipt_requests orr ON orr.id  = sr.order_receipt_request_id
+         JOIN orders o                   ON o.id    = orr.order_id
+         LEFT JOIN customers c           ON c.id    = o.customer_id
+         JOIN order_shipments os         ON os.id   = orr.requesting_shipment_id
+         LEFT JOIN profiles p_driver     ON p_driver.id = orr.driver_id
+         LEFT JOIN vehicles v            ON v.id    = os.vehicle_id
+         LEFT JOIN profiles p_coord      ON p_coord.id  = sr.created_by
+         WHERE sr.id = $1 AND orr.driver_id = $2`,
+        [receiptId, driverId],
+    );
+    return result.rows[0] ?? null;
+};
+
 module.exports = {
     getDriverVehicleGroupId,
     getDriverVehicleId,
@@ -837,4 +910,6 @@ module.exports = {
     getAvailableShipmentDetail,
     getAvailableOrderDetail,
     getOrderWithShipments,
+    getDriverReceipts,
+    getDriverReceiptDetail,
 };
