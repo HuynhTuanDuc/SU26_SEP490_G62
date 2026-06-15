@@ -12,5 +12,7 @@ router.get('/finance/stats', accountantFinanceController.getFinanceStats);
 router.use('/orders', accountantOrderRoutes);
 router.get('/debts', accountantDebtController.getDebts);
 router.get('/debts/stats', accountantDebtController.getDebtStats);
+router.get('/debts/grouped', accountantDebtController.getDebtsGrouped);
+router.get('/debts/person/:personType/:personId', accountantDebtController.getDebtsByPerson);
 
 module.exports = router;

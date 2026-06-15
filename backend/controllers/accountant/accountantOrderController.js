@@ -35,18 +35,18 @@ const createOrder = async (req, res) => {
             return res.status(400).json({ error: 'Cần ít nhất 1 chuyến xe trong đơn.' });
         }
 
-        const {
-            customer_name, customer_phone, customer_company,
-            customer_id,   // ← khi chọn đối tác từ danh sách
-            order_date, notes
-        } = req.body;
+    const {
+        customer_name, customer_phone, customer_company,
+        customer_id,   // ← khi chọn đối tác từ danh sách
+        order_date, notes,
+    } = req.body;
 
-        if (!customer_name?.trim() && !customer_id) {
-            return res.status(400).json({ error: 'Tên khách hàng là bắt buộc khi tạo mới.' });
-        }
-        if (!customer_phone?.trim() && !customer_id) {
-            return res.status(400).json({ error: 'Số điện thoại là bắt buộc khi tạo mới.' });
-        }
+    if (!customer_name?.trim() && !customer_id) {
+        return res.status(400).json({ error: 'Tên khách hàng là bắt buộc khi tạo mới.' });
+    }
+    if (!customer_phone?.trim() && !customer_id) {
+        return res.status(400).json({ error: 'Số điện thoại là bắt buộc khi tạo mới.' });
+    }
 
         for (let i = 0; i < shipments.length; i += 1) {
             const s = shipments[i];

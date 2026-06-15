@@ -270,8 +270,8 @@ export type ReceiptRequestStatus = 'pending' | 'processing' | 'approved' | 'reje
 // Per-shipment receipt request (single-driver order)
 export type ReceiptRequest = {
     id: number;
-    shipment_id: number;
-    actual_km: string | null;
+    order_id: number;
+    shipment_id: number | null;
     status: ReceiptRequestStatus;
     requested_at: string;
     coordinator_notes: string | null;

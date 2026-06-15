@@ -294,7 +294,7 @@ const completeStop = async (req, res) => {
 };
 
 // POST /api/trips/:id/request-receipt
-// Body: { actual_km?: number }  — chỉ gửi được 1 lần mỗi chuyến
+// Body: { actual_km?: number }  — nếu có sẽ lưu vào shipment hiện tại, request chỉ gửi 1 lần mỗi đơn
 const requestReceipt = async (req, res) => {
     try {
         const tripId = Number(req.params.id);

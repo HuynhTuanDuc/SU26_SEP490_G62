@@ -84,7 +84,7 @@ export const tripService = {
             `/api/trips/${tripId}/payments/${paymentId}`, formData,
         ),
 
-    // Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến (single-driver)
+    // Yêu cầu tạo phiếu thu (driver → coordinator) — actual km nếu có sẽ lưu vào shipment hiện tại
     requestReceipt: (tripId: number, actualKm?: number) =>
         apiClient.post<{ message: string; request: ReceiptRequest }>(
             `/api/trips/${tripId}/request-receipt`,

@@ -132,12 +132,12 @@ WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 t
 -- SECTION 7: VEHICLES
 -- =============================================================================
 INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status) VALUES
-    ('51-A12345', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Toyota',  'Hiace',   2000,  2021, 'active'),
-    ('51-B67890', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Hino',    'FC',      5000,  2020, 'active'),
-    ('51-C11111', (SELECT id FROM vehicle_groups WHERE price_per_km = 25000), 'Hyundai', 'HD120S',  10000, 2019, 'maintenance'),
-    ('51-D22222', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Ford',    'Transit', 2000,  2022, 'active'),
-    ('51-E33333', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Kia',     'K200',    1800,  2023, 'active'),
-    ('51-F44444', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Isuzu',   'QKR',     3500,  2021, 'active')
+    ('51-A12345', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Toyota',  'Hiace',   2000,  2021, 'active'),
+    ('51-B67890', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1), 'Hino',    'FC',      5000,  2020, 'active'),
+    ('51-C11111', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1), 'Hyundai', 'HD120S',  10000, 2019, 'maintenance'),
+    ('51-D22222', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Ford',    'Transit', 2000,  2022, 'active'),
+    ('51-E33333', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Kia',     'K200',    1800,  2023, 'active'),
+    ('51-F44444', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1), 'Isuzu',   'QKR',     3500,  2021, 'active')
 ON CONFLICT (plate_number) DO NOTHING;
 
 -- =============================================================================
@@ -183,6 +183,12 @@ INSERT INTO partners (company_name, contact_person, phone, email, address)
 SELECT 'FastFreight Vietnam', 'Mr. Long', '0912345680', 'long@fastfreight.vn', '300 Landmark 81, HCMC'
 WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietnam');
 
+-- Ensure order columns required by the current backend exist even if an old volume/schema is reused.
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS vehicle_group_id INT REFERENCES vehicle_groups(id);
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS final_price NUMERIC(12,2) NOT NULL DEFAULT 0;
+
 -- =============================================================================
 -- SECTION 10: BASE ORDERS (open + completed)
 -- vehicle_group_id lưu trên orders, KHÔNG phải order_shipments
@@ -192,7 +198,7 @@ WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietn
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                     payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Electronics Package', 50.0, 500000, 'cash',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', 'Fragile - Handle with care'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Fragile - Handle with care'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654321'
@@ -203,7 +209,7 @@ LIMIT 1;
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                     payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Furniture Set', 200.0, 1500000, 'bank_transfer',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'completed', 'Large furniture item'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'completed', 'Large furniture item'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654322'
@@ -274,46 +280,46 @@ LIMIT 1;
 -- =============================================================================
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
        'Thưởng vượt KPI — Small Van', 'kpi', 2000000, '{"min_revenue": 50000000}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 10000));
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1),
        'Thưởng vượt KPI — Medium Truck', 'kpi', 2000000, '{"min_revenue": 65000000}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 15000));
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1),
        'Thưởng vượt KPI — Large Truck', 'kpi', 2000000, '{"min_revenue": 70000000}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 25000));
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
        'Lái xe xuất sắc nhất tháng — Small Van', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 10000));
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1),
        'Lái xe xuất sắc nhất tháng — Medium Truck', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 15000));
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1),
        'Lái xe xuất sắc nhất tháng — Large Truck', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 25000));
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1));
 
 -- =============================================================================
 -- SECTION 14: KPI RECORDS (base)
 -- =============================================================================
 INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue)
-SELECT p.id, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 5, 2026, 12, 15000000
+SELECT p.id, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 5, 2026, 12, 15000000
 FROM profiles p JOIN accounts a ON a.id = p.id
 WHERE a.email = 'driver1@example.com'
 ON CONFLICT DO NOTHING;
@@ -340,14 +346,359 @@ WHERE v.plate_number = '51-C11111'
 -- =============================================================================
 -- SECTION 16: RECEIPT REQUESTS (phiếu thu pending — coordinator xử lý)
 -- =============================================================================
-INSERT INTO shipment_receipt_requests (shipment_id, driver_id, actual_km, status, requested_at)
-SELECT os.id, drv.id, 18.5, 'pending', NOW() - INTERVAL '1 hour'
-FROM order_shipments os
-JOIN orders o ON o.id = os.order_id
-JOIN accounts a ON a.email = 'driver1@example.com'
-JOIN profiles drv ON drv.id = a.id
-WHERE o.cargo_name = 'Furniture Set' AND os.status = 'completed'
-  AND NOT EXISTS (SELECT 1 FROM shipment_receipt_requests r WHERE r.shipment_id = os.id);
+DO $$
+DECLARE
+    v_coordinator_id   INT;
+    v_driver_id        INT;
+    v_customer_id      INT;
+    v_vehicle_id       INT;
+    v_vehicle_group_id INT;
+    v_order_id         INT;
+    v_shipment_id      INT;
+BEGIN
+    SELECT p.id INTO v_coordinator_id
+    FROM profiles p JOIN accounts a ON a.id = p.id
+    WHERE a.email = 'ntck005@gmail.com';
+
+    SELECT p.id INTO v_driver_id
+    FROM profiles p JOIN accounts a ON a.id = p.id
+    WHERE a.email = 'driver1@example.com';
+
+    SELECT v.id, v.vehicle_group_id INTO v_vehicle_id, v_vehicle_group_id
+    FROM vehicles v
+    WHERE v.plate_number = '51-A12345';
+
+    SELECT c.id INTO v_customer_id
+    FROM customers c
+    WHERE c.phone = '0987654322';
+
+    IF NOT EXISTS (
+        SELECT 1 FROM orders WHERE cargo_name = 'Receipt Pending Demo: Showroom Cabinets'
+    ) THEN
+        INSERT INTO orders (
+            customer_id, created_by, cargo_name, cargo_weight_kg,
+            total_estimated_price, payment_type, vehicle_group_id,
+            derived_status, notes
+        )
+        VALUES (
+            v_customer_id, v_coordinator_id, 'Receipt Pending Demo: Showroom Cabinets', 180.0,
+            220000, 'cash', v_vehicle_group_id,
+            'completed', 'Completed shipment waiting for coordinator receipt publishing'
+        )
+        RETURNING id INTO v_order_id;
+    ELSE
+        SELECT id INTO v_order_id
+        FROM orders
+        WHERE cargo_name = 'Receipt Pending Demo: Showroom Cabinets'
+        LIMIT 1;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
+    ) THEN
+        INSERT INTO order_shipments (
+            order_id, shipment_index, owner_driver_id, vehicle_id,
+            cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
+            status, claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
+        )
+        VALUES (
+            v_order_id, 1, v_driver_id, v_vehicle_id,
+            'Showroom Cabinets', 180.0, 220000, 22.0,
+            'completed',
+            NOW() - INTERVAL '30 hours',
+            NOW() - INTERVAL '29 hours',
+            NOW() - INTERVAL '27 hours',
+            NOW() - INTERVAL '25 hours',
+            NOW() - INTERVAL '24 hours',
+            'Driver completed shipment and submitted actual km for receipt request'
+        )
+        RETURNING id INTO v_shipment_id;
+    ELSE
+        SELECT id INTO v_shipment_id
+        FROM order_shipments
+        WHERE order_id = v_order_id AND shipment_index = 1
+        LIMIT 1;
+
+        UPDATE order_shipments
+        SET owner_driver_id = v_driver_id,
+            vehicle_id = v_vehicle_id,
+            cargo_name = 'Showroom Cabinets',
+            cargo_weight_kg = 180.0,
+            estimated_price = 220000,
+            estimated_distance_km = 22.0,
+            status = 'completed',
+            notes = 'Driver completed shipment and submitted actual km for receipt request'
+        WHERE id = v_shipment_id;
+    END IF;
+
+    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
+    SELECT v_shipment_id, 1, 'pickup', '12 Nguyen Van Linh, District 7', 'Warehouse Team', '0901010101', NOW() - INTERVAL '26 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 1
+    );
+
+    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at)
+    SELECT v_shipment_id, 2, 'delivery', '88 Le Thanh Ton, District 1', 'Showroom Admin', '0902020202',
+           NOW() - INTERVAL '25 hours', NOW() - INTERVAL '24 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 2
+    );
+
+    INSERT INTO shipment_assignments (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at, accepted_at, completed_at)
+    SELECT v_shipment_id, v_driver_id, v_vehicle_id, 'coordinator_assign', v_coordinator_id,
+           NOW() - INTERVAL '30 hours', NOW() - INTERVAL '30 hours', NOW() - INTERVAL '24 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM shipment_assignments WHERE shipment_id = v_shipment_id AND driver_id = v_driver_id
+    );
+
+    INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
+    SELECT v_shipment_id, v_driver_id, 'https://res.cloudinary.com/demo/image/upload/receipt-pending-proof.jpg', TRUE, NOW() - INTERVAL '24 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM delivery_proofs WHERE shipment_id = v_shipment_id
+    );
+
+    UPDATE order_shipments
+    SET actual_distance_km = 23.7,
+        updated_at = NOW()
+    WHERE id = v_shipment_id;
+
+    INSERT INTO shipment_receipt_requests (order_id, driver_id, status, requested_at)
+    SELECT v_order_id, v_driver_id, 'pending', NOW() - INTERVAL '90 minutes'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM shipment_receipt_requests WHERE order_id = v_order_id
+    );
+
+    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
+    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'toll', 45000,
+           'Seeded toll cost for pending receipt review', CURRENT_DATE - 1
+    WHERE NOT EXISTS (
+        SELECT 1 FROM expenses
+        WHERE shipment_id = v_shipment_id AND description = 'Seeded toll cost for pending receipt review'
+    );
+
+    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
+    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'parking', 20000,
+           'Seeded parking cost for pending receipt review', CURRENT_DATE - 1
+    WHERE NOT EXISTS (
+        SELECT 1 FROM expenses
+        WHERE shipment_id = v_shipment_id AND description = 'Seeded parking cost for pending receipt review'
+    );
+END $$;
+
+-- =============================================================================
+-- SECTION 16B: RECEIPT REQUEST APPROVED DEMO (coordinator da publish)
+-- =============================================================================
+DO $$
+DECLARE
+    v_coordinator_id    INT;
+    v_driver_id         INT;
+    v_customer_id       INT;
+    v_vehicle_id        INT;
+    v_vehicle_group_id  INT;
+    v_price_per_km      NUMERIC(12,2);
+    v_estimated_km      NUMERIC(10,2) := 52.0;
+    v_actual_km         NUMERIC(10,2) := 54.2;
+    v_actual_income     NUMERIC(12,2);
+    v_order_id          INT;
+    v_shipment_id       INT;
+    v_request_id        INT;
+    v_receipt_id        INT;
+BEGIN
+    SELECT p.id INTO v_coordinator_id
+    FROM profiles p JOIN accounts a ON a.id = p.id
+    WHERE a.email = 'ntck005@gmail.com';
+
+    SELECT p.id INTO v_driver_id
+    FROM profiles p JOIN accounts a ON a.id = p.id
+    WHERE a.email = 'driver4@example.com';
+
+    SELECT v.id, v.vehicle_group_id, vg.price_per_km
+    INTO v_vehicle_id, v_vehicle_group_id, v_price_per_km
+    FROM vehicles v
+    JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+    WHERE v.plate_number = '51-F44444';
+
+    SELECT c.id INTO v_customer_id
+    FROM customers c
+    WHERE c.phone = '0987654324';
+
+    v_actual_income := v_actual_km * v_price_per_km;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM orders WHERE cargo_name = 'Receipt Approved Demo: Construction AC Units'
+    ) THEN
+        INSERT INTO orders (
+            customer_id, created_by, cargo_name, cargo_weight_kg,
+            total_estimated_price, total_actual_price, payment_type, vehicle_group_id,
+            derived_status, notes
+        )
+        VALUES (
+            v_customer_id, v_coordinator_id, 'Receipt Approved Demo: Construction AC Units', 320.0,
+            v_estimated_km * v_price_per_km, v_actual_income, 'bank_transfer', v_vehicle_group_id,
+            'completed', 'Coordinator already published receipt based on driver actual km'
+        )
+        RETURNING id INTO v_order_id;
+    ELSE
+        SELECT id INTO v_order_id
+        FROM orders
+        WHERE cargo_name = 'Receipt Approved Demo: Construction AC Units'
+        LIMIT 1;
+
+        UPDATE orders
+        SET total_estimated_price = v_estimated_km * v_price_per_km,
+            total_actual_price = v_actual_income,
+            vehicle_group_id = v_vehicle_group_id,
+            payment_type = 'bank_transfer',
+            derived_status = 'completed',
+            notes = 'Coordinator already published receipt based on driver actual km'
+        WHERE id = v_order_id;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
+    ) THEN
+        INSERT INTO order_shipments (
+            order_id, shipment_index, owner_driver_id, vehicle_id,
+            cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
+            actual_distance_km, actual_price, status,
+            claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
+        )
+        VALUES (
+            v_order_id, 1, v_driver_id, v_vehicle_id,
+            'Construction AC Units', 320.0, v_estimated_km * v_price_per_km, v_estimated_km,
+            v_actual_km, v_actual_income, 'completed',
+            NOW() - INTERVAL '18 hours',
+            NOW() - INTERVAL '17 hours',
+            NOW() - INTERVAL '15 hours',
+            NOW() - INTERVAL '13 hours',
+            NOW() - INTERVAL '12 hours',
+            'Approved receipt demo with actual distance and saved actual income'
+        )
+        RETURNING id INTO v_shipment_id;
+    ELSE
+        SELECT id INTO v_shipment_id
+        FROM order_shipments
+        WHERE order_id = v_order_id AND shipment_index = 1
+        LIMIT 1;
+
+        UPDATE order_shipments
+        SET owner_driver_id = v_driver_id,
+            vehicle_id = v_vehicle_id,
+            cargo_name = 'Construction AC Units',
+            cargo_weight_kg = 320.0,
+            estimated_price = v_estimated_km * v_price_per_km,
+            estimated_distance_km = v_estimated_km,
+            actual_distance_km = v_actual_km,
+            actual_price = v_actual_income,
+            status = 'completed',
+            notes = 'Approved receipt demo with actual distance and saved actual income'
+        WHERE id = v_shipment_id;
+    END IF;
+
+    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
+    SELECT v_shipment_id, 1, 'pickup', '05 Quang Trung, Go Vap', 'Site Warehouse', '0903030303', NOW() - INTERVAL '14 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 1
+    );
+
+    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at)
+    SELECT v_shipment_id, 2, 'delivery', '250 Dien Bien Phu, Binh Thanh', 'Project Supervisor', '0904040404',
+           NOW() - INTERVAL '13 hours', NOW() - INTERVAL '12 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 2
+    );
+
+    INSERT INTO shipment_assignments (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at, accepted_at, completed_at)
+    SELECT v_shipment_id, v_driver_id, v_vehicle_id, 'coordinator_assign', v_coordinator_id,
+           NOW() - INTERVAL '18 hours', NOW() - INTERVAL '18 hours', NOW() - INTERVAL '12 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM shipment_assignments WHERE shipment_id = v_shipment_id AND driver_id = v_driver_id
+    );
+
+    INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
+    SELECT v_shipment_id, v_driver_id, 'https://res.cloudinary.com/demo/image/upload/receipt-approved-proof.jpg', TRUE, NOW() - INTERVAL '12 hours'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM delivery_proofs WHERE shipment_id = v_shipment_id
+    );
+
+    SELECT id INTO v_request_id
+    FROM shipment_receipt_requests
+    WHERE order_id = v_order_id
+    LIMIT 1;
+
+    IF v_request_id IS NULL THEN
+        INSERT INTO shipment_receipt_requests (
+            order_id, driver_id, status, requested_at,
+            processed_by, processed_at, coordinator_notes
+        )
+        VALUES (
+            v_order_id, v_driver_id, 'approved', NOW() - INTERVAL '11 hours',
+            v_coordinator_id, NOW() - INTERVAL '10 hours',
+            'Published by coordinator after checking actual km against vehicle group pricing'
+        )
+        RETURNING id INTO v_request_id;
+    ELSE
+        UPDATE shipment_receipt_requests
+        SET driver_id = v_driver_id,
+            status = 'approved',
+            processed_by = v_coordinator_id,
+            processed_at = NOW() - INTERVAL '10 hours',
+            coordinator_notes = 'Published by coordinator after checking actual km against vehicle group pricing'
+        WHERE id = v_request_id;
+    END IF;
+
+    SELECT id INTO v_receipt_id
+    FROM shipment_receipts
+    WHERE receipt_request_id = v_request_id
+    LIMIT 1;
+
+    IF v_receipt_id IS NULL THEN
+        INSERT INTO shipment_receipts (
+            shipment_id, payment_type, amount, collected_by, collected_at,
+            notes, receipt_request_id, created_at, created_by
+        )
+        VALUES (
+            v_shipment_id, 'bank_transfer', v_actual_income, NULL, NOW() - INTERVAL '10 hours',
+            'Seeded approved receipt using actual km from driver request', v_request_id, NOW() - INTERVAL '10 hours', v_coordinator_id
+        )
+        RETURNING id INTO v_receipt_id;
+    ELSE
+        UPDATE shipment_receipts
+        SET shipment_id = v_shipment_id,
+            payment_type = 'bank_transfer',
+            amount = v_actual_income,
+            collected_by = NULL,
+            collected_at = NOW() - INTERVAL '10 hours',
+            notes = 'Seeded approved receipt using actual km from driver request',
+            created_by = v_coordinator_id
+        WHERE id = v_receipt_id;
+    END IF;
+
+    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
+    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'fuel', 180000,
+           'Seeded fuel expense for approved receipt demo', CURRENT_DATE
+    WHERE NOT EXISTS (
+        SELECT 1 FROM expenses
+        WHERE shipment_id = v_shipment_id AND description = 'Seeded fuel expense for approved receipt demo'
+    );
+
+    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
+    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'toll', 65000,
+           'Seeded toll expense for approved receipt demo', CURRENT_DATE
+    WHERE NOT EXISTS (
+        SELECT 1 FROM expenses
+        WHERE shipment_id = v_shipment_id AND description = 'Seeded toll expense for approved receipt demo'
+    );
+
+    UPDATE orders
+    SET total_actual_price = (
+            SELECT COALESCE(SUM(COALESCE(os.actual_price, 0)), 0)
+            FROM order_shipments os
+            WHERE os.order_id = v_order_id
+        ),
+        updated_at = NOW()
+    WHERE id = v_order_id;
+END $$;
 
 -- =============================================================================
 -- SECTION 17: TEST SCENARIO — Multi-Trip Order (3 chuyến cùng đơn)
@@ -357,7 +708,7 @@ WHERE o.cargo_name = 'Furniture Set' AND os.status = 'completed'
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
                     total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Multi-Trip: Hàng điện tử 3 chuyến', 150.0, 2100000, 'bank_transfer',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', '3 chuyến giao cho 3 điểm khác nhau'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', '3 chuyến giao cho 3 điểm khác nhau'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654322'
@@ -426,7 +777,7 @@ WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
                     total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Arrived Test: Giao ngay hôm nay', 80.0, 650000, 'cash',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', 'Driver đã đến điểm giao, chờ xác nhận'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Driver đã đến điểm giao, chờ xác nhận'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654321'
@@ -482,7 +833,7 @@ WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay' AND os.shipment_index = 
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
                     total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Failed Test: Khách từ chối nhận', 120.0, 500000, 'cash',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', 'Khách báo bận, không ra nhận hàng'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Khách báo bận, không ra nhận hàng'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654324'
@@ -532,13 +883,73 @@ DECLARE
     v_driver_id   INT;
     v_order_id    INT;
     v_payment_id  INT;
+    v_vehicle_id  INT;
+    v_group_id    INT;
+    v_customer_id INT;
+    v_coord_id    INT;
 BEGIN
     SELECT p.id INTO v_driver_id
     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
 
-    SELECT os.id, os.order_id INTO v_shipment_id, v_order_id
-    FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Furniture Set' AND os.status = 'completed' LIMIT 1;
+    SELECT p.id INTO v_coord_id
+    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'ntck005@gmail.com';
+
+    SELECT id, vehicle_group_id INTO v_vehicle_id, v_group_id
+    FROM vehicles
+    WHERE plate_number = '51-A12345';
+
+    SELECT id INTO v_customer_id
+    FROM customers
+    WHERE phone = '0987654321';
+
+    IF NOT EXISTS (
+        SELECT 1 FROM orders WHERE cargo_name = 'Driver Debt Demo: Cash Collected Office Supplies'
+    ) THEN
+        INSERT INTO orders (
+            customer_id, created_by, cargo_name, cargo_weight_kg,
+            total_estimated_price, total_actual_price, payment_type,
+            vehicle_group_id, derived_status, notes
+        )
+        VALUES (
+            v_customer_id, v_coord_id, 'Driver Debt Demo: Cash Collected Office Supplies', 95.0,
+            1500000, 1500000, 'cash', v_group_id, 'completed',
+            'Dedicated cash-collected demo for driver debt and remittance flow'
+        )
+        RETURNING id INTO v_order_id;
+    ELSE
+        SELECT id INTO v_order_id
+        FROM orders
+        WHERE cargo_name = 'Driver Debt Demo: Cash Collected Office Supplies'
+        LIMIT 1;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
+    ) THEN
+        INSERT INTO order_shipments (
+            order_id, shipment_index, owner_driver_id, vehicle_id,
+            cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
+            actual_distance_km, actual_price, status,
+            claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
+        )
+        VALUES (
+            v_order_id, 1, v_driver_id, v_vehicle_id,
+            'Office Supplies', 95.0, 1500000, 150.0,
+            150.0, 1500000, 'completed',
+            NOW() - INTERVAL '3 days',
+            NOW() - INTERVAL '3 days' + INTERVAL '1 hour',
+            NOW() - INTERVAL '3 days' + INTERVAL '3 hours',
+            NOW() - INTERVAL '3 days' + INTERVAL '5 hours',
+            NOW() - INTERVAL '2 days',
+            'Dedicated shipment for cash collected and driver debt settlement testing'
+        )
+        RETURNING id INTO v_shipment_id;
+    ELSE
+        SELECT id INTO v_shipment_id
+        FROM order_shipments
+        WHERE order_id = v_order_id AND shipment_index = 1
+        LIMIT 1;
+    END IF;
 
     IF v_shipment_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM shipment_receipts WHERE shipment_id = v_shipment_id
@@ -628,7 +1039,7 @@ DECLARE
 BEGIN
     SELECT p.id INTO v_driver1_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
     SELECT p.id INTO v_driver2_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT id  INTO v_group_small  FROM vehicle_groups WHERE price_per_km = 10000 LIMIT 1;
+    SELECT id  INTO v_group_small  FROM vehicle_groups ORDER BY id ASC LIMIT 1;
 
     -- Driver 1 — tháng 6/2026 (tháng hiện tại)
     INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,
@@ -744,4 +1155,7 @@ UNION ALL SELECT '✓ Debts (driver)',     COUNT(*) FROM debts WHERE debt_type =
 UNION ALL SELECT '✓ Incidents',          COUNT(*) FROM incidents
 UNION ALL SELECT '✓ Leave Requests',     COUNT(*) FROM leave_requests
 UNION ALL SELECT '✓ Receipt Requests',   COUNT(*) FROM shipment_receipt_requests
+UNION ALL SELECT '✓ Shipment Receipts',  COUNT(*) FROM shipment_receipts
+UNION ALL SELECT '✓ Expenses',           COUNT(*) FROM expenses
+UNION ALL SELECT '✓ Delivery Proofs',    COUNT(*) FROM delivery_proofs
 UNION ALL SELECT '✓ Maintenance',        COUNT(*) FROM maintenance_records;

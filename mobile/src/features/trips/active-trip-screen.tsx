@@ -39,8 +39,8 @@ import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status
 const STATUS_ADVANCE_TOAST: Partial<Record<TripStatus, string>> = {
     picking:   'Đang di chuyển đến điểm lấy hàng',
     transit:   'Đang vận chuyển hàng đến điểm giao',
-    arrived:   'Đã đến điểm giao — tiến hành giao hàng',
-    failed:    'Ghi nhận giao thất bại — cần hoàn hàng về điểm lấy',
+    arrived:   'Đã đến điểm giao – tiến hành giao hàng',
+    failed:    'Ghi nhận giao thất bại – cần hoàn hàng về điểm lấy',
     returning: 'Đang hoàn hàng về điểm lấy',
 };
 
@@ -203,10 +203,9 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
     );
 }
 
-// ─── Stops section ───────────────────────────────────────────────────────────
+// ─── Stops section ────────────────────────────────────────────────────────────
 
 // Derive stop visual state từ trip status khi DB chưa có timestamp
-// (xảy ra khi driver update status mà chưa kịp sync DB)
 function deriveStopState(
     stop: TripStop,
     tripStatus: TripStatus,
@@ -325,7 +324,6 @@ function ReceiptRequestSection({
                         </Text>
                         <Text fontSize={11} color={appTheme.colors.warningText}>
                             Đang chờ coordinator xử lý
-                            {req.actual_km ? ` · ${req.actual_km} km` : ''}
                         </Text>
                     </YStack>
                 </XStack>
@@ -342,7 +340,7 @@ function ReceiptRequestSection({
                 >
                     <CheckCircle size={14} color={appTheme.colors.success} />
                     <Text fontSize={12} fontWeight="700" color={appTheme.colors.success} flex={1}>
-                        Phiếu thu đã được tạo — xem chi tiết trong thông báo
+                        Phiếu thu đã được tạo – xem chi tiết trong thông báo
                     </Text>
                 </XStack>
             );
@@ -469,7 +467,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
         }
     });
     const { isUploading: submittingLoad, submitLoadingProof } = useLoadingProof(() => {
-        showToast({ type: 'success', message: 'Đã lấy hàng — bắt đầu vận chuyển đến điểm giao', duration: 2500 });
+        showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển đến điểm giao', duration: 2500 });
         refresh();
     });
     const { isUploading: completingReturn, completeReturn } = useReturnComplete(async () => {
@@ -610,7 +608,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     ) : null}
                 </CollapsibleSection>
 
-                {/* ── Stops (collapsible) — Item 4 ── */}
+                {/* ── Stops (collapsible) – Item 4 ── */}
                 <StopsSection stops={trip.stops ?? []} tripStatus={trip.status as TripStatus} />
 
                 {/* ── Expenses (collapsible) ── */}
@@ -622,7 +620,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     />
                 </CollapsibleSection>
 
-                {/* ── Loading proof section (PICKING) — Item 1 ── */}
+                {/* ── Loading proof section (PICKING) – Item 1 ── */}
                 {isPicking ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.successSoft}
@@ -682,7 +680,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     </YStack>
                 ) : null}
 
-                {/* ── Return complete section (RETURNING) — Item 5 ── */}
+                {/* ── Return complete section (RETURNING) – Item 5 ── */}
                 {isReturning ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.border}
@@ -752,8 +750,6 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 </XStack>
             </ScrollView>
 
-            {/* ── Modals ── */}
-            {/* Một CameraModal duy nhất — tránh Modal-in-Modal */}
             <CameraModal
                 visible={cameraTarget !== null}
                 label={
@@ -792,7 +788,6 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     );
 }
 
-// ─── Screen shell ─────────────────────────────────────────────────────────────
 
 export function ActiveTripScreen() {
     const { trip, isLoading, error, refresh } = useActiveTrip();
@@ -833,7 +828,6 @@ export function ActiveTripScreen() {
     );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
     // Collapsible badge
@@ -896,5 +890,4 @@ const s = StyleSheet.create({
 
     // Stop dot
     stopDot: { width: 10, height: 10, borderRadius: 5 },
-
 });
