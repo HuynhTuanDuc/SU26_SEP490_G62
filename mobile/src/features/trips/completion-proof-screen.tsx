@@ -1,141 +1,65 @@
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { StatusBar } from 'expo-status-bar';
-import { Camera, CheckCircle, ChevronLeft, X } from 'lucide-react-native';
+import { Alert } from 'react-native';
+import { Camera, CheckCircle, ChevronLeft } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText } from '@/components/app-text';
 import { appTheme } from '@/theme/app-theme';
 import { useCompletionProof } from '@/hooks/use-completion-proof';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type Slot = 'proof' | 'receipt';
-
-const SLOT_LABEL: Record<Slot, string> = {
-    proof:   'Xác nhận',
-    receipt: 'Biên lai',
-};
-
-const SLOT_GUIDE: Record<Slot, string> = {
-    proof:   'Chụp ảnh xác nhận giao hàng (người nhận / hàng tại điểm giao)',
-    receipt: 'Chụp ảnh biên lai / hóa đơn có chữ ký của khách',
-};
-
-// ─── Thumbnail slot ───────────────────────────────────────────────────────────
-
-function ThumbSlot({
-    label,
-    uri,
-    active,
-    onPress,
-    onDelete,
-}: {
-    label: string;
-    uri: string | null;
-    active: boolean;
-    onPress: () => void;
-    onDelete: () => void;
-}) {
-    return (
-        <Pressable onPress={onPress} style={[styles.slot, active && styles.slotActive]}>
-            {uri ? (
-                <>
-                    <Image source={{ uri }} style={styles.slotImg} resizeMode="cover" />
-                    {/* Delete button */}
-                    <Pressable onPress={onDelete} hitSlop={4} style={styles.slotDelete}>
-                        <X size={10} color="#fff" />
-                    </Pressable>
-                    {/* Done badge */}
-                    <View style={styles.slotDone}>
-                        <CheckCircle size={12} color="#fff" />
-                    </View>
-                </>
-            ) : (
-                <YStack flex={1} alignItems="center" justifyContent="center" gap={2}>
-                    <Camera size={18} color={active ? appTheme.colors.primary : 'rgba(255,255,255,0.45)'} />
-                    <Text fontSize={9} fontWeight="700"
-                        color={active ? appTheme.colors.primary : 'rgba(255,255,255,0.45)'}
-                        numberOfLines={1}
-                    >
-                        {label}
-                    </Text>
-                </YStack>
-            )}
-            {/* Active ring label below */}
-            {active ? (
-                <View style={styles.slotActiveLabel}>
-                    <Text fontSize={8} fontWeight="900" color={appTheme.colors.primary}>
-                        {uri ? 'ĐÃ CHỤP' : 'ĐANG CHỤP'}
-                    </Text>
-                </View>
-            ) : null}
-        </Pressable>
-    );
-}
+import type { ActiveTrip } from '@/types/trip';
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function CompletionProofScreen() {
-    const { tripId, isFinal: isFinalParam } = useLocalSearchParams<{ tripId: string; isFinal: string }>();
+    const { tripId } = useLocalSearchParams<{ tripId: string }>();
     const tripIdNum = Number(tripId);
-    const isFinal   = isFinalParam === '1';
 
-    const [proofUri,   setProofUri]   = useState<string | null>(null);
-    const [receiptUri, setReceiptUri] = useState<string | null>(null);
-    const [activeSlot, setActiveSlot] = useState<Slot>('proof');
-
+    const [proofUri, setProofUri] = useState<string | null>(null);
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView>(null);
 
-    const { isUploading, error, completeWithProof } = useCompletionProof(() => {
-        router.back();
-    });
-
-    // Luôn hiện cả 2 slots: xác nhận giao + biên lai (bắt buộc cho mọi completion)
-    const slots: Slot[] = ['proof', 'receipt'];
-    const currentUri = activeSlot === 'proof' ? proofUri : receiptUri;
-
-    const resolveActiveSlot = useCallback((newProof: string | null, newReceipt: string | null) => {
-        if (!newProof)    { setActiveSlot('proof');   return; }
-        if (!newReceipt)  { setActiveSlot('receipt'); return; }
+    const handleSuccess = useCallback((trip: ActiveTrip) => {
+        const isLastDriver = trip.is_final_shipment && trip.order_payment_type === 'cash';
+        if (isLastDriver) {
+            // Navigate to dedicated receipt request screen — replace so back returns to home
+            router.replace({
+                pathname: '/receipt-request',
+                params: {
+                    orderId:          String(trip.order_id),
+                    shipmentId:       String(trip.id),
+                    estimatedPrice:   trip.estimated_price ?? '',
+                    cargoName:        trip.cargo_name ?? '',
+                    pickupAddress:    trip.pickup_address,
+                    deliveryAddress:  trip.delivery_address,
+                    shipmentIndex:    String(trip.shipment_index),
+                    maxShipmentIndex: String(trip.max_shipment_index),
+                },
+            });
+        } else {
+            router.back();
+        }
     }, []);
+
+    const { isUploading, error, completeWithProof } = useCompletionProof(handleSuccess);
 
     const takePicture = useCallback(async () => {
         if (!cameraRef.current) return;
         try {
             const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-            if (!photo?.uri) return;
-            if (activeSlot === 'proof') {
-                setProofUri(photo.uri);
-                resolveActiveSlot(photo.uri, receiptUri);
-            } else {
-                setReceiptUri(photo.uri);
-                resolveActiveSlot(proofUri, photo.uri);
-            }
+            if (photo?.uri) setProofUri(photo.uri);
         } catch {
             Alert.alert('Lỗi', 'Không thể chụp ảnh, vui lòng thử lại.');
-        }
-    }, [activeSlot, proofUri, receiptUri, resolveActiveSlot]);
-
-    const handleDelete = useCallback((slot: Slot) => {
-        if (slot === 'proof') {
-            setProofUri(null);
-            setActiveSlot('proof');
-        } else {
-            setReceiptUri(null);
-            setActiveSlot('receipt');
         }
     }, []);
 
     const handleConfirm = useCallback(() => {
-        if (!proofUri || !receiptUri) return;
-        completeWithProof(tripIdNum, proofUri, receiptUri);
-    }, [proofUri, receiptUri, tripIdNum, completeWithProof]);
-
-    const allDone = !!proofUri && !!receiptUri;
+        if (!proofUri) return;
+        void completeWithProof(tripIdNum, proofUri);
+    }, [proofUri, tripIdNum, completeWithProof]);
 
     // ── Permission screens ───────────────────────────────────────────────────
 
@@ -170,11 +94,11 @@ export function CompletionProofScreen() {
         <View style={styles.container}>
             <StatusBar style="light" />
 
-            {/* Camera — always live, never unmounts */}
+            {/* Camera — always live */}
             <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
 
-            {/* Corner frame guides — visible when active slot is empty */}
-            {!currentUri ? (
+            {/* Corner frame guides — visible when no photo taken yet */}
+            {!proofUri ? (
                 <View style={styles.frameContainer} pointerEvents="none">
                     <View style={[styles.corner, styles.cornerTL]} />
                     <View style={[styles.corner, styles.cornerTR]} />
@@ -191,44 +115,17 @@ export function CompletionProofScreen() {
                     </Pressable>
                     <YStack flex={1} gap={2}>
                         <Text fontSize={15} fontWeight="900" color="#fff">
-                            {SLOT_GUIDE[activeSlot]}
+                            Chụp ảnh xác nhận giao hàng
                         </Text>
-                        <Text fontSize={11} color="rgba(255,255,255,0.65)">Chuyến #{tripId}</Text>
+                        <Text fontSize={11} color="rgba(255,255,255,0.65)">
+                            Chụp người nhận hoặc hàng tại điểm giao · Chuyến #{tripId}
+                        </Text>
                     </YStack>
                 </XStack>
             </View>
 
-            {/* Bottom panel — overlaid on camera */}
+            {/* Bottom panel */}
             <View style={styles.bottomPanel}>
-                {/* Thumbnail strip */}
-                <XStack paddingHorizontal={20} gap={10} alignItems="flex-end">
-                    {slots.map((slot) => (
-                        <ThumbSlot
-                            key={slot}
-                            label={SLOT_LABEL[slot]}
-                            uri={slot === 'proof' ? proofUri : receiptUri}
-                            active={activeSlot === slot}
-                            onPress={() => setActiveSlot(slot)}
-                            onDelete={() => handleDelete(slot)}
-                        />
-                    ))}
-
-                    {/* Right side: confirm button (grows to fill) */}
-                    <View style={{ flex: 1 }} />
-                    {allDone ? (
-                        <Pressable
-                            onPress={handleConfirm}
-                            disabled={isUploading}
-                            style={[styles.confirmBtn, isUploading && { opacity: 0.7 }]}
-                        >
-                            <CheckCircle size={16} color="#fff" />
-                            <Text fontSize={13} fontWeight="900" color="#fff">
-                                {isUploading ? 'Đang tải...' : 'Hoàn thành'}
-                            </Text>
-                        </Pressable>
-                    ) : null}
-                </XStack>
-
                 {/* Error */}
                 {error ? (
                     <View style={styles.errorBar}>
@@ -236,22 +133,39 @@ export function CompletionProofScreen() {
                     </View>
                 ) : null}
 
-                {/* Guide + Shutter */}
-                <YStack alignItems="center" gap={12} paddingBottom={44} paddingTop={16}>
+                {/* Shutter + confirm */}
+                <YStack alignItems="center" gap={14} paddingBottom={44} paddingTop={12}>
                     <Text style={styles.guideText}>
-                        {currentUri
-                            ? `${SLOT_LABEL[activeSlot]} đã chụp — nhấn nút dưới để chụp lại`
-                            : SLOT_GUIDE[activeSlot]}
+                        {proofUri
+                            ? 'Ảnh đã chụp — nhấn Hoàn thành hoặc chụp lại'
+                            : 'Chụp ảnh người nhận hoặc hàng tại điểm giao (BR-015/016)'}
                     </Text>
-                    <Pressable onPress={takePicture} style={styles.shutterBtn}>
-                        <View style={styles.shutterInner}>
-                            <Camera size={28} color={appTheme.colors.primary} />
-                        </View>
-                    </Pressable>
+
+                    <XStack gap={20} alignItems="center">
+                        {/* Shutter */}
+                        <Pressable onPress={takePicture} disabled={isUploading} style={styles.shutterBtn}>
+                            <View style={styles.shutterInner}>
+                                <Camera size={28} color={appTheme.colors.primary} />
+                            </View>
+                        </Pressable>
+
+                        {/* Confirm (shown when photo is ready) */}
+                        {proofUri ? (
+                            <Pressable
+                                onPress={handleConfirm}
+                                disabled={isUploading}
+                                style={[styles.confirmBtn, isUploading && { opacity: 0.7 }]}
+                            >
+                                <CheckCircle size={16} color="#fff" />
+                                <Text fontSize={13} fontWeight="900" color="#fff">
+                                    {isUploading ? 'Đang tải...' : 'Hoàn thành'}
+                                </Text>
+                            </Pressable>
+                        ) : null}
+                    </XStack>
+
                     <Text style={styles.stepHint}>
-                        {slots.map(s =>
-                            (s === 'proof' ? proofUri : receiptUri) ? `✓ ${SLOT_LABEL[s]}` : `○ ${SLOT_LABEL[s]}`
-                        ).join('   ')}
+                        {proofUri ? '✓ Đã chụp ảnh xác nhận' : '○ Chưa chụp ảnh'}
                     </Text>
                 </YStack>
             </View>
@@ -263,22 +177,19 @@ export function CompletionProofScreen() {
 
 const C  = 28;
 const CT = 3;
-const SLOT_SIZE = 72;
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#000' },
 
-    // Frame guides
     frameContainer: {
         position: 'absolute', top: '22%', left: '10%', right: '10%', bottom: '28%',
     },
-    corner:    { position: 'absolute', width: C, height: C, borderColor: 'rgba(255,255,255,0.9)' },
-    cornerTL:  { top: 0, left: 0, borderTopWidth: CT, borderLeftWidth: CT, borderTopLeftRadius: 4 },
-    cornerTR:  { top: 0, right: 0, borderTopWidth: CT, borderRightWidth: CT, borderTopRightRadius: 4 },
-    cornerBL:  { bottom: 0, left: 0, borderBottomWidth: CT, borderLeftWidth: CT, borderBottomLeftRadius: 4 },
-    cornerBR:  { bottom: 0, right: 0, borderBottomWidth: CT, borderRightWidth: CT, borderBottomRightRadius: 4 },
+    corner:   { position: 'absolute', width: C, height: C, borderColor: 'rgba(255,255,255,0.9)' },
+    cornerTL: { top: 0, left: 0, borderTopWidth: CT, borderLeftWidth: CT, borderTopLeftRadius: 4 },
+    cornerTR: { top: 0, right: 0, borderTopWidth: CT, borderRightWidth: CT, borderTopRightRadius: 4 },
+    cornerBL: { bottom: 0, left: 0, borderBottomWidth: CT, borderLeftWidth: CT, borderBottomLeftRadius: 4 },
+    cornerBR: { bottom: 0, right: 0, borderBottomWidth: CT, borderRightWidth: CT, borderBottomRightRadius: 4 },
 
-    // Top bar
     topBar: {
         position: 'absolute', top: 0, left: 0, right: 0,
         backgroundColor: 'rgba(0,0,0,0.5)',
@@ -289,67 +200,18 @@ const styles = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
     },
 
-    // Bottom panel
     bottomPanel: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
         backgroundColor: 'rgba(0,0,0,0.6)',
         paddingTop: 14,
-        gap: 0,
     },
 
-    // Thumbnail slots
-    slot: {
-        width: SLOT_SIZE, height: SLOT_SIZE,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.3)',
-        overflow: 'visible',
-        backgroundColor: 'rgba(255,255,255,0.08)',
-    },
-    slotActive: {
-        borderColor: appTheme.colors.primary,
-        borderWidth: 2.5,
-    },
-    slotImg: {
-        width: '100%', height: '100%',
-        borderRadius: 10,
-    },
-    slotDelete: {
-        position: 'absolute', top: -6, right: -6,
-        width: 20, height: 20, borderRadius: 10,
-        backgroundColor: appTheme.colors.danger,
-        alignItems: 'center', justifyContent: 'center',
-        zIndex: 10,
-    },
-    slotDone: {
-        position: 'absolute', bottom: 4, right: 4,
-        width: 18, height: 18, borderRadius: 9,
-        backgroundColor: appTheme.colors.success,
-        alignItems: 'center', justifyContent: 'center',
-    },
-    slotActiveLabel: {
-        position: 'absolute', bottom: -16, left: 0, right: 0,
-        alignItems: 'center',
-    },
-
-    // Confirm button (beside thumbnails)
-    confirmBtn: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: appTheme.colors.primary,
-        paddingHorizontal: 14, paddingVertical: 10,
-        borderRadius: appTheme.radius.md,
-        alignSelf: 'flex-end',
-        marginBottom: 4,
-    },
-
-    // Error
     errorBar: {
-        marginHorizontal: 20, marginTop: 10,
+        marginHorizontal: 20, marginBottom: 10,
         padding: 10, borderRadius: 10,
         backgroundColor: appTheme.colors.danger,
     },
 
-    // Shutter area
     guideText: {
         fontSize: 12,
         color: 'rgba(255,255,255,0.8)',
@@ -368,6 +230,12 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         alignItems: 'center', justifyContent: 'center',
         borderWidth: 2, borderColor: appTheme.colors.primaryMuted,
+    },
+    confirmBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: appTheme.colors.primary,
+        paddingHorizontal: 18, paddingVertical: 14,
+        borderRadius: appTheme.radius.md,
     },
     stepHint: {
         fontSize: 11,

@@ -267,10 +267,24 @@ export type CreateExpenseResponse = {
 
 export type ReceiptRequestStatus = 'pending' | 'processing' | 'approved' | 'rejected';
 
+// Per-shipment receipt request (single-driver order)
 export type ReceiptRequest = {
     id: number;
     shipment_id: number;
     actual_km: string | null;
+    status: ReceiptRequestStatus;
+    requested_at: string;
+    coordinator_notes: string | null;
+};
+
+// Per-order receipt request (Option B — multi-driver order, driver thu tiền toàn đơn)
+export type OrderReceiptRequest = {
+    id: number;
+    order_id: number;
+    requesting_shipment_id: number;
+    driver_id: number;
+    actual_km: string | null;
+    driver_notes: string | null;
     status: ReceiptRequestStatus;
     requested_at: string;
     coordinator_notes: string | null;

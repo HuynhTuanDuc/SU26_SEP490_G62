@@ -173,21 +173,21 @@ const releaseTrip = async (tripId, driverId, reason) => {
 // Bắt buộc 2 ảnh:
 //   proofFileUrl   — ảnh xác nhận giao hàng (BR-015/016/017)
 //   receiptFileUrl — ảnh biên lai/hóa đơn có chữ ký khách
-const completeTrip = async (tripId, driverId, proofFileUrl, receiptFileUrl) => {
+const completeTrip = async (tripId, driverId, proofFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.ARRIVED) throw new Error('Chuyến phải ở trạng thái "arrived" để hoàn thành');
     if (!proofFileUrl) throw new Error('Ảnh xác nhận giao hàng là bắt buộc (BR-015)');
-    if (!receiptFileUrl) throw new Error('Ảnh biên lai/hóa đơn là bắt buộc');
 
-    // Lưu cả 2 ảnh vào delivery_proofs
     await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
-    await tripRepository.saveDeliveryProof(tripId, driverId, receiptFileUrl);
 
-    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
+    await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
 
-    const isFinal = await tripRepository.isFinalShipment(tripId);
+    // Lấy full trip (có order_payment_type, is_final_shipment) để mobile điều hướng đúng
+    const completedTrip = await tripRepository.getFullTripById(tripId);
+
+    const isFinal = completedTrip.is_final_shipment;
 
     notificationService.createForUser(driverId, {
         title: isFinal ? 'Hoàn thành toàn bộ đơn hàng!' : 'Hoàn thành chuyến',

@@ -84,14 +84,27 @@ export const tripService = {
             `/api/trips/${tripId}/payments/${paymentId}`, formData,
         ),
 
-    // Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến
+    // Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến (single-driver)
     requestReceipt: (tripId: number, actualKm?: number) =>
         apiClient.post<{ message: string; request: ReceiptRequest }>(
             `/api/trips/${tripId}/request-receipt`,
             { actual_km: actualKm ?? null },
         ),
 
-    // Lấy trạng thái yêu cầu phiếu thu hiện tại của chuyến
+    // Lấy trạng thái yêu cầu phiếu thu hiện tại của chuyến (single-driver)
     getReceiptRequest: (tripId: number) =>
         apiClient.get<{ request: ReceiptRequest | null }>(`/api/trips/${tripId}/receipt-request`),
+
+    // Yêu cầu tạo phiếu thu cấp Order (Option B — multi-driver, driver thu tiền toàn đơn)
+    // FormData: shipment_id, actual_km?, receipt (ảnh biên lai bắt buộc)
+    requestOrderReceipt: (orderId: number, formData: FormData) =>
+        apiClient.postForm<{ message: string; request: import('@/types/trip').OrderReceiptRequest }>(
+            `/api/orders/${orderId}/request-receipt`, formData,
+        ),
+
+    // Lấy trạng thái yêu cầu phiếu thu cấp Order
+    getOrderReceiptRequest: (orderId: number) =>
+        apiClient.get<{ request: import('@/types/trip').OrderReceiptRequest | null }>(
+            `/api/orders/${orderId}/receipt-request`,
+        ),
 };

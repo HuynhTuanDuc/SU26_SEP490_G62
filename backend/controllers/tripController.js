@@ -89,17 +89,16 @@ const releaseTrip = async (req, res) => {
 
 // POST /api/trips/:id/complete  (multipart/form-data)
 // Fields bắt buộc:
-//   'proof'   — ảnh xác nhận giao hàng (chụp hàng/người nhận)
-//   'receipt' — ảnh biên lai/hóa đơn có chữ ký khách
+//   'proof' — ảnh xác nhận giao hàng (chụp hàng/người nhận, BR-015/016/017)
+// Receipt/biên lai được xử lý riêng qua POST /orders/:id/request-receipt
 const completeTrip = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const proofUrl   = req.files?.proof?.[0]?.path   ?? req.files?.image?.[0]?.path   ?? null;
-        const receiptUrl = req.files?.receipt?.[0]?.path ?? req.files?.invoice?.[0]?.path ?? null;
+        const proofUrl = req.files?.proof?.[0]?.path ?? req.files?.image?.[0]?.path ?? null;
 
-        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl, receiptUrl);
+        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl);
         res.json({ message: 'Hoàn thành chuyến thành công', trip });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403

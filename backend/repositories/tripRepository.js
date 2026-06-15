@@ -143,6 +143,48 @@ const getTripById = async (tripId) => {
     return result.rows[0] ?? null;
 };
 
+// Trả về trip với đầy đủ thông tin như getActiveTrip (có order_payment_type, is_final_shipment)
+// Dùng sau khi update status để trả về response đúng cho mobile
+const getFullTripById = async (tripId) => {
+    const result = await pool.query(
+        `SELECT
+            os.id,
+            os.order_id,
+            os.shipment_index,
+            ${PICKUP_SUBQ}   AS pickup_address,
+            ${DELIVERY_SUBQ} AS delivery_address,
+            os.cargo_weight_kg,
+            os.estimated_price,
+            os.actual_price,
+            os.status,
+            os.notes,
+            os.version,
+            os.claimed_at,
+            os.picking_at,
+            os.transit_at,
+            os.arrived_at,
+            os.completed_at,
+            o.cargo_name,
+            o.notes AS order_notes,
+            o.payment_type AS order_payment_type,
+            (
+                SELECT MAX(s2.shipment_index)
+                FROM order_shipments s2
+                WHERE s2.order_id = os.order_id
+            ) AS max_shipment_index
+         FROM order_shipments os
+         JOIN orders o ON os.order_id = o.id
+         WHERE os.id = $1`,
+        [tripId],
+    );
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    return {
+        ...row,
+        is_final_shipment: Number(row.shipment_index) === Number(row.max_shipment_index),
+    };
+};
+
 const claimShipment = async (shipmentId, driverId, vehicleId) => {
     const client = await pool.connect();
     try {
@@ -704,6 +746,7 @@ module.exports = {
     getAllVehicleGroups,
     getActiveTrip,
     getTripById,
+    getFullTripById,
     claimShipment,
     updateTripStatus,
     releaseShipmentToPool,
