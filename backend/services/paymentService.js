@@ -31,13 +31,8 @@ const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, 
         );
     }
 
-    if (summary.remaining !== null && amt > summary.remaining) {
-        const msg = summary.remaining <= 0
-            ? `Chuyến này đã được ghi nhận đủ số tiền (${fmtVND(summary.trip_value)}). Không thể ghi thêm.`
-            : `Số tiền ${fmtVND(amt)} vượt quá phần còn lại ${fmtVND(summary.remaining)} ` +
-              `(giá trị chuyến ${fmtVND(summary.trip_value)}, đã thu ${fmtVND(summary.cash_collected)}, đã báo nợ ${fmtVND(summary.customer_debt_total)}).`;
-        throw new Error(msg);
-    }
+    // Không chặn theo estimated_price — giá trị đơn hàng chỉ là ước tính,
+    // số tiền thực thu có thể cao hơn hoặc thấp hơn. Kế toán sẽ xác nhận.
 
     const { payment } = await paymentRepository.recordCashPayment({
         shipmentId,
