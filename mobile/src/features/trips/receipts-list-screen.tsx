@@ -1,16 +1,17 @@
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator, FlatList, Pressable, RefreshControl,
+    FlatList, Pressable, RefreshControl,
     StyleSheet, View,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Receipt, ArrowRight, Buildings, User } from 'phosphor-react-native';
+import { Receipt, ArrowRight, Buildings, User, Truck } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { ScreenHeader }  from '@/components/screen-header';
-import { AppText }       from '@/components/app-text';
-import { appTheme }      from '@/theme/app-theme';
-import { tripService }   from '@/services/trip-service';
+import { ScreenHeader }       from '@/components/screen-header';
+import { AppText }            from '@/components/app-text';
+import { SimpleListSkeleton } from '@/components/skeleton';
+import { appTheme }           from '@/theme/app-theme';
+import { tripService }        from '@/services/trip-service';
 import type { DriverReceiptSummary, PaymentType } from '@/types/trip';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -135,8 +136,8 @@ export function ReceiptsListScreen() {
         return (
             <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
                 <ScreenHeader title="Phiếu thu" />
-                <View style={styles.center}>
-                    <ActivityIndicator size="large" color={appTheme.colors.primary} />
+                <View style={styles.list}>
+                    <SimpleListSkeleton count={5} />
                 </View>
             </View>
         );
@@ -160,12 +161,30 @@ export function ReceiptsListScreen() {
                     />
                 }
                 ListEmptyComponent={
-                    <YStack alignItems="center" gap={12} paddingVertical={60}>
-                        <Receipt size={48} color={appTheme.colors.textMuted} weight="thin" />
-                        <AppText variant="body" tone="muted" textAlign="center">
-                            Chưa có phiếu thu nào được tạo.{'\n'}
-                            Hoàn thành chuyến hàng để nhận phiếu thu từ coordinator.
-                        </AppText>
+                    <YStack alignItems="center" gap={16} paddingVertical={60} paddingHorizontal={24}>
+                        <View style={styles.emptyIcon}>
+                            <Receipt size={40} color={appTheme.colors.textMuted} weight="thin" />
+                        </View>
+                        <YStack gap={6} alignItems="center">
+                            <Text fontSize={15} fontWeight="700" color={appTheme.colors.text}>
+                                Chưa có phiếu thu
+                            </Text>
+                            <AppText variant="caption" tone="muted" textAlign="center">
+                                Hoàn thành chuyến hàng thu tiền mặt{'\n'}
+                                để nhận phiếu thu từ coordinator.
+                            </AppText>
+                        </YStack>
+                        <Pressable
+                            style={styles.emptyBtn}
+                            onPress={() => router.push('/(tabs)/history')}
+                        >
+                            <XStack gap={8} alignItems="center">
+                                <Truck size={16} color={appTheme.colors.primary} />
+                                <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
+                                    Xem lịch sử chuyến
+                                </Text>
+                            </XStack>
+                        </Pressable>
                     </YStack>
                 }
             />
@@ -208,5 +227,21 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 999,
+    },
+    emptyIcon: {
+        width: 80,
+        height: 80,
+        borderRadius: 24,
+        backgroundColor: appTheme.colors.surfaceSoft,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    emptyBtn: {
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: appTheme.radius.lg,
+        borderWidth: 1.5,
+        borderColor: appTheme.colors.primary,
+        backgroundColor: `${appTheme.colors.primary}10`,
     },
 });
