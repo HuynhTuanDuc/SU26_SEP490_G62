@@ -128,6 +128,14 @@ function extractDistance(notes) {
   return match?.[1]?.trim() || "";
 }
 
+const resolveFareValue = (...values) => {
+  for (const value of values) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue) && numericValue > 0) return numericValue;
+  }
+  return 0;
+};
+
 function buildTripFromOrder(order) {
   const sourceTrips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [];
   const trips = sourceTrips.length > 0 ? sourceTrips.map((trip, index) => ({
@@ -142,7 +150,7 @@ function buildTripFromOrder(order) {
     arrived_at: trip.arrived_at || "",
     pickup_address: trip.pickup_address || "",
     delivery_address: trip.delivery_address || "",
-    fare: trip.fare ?? "",
+    fare: resolveFareValue(trip.actual_price, trip.fare),
     status: trip.status || "",
     driverName: trip.driverName || "",
   })) : [{
@@ -157,7 +165,7 @@ function buildTripFromOrder(order) {
     arrived_at: order.arrived_at || "",
     pickup_address: order.pickup_address || "",
     delivery_address: order.delivery_address || "",
-    fare: order.estimated_price || order.total_estimated_price || "",
+    fare: resolveFareValue(order.total_actual_price, order.estimated_price, order.total_estimated_price),
     status: order.status || "",
     driverName: order.driver_name || "",
   }];
@@ -169,7 +177,7 @@ function buildTripFromOrder(order) {
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
   const totalDistance = trips.reduce((sum, t) => sum + (Number(t.distance) || 0), 0);
-  const totalFare = trips.reduce((sum, t) => sum + (Number(t.fare) || 0), 0);
+  const totalFare = trips.reduce((sum, t) => sum + resolveFareValue(t.fare), 0);
   const isMultiShipment = trips.length > 1;
 
   return {
@@ -196,7 +204,7 @@ function buildTripFromOrder(order) {
       ? `${trips.length} chuyen - mo chi tiet de xem tung chuyen`
       : (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),
     distance: totalDistance || order.estimated_distance_km || "",
-    fare: totalFare || order.estimated_price || order.total_estimated_price || 0,
+    fare: resolveFareValue(totalFare, order.total_actual_price, order.estimated_price, order.total_estimated_price),
     status: getOrderStatusLabel(order, trips),
     statusClass: isMultiShipment ? "partial" : normalizeStatus(firstTrip.status || order.status || order.first_shipment_status || order.order_status),
     notes: order.notes,
@@ -1494,7 +1502,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>{request.customer_name || "-"}</td>
                       <td>{request.driver_name || "-"}</td>
                       <td>{Number(request.total_actual_distance_km || 0) > 0 ? `${request.total_actual_distance_km} km` : "-"}</td>
-                      <td>{formatCurrency(request.final_price || request.actual_price || request.estimated_price || 0)}</td>
+                      <td>{formatCurrency(resolveFareValue(request.actual_price, request.estimated_price))}</td>
                       <td>
                         <span className={`trip-status status-${normalizeStatus(request.status)}`}>
                           {request.status}
