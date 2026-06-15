@@ -89,17 +89,16 @@ const releaseTrip = async (req, res) => {
 
 // POST /api/trips/:id/complete  (multipart/form-data)
 // Fields bắt buộc:
-//   'proof'   — ảnh xác nhận giao hàng (chụp hàng/người nhận)
-//   'receipt' — ảnh biên lai/hóa đơn có chữ ký khách
+//   'proof' — ảnh xác nhận giao hàng (chụp hàng/người nhận, BR-015/016/017)
+// Receipt/biên lai được xử lý riêng qua POST /orders/:id/request-receipt
 const completeTrip = async (req, res) => {
     try {
         const tripId = Number(req.params.id);
         if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const proofUrl   = req.files?.proof?.[0]?.path   ?? req.files?.image?.[0]?.path   ?? null;
-        const receiptUrl = req.files?.receipt?.[0]?.path ?? req.files?.invoice?.[0]?.path ?? null;
+        const proofUrl = req.files?.proof?.[0]?.path ?? req.files?.image?.[0]?.path ?? null;
 
-        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl, receiptUrl);
+        const trip = await tripService.completeTrip(tripId, req.user.userId, proofUrl);
         res.json({ message: 'Hoàn thành chuyến thành công', trip });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
@@ -294,33 +293,79 @@ const completeStop = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/request-receipt
-// Body: { actual_km?: number }  — nếu có sẽ lưu vào shipment hiện tại, request chỉ gửi 1 lần mỗi đơn
-const requestReceipt = async (req, res) => {
-    try {
-        const tripId = Number(req.params.id);
-        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
 
-        const { actual_km } = req.body;
-        const receiptReq = await tripService.requestReceipt(tripId, req.user.userId, { actual_km });
-        res.status(201).json({ message: 'Đã gửi yêu cầu tạo phiếu thu. Coordinator sẽ xử lý sớm nhất.', request: receiptReq });
+// POST /api/orders/:id/request-receipt  (application/json)
+// Body: { shipment_id, actual_km }
+// Non-final driver: lưu km → { km_saved, receipt_request_created: false }
+// Final driver:     lưu km + tạo phiếu → { km_saved, receipt_request_created: true, request }
+const requestOrderReceipt = async (req, res) => {
+    try {
+        const orderId    = Number(req.params.id);
+        const shipmentId = Number(req.body.shipment_id);
+        const actualKm   = req.body.actual_km !== undefined ? Number(req.body.actual_km) : undefined;
+
+        if (!orderId)    return res.status(400).json({ error: 'Order ID không hợp lệ' });
+        if (!shipmentId) return res.status(400).json({ error: 'shipment_id là bắt buộc' });
+
+        const result = await tripService.requestOrderReceipt(orderId, req.user.userId, {
+            shipmentId, actualKm,
+        });
+
+        const status = result.receipt_request_created ? 201 : 200;
+        const message = result.receipt_request_created
+            ? 'Đã gửi yêu cầu tạo phiếu thu. Coordinator sẽ xem xét sớm.'
+            : 'Đã lưu số km thực tế.';
+        res.status(status).json({ message, ...result });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
-            : err.message.includes('đã được gửi') ? 409
-            : err.message.includes('Chỉ có thể') ? 422
+            : err.message.includes('đã có yêu cầu') ? 409
+            : err.message.includes('completed') || err.message.includes('bắt buộc') ? 422
             : 400;
         res.status(code).json({ error: err.message });
     }
 };
 
-// GET /api/trips/:id/receipt-request
-const getReceiptRequest = async (req, res) => {
+// GET /api/trips/pending-receipt — đơn cash đã hoàn thành nhưng chưa gửi yêu cầu phiếu thu
+const getPendingReceiptOrder = async (req, res) => {
     try {
-        const tripId = Number(req.params.id);
-        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
+        const order = await tripService.getPendingReceiptOrder(req.user.userId);
+        res.json({ order: order ?? null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
 
-        const receiptReq = await tripService.getReceiptRequest(tripId, req.user.userId);
-        res.json({ request: receiptReq });
+// GET /api/orders/:id/receipt-request
+const getOrderReceiptRequest = async (req, res) => {
+    try {
+        const orderId = Number(req.params.id);
+        if (!orderId) return res.status(400).json({ error: 'Order ID không hợp lệ' });
+        const request = await tripService.getOrderReceiptRequest(orderId);
+        res.json({ request: request ?? null });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/receipts  — danh sách phiếu thu của driver
+const getDriverReceipts = async (req, res) => {
+    try {
+        const page  = Math.max(1, Number(req.query.page)  || 1);
+        const limit = Math.min(50, Number(req.query.limit) || 20);
+        const receipts = await tripService.getDriverReceipts(req.user.userId, { page, limit });
+        res.json({ receipts });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// GET /api/trips/receipts/:receiptId  — chi tiết phiếu thu (show cho khách)
+const getDriverReceiptDetail = async (req, res) => {
+    try {
+        const receiptId = Number(req.params.receiptId);
+        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+        const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
+        res.json({ receipt });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403 : 500;
         res.status(code).json({ error: err.message });
@@ -340,11 +385,14 @@ module.exports = {
     startTransit,
     markUnpaid,
     returnComplete,
-    requestReceipt,
-    getReceiptRequest,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,
     getAvailableOrderDetail,
     getOrderDetail,
+    requestOrderReceipt,
+    getOrderReceiptRequest,
+    getPendingReceiptOrder,
+    getDriverReceipts,
+    getDriverReceiptDetail,
 };

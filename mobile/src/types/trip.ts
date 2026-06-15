@@ -265,8 +265,21 @@ export type CreateExpenseResponse = {
     expenses: Expense[];
 };
 
+// Đơn hàng cash cần driver gửi yêu cầu phiếu thu (dùng cho banner home)
+export type PendingReceiptOrder = {
+    shipment_id: number;
+    order_id: number;
+    shipment_index: number;
+    max_shipment_index: number;
+    estimated_price: string | null;
+    cargo_name: string | null;
+    pickup_address: string;
+    delivery_address: string;
+};
+
 export type ReceiptRequestStatus = 'pending' | 'processing' | 'approved' | 'rejected';
 
+// Per-shipment receipt request (single-driver order)
 export type ReceiptRequest = {
     id: number;
     order_id: number;
@@ -274,6 +287,55 @@ export type ReceiptRequest = {
     status: ReceiptRequestStatus;
     requested_at: string;
     coordinator_notes: string | null;
+};
+
+// Per-order receipt request (Option B — multi-driver order, driver thu tiền toàn đơn)
+export type OrderReceiptRequest = {
+    id: number;
+    order_id: number;
+    requesting_shipment_id: number;
+    driver_id: number;
+    driver_notes: string | null;
+    status: ReceiptRequestStatus;
+    requested_at: string;
+    coordinator_notes: string | null;
+};
+
+export type RequestOrderReceiptResponse = {
+    message: string;
+    km_saved: boolean;
+    receipt_request_created: boolean;
+    request?: OrderReceiptRequest;
+};
+
+export type PaymentType = 'cash_collected' | 'bank_transfer' | 'client_credit' | 'qr_transfer';
+
+export type DriverReceiptSummary = {
+    receipt_id: number;
+    payment_type: PaymentType;
+    amount: string;
+    collected_at: string;
+    notes: string | null;
+    order_id: number;
+    cargo_name: string | null;
+    customer_name: string | null;
+    customer_company: string | null;
+    customer_phone: string | null;
+};
+
+export type DriverReceiptDetail = DriverReceiptSummary & {
+    cargo_weight_kg: number | null;
+    customer_address: string | null;
+    actual_distance_km: string | null;
+    estimated_distance_km: string | null;
+    actual_price: string | null;
+    estimated_price: string | null;
+    driver_name: string | null;
+    driver_phone: string | null;
+    plate_number: string | null;
+    coordinator_name: string | null;
+    pickup_address: string | null;
+    delivery_address: string | null;
 };
 
 export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {
