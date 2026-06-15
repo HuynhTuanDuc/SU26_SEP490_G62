@@ -33,8 +33,21 @@ const getReceiptRequests = async (req, res) => {
     }
 };
 
+// GET /api/coordinator/receipt-requests/:id
+const getReceiptRequestDetail = async (req, res) => {
+    try {
+        const requestId = Number(req.params.id);
+        if (!requestId) return res.status(400).json({ error: 'Request ID không hợp lệ' });
+        const detail = await coordinatorService.getReceiptRequestDetail(requestId);
+        res.json(detail);
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 // POST /api/coordinator/receipt-requests/:id/approve
-// Body: { payment_type, amount, notes?, qr_code_data? }
+// Body: { payment_type, amount, notes?, qr_code_data?, expenses?[] }
 const approveReceiptRequest = async (req, res) => {
     try {
         const requestId = Number(req.params.id);
@@ -68,4 +81,11 @@ const rejectReceiptRequest = async (req, res) => {
     }
 };
 
-module.exports = { importExcel, listVehicleGroups, getReceiptRequests, approveReceiptRequest, rejectReceiptRequest };
+module.exports = {
+    importExcel,
+    listVehicleGroups,
+    getReceiptRequests,
+    getReceiptRequestDetail,
+    approveReceiptRequest,
+    rejectReceiptRequest,
+};
