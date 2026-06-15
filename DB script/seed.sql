@@ -132,12 +132,12 @@ WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 t
 -- SECTION 7: VEHICLES
 -- =============================================================================
 INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, status) VALUES
-    ('51-A12345', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Toyota',  'Hiace',   2000,  2021, 'active'),
-    ('51-B67890', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Hino',    'FC',      5000,  2020, 'active'),
-    ('51-C11111', (SELECT id FROM vehicle_groups WHERE price_per_km = 25000), 'Hyundai', 'HD120S',  10000, 2019, 'maintenance'),
-    ('51-D22222', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Ford',    'Transit', 2000,  2022, 'active'),
-    ('51-E33333', (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'Kia',     'K200',    1800,  2023, 'active'),
-    ('51-F44444', (SELECT id FROM vehicle_groups WHERE price_per_km = 15000), 'Isuzu',   'QKR',     3500,  2021, 'active')
+    ('51-A12345', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Toyota',  'Hiace',   2000,  2021, 'active'),
+    ('51-B67890', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1), 'Hino',    'FC',      5000,  2020, 'active'),
+    ('51-C11111', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1), 'Hyundai', 'HD120S',  10000, 2019, 'maintenance'),
+    ('51-D22222', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Ford',    'Transit', 2000,  2022, 'active'),
+    ('51-E33333', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Kia',     'K200',    1800,  2023, 'active'),
+    ('51-F44444', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1), 'Isuzu',   'QKR',     3500,  2021, 'active')
 ON CONFLICT (plate_number) DO NOTHING;
 
 -- =============================================================================
@@ -183,6 +183,12 @@ INSERT INTO partners (company_name, contact_person, phone, email, address)
 SELECT 'FastFreight Vietnam', 'Mr. Long', '0912345680', 'long@fastfreight.vn', '300 Landmark 81, HCMC'
 WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietnam');
 
+-- Ensure order columns required by the current backend exist even if an old volume/schema is reused.
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS vehicle_group_id INT REFERENCES vehicle_groups(id);
+ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS final_price NUMERIC(12,2) NOT NULL DEFAULT 0;
+
 -- =============================================================================
 -- SECTION 10: BASE ORDERS (open + completed)
 -- vehicle_group_id lưu trên orders, KHÔNG phải order_shipments
@@ -192,7 +198,7 @@ WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietn
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                     payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Electronics Package', 50.0, 500000, 'cash',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', 'Fragile - Handle with care'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Fragile - Handle with care'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654321'
@@ -203,7 +209,7 @@ LIMIT 1;
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                     payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Furniture Set', 200.0, 1500000, 'bank_transfer',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'completed', 'Large furniture item'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'completed', 'Large furniture item'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654322'
@@ -274,46 +280,46 @@ LIMIT 1;
 -- =============================================================================
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
        'Thưởng vượt KPI — Small Van', 'kpi', 2000000, '{"min_revenue": 50000000}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 10000));
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1),
        'Thưởng vượt KPI — Medium Truck', 'kpi', 2000000, '{"min_revenue": 65000000}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 15000));
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1),
        'Thưởng vượt KPI — Large Truck', 'kpi', 2000000, '{"min_revenue": 70000000}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 25000));
+    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 10000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
        'Lái xe xuất sắc nhất tháng — Small Van', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 10000));
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 15000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1),
        'Lái xe xuất sắc nhất tháng — Medium Truck', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 15000));
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1));
 
 INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups WHERE price_per_km = 25000),
+SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1),
        'Lái xe xuất sắc nhất tháng — Large Truck', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups WHERE price_per_km = 25000));
+    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1));
 
 -- =============================================================================
 -- SECTION 14: KPI RECORDS (base)
 -- =============================================================================
 INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue)
-SELECT p.id, (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 5, 2026, 12, 15000000
+SELECT p.id, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 5, 2026, 12, 15000000
 FROM profiles p JOIN accounts a ON a.id = p.id
 WHERE a.email = 'driver1@example.com'
 ON CONFLICT DO NOTHING;
@@ -702,7 +708,7 @@ END $$;
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
                     total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Multi-Trip: Hàng điện tử 3 chuyến', 150.0, 2100000, 'bank_transfer',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', '3 chuyến giao cho 3 điểm khác nhau'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', '3 chuyến giao cho 3 điểm khác nhau'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654322'
@@ -771,7 +777,7 @@ WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
                     total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Arrived Test: Giao ngay hôm nay', 80.0, 650000, 'cash',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', 'Driver đã đến điểm giao, chờ xác nhận'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Driver đã đến điểm giao, chờ xác nhận'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654321'
@@ -827,7 +833,7 @@ WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay' AND os.shipment_index = 
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
                     total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
 SELECT c.id, p.id, 'Failed Test: Khách từ chối nhận', 120.0, 500000, 'cash',
-       (SELECT id FROM vehicle_groups WHERE price_per_km = 10000), 'open', 'Khách báo bận, không ra nhận hàng'
+       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Khách báo bận, không ra nhận hàng'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654324'
@@ -1033,7 +1039,7 @@ DECLARE
 BEGIN
     SELECT p.id INTO v_driver1_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
     SELECT p.id INTO v_driver2_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT id  INTO v_group_small  FROM vehicle_groups WHERE price_per_km = 10000 LIMIT 1;
+    SELECT id  INTO v_group_small  FROM vehicle_groups ORDER BY id ASC LIMIT 1;
 
     -- Driver 1 — tháng 6/2026 (tháng hiện tại)
     INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,

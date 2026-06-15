@@ -262,10 +262,11 @@
 .coordinator-shell .table-route-cell,
 .coordinator-shell .table-address-cell {
   max-width: 260px;
-  white-space: normal;
+  white-space: normal !important;
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.35;
+  vertical-align: top;
 }
 
 .coordinator-shell .table-actions {
@@ -634,7 +635,6 @@
 .coordinator-shell .receipt-expense-editor {
   display: grid;
   gap: 10px;
-  align-items: center;
   border: 1px solid #dde2f3;
   border-radius: 16px;
   padding: 12px 14px;
@@ -657,7 +657,46 @@
 }
 
 .coordinator-shell .receipt-expense-editor {
-  grid-template-columns: 1.2fr 1fr 0.8fr 1.4fr auto;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+}
+
+.coordinator-shell .receipt-expense-editor-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 0.8fr;
+  gap: 12px;
+}
+
+.coordinator-shell .receipt-expense-editor label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.coordinator-shell .receipt-expense-editor select,
+.coordinator-shell .receipt-expense-editor input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #cfd6e6;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #fff;
+  color: #22304d;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.coordinator-shell .receipt-expense-editor select:focus,
+.coordinator-shell .receipt-expense-editor input:focus {
+  outline: none;
+  border-color: #18227f;
+  box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
+}
+
+.coordinator-shell .receipt-expense-note-field {
+  grid-column: 1 / -1;
 }
 
 .coordinator-shell .receipt-payment-row {
@@ -765,6 +804,14 @@
   .coordinator-shell .receipt-expense-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .coordinator-shell .receipt-expense-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .coordinator-shell .receipt-expense-editor-grid {
+    grid-template-columns: 1fr;
   }
 
   .coordinator-shell .form-actions .filter,
@@ -953,6 +1000,15 @@
   white-space: normal !important;
   word-break: break-word;
   overflow-wrap: break-word;
+}
+
+.coordinator-shell .table-address-cell {
+  min-width: 240px;
+  max-width: 320px;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
 }
 
 .notification {

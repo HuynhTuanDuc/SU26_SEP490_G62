@@ -119,7 +119,7 @@ CREATE TABLE orders (
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),
     payment_type        TEXT CHECK (payment_type IN ('cash','bank_transfer','client_credit')),
-    -- (vehicle_group_id ở từng shipment qua vehicles, không lưu ở orders nữa)
+    vehicle_group_id    INT REFERENCES vehicle_groups(id),
 
     total_estimated_price   NUMERIC(12,2) NOT NULL DEFAULT 0,
     total_actual_price      NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -812,12 +812,12 @@ JOIN profiles p       ON p.id  = k.driver_id
 JOIN vehicle_groups vg ON vg.id = k.vehicle_group_id;
 
 -- trip_code và vehicle_group_id đã bị xoá khỏi order_shipments
--- Vehicle group lookup giờ qua: order_shipments → vehicles → vehicle_groups
+-- Vehicle group lookup ưu tiên: order_shipments → vehicles → vehicle_groups, fallback sang orders.vehicle_group_id
 CREATE VIEW v_trip_pool AS
 SELECT
     os.id               AS shipment_id,
     os.order_id,
-    v.vehicle_group_id,
+    COALESCE(v.vehicle_group_id, o.vehicle_group_id) AS vehicle_group_id,
     vg.name             AS vehicle_group_name,
     os.estimated_price,
     os.cargo_name,
@@ -832,8 +832,9 @@ SELECT
      ORDER BY stop_index DESC LIMIT 1) AS last_delivery,
     os.created_at
 FROM order_shipments os
+JOIN orders o ON o.id = os.order_id
 LEFT JOIN vehicles v ON v.id = os.vehicle_id
-LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+LEFT JOIN vehicle_groups vg ON vg.id = COALESCE(v.vehicle_group_id, o.vehicle_group_id)
 WHERE os.status = 'available';
 
 CREATE VIEW v_driver_debt_summary AS

@@ -2,7 +2,6 @@ const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
-const paymentRepository = require('../repositories/paymentRepository');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 const COLUMN_ALIASES = {
@@ -331,6 +330,7 @@ const importExcel = async (userId, fileBuffer) => {
 // ─── Receipt Request Management ───────────────────────────────────────────────
 
 const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
+const PASS_THROUGH_EXPENSE_TYPES = new Set(['parking', 'toll', 'depreciation']);
 
 const normalizeAmount = (value, fieldLabel = 'Số tiền') => {
     const amount = Number(value);
@@ -366,15 +366,31 @@ const normalizeExpenses = (expenses = []) => {
     });
 };
 
-const updateOrderActualIncome = async (client, orderId) => {
+const updateOrderReceiptTotals = async (client, orderId) => {
     await client.query(
         `UPDATE orders o
-         SET total_actual_price = COALESCE((
-                SELECT SUM(COALESCE(os.actual_price, 0))
-                FROM order_shipments os
-                WHERE os.order_id = o.id
-            ), 0),
+         SET total_actual_price = COALESCE(shipment_totals.total_actual_price, 0),
+             final_price = COALESCE(shipment_totals.total_actual_price, 0) + COALESCE(expense_totals.total_pass_through_expenses, 0),
              updated_at = NOW()
+         FROM (
+            SELECT os.order_id, SUM(COALESCE(os.actual_price, 0)) AS total_actual_price
+            FROM order_shipments os
+            WHERE os.order_id = $1
+            GROUP BY os.order_id
+         ) shipment_totals
+         LEFT JOIN (
+            SELECT os.order_id,
+                   SUM(
+                        CASE
+                            WHEN e.expense_type IN ('parking', 'toll', 'depreciation') THEN COALESCE(e.amount, 0)
+                            ELSE 0
+                        END
+                   ) AS total_pass_through_expenses
+            FROM order_shipments os
+            LEFT JOIN expenses e ON e.shipment_id = os.id
+            WHERE os.order_id = $1
+            GROUP BY os.order_id
+         ) expense_totals ON expense_totals.order_id = shipment_totals.order_id
          WHERE o.id = $1`,
         [orderId],
     );
@@ -423,13 +439,23 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
         );
         const expenses = await expenseRepository.getShipmentExpenses(shipment.id);
         const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+        const passThroughExpenses = expenses.reduce((sum, expense) => (
+            PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim())
+                ? sum + Number(expense.amount || 0)
+                : sum
+        ), 0);
         const pickupStops = stopsResult.rows.filter((stop) => stop.stop_type === 'pickup');
         const deliveryStop = stopsResult.rows.find((stop) => stop.stop_type === 'delivery') ?? null;
+        const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
+        const computedRevenue = Number(actualKm || 0) * Number(shipment.price_per_km || 0);
 
         shipments.push({
             ...shipment,
+            actual_km: actualKm,
+            actual_revenue: shipment.actual_price ?? computedRevenue,
             expenses,
             total_expenses: totalExpenses,
+            total_pass_through_expenses: passThroughExpenses,
             stops: stopsResult.rows,
             pickup_address: pickupStops[0]?.address || null,
             pickup_addresses: pickupStops,
@@ -441,6 +467,14 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
 
     return shipments;
 };
+
+const sumShipmentActualRevenue = (shipments = []) => shipments.reduce((sum, shipment) => (
+    sum + Number(shipment.actual_revenue ?? shipment.actual_price ?? 0)
+), 0);
+
+const sumPassThroughExpenses = (shipments = []) => shipments.reduce((sum, shipment) => (
+    sum + Number(shipment.total_pass_through_expenses || 0)
+), 0);
 
 const resolvePrimaryReceiptShipment = (shipments, driverId) => {
     if (!Array.isArray(shipments) || shipments.length === 0) return null;
@@ -545,8 +579,9 @@ const getReceiptRequests = async ({ status = null } = {}) => {
             primary_shipment.status AS shipment_status,
             primary_shipment.actual_distance_km,
             COALESCE(distance_summary.total_actual_distance_km, 0) AS total_actual_distance_km,
-            primary_shipment.estimated_price,
-            primary_shipment.actual_price,
+            COALESCE(revenue_summary.total_actual_price, o.total_actual_price, 0) AS actual_price,
+            COALESCE(revenue_summary.total_estimated_price, primary_shipment.estimated_price, 0) AS estimated_price,
+            COALESCE(NULLIF(o.final_price, 0), revenue_summary.total_actual_price + COALESCE(exp.pass_through_expenses, 0), 0) AS final_price,
             primary_vehicle.plate_number,
             COALESCE(exp.total_expenses, 0) AS total_expenses
          FROM shipment_receipt_requests rr
@@ -559,10 +594,26 @@ const getReceiptRequests = async ({ status = null } = {}) => {
             WHERE os_count.order_id = rr.order_id
          ) shipments ON TRUE
          LEFT JOIN LATERAL (
-            SELECT SUM(COALESCE(os_distance.actual_distance_km, 0)) AS total_actual_distance_km
+            SELECT SUM(COALESCE(os_distance.actual_distance_km, os_distance.estimated_distance_km, 0)) AS total_actual_distance_km
             FROM order_shipments os_distance
             WHERE os_distance.order_id = rr.order_id
          ) distance_summary ON TRUE
+         LEFT JOIN LATERAL (
+            SELECT
+                SUM(
+                    COALESCE(
+                        os_revenue.actual_price,
+                        COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
+                        * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
+                    )
+                ) AS total_actual_price,
+                SUM(COALESCE(os_revenue.estimated_price, 0)) AS total_estimated_price
+            FROM order_shipments os_revenue
+            LEFT JOIN vehicles v_revenue ON v_revenue.id = os_revenue.vehicle_id
+            LEFT JOIN vehicle_groups vg_vehicle_revenue ON vg_vehicle_revenue.id = v_revenue.vehicle_group_id
+            LEFT JOIN vehicle_groups vg_order_revenue ON vg_order_revenue.id = o.vehicle_group_id
+            WHERE os_revenue.order_id = rr.order_id
+         ) revenue_summary ON TRUE
          LEFT JOIN LATERAL (
             SELECT os_primary.*
             FROM order_shipments os_primary
@@ -572,7 +623,14 @@ const getReceiptRequests = async ({ status = null } = {}) => {
          ) primary_shipment ON TRUE
          LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id
          LEFT JOIN LATERAL (
-            SELECT SUM(e.amount) AS total_expenses
+            SELECT
+                SUM(e.amount) AS total_expenses,
+                SUM(
+                    CASE
+                        WHEN e.expense_type IN ('parking', 'toll', 'depreciation') THEN e.amount
+                        ELSE 0
+                    END
+                ) AS pass_through_expenses
             FROM expenses e
             JOIN order_shipments os_exp ON os_exp.id = e.shipment_id
             WHERE os_exp.order_id = rr.order_id
@@ -598,25 +656,18 @@ const getReceiptRequestDetail = async (requestId) => {
             o.cargo_name,
             o.cargo_weight_kg,
             o.notes                    AS order_notes,
-            o.payment_type             AS order_payment_type,
-            o.total_actual_price       AS order_actual_income,
+            o.total_actual_price       AS order_total_actual_price,
+            o.final_price              AS order_final_price,
             c.id                       AS customer_id,
             c.full_name                AS customer_name,
             c.phone                    AS customer_phone,
             c.company_name             AS customer_company,
             c.address                  AS customer_address,
-            d.full_name                AS driver_name,
-            sp.id                      AS receipt_id,
-            sp.payment_type            AS receipt_payment_type,
-            sp.amount                  AS receipt_amount,
-            sp.notes                   AS receipt_notes,
-            sp.qr_code_data,
-            sp.collected_at
+            d.full_name                AS driver_name
          FROM shipment_receipt_requests rr
          JOIN orders o ON o.id = rr.order_id
          LEFT JOIN customers c ON c.id = o.customer_id
          LEFT JOIN profiles d ON d.id = rr.driver_id
-         LEFT JOIN shipment_receipts sp ON sp.receipt_request_id = rr.id
          WHERE rr.id = $1`,
         [requestId],
     );
@@ -625,13 +676,13 @@ const getReceiptRequestDetail = async (requestId) => {
 
     const shipments = await getOrderShipmentsForReceipt(pool, row.order_id);
     const primaryShipment = resolvePrimaryReceiptShipment(shipments, row.driver_id);
-    const payments = primaryShipment ? await paymentRepository.getShipmentPayments(primaryShipment.id) : [];
     const computed = computeReceiptAmount({ shipments, primaryShipment });
 
     const expenses = shipments.flatMap((shipment) => shipment.expenses || []);
     const totalExpenses = shipments.reduce((sum, shipment) => sum + Number(shipment.total_expenses || 0), 0);
-    const suggestedAmount = Number(row.receipt_amount ?? row.order_actual_income ?? computed.actual_income ?? 0);
-    const actualIncome = Number(row.receipt_amount ?? row.order_actual_income ?? computed.actual_income ?? 0);
+    const totalActualPrice = sumShipmentActualRevenue(shipments);
+    const totalPassThroughExpenses = sumPassThroughExpenses(shipments);
+    const finalPrice = totalActualPrice + totalPassThroughExpenses;
 
     return {
         request: {
@@ -645,14 +696,6 @@ const getReceiptRequestDetail = async (requestId) => {
             processed_at: row.processed_at,
             coordinator_notes: row.coordinator_notes,
             plate_number: primaryShipment?.plate_number || null,
-            receipt: row.receipt_id ? {
-                id: row.receipt_id,
-                payment_type: row.receipt_payment_type,
-                amount: row.receipt_amount,
-                notes: row.receipt_notes,
-                qr_code_data: row.qr_code_data,
-                collected_at: row.collected_at,
-            } : null,
         },
         customer: {
             id: row.customer_id,
@@ -665,21 +708,19 @@ const getReceiptRequestDetail = async (requestId) => {
             id: row.order_id,
             cargo_name: row.cargo_name,
             cargo_weight_kg: row.cargo_weight_kg,
-            payment_type: row.order_payment_type,
             notes: row.order_notes,
-            total_actual_income: row.order_actual_income,
+            total_actual_price: totalActualPrice,
+            final_price: finalPrice,
         },
         shipment: primaryShipment,
         shipments,
         expenses,
-        payments,
         summary: {
-            suggested_amount: suggestedAmount,
-            actual_km: computed.actual_km,
-            price_per_km: computed.price_per_km,
-            actual_income: actualIncome,
+            total_actual_distance_km: computed.actual_km,
+            total_actual_price: totalActualPrice,
             total_expenses: totalExpenses,
-            net_after_expenses: actualIncome - totalExpenses,
+            total_pass_through_expenses: totalPassThroughExpenses,
+            final_price: finalPrice,
             shipment_count: shipments.length,
             shipment_breakdown: computed.shipment_breakdown,
         },
@@ -709,7 +750,6 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         const computed = computeReceiptAmount(pricingSnapshot);
         const targetShipment = pricingSnapshot?.primaryShipment;
         if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
-        const amt = computed.actual_income;
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
         for (const expense of normalizedExpenses) {
@@ -743,7 +783,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             );
         }
 
-        await updateOrderActualIncome(client, req.order_id);
+        await updateOrderReceiptTotals(client, req.order_id);
 
         // Cập nhật trạng thái request → approved
         await client.query(
@@ -767,9 +807,9 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
         const detail = await getReceiptRequestDetail(requestId);
         return {
-            actual_income: detail.summary.actual_income,
+            total_actual_price: detail.summary.total_actual_price,
             total_expenses: detail.summary.total_expenses,
-            net_after_expenses: detail.summary.net_after_expenses,
+            final_price: detail.summary.final_price,
         };
     } catch (err) {
         await client.query('ROLLBACK');
