@@ -20,26 +20,18 @@ async function compressImage(uri: string): Promise<string> {
 export function useCompletionProof(onSuccess?: (trip: ActiveTrip) => void) {
     const [state, setState] = useState<State>({ isUploading: false, error: null });
 
-    // proofUri   — ảnh xác nhận giao hàng (bắt buộc, BR-015/016/017)
-    // receiptUri — ảnh biên lai/hóa đơn có chữ ký khách (bắt buộc)
-    const completeWithProof = async (tripId: number, proofUri: string, receiptUri: string) => {
+    // proofUri — ảnh xác nhận giao hàng (bắt buộc, BR-015/016/017)
+    // Ảnh biên lai được chụp riêng ở màn hình receipt-request (BR-008A/B)
+    const completeWithProof = async (tripId: number, proofUri: string) => {
         setState({ isUploading: true, error: null });
         try {
-            const [compressedProof, compressedReceipt] = await Promise.all([
-                compressImage(proofUri),
-                compressImage(receiptUri),
-            ]);
+            const compressedProof = await compressImage(proofUri);
 
             const formData = new FormData();
             formData.append('proof', {
                 uri: compressedProof,
                 type: 'image/jpeg',
                 name: 'proof.jpg',
-            } as unknown as Blob);
-            formData.append('receipt', {
-                uri: compressedReceipt,
-                type: 'image/jpeg',
-                name: 'receipt.jpg',
             } as unknown as Blob);
 
             const { trip } = await tripService.completeWithProof(tripId, formData);

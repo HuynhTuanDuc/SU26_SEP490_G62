@@ -17,6 +17,7 @@ ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS reject_reason TEXT;
 ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
 ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS confirmed_by INT REFERENCES profiles(id);
 
+
 DROP TABLE IF EXISTS bills CASCADE;
 
 CREATE TABLE IF NOT EXISTS leave_requests (
@@ -462,10 +463,10 @@ BEGIN
         updated_at = NOW()
     WHERE id = v_shipment_id;
 
-    INSERT INTO shipment_receipt_requests (order_id, driver_id, status, requested_at)
-    SELECT v_order_id, v_driver_id, 'pending', NOW() - INTERVAL '90 minutes'
+    INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at)
+    SELECT v_shipment_id, v_order_id, v_driver_id, 'pending', NOW() - INTERVAL '90 minutes'
     WHERE NOT EXISTS (
-        SELECT 1 FROM shipment_receipt_requests WHERE order_id = v_order_id
+        SELECT 1 FROM order_receipt_requests WHERE order_id = v_order_id
     );
 
     INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
@@ -622,23 +623,23 @@ BEGIN
     );
 
     SELECT id INTO v_request_id
-    FROM shipment_receipt_requests
+    FROM order_receipt_requests
     WHERE order_id = v_order_id
     LIMIT 1;
 
     IF v_request_id IS NULL THEN
-        INSERT INTO shipment_receipt_requests (
-            order_id, driver_id, status, requested_at,
+        INSERT INTO order_receipt_requests (
+            requesting_shipment_id, order_id, driver_id, status, requested_at,
             processed_by, processed_at, coordinator_notes
         )
         VALUES (
-            v_order_id, v_driver_id, 'approved', NOW() - INTERVAL '11 hours',
+            v_shipment_id, v_order_id, v_driver_id, 'approved', NOW() - INTERVAL '11 hours',
             v_coordinator_id, NOW() - INTERVAL '10 hours',
             'Published by coordinator after checking actual km against vehicle group pricing'
         )
         RETURNING id INTO v_request_id;
     ELSE
-        UPDATE shipment_receipt_requests
+        UPDATE order_receipt_requests
         SET driver_id = v_driver_id,
             status = 'approved',
             processed_by = v_coordinator_id,
@@ -649,13 +650,13 @@ BEGIN
 
     SELECT id INTO v_receipt_id
     FROM shipment_receipts
-    WHERE receipt_request_id = v_request_id
+    WHERE order_receipt_request_id = v_request_id
     LIMIT 1;
 
     IF v_receipt_id IS NULL THEN
         INSERT INTO shipment_receipts (
             shipment_id, payment_type, amount, collected_by, collected_at,
-            notes, receipt_request_id, created_at, created_by
+            notes, order_receipt_request_id, created_at, created_by
         )
         VALUES (
             v_shipment_id, 'bank_transfer', v_actual_income, NULL, NOW() - INTERVAL '10 hours',
@@ -1154,7 +1155,7 @@ UNION ALL SELECT '✓ Salary Advances',    COUNT(*) FROM salary_advances
 UNION ALL SELECT '✓ Debts (driver)',     COUNT(*) FROM debts WHERE debt_type = 'driver'
 UNION ALL SELECT '✓ Incidents',          COUNT(*) FROM incidents
 UNION ALL SELECT '✓ Leave Requests',     COUNT(*) FROM leave_requests
-UNION ALL SELECT '✓ Receipt Requests',   COUNT(*) FROM shipment_receipt_requests
+UNION ALL SELECT '✓ Receipt Requests',   COUNT(*) FROM order_receipt_requests
 UNION ALL SELECT '✓ Shipment Receipts',  COUNT(*) FROM shipment_receipts
 UNION ALL SELECT '✓ Expenses',           COUNT(*) FROM expenses
 UNION ALL SELECT '✓ Delivery Proofs',    COUNT(*) FROM delivery_proofs

@@ -100,10 +100,9 @@ router.patch(
     paymentController.updatePayment,
 );
 
-// Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến
-// Body: { actual_km?: number }
-router.post('/:id/request-receipt', driverOnly, tripController.requestReceipt);
-router.get('/:id/receipt-request',  driverOnly, tripController.getReceiptRequest);
+// Đơn cash đã hoàn thành nhưng driver chưa gửi yêu cầu phiếu thu (dùng cho banner home)
+router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder);
+
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
