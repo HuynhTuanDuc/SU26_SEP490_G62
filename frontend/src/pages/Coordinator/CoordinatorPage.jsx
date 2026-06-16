@@ -25,25 +25,28 @@ const requiredFields = [
   { key: "cargo_weight_kg", label: "Khối lượng" },
 ];
 
-const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim();
-const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
-const isFiniteNumber = (value) => Number.isFinite(Number(value));
+const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim(); // null -> "", loại bỏ dấu , toàn bộ 
+const isFiniteNumber = (value) => Number.isFinite(Number(value)); //Kiểm tra số hợp lệ
 
 const formatDateForInput = (dateStr) => {
   if (!dateStr) return "";
+
   const parts = String(dateStr).split('/');
+
   if (parts.length === 3) {
-    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`; //return yyyy/mm/dd
   }
+
   const date = new Date(dateStr);
   if (!Number.isNaN(date.getTime())) {
-    return date.toISOString().slice(0, 10);
+    return date.toISOString().slice(0, 10);//chuyển format yyyy/mm/dd, lấy 10 kí tự đầu 
   }
   return "";
 };
 
 const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
+
 const expenseTypeOptions = [
   { value: "fuel", label: "Nhiên liệu" },
   { value: "toll", label: "Cầu đường" },
@@ -53,31 +56,37 @@ const expenseTypeOptions = [
   { value: "depreciation", label: "Khấu hao" },
   { value: "other", label: "Khác" },
 ];
+
 const newReceiptExpense = () => ({
   expense_type: "fuel",
   amount: "",
   description: "",
 });
+
 const emptyReceiptForm = () => ({
   notes: "",
   expenses: [],
 });
+
 const STATUS_TABS = {
   all: null,
   new: new Set(["available"]),
   waiting: new Set(["claimed", "picking", "loaded", "transit", "arrived", "returning"]),
 };
+
 const STATUS_QUERY = {
   all: "",
   new: "available",
   waiting: "claimed,picking,loaded,transit,arrived,returning",
 };
+
 const canCancelTrip = (trip) => {
   const statuses = Array.isArray(trip.trips) && trip.trips.length > 0
     ? trip.trips.map((item) => normalizeStatus(item.status))
     : [normalizeStatus(trip.status)];
   return Boolean(trip.orderId) && statuses.some((status) => !["completed", "cancelled", "failed"].includes(status));
 };
+
 const shouldHighlightNoCheckIn = (trip) => {
   const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.notes ?? ""));
   return hasCheckInMarker && !String(trip.checkIn ?? "").trim();
@@ -193,7 +202,7 @@ function buildTripFromOrder(order) {
     plate: isMultiShipment ? `${trips.length} chuyen` : (firstTrip.plate || order.plate_number || ""),
     driverId: firstTrip.owner_driver_id || order.owner_driver_id || "",
     vehicleGroupId: firstTrip.vehicle_group_id || order.vehicle_group_id || "",
-    driverName: isMultiShipment ? getSummaryValue(trips, "driverName", "Chua gan") : (firstTrip.driverName || order.driver_name || ""),
+    driverName: isMultiShipment ? getSummaryValue(trips, "driverName", "Chưa gán") : (firstTrip.driverName || order.driver_name || ""),
     customerName: order.customer_name || "",
     customerPhone: order.customer_phone || "",
     cargoName: order.cargo_name || "",
@@ -502,8 +511,8 @@ export default function CoordinatorPage({ user, onLogout }) {
     vehicleGroups.find((g) => String(g.id) === String(vehicleGroupId))?.vehicles || [];
 
   const getTripFare = (trip) => {
-    const group = vehicleGroups.find((g) => String(g.id) === String(trip.vehicle_group_id));
-    const dist = Number(normalizeDistanceText(trip.distance));
+    const group = vehicleGroups.find((g) => String(g.id) === String(trip.vehicle_group_id)); //lấy nhóm xe 
+    const dist = Number(trip.distance);
     const pricePerKm = Number(group?.price_per_km || 0);
     if (!Number.isFinite(dist) || dist <= 0 || !Number.isFinite(pricePerKm) || pricePerKm <= 0) return "";
     return String(Math.round(dist * pricePerKm));
@@ -826,9 +835,6 @@ export default function CoordinatorPage({ user, onLogout }) {
             <button className="nav-item">Reports</button> */}
           </nav>
         </div>
-        <button className="nav-item nav-footer" onClick={handleLogout}>
-          <span className="nav-icon">⇥</span><span className="nav-label">Đăng xuất</span>
-        </button>
       </aside>
 
       <main className="content">
@@ -842,10 +848,10 @@ export default function CoordinatorPage({ user, onLogout }) {
             />
           </div>
           <div className="topbar-actions">
-            <label className="import-btn">
+            {/* <label className="import-btn">
               {importing ? "Importing..." : "+ Import Excel"}
               <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
-            </label>
+            </label> */}
             <button className="primary-btn" onClick={openCreateModal}>
               + Tạo mới
             </button>
@@ -941,7 +947,7 @@ export default function CoordinatorPage({ user, onLogout }) {
               <div className="panel-head">
                 <div>
                   <h2>{editingTrip ? `Chỉnh sửa đơn #${editingTrip.orderId}` : "Tạo đơn"}</h2>
-                  <p>{editingTrip ? "Cập nhật thông tin đơn hàng để điều phối chính xác." : "Fill the form based on the Excel sheet structure."}</p>
+                  <p>{editingTrip ? "Cập nhật thông tin đơn hàng để điều phối chính xác." : "Điền thông tin đơn hàng."}</p>
                 </div>
                 <button className="ghost-btn" type="button" onClick={closeOrderModal}>
                   x
@@ -1418,7 +1424,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                         <div className="receipt-field-head">
                           <div>
                             <span className="receipt-info-label">Ghi chú phiếu thu</span>
-                            <strong>Thông tin nội bộ cho coordinator</strong>
+                            <strong>Thông tin nội bộ cho nhân viên điều phối</strong>
                           </div>
                           <span className="receipt-field-chip">Optional</span>
                         </div>
@@ -1462,7 +1468,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           <div className="panel-head">
             <div>
               <h2>Yêu cầu phiếu thu</h2>
-              <p>Driver gửi yêu cầu tạo phiếu thu, coordinator kiểm tra và publish receipt.</p>
+              <p>Lái xe gửi yêu cầu tạo phiếu thu, điều phối kiểm tra và tạo hóa đơn.</p>
             </div>
             <div className="upload-hint">
               {receiptRequestsLoading ? "Đang tải..." : `${receiptRequests.length} yêu cầu`}
@@ -1558,7 +1564,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 ) : (
                   filteredTrips.map((trip) => (
                     <React.Fragment key={trip.id}>
-                      <tr className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
+                      <tr>
                         <td>
                           {trip.trips && trip.trips.length > 1 && (
                             <button
@@ -1574,7 +1580,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                         </td>
                         <td>{trip.date || "-"}</td>
                         <td>{trip.plate || "-"}</td>
-                        <td>{trip.driverName || "Unassigned"}</td>
+                        <td>{trip.driverName || "Chưa gán"}</td>
                         <td>{trip.customerName || "-"}</td>
                         <td className="table-route-cell">{trip.route || "-"}</td>
                         <td>{trip.distance || "-"}</td>
@@ -1607,6 +1613,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                           </div>
                         </td>
                       </tr>
+                      
                       {expandedRows.has(trip.id) && trip.trips && trip.trips.length > 1 && trip.trips.map((subTrip, idx) => (
                         <tr key={`${trip.id}-sub-${idx}`} style={{ backgroundColor: '#f9faff' }}>
                           <td style={{ paddingLeft: 40, color: '#6b7280', fontSize: 13 }}>↳ Chuyến {idx + 1}</td>
