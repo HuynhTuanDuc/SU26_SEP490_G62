@@ -368,7 +368,7 @@ const getOrderDetail = async (orderId, driverId) => {
     return detail;
 };
 
-// Tất cả driver của cash order phải nhập km; chỉ driver cuối mới tạo yêu cầu phiếu thu
+// Mọi driver đều nhập km sau khi hoàn thành; chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
 const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) => {
     const shipment = await tripRepository.getTripById(shipmentId);
     if (!shipment) throw new Error('Chuyến không tồn tại');
@@ -385,18 +385,21 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
     if (km === null || isNaN(km) || km <= 0)
         throw new Error('Số km thực tế là bắt buộc và phải lớn hơn 0');
 
-    // Xác định driver cuối (is_final_shipment)
-    const isFinal = await tripRepository.isFinalShipment(shipmentId);
-
     // Lưu km vào order_shipments cho mọi driver
     await tripRepository.saveShipmentActualKm(shipmentId, km);
 
-    // Driver không phải cuối: chỉ lưu km, không tạo yêu cầu phiếu thu
-    if (!isFinal) {
+    const isFinal = await tripRepository.isFinalShipment(shipmentId);
+
+    // Kiểm tra payment_type của order
+    const orderRes = await pool.query(`SELECT payment_type FROM orders WHERE id = $1`, [orderId]);
+    const orderPaymentType = orderRes.rows[0]?.payment_type;
+
+    // Chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
+    if (!isFinal || orderPaymentType !== 'cash') {
         return { km_saved: true, receipt_request_created: false };
     }
 
-    // Driver cuối: tạo yêu cầu phiếu thu cho toàn đơn (BR-018B — chỉ 1 lần)
+    // Driver cuối đơn cash: tạo yêu cầu phiếu thu (BR-018B — chỉ 1 lần)
     const existing = await tripRepository.getOrderReceiptRequestByOrderId(orderId);
     if (existing) throw new Error('Đơn hàng này đã có yêu cầu tạo phiếu thu rồi (BR-018B)');
 
@@ -467,9 +470,6 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
 
     if (receipt.has_driver_debt || receipt.has_customer_debt) {
         throw new Error('Hình thức thanh toán đã được ghi nhận cho chuyến này');
-    }
-    if (receipt.payment_type !== 'cash_collected') {
-        throw new Error('Hình thức thanh toán đã được cập nhật trước đó');
     }
 
     const shipmentId = receipt.shipment_id;

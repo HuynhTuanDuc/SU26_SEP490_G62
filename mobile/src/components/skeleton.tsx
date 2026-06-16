@@ -811,3 +811,144 @@ export function MaintenanceCardSkeleton() {
         </YStack>
     );
 }
+
+// ─── LeaderboardSkeleton — leaderboard-screen ────────────────────────────────
+
+export function LeaderboardSkeleton({ count = 6 }: { count?: number }) {
+    return (
+        <YStack gap={8}>
+            {Array.from({ length: count }).map((_, i) => (
+                <XStack
+                    key={i}
+                    padding={14}
+                    backgroundColor={appTheme.colors.surface}
+                    borderRadius={appTheme.radius.lg}
+                    borderWidth={1}
+                    borderColor={appTheme.colors.border}
+                    alignItems="center"
+                    gap={12}
+                >
+                    <SkeletonBox width={32} height={32} borderRadius={16} />
+                    <YStack flex={1} gap={6}>
+                        <SkeletonLine width={i === 0 ? '65%' : i % 2 === 0 ? '55%' : '70%'} height={14} />
+                        <SkeletonLine width={80} height={11} />
+                    </YStack>
+                    <YStack alignItems="flex-end" gap={5}>
+                        <SkeletonLine width={70} height={14} />
+                        <SkeletonLine width={50} height={11} />
+                    </YStack>
+                </XStack>
+            ))}
+        </YStack>
+    );
+}
+
+// ─── NotificationSkeleton — notifications-screen initial load ─────────────────
+
+export function NotificationSkeleton({ count = 5 }: { count?: number }) {
+    return (
+        <YStack gap={10}>
+            {Array.from({ length: count }).map((_, i) => (
+                <XStack
+                    key={i}
+                    gap={12} padding={14}
+                    borderRadius={appTheme.radius.lg}
+                    borderWidth={1}
+                    borderColor={appTheme.colors.border}
+                    backgroundColor={appTheme.colors.surface}
+                >
+                    <SkeletonBox width={44} height={44} borderRadius={16} />
+                    <YStack flex={1} gap={6}>
+                        <SkelRow style={{ justifyContent: 'space-between' }}>
+                            <SkeletonLine width={i % 2 === 0 ? '60%' : '50%'} height={14} />
+                            <SkeletonLine width={40} height={11} />
+                        </SkelRow>
+                        <SkeletonLine width="90%" height={11} />
+                        <SkeletonLine width="70%" height={11} />
+                    </YStack>
+                </XStack>
+            ))}
+        </YStack>
+    );
+}
+
+// ─── ReceiptDetailSkeleton — receipt-detail-screen loading ───────────────────
+
+export function ReceiptDetailSkeleton() {
+    return (
+        <YStack
+            margin={16}
+            backgroundColor={appTheme.colors.surface}
+            borderRadius={20}
+            padding={20}
+            gap={0}
+            style={{
+                shadowColor: '#000',
+                shadowOpacity: 0.08,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 6,
+            }}
+        >
+            {/* Header: icon + title */}
+            <YStack alignItems="center" gap={8} paddingBottom={16}>
+                <SkeletonBox width={64} height={64} borderRadius={18} />
+                <SkeletonLine width={160} height={11} />
+                <SkeletonLine width={120} height={11} />
+            </YStack>
+
+            <View style={{ height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 }} />
+
+            {/* Amount */}
+            <YStack alignItems="center" paddingVertical={20} gap={8}>
+                <SkeletonLine width={80} height={11} />
+                <SkeletonLine width={160} height={34} />
+                <SkeletonLine width={120} height={22} borderRadius={999} />
+            </YStack>
+
+            <View style={{ height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 }} />
+
+            {/* Customer */}
+            <YStack gap={8} paddingVertical={14}>
+                <SkeletonLine width={80} height={11} />
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <SkeletonLine width={60} height={12} />
+                    <SkeletonLine width={130} height={12} />
+                </SkelRow>
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <SkeletonLine width={50} height={12} />
+                    <SkeletonLine width={100} height={12} />
+                </SkelRow>
+            </YStack>
+
+            <View style={{ height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 }} />
+
+            {/* Order + route */}
+            <YStack gap={8} paddingVertical={14}>
+                <SkeletonLine width={90} height={11} />
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <SkeletonLine width={60} height={12} />
+                    <SkeletonLine width={120} height={12} />
+                </SkelRow>
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <SkeletonLine width={80} height={12} />
+                    <SkeletonLine width={140} height={12} />
+                </SkelRow>
+                <SkelRow style={{ justifyContent: 'space-between' }}>
+                    <SkeletonLine width={70} height={12} />
+                    <SkeletonLine width={110} height={12} />
+                </SkelRow>
+            </YStack>
+
+            <View style={{ height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 }} />
+
+            {/* Action buttons */}
+            <YStack gap={10} paddingVertical={14}>
+                <SkeletonLine width={120} height={11} />
+                <SkeletonBox height={52} borderRadius={14} />
+                <SkeletonBox height={52} borderRadius={14} />
+                <SkeletonBox height={52} borderRadius={14} />
+            </YStack>
+        </YStack>
+    );
+}

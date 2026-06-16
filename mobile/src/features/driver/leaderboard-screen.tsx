@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Pressable, RefreshControl,
+    Pressable, RefreshControl,
     ScrollView, StyleSheet, View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -11,10 +11,11 @@ import {
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText }    from '@/components/app-text';
-import { ScreenHeader } from '@/components/screen-header';
-import { appTheme }   from '@/theme/app-theme';
-import { useLeaderboard } from '@/hooks/use-leaderboard';
+import { AppText }             from '@/components/app-text';
+import { ScreenHeader }        from '@/components/screen-header';
+import { LeaderboardSkeleton } from '@/components/skeleton';
+import { appTheme }            from '@/theme/app-theme';
+import { useLeaderboard }      from '@/hooks/use-leaderboard';
 import type { LeaderboardRow } from '@/services/kpi-service';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -284,12 +285,7 @@ export function LeaderboardScreen() {
                 ) : null}
 
                 {/* Loading */}
-                {isLoading ? (
-                    <YStack alignItems="center" paddingVertical={40} gap={12}>
-                        <ActivityIndicator color={appTheme.colors.primary} />
-                        <AppText variant="caption" tone="muted">Đang tải bảng xếp hạng...</AppText>
-                    </YStack>
-                ) : null}
+                {isLoading ? <LeaderboardSkeleton count={8} /> : null}
 
                 {/* Empty */}
                 {!isLoading && !error && sorted.length === 0 ? (

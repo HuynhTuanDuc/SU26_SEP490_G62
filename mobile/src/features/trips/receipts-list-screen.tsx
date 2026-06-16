@@ -27,13 +27,17 @@ const fmtDate = (iso: string) => {
 };
 
 const PAYMENT_LABEL: Record<PaymentType, string> = {
-    cash_collected: 'Tien mat',
-    bank_transfer:  'Chuyen khoan',
+    cash_collected: 'Tiền mặt',
+    bank_transfer:  'Chuyển khoản',
+    client_credit:  'Công nợ KH',
+    qr_transfer:    'QR / Ví',
 };
 
 const PAYMENT_COLOR: Record<PaymentType, string> = {
     cash_collected: appTheme.colors.success,
     bank_transfer:  appTheme.colors.statusTransit,
+    client_credit:  appTheme.colors.warning,
+    qr_transfer:    appTheme.colors.primary,
 };
 
 // ─── Receipt card ─────────────────────────────────────────────────────────────
@@ -46,7 +50,7 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
     return (
         <Pressable
             onPress={() => router.push(`/receipt-detail?receiptId=${item.receipt_id}`)}
-            style={styles.card}
+            style={({ pressed }) => [styles.card, pressed && { opacity: 0.85, backgroundColor: appTheme.colors.surfaceSoft }]}
         >
             <XStack alignItems="flex-start" gap={12}>
                 {/* Icon */}
@@ -149,6 +153,7 @@ export function ReceiptsListScreen() {
                 data={receipts}
                 keyExtractor={(item) => String(item.receipt_id)}
                 renderItem={({ item }) => <ReceiptCard item={item} />}
+                ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
                 contentContainerStyle={receipts.length === 0 ? styles.emptyContainer : styles.list}
                 refreshControl={
                     <RefreshControl
@@ -195,7 +200,6 @@ export function ReceiptsListScreen() {
 const styles = StyleSheet.create({
     list: {
         padding: 16,
-        gap: 10,
     },
     emptyContainer: {
         flexGrow: 1,
@@ -212,7 +216,6 @@ const styles = StyleSheet.create({
         borderColor: appTheme.colors.border,
         borderRadius: appTheme.radius.lg,
         padding: 14,
-        marginBottom: 10,
     },
     iconWrap: {
         width: 44,

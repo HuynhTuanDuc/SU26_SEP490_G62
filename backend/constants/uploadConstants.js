@@ -13,6 +13,7 @@ const UPLOAD = Object.freeze({
         MAINTENANCE_BILL:        'g62/maintenance-bills',
         DEBT_REPAYMENT:          'g62/debt-repayments',
         CASH_COLLECTION_RECEIPT: 'g62/cash-collection-receipts',
+        COMPANY_QR:              'g62/company-qr',
     },
 });
 
