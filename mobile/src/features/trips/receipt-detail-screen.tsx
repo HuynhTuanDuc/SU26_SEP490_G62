@@ -29,17 +29,13 @@ const fmtDate = (iso: string) => {
 };
 
 const PAYMENT_LABEL: Record<PaymentType, string> = {
-    cash_collected: 'Tiền mặt (Driver thu)',
-    bank_transfer:  'Chuyển khoản ngân hàng',
-    client_credit:  'Ghi công nợ',
-    qr_transfer:    'QR Code',
+    cash_collected: 'Tien mat (Driver thu)',
+    bank_transfer:  'Chuyen khoan ngan hang',
 };
 
 const PAYMENT_COLOR: Record<PaymentType, string> = {
     cash_collected: appTheme.colors.success,
     bank_transfer:  appTheme.colors.statusTransit,
-    client_credit:  appTheme.colors.warning,
-    qr_transfer:    appTheme.colors.primary,
 };
 
 // ─── Section divider ──────────────────────────────────────────────────────────
@@ -291,7 +287,9 @@ export function ReceiptDetailScreen() {
         );
     }
 
-    const paymentColor = PAYMENT_COLOR[receipt.payment_type] ?? appTheme.colors.primary;
+    const paymentColor = receipt.payment_type
+        ? (PAYMENT_COLOR[receipt.payment_type] ?? appTheme.colors.primary)
+        : appTheme.colors.textMuted;
     const kmDisplay = receipt.actual_distance_km
         ? `${Number(receipt.actual_distance_km).toLocaleString('vi-VN')} km`
         : receipt.estimated_distance_km
@@ -332,7 +330,7 @@ export function ReceiptDetailScreen() {
                         </Text>
                         <View style={[styles.paymentBadge, { backgroundColor: `${paymentColor}18` }]}>
                             <Text fontSize={12} fontWeight="700" color={paymentColor}>
-                                {PAYMENT_LABEL[receipt.payment_type] ?? receipt.payment_type}
+                                {receipt.payment_type ? (PAYMENT_LABEL[receipt.payment_type] ?? receipt.payment_type) : 'Chưa xác nhận'}
                             </Text>
                         </View>
                     </YStack>
@@ -489,3 +487,4 @@ const styles = StyleSheet.create({
         borderWidth: 1.5,
     },
 });
+
