@@ -502,15 +502,8 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
             orderId: shipment.order_id,
             amount,
         });
-        if (receipt.shipment_receipt_id) {
-            await paymentRepository.updateReceiptPaymentType(receipt.shipment_receipt_id, 'client_credit');
-        }
-    } else {
-        // bank_transfer — công ty đã nhận, không tạo debt, chỉ cập nhật payment_type
-        if (receipt.shipment_receipt_id) {
-            await paymentRepository.updateReceiptPaymentType(receipt.shipment_receipt_id, 'bank_transfer');
-        }
     }
+    // bank_transfer — khách trả về DN, không cần tạo debt hay cập nhật DB
 
     return { collection_type: collectionType, amount, recorded: true };
 };
