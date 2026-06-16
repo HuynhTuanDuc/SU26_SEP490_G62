@@ -454,6 +454,67 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return receipt;
 };
 
+// Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
+// 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
+const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
+    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
+    if (!ALLOWED.includes(collectionType)) {
+        throw new Error('Hình thức thanh toán không hợp lệ');
+    }
+
+    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
+    if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền');
+
+    if (receipt.has_driver_debt || receipt.has_customer_debt) {
+        throw new Error('Hình thức thanh toán đã được ghi nhận cho chuyến này');
+    }
+    if (receipt.payment_type !== 'cash_collected') {
+        throw new Error('Hình thức thanh toán đã được cập nhật trước đó');
+    }
+
+    const shipmentId = receipt.shipment_id;
+    const amount     = Number(receipt.amount);
+
+    if (collectionType === 'cash_collected') {
+        const shipment = await tripRepository.getTripById(shipmentId);
+        await paymentRepository.createDriverDebt({
+            driverId,
+            shipmentId,
+            orderId: shipment.order_id,
+            amount,
+            notes: null,
+        });
+        notificationService.createForUser(driverId, {
+            title: 'Đã ghi nhận thu tiền mặt',
+            message: `Bạn đang giữ ${amount.toLocaleString('vi-VN')}đ — nộp về công ty khi có dịp.`,
+            type: 'DEBT_CREATED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'silent' }).catch(() => {});
+    } else if (collectionType === 'client_credit') {
+        const shipment = await tripRepository.getTripById(shipmentId);
+        const orderRes = await pool.query(`SELECT customer_id FROM orders WHERE id = $1`, [shipment.order_id]);
+        if (!orderRes.rows[0]) throw new Error('Không tìm thấy đơn hàng liên quan');
+        await paymentRepository.createCustomerDebt({
+            customerId: orderRes.rows[0].customer_id,
+            driverId,
+            shipmentId,
+            orderId: shipment.order_id,
+            amount,
+        });
+        if (receipt.shipment_receipt_id) {
+            await paymentRepository.updateReceiptPaymentType(receipt.shipment_receipt_id, 'client_credit');
+        }
+    } else {
+        // bank_transfer — công ty đã nhận, không tạo debt, chỉ cập nhật payment_type
+        if (receipt.shipment_receipt_id) {
+            await paymentRepository.updateReceiptPaymentType(receipt.shipment_receipt_id, 'bank_transfer');
+        }
+    }
+
+    return { collection_type: collectionType, amount, recorded: true };
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -474,4 +535,5 @@ module.exports = {
     getPendingReceiptOrder,
     getDriverReceipts,
     getDriverReceiptDetail,
+    recordReceiptCollection,
 };

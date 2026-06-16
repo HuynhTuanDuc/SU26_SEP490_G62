@@ -855,6 +855,8 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
 const getDriverReceiptDetail = async (receiptId, driverId) => {
     const COLS = `
             COALESCE(sr.id, orr.id)      AS receipt_id,
+            orr.requesting_shipment_id   AS shipment_id,
+            COALESCE(sr.id, NULL)        AS shipment_receipt_id,
             COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
             COALESCE(sr.amount,
                 (SELECT SUM(os2.actual_price) FROM order_shipments os2
@@ -877,6 +879,12 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             p_driver.phone               AS driver_phone,
             v.plate_number,
             p_coord.full_name            AS coordinator_name,
+            EXISTS(SELECT 1 FROM debts d
+                   WHERE d.shipment_id = orr.requesting_shipment_id
+                     AND d.debt_type = 'driver') AS has_driver_debt,
+            EXISTS(SELECT 1 FROM debts d
+                   WHERE d.shipment_id = orr.requesting_shipment_id
+                     AND d.debt_type = 'customer') AS has_customer_debt,
             (SELECT ts.address FROM trip_stops ts
              WHERE ts.shipment_id = orr.requesting_shipment_id
                AND ts.stop_type = 'pickup'

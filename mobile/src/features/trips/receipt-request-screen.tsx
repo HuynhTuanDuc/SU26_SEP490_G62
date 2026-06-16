@@ -26,6 +26,7 @@ type Params = {
     deliveryAddress: string;
     shipmentIndex: string;
     maxShipmentIndex: string;
+    orderPaymentType?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -110,20 +111,22 @@ export function ReceiptRequestScreen() {
 
     // Driver cuối = người có shipment_index cao nhất trong order
     const isFinalShipment = Number(params.shipmentIndex) === Number(params.maxShipmentIndex);
+    // Chỉ tài cuối của đơn cash mới tạo yêu cầu phiếu thu; các trường hợp còn lại chỉ lưu km
+    const needsReceiptRequest = isFinalShipment && params.orderPaymentType === 'cash';
 
     const [actualKm,     setActualKm]     = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error,        setError]        = useState<string | null>(null);
 
-    // Chỉ cần check existing request cho driver cuối
+    // Chỉ cần check existing request khi là tài cuối của đơn cash
     const [existingReq,  setExistingReq]  = useState<OrderReceiptRequest | null>(null);
-    const [isLoadingReq, setIsLoadingReq] = useState(isFinalShipment);
+    const [isLoadingReq, setIsLoadingReq] = useState(needsReceiptRequest);
 
     const { showAlert } = useAppAlert();
 
-    // ── Load existing receipt request (final driver only) ───────────────────
+    // ── Load existing receipt request (tài cuối đơn cash only) ─────────────
     useFocusEffect(useCallback(() => {
-        if (!isFinalShipment) return;
+        if (!needsReceiptRequest) return;
 
         let active = true;
         const load = async () => {
@@ -139,12 +142,12 @@ export function ReceiptRequestScreen() {
         };
         void load();
         return () => { active = false; };
-    }, [orderId, isFinalShipment]));
+    }, [orderId, needsReceiptRequest]));
 
     // ── Validate ─────────────────────────────────────────────────────────────
     const kmNum   = actualKm.trim() ? Number(actualKm.replace(',', '.')) : undefined;
     const kmValid = kmNum !== undefined && !isNaN(kmNum) && kmNum > 0;
-    const canSubmit = !isSubmitting && kmValid && (isFinalShipment ? !existingReq : true);
+    const canSubmit = !isSubmitting && kmValid && (needsReceiptRequest ? !existingReq : true);
 
     // ── Submit ───────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
@@ -189,13 +192,13 @@ export function ReceiptRequestScreen() {
 
     // ── Render ───────────────────────────────────────────────────────────────
 
-    const screenTitle = isFinalShipment ? 'Yêu cầu tạo phiếu thu' : 'Nhập km thực tế';
+    const screenTitle = needsReceiptRequest ? 'Yêu cầu tạo phiếu thu' : 'Nhập km thực tế';
     const buttonLabel = isSubmitting
         ? 'Đang xử lý...'
-        : isFinalShipment
+        : needsReceiptRequest
             ? 'Gửi yêu cầu tạo phiếu thu'
             : 'Lưu số km thực tế';
-    const ButtonIcon = isFinalShipment ? FileText : Save;
+    const ButtonIcon = needsReceiptRequest ? FileText : Save;
 
     return (
         <KeyboardAvoidingView
@@ -246,13 +249,13 @@ export function ReceiptRequestScreen() {
                         ) : null}
                     </YStack>
 
-                    {/* ── Existing request status (final driver only) ── */}
-                    {isFinalShipment && !isLoadingReq && existingReq ? (
+                    {/* ── Existing request status (tài cuối đơn cash only) ── */}
+                    {needsReceiptRequest && !isLoadingReq && existingReq ? (
                         <ExistingRequestBanner req={existingReq} />
                     ) : null}
 
                     {/* ── Km input ── */}
-                    {(!isFinalShipment || !existingReq) ? (
+                    {(!needsReceiptRequest || !existingReq) ? (
                         <YStack
                             padding={14} borderRadius={appTheme.radius.lg}
                             backgroundColor={appTheme.colors.surface}
@@ -279,7 +282,7 @@ export function ReceiptRequestScreen() {
                                 <XStack gap={6} alignItems="center">
                                     <AlertTriangle size={11} color={appTheme.colors.warningText} />
                                     <Text fontSize={11} color={appTheme.colors.warningText} flex={1}>
-                                        {isFinalShipment
+                                        {needsReceiptRequest
                                             ? `Coordinator sẽ tính lại giá dựa trên ${actualKm} km thực tế`
                                             : `${actualKm} km sẽ được ghi nhận cho chuyến này`}
                                     </Text>
@@ -293,8 +296,8 @@ export function ReceiptRequestScreen() {
                         </YStack>
                     ) : null}
 
-                    {/* ── Final driver warning (one-time, only for final driver) ── */}
-                    {isFinalShipment && !existingReq ? (
+                    {/* ── Final driver warning (one-time, only when creating receipt request) ── */}
+                    {needsReceiptRequest && !existingReq ? (
                         <XStack
                             padding={12} borderRadius={appTheme.radius.md}
                             backgroundColor={appTheme.colors.warningSoft}
@@ -322,7 +325,7 @@ export function ReceiptRequestScreen() {
                     ) : null}
 
                     {/* ── Submit ── */}
-                    {(!isFinalShipment || !existingReq) ? (
+                    {(!needsReceiptRequest || !existingReq) ? (
                         <LifecycleActionButton
                             label={buttonLabel}
                             tone="primary"
@@ -340,7 +343,7 @@ export function ReceiptRequestScreen() {
                         disabled={isSubmitting}
                     >
                         <Text fontSize={13} color={appTheme.colors.textMuted}>
-                            {(isFinalShipment && existingReq) ? 'Đóng' : 'Quay lại'}
+                            {(needsReceiptRequest && existingReq) ? 'Đóng' : 'Quay lại'}
                         </Text>
                     </Pressable>
                 </ScrollView>
