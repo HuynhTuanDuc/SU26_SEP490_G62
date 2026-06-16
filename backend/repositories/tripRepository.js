@@ -9,6 +9,7 @@ const {
 // Địa chỉ pickup/delivery lưu trong trip_stops — dùng subquery để kéo ra
 const PICKUP_SUBQ  = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'   ORDER BY ts.stop_index ASC  LIMIT 1)`;
 const DELIVERY_SUBQ = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery' ORDER BY ts.stop_index DESC LIMIT 1)`;
+const RECEIPT_PAYMENT_TYPE_SQL = `sr.payment_type`;
 
 const getDriverVehicleGroupId = async (driverId) => {
     const result = await pool.query(
@@ -821,7 +822,7 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
     const result = await pool.query(
         `SELECT
             COALESCE(sr.id, orr.id)                       AS receipt_id,
-            COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
+            ${RECEIPT_PAYMENT_TYPE_SQL}                  AS payment_type,
             COALESCE(sr.amount,
                 (SELECT SUM(os2.actual_price)
                  FROM order_shipments os2
@@ -855,7 +856,7 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
 const getDriverReceiptDetail = async (receiptId, driverId) => {
     const COLS = `
             COALESCE(sr.id, orr.id)      AS receipt_id,
-            COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
+            ${RECEIPT_PAYMENT_TYPE_SQL}  AS payment_type,
             COALESCE(sr.amount,
                 (SELECT SUM(os2.actual_price) FROM order_shipments os2
                  WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)

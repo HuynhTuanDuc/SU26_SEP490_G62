@@ -220,7 +220,7 @@ export type PaymentSummary = {
 export type ShipmentPayment = {
     id: number;
     shipment_id: number;
-    payment_type: string;
+    payment_type: string | null;
     amount: string;
     notes: string | null;
     collected_at: string;
@@ -308,11 +308,11 @@ export type RequestOrderReceiptResponse = {
     request?: OrderReceiptRequest;
 };
 
-export type PaymentType = 'cash_collected' | 'bank_transfer' | 'client_credit' | 'qr_transfer';
+export type PaymentType = 'cash_collected' | 'bank_transfer';
 
 export type DriverReceiptSummary = {
     receipt_id: number;
-    payment_type: PaymentType;
+    payment_type: PaymentType | null;
     amount: string;
     collected_at: string;
     notes: string | null;

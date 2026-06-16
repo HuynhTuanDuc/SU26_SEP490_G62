@@ -779,14 +779,15 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const isReturning   = trip.status === 'returning';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense   = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
-    const canRecordCash   = isArrived && trip.order_payment_type === 'cash_collected';
-    const canMarkUnpaid   = isArrived && trip.order_payment_type === 'client_credit';
+    const isOrderCollectible = trip.order_payment_type === 'cash' || trip.order_payment_type === 'mixed';
+    const canRecordCash   = isArrived && isOrderCollectible;
+    const canMarkUnpaid   = isArrived && isOrderCollectible && (paymentSummary?.remaining ?? 0) > 0;
 
     // Chỉ hiện section yêu cầu phiếu thu cho chuyến cuối của đơn hàng cash (BR-008B)
     const canRequestReceipt =
         trip.status === 'completed' &&
         trip.is_final_shipment &&
-        trip.order_payment_type === 'cash';
+        trip.order_payment_type === 'cash' || trip.order_payment_type === 'mixed';
 
     const openCamera = async (target: 'proof' | 'loading' | 'return' | 'paymentReceipt' | 'editReceipt') => {
         if (!permission?.granted) {
