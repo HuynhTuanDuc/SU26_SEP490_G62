@@ -844,11 +844,10 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         );
         await client.query(
             `INSERT INTO shipment_receipts
-                 (shipment_id, payment_type, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+                 (shipment_id, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
             [
                 targetShipment.id,
-                req.order_payment_type ?? 'cash_collected',
                 totalAmount,
                 req.driver_id,
                 notes ?? null,

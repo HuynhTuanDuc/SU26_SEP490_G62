@@ -27,23 +27,21 @@ const fmtDate = (iso: string) => {
 };
 
 const PAYMENT_LABEL: Record<PaymentType, string> = {
-    cash_collected: 'Tiền mặt',
-    bank_transfer:  'Chuyển khoản',
-    client_credit:  'Công nợ',
-    qr_transfer:    'QR Code',
+    cash_collected: 'Tien mat',
+    bank_transfer:  'Chuyen khoan',
 };
 
 const PAYMENT_COLOR: Record<PaymentType, string> = {
     cash_collected: appTheme.colors.success,
     bank_transfer:  appTheme.colors.statusTransit,
-    client_credit:  appTheme.colors.warning,
-    qr_transfer:    appTheme.colors.primary,
 };
 
 // ─── Receipt card ─────────────────────────────────────────────────────────────
 
 function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
-    const paymentColor = PAYMENT_COLOR[item.payment_type] ?? appTheme.colors.textMuted;
+    const paymentColor = item.payment_type
+        ? (PAYMENT_COLOR[item.payment_type] ?? appTheme.colors.textMuted)
+        : appTheme.colors.textMuted;
 
     return (
         <Pressable
@@ -94,7 +92,7 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
                     <XStack justifyContent="space-between" alignItems="center">
                         <View style={[styles.badge, { backgroundColor: `${paymentColor}18` }]}>
                             <Text fontSize={10} fontWeight="700" color={paymentColor}>
-                                {PAYMENT_LABEL[item.payment_type] ?? item.payment_type}
+                                {item.payment_type ? (PAYMENT_LABEL[item.payment_type] ?? item.payment_type) : 'Chưa xác nhận'}
                             </Text>
                         </View>
                         <Text fontSize={11} color={appTheme.colors.textMuted}>
@@ -245,3 +243,4 @@ const styles = StyleSheet.create({
         backgroundColor: `${appTheme.colors.primary}10`,
     },
 });
+
