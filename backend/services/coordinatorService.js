@@ -332,6 +332,17 @@ const importExcel = async (userId, fileBuffer) => {
 const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
 const PASS_THROUGH_EXPENSE_TYPES = new Set(['parking', 'toll', 'depreciation']);
 
+const resolveShipmentActualRevenue = (shipment = {}) => {
+    const actualPrice = Number(shipment.actual_price);
+    if (Number.isFinite(actualPrice) && actualPrice > 0) {
+        return actualPrice;
+    }
+
+    const actualKm = Number(shipment.actual_distance_km ?? shipment.estimated_distance_km ?? shipment.actual_km ?? 0);
+    const pricePerKm = Number(shipment.price_per_km || 0);
+    return actualKm > 0 && pricePerKm > 0 ? actualKm * pricePerKm : 0;
+};
+
 const normalizeAmount = (value, fieldLabel = 'Số tiền') => {
     const amount = Number(value);
     if (!amount || Number.isNaN(amount) || amount <= 0) {
@@ -373,8 +384,21 @@ const updateOrderReceiptTotals = async (client, orderId) => {
              final_price = COALESCE(shipment_totals.total_actual_price, 0) + COALESCE(expense_totals.total_pass_through_expenses, 0),
              updated_at = NOW()
          FROM (
-            SELECT os.order_id, SUM(COALESCE(os.actual_price, 0)) AS total_actual_price
+            SELECT
+                os.order_id,
+                SUM(
+                    COALESCE(
+                        NULLIF(os.actual_price, 0),
+                        COALESCE(os.actual_distance_km, os.estimated_distance_km, 0)
+                        * COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0),
+                        0
+                    )
+                ) AS total_actual_price
             FROM order_shipments os
+            LEFT JOIN orders o_src ON o_src.id = os.order_id
+            LEFT JOIN vehicles v ON v.id = os.vehicle_id
+            LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
+            LEFT JOIN vehicle_groups vg_order ON vg_order.id = o_src.vehicle_group_id
             WHERE os.order_id = $1
             GROUP BY os.order_id
          ) shipment_totals
@@ -447,12 +471,15 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
         const pickupStops = stopsResult.rows.filter((stop) => stop.stop_type === 'pickup');
         const deliveryStop = stopsResult.rows.find((stop) => stop.stop_type === 'delivery') ?? null;
         const actualKm = shipment.actual_distance_km ?? shipment.estimated_distance_km;
-        const computedRevenue = Number(actualKm || 0) * Number(shipment.price_per_km || 0);
+        const resolvedRevenue = resolveShipmentActualRevenue({
+            ...shipment,
+            actual_km: actualKm,
+        });
 
         shipments.push({
             ...shipment,
             actual_km: actualKm,
-            actual_revenue: shipment.actual_price ?? computedRevenue,
+            actual_revenue: resolvedRevenue,
             expenses,
             total_expenses: totalExpenses,
             total_pass_through_expenses: passThroughExpenses,
@@ -602,7 +629,7 @@ const getReceiptRequests = async ({ status = null } = {}) => {
             SELECT
                 SUM(
                     COALESCE(
-                        os_revenue.actual_price,
+                        NULLIF(os_revenue.actual_price, 0),
                         COALESCE(os_revenue.actual_distance_km, os_revenue.estimated_distance_km, 0)
                         * COALESCE(vg_vehicle_revenue.price_per_km, vg_order_revenue.price_per_km, 0)
                     )
@@ -747,9 +774,27 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
     try {
         await client.query('BEGIN');
         const pricingSnapshot = await getShipmentPricingSnapshot(client, requestId);
-        const computed = computeReceiptAmount(pricingSnapshot);
         const targetShipment = pricingSnapshot?.primaryShipment;
         if (!targetShipment) throw new Error('Không tìm thấy chuyến xe để tạo phiếu thu');
+        const requestActualKm = Number(req.actual_km);
+        if (Number.isFinite(requestActualKm) && requestActualKm > 0) {
+            await client.query(
+                `UPDATE order_shipments
+                 SET actual_distance_km = $1,
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [requestActualKm, targetShipment.id],
+            );
+
+            targetShipment.actual_distance_km = requestActualKm;
+            const matchedShipment = pricingSnapshot?.shipments?.find(
+                (shipment) => Number(shipment.id) === Number(targetShipment.id),
+            );
+            if (matchedShipment) {
+                matchedShipment.actual_distance_km = requestActualKm;
+            }
+        }
+        const computed = computeReceiptAmount(pricingSnapshot);
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
         for (const expense of normalizedExpenses) {
@@ -811,14 +856,6 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                 coordinatorId,
             ],
         );
-
-        // Cập nhật actual_distance_km nếu driver đã nhập km thực tế
-        if (req.actual_km) {
-            await client.query(
-                `UPDATE order_shipments SET actual_distance_km = $1, updated_at = NOW() WHERE id = $2`,
-                [req.actual_km, targetShipment.id],
-            );
-        }
 
         await client.query('COMMIT');
 
