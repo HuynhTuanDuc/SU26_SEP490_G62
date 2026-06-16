@@ -87,11 +87,6 @@ const canCancelTrip = (trip) => {
   return Boolean(trip.orderId) && statuses.some((status) => !["completed", "cancelled", "failed"].includes(status));
 };
 
-const shouldHighlightNoCheckIn = (trip) => {
-  const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.notes ?? ""));
-  return hasCheckInMarker && !String(trip.checkIn ?? "").trim();
-};
-
 
 
 const getDistinctValues = (items, key) => [
@@ -124,19 +119,6 @@ const splitRoute = (route) => {
 
 
 
-
-
-
-function extractDriverName(notes) {
-  const match = String(notes ?? "").match(/L(?:ái|ai) xe:\s*([^|]+)/i);
-  return match?.[1]?.trim() || "";
-}
-
-function extractDistance(notes) {
-  const match = String(notes ?? "").match(/Qu(?:ã|a)ng đường:\s*([^|]+)/i);
-  return match?.[1]?.trim() || "";
-}
-
 const resolveFareValue = (...values) => {
   for (const value of values) {
     const numericValue = Number(value);
@@ -144,6 +126,7 @@ const resolveFareValue = (...values) => {
   }
   return 0;
 };
+
 
 function buildTripFromOrder(order) {
   const sourceTrips = Array.isArray(order.trips) && order.trips.length > 0 ? order.trips : [];
@@ -286,6 +269,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
     setMessage("");
   }, [message, messageType]);
+  
   const loadOrders = async (page = pagination.page) => {
     try {
       const token = localStorage.getItem("token");
@@ -376,8 +360,9 @@ export default function CoordinatorPage({ user, onLogout }) {
       const shipmentStatuses = Array.isArray(trip.trips) && trip.trips.length > 0
         ? trip.trips.map((item) => normalizeStatus(item.status))
         : [normalizeStatus(trip.status)];
+
       const allowedStatuses = STATUS_TABS[activeTab];
-      const matchesTab = !allowedStatuses || shipmentStatuses.some((status) => allowedStatuses.has(status));
+      const matchesTab = !allowedStatuses || shipmentStatuses.some((status) => allowedStatuses.has(status));//!null = true, kiểm tra status của trip 
 
       if (!matchesTab) return false;
 
@@ -386,6 +371,7 @@ export default function CoordinatorPage({ user, onLogout }) {
           .map((item) => (item.arrived_at ? String(item.arrived_at).substring(0, 10) : ""))
           .filter(Boolean)
         : [];
+        
       const candidateDates = shipmentDates.length > 0
         ? shipmentDates
         : [trip.dateInput || formatDateForInput(trip.date)].filter(Boolean);
