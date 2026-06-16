@@ -190,6 +190,29 @@ ALTER TABLE orders
 ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS final_price NUMERIC(12,2) NOT NULL DEFAULT 0;
 
+DO $$
+DECLARE
+    v_constraint_name TEXT;
+BEGIN
+    SELECT con.conname
+    INTO v_constraint_name
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+    WHERE rel.relname = 'orders'
+      AND nsp.nspname = 'public'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) LIKE '%payment_type%'
+      AND pg_get_constraintdef(con.oid) NOT LIKE '%client_credit%';
+
+    IF v_constraint_name IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE public.orders DROP CONSTRAINT %I', v_constraint_name);
+        ALTER TABLE public.orders
+            ADD CONSTRAINT orders_payment_type_check
+            CHECK (payment_type IN ('cash', 'bank_transfer', 'client_credit'));
+    END IF;
+END $$;
+
 -- =============================================================================
 -- SECTION 10: BASE ORDERS (open + completed)
 -- vehicle_group_id lưu trên orders, KHÔNG phải order_shipments
