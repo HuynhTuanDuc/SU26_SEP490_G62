@@ -308,7 +308,7 @@ export type RequestOrderReceiptResponse = {
     request?: OrderReceiptRequest;
 };
 
-export type PaymentType = 'cash_collected' | 'bank_transfer';
+export type PaymentType = 'cash_collected' | 'bank_transfer' | 'client_credit' | 'qr_transfer';
 
 export type DriverReceiptSummary = {
     receipt_id: number;
@@ -340,6 +340,15 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     has_customer_debt: boolean;
     pickup_address: string | null;
     delivery_address: string | null;
+};
+
+export type CompanyInfo = {
+    company_name: string | null;
+    hotline: string | null;
+    bank_name: string | null;
+    bank_account_number: string | null;
+    bank_account_name: string | null;
+    bank_qr_url: string | null;
 };
 
 export const TRIP_STATUS_LABEL: Record<TripStatus, string> = {

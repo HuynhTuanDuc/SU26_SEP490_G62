@@ -38,6 +38,7 @@ const uploadExpense        = makeUploader(UPLOAD.FOLDERS.EXPENSE);
 const uploadMaintenanceBill = makeUploader(UPLOAD.FOLDERS.MAINTENANCE_BILL);
 const uploadDebtRepayment          = makeUploader(UPLOAD.FOLDERS.DEBT_REPAYMENT);
 const uploadCashCollectionReceipt  = makeUploader(UPLOAD.FOLDERS.CASH_COLLECTION_RECEIPT);
+const uploadCompanyQr              = makeUploader(UPLOAD.FOLDERS.COMPANY_QR);
 
 // Dùng cho POST /trips/:id/complete — nhận 2 field: receipt + proof (proof chỉ có khi final)
 const tripCompleteStorage = new CloudinaryStorage({
@@ -60,4 +61,4 @@ const uploadTripComplete = multer({
     },
 });
 
-module.exports = { uploadProof, uploadReceipt, uploadPaymentReceipt, uploadIncident, uploadAvatar, uploadExpense, uploadMaintenanceBill, uploadTripComplete, uploadDebtRepayment, uploadCashCollectionReceipt };
+module.exports = { uploadProof, uploadReceipt, uploadPaymentReceipt, uploadIncident, uploadAvatar, uploadExpense, uploadMaintenanceBill, uploadTripComplete, uploadDebtRepayment, uploadCashCollectionReceipt, uploadCompanyQr };

@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, ScrollView, StyleSheet, View, Pressable,
+    Image, ScrollView, StyleSheet, View, Pressable, ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Receipt, MapPin, Truck, User, Ruler, Buildings, CurrencyCircleDollar, Clock } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { ScreenHeader } from '@/components/screen-header';
-import { AppText }      from '@/components/app-text';
-import { appTheme }     from '@/theme/app-theme';
+import { ScreenHeader }          from '@/components/screen-header';
+import { AppText }               from '@/components/app-text';
+import { ReceiptDetailSkeleton } from '@/components/skeleton';
+import { appTheme }              from '@/theme/app-theme';
 import { tripService }  from '@/services/trip-service';
 import { useToast }     from '@/providers/ui-provider';
-import type { DriverReceiptDetail, PaymentType } from '@/types/trip';
+import type { CompanyInfo, DriverReceiptDetail, PaymentType } from '@/types/trip';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,13 +30,17 @@ const fmtDate = (iso: string) => {
 };
 
 const PAYMENT_LABEL: Record<PaymentType, string> = {
-    cash_collected: 'Tien mat (Driver thu)',
-    bank_transfer:  'Chuyen khoan ngan hang',
+    cash_collected: 'Tiền mặt (Driver thu)',
+    bank_transfer:  'Chuyển khoản ngân hàng',
+    client_credit:  'Công nợ khách hàng',
+    qr_transfer:    'QR / Ví điện tử',
 };
 
 const PAYMENT_COLOR: Record<PaymentType, string> = {
     cash_collected: appTheme.colors.success,
     bank_transfer:  appTheme.colors.statusTransit,
+    client_credit:  appTheme.colors.warning,
+    qr_transfer:    appTheme.colors.primary,
 };
 
 // ─── Section divider ──────────────────────────────────────────────────────────
@@ -112,13 +117,14 @@ function PaymentCollectionSection({
     const { showToast } = useToast();
     const [isLoading, setIsLoading] = useState<CollectionType | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // bank_transfer không tạo debt nên cần local state để hide buttons sau khi chọn
+    const [localDone, setLocalDone] = useState<CollectionType | null>(null);
 
-    // Determine current collection status
+    // Debt records are authoritative; fall back to in-session local state
     const collectionDone: CollectionType | null =
-        receipt.has_driver_debt ? 'cash_collected' :
-        receipt.has_customer_debt ? 'client_credit' :
-        receipt.payment_type !== 'cash_collected' ? (receipt.payment_type as CollectionType) :
-        null;
+        receipt.has_driver_debt   ? 'cash_collected' :
+        receipt.has_customer_debt ? 'client_credit'  :
+        localDone;
 
     if (collectionDone) {
         return (
@@ -143,7 +149,12 @@ function PaymentCollectionSection({
                     type === 'bank_transfer'  ? 'Đã xác nhận khách trả về công ty' :
                                                 'Đã ghi nhận công nợ khách hàng',
             });
-            onRecorded();
+            if (type === 'bank_transfer') {
+                // Không có DB record — dùng local state để ẩn nút trong session này
+                setLocalDone('bank_transfer');
+            } else {
+                onRecorded(); // reload để lấy has_driver_debt / has_customer_debt mới
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Không thể ghi nhận');
         } finally {
@@ -248,15 +259,22 @@ export function ReceiptDetailScreen() {
     const { receiptId } = useLocalSearchParams<{ receiptId: string }>();
     const id = Number(receiptId);
 
-    const [receipt,   setReceipt]   = useState<DriverReceiptDetail | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error,     setError]     = useState<string | null>(null);
+    const [receipt,     setReceipt]     = useState<DriverReceiptDetail | null>(null);
+    const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+    const [isLoading,   setIsLoading]   = useState(true);
+    const [error,       setError]       = useState<string | null>(null);
 
     const load = () => {
         if (!id) { setError('ID phiếu thu không hợp lệ'); setIsLoading(false); return; }
         setIsLoading(true);
-        tripService.getDriverReceiptDetail(id)
-            .then(({ receipt: data }) => setReceipt(data))
+        Promise.all([
+            tripService.getDriverReceiptDetail(id),
+            tripService.getCompanyInfo(),
+        ])
+            .then(([{ receipt: data }, { info }]) => {
+                setReceipt(data);
+                setCompanyInfo(info);
+            })
             .catch((err) => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
             .finally(() => setIsLoading(false));
     };
@@ -265,11 +283,11 @@ export function ReceiptDetailScreen() {
 
     if (isLoading) {
         return (
-            <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
-                <ScreenHeader title="Chi tiết phiếu thu" showBack />
-                <View style={styles.center}>
-                    <ActivityIndicator size="large" color={appTheme.colors.primary} />
-                </View>
+            <View style={{ flex: 1, backgroundColor: '#F0F4FF' }}>
+                <ScreenHeader title="Phiếu thu" showBack />
+                <ScrollView showsVerticalScrollIndicator={false}>
+                    <ReceiptDetailSkeleton />
+                </ScrollView>
             </View>
         );
     }
@@ -408,6 +426,45 @@ export function ReceiptDetailScreen() {
                         </>
                     ) : null}
 
+                    {/* Bank QR — hiển thị khi payment_type là bank_transfer hoặc qr_transfer */}
+                    {(receipt.payment_type === 'bank_transfer' || receipt.payment_type === 'qr_transfer') && companyInfo?.bank_qr_url ? (
+                        <>
+                            <Divider />
+                            <YStack paddingVertical={14} gap={10} alignItems="center">
+                                <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted} letterSpacing={0.5} alignSelf="flex-start">
+                                    QR THANH TOÁN
+                                </Text>
+                                <Image
+                                    source={{ uri: companyInfo.bank_qr_url }}
+                                    style={styles.qrImage}
+                                    resizeMode="contain"
+                                />
+                                {(companyInfo.bank_name || companyInfo.bank_account_number || companyInfo.bank_account_name) ? (
+                                    <YStack gap={4} width="100%">
+                                        {companyInfo.bank_account_name ? (
+                                            <XStack justifyContent="space-between">
+                                                <Text fontSize={12} color={appTheme.colors.textMuted}>Tên TK</Text>
+                                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>{companyInfo.bank_account_name}</Text>
+                                            </XStack>
+                                        ) : null}
+                                        {companyInfo.bank_account_number ? (
+                                            <XStack justifyContent="space-between">
+                                                <Text fontSize={12} color={appTheme.colors.textMuted}>Số TK</Text>
+                                                <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>{companyInfo.bank_account_number}</Text>
+                                            </XStack>
+                                        ) : null}
+                                        {companyInfo.bank_name ? (
+                                            <XStack justifyContent="space-between">
+                                                <Text fontSize={12} color={appTheme.colors.textMuted}>Ngân hàng</Text>
+                                                <Text fontSize={12} color={appTheme.colors.text}>{companyInfo.bank_name}</Text>
+                                            </XStack>
+                                        ) : null}
+                                    </YStack>
+                                ) : null}
+                            </YStack>
+                        </>
+                    ) : null}
+
                     <Divider />
 
                     {/* Payment collection actions */}
@@ -470,6 +527,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         paddingVertical: 5,
         borderRadius: 999,
+    },
+    qrImage: {
+        width: 220,
+        height: 220,
+        borderRadius: 12,
+        backgroundColor: '#fff',
     },
     footer: {
         marginTop: 16,

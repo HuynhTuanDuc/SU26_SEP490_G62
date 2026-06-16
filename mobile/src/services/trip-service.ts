@@ -109,4 +109,7 @@ export const tripService = {
             `/api/trips/receipts/${receiptId}/record-collection`,
             { collection_type: collectionType },
         ),
+
+    getCompanyInfo: () =>
+        apiClient.get<{ info: import('@/types/trip').CompanyInfo }>('/api/company/info'),
 };

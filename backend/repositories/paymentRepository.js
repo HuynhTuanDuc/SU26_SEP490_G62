@@ -129,14 +129,6 @@ const createCustomerDebt = async ({ customerId, driverId, shipmentId, orderId, a
     );
 };
 
-// Cập nhật payment_type của shipment_receipts (driver xác nhận hình thức thanh toán thực tế)
-const updateReceiptPaymentType = async (shipmentReceiptId, paymentType) => {
-    await pool.query(
-        `UPDATE shipment_receipts SET payment_type = $1 WHERE id = $2`,
-        [paymentType, shipmentReceiptId],
-    );
-};
-
 const getPaymentById = async (paymentId) => {
     const result = await pool.query(
         `SELECT sp.id, sp.shipment_id, sp.payment_type, sp.amount::text, sp.collected_by,
@@ -170,7 +162,7 @@ const replacePaymentReceipts = async (paymentId, newFileUrl) => {
 
 module.exports = {
     recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary,
-    createDriverDebt, createCustomerDebt, updateReceiptPaymentType,
+    createDriverDebt, createCustomerDebt,
     getPaymentById, updateShipmentPayment, replacePaymentReceipts,
     getPendingReceiptShell, confirmReceiptShell,
 };
