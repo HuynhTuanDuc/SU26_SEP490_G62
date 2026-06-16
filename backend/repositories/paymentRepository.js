@@ -119,6 +119,24 @@ const createDriverDebt = async ({ driverId, shipmentId, orderId, amount, notes }
     );
 };
 
+// Tạo customer debt khi driver báo khách chưa trả (§15 TH3)
+const createCustomerDebt = async ({ customerId, driverId, shipmentId, orderId, amount }) => {
+    await pool.query(
+        `INSERT INTO debts
+             (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, paid_amount, status, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', NOW(), NOW())`,
+        [customerId, driverId, shipmentId ?? null, orderId ?? null, amount],
+    );
+};
+
+// Cập nhật payment_type của shipment_receipts (driver xác nhận hình thức thanh toán thực tế)
+const updateReceiptPaymentType = async (shipmentReceiptId, paymentType) => {
+    await pool.query(
+        `UPDATE shipment_receipts SET payment_type = $1 WHERE id = $2`,
+        [paymentType, shipmentReceiptId],
+    );
+};
+
 const getPaymentById = async (paymentId) => {
     const result = await pool.query(
         `SELECT sp.id, sp.shipment_id, sp.payment_type, sp.amount::text, sp.collected_by,
@@ -152,6 +170,7 @@ const replacePaymentReceipts = async (paymentId, newFileUrl) => {
 
 module.exports = {
     recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary,
-    createDriverDebt, getPaymentById, updateShipmentPayment, replacePaymentReceipts,
+    createDriverDebt, createCustomerDebt, updateReceiptPaymentType,
+    getPaymentById, updateShipmentPayment, replacePaymentReceipts,
     getPendingReceiptShell, confirmReceiptShell,
 };

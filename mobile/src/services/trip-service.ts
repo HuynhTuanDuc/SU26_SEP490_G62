@@ -103,4 +103,10 @@ export const tripService = {
         apiClient.get<{ receipt: import('@/types/trip').DriverReceiptDetail }>(
             `/api/trips/receipts/${receiptId}`,
         ),
+
+    recordReceiptCollection: (receiptId: number, collectionType: 'cash_collected' | 'bank_transfer' | 'client_credit') =>
+        apiClient.post<{ collection_type: string; amount: number; recorded: boolean }>(
+            `/api/trips/receipts/${receiptId}/record-collection`,
+            { collection_type: collectionType },
+        ),
 };

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
 import {
     AlertTriangle, CheckCircle, ChevronDown, ChevronUp,
-    Clock, DollarSign, Edit2, FileText, MapPin, Package,
+    FileText, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
 import { Image } from 'react-native';
@@ -23,14 +23,9 @@ import { useLoadingProof }      from '@/hooks/use-loading-proof';
 import { useReturnComplete }    from '@/hooks/use-return-complete';
 import { useReleaseTrip }       from '@/hooks/use-release-trip';
 import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
-import { useMarkUnpaid }        from '@/hooks/use-mark-unpaid';
-import { useMoneyInput }        from '@/hooks/use-money-input';
-import { useRecordPayment }     from '@/hooks/use-record-payment';
-import { useUpdatePayment }     from '@/hooks/use-update-payment';
-import { tripService }          from '@/services/trip-service';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
 import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
-import type { ActiveTrip, Expense, PaymentSummary, ShipmentPayment, TripStatus, TripStop } from '@/types/trip';
+import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
 import { CameraModal }      from './components/camera-modal';
@@ -279,392 +274,13 @@ function StopsSection({ stops, tripStatus }: { stops: TripStop[]; tripStatus: Tr
     );
 }
 
-// ─── Payment modal (TH2 + TH3) ───────────────────────────────────────────────
-// FIX: CameraModal KHÔNG được lồng bên trong Modal (Modal-in-Modal crash Android)
-// Thay vào đó nhận receiptUri + onRequestCamera từ parent screen
-
-function PaymentModal({
-    visible, tripId, mode, receiptUri, estimatedPrice, remainingAmount,
-    onRequestCamera, onDeleteReceipt, onClose, onSuccess,
-}: {
-    visible: boolean;
-    tripId: number;
-    mode: 'cash' | 'unpaid';
-    receiptUri: string | null;
-    estimatedPrice: number | null;
-    remainingAmount: number | null;
-    onRequestCamera: () => void;
-    onDeleteReceipt: () => void;
-    onClose: () => void;
-    onSuccess: () => void;
-}) {
-    const { showToast } = useToast();
-    const { displayValue: amount, rawValue: parsed, onChangeText: onAmountBase, setValue } = useMoneyInput();
-    const [notes,  setNotes]  = useState('');
-
-    const { isLoading: paymentLoading, error: paymentError, recordPayment, clearError: clearPayment } = useRecordPayment(() => {
-        showToast({ type: 'success', message: 'Đã ghi nhận thanh toán tiền mặt' });
-        onSuccess();
-    });
-    const { isLoading: unpaidLoading, error: unpaidError, markUnpaid, clearError: clearUnpaid } = useMarkUnpaid(() => {
-        showToast({ type: 'success', message: 'Đã ghi nhận công nợ khách hàng' });
-        onSuccess();
-    });
-
-    const isLoading  = paymentLoading || unpaidLoading;
-    const apiError   = paymentError ?? unpaidError;
-
-    // Luôn dùng estimatedPrice làm tham chiếu — giá trị thực thu có thể khác
-    const refAmount = estimatedPrice ?? null;
-
-    const handleAmountChange = (text: string) => {
-        onAmountBase(text);
-        if (apiError) { clearPayment(); clearUnpaid(); }
-    };
-
-    const fillRefAmount = () => {
-        if (!refAmount) return;
-        setValue(refAmount);
-        if (apiError) { clearPayment(); clearUnpaid(); }
-    };
-
-    const canSubmit = parsed > 0 && (mode === 'unpaid' || !!receiptUri);
-
-    const handleConfirm = async () => {
-        if (mode === 'cash') {
-            // BR-018: Ảnh biên lai bắt buộc khi ghi nhận tiền mặt
-            if (!receiptUri) {
-                showToast({ type: 'error', message: 'Cần chụp ảnh biên lai trước khi xác nhận' });
-                return;
-            }
-            await recordPayment(tripId, parsed, receiptUri, notes.trim() || undefined);
-        } else {
-            // TH3: Khách chưa trả → tạo customer debt
-            await markUnpaid(tripId, parsed, notes.trim() || undefined);
-        }
-    };
-
-    if (!visible) return null;
-
-    // Dùng View + absoluteFill thay vì Modal — tránh Modal-on-Modal với CameraModal
-    return (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
-            {/* Backdrop */}
-            <Pressable style={[StyleSheet.absoluteFill, s.modalBackdrop]} onPress={onClose} />
-
-            <KeyboardAvoidingView
-                style={s.modalOverlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                pointerEvents="box-none"
-            >
-                <View style={s.paymentCard}>
-                    {/* Header */}
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={14}>
-                        <XStack alignItems="center" gap={8}>
-                            {mode === 'cash'
-                                ? <DollarSign size={18} color={appTheme.colors.success} />
-                                : <XCircle size={18} color={appTheme.colors.warningText} />}
-                            <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
-                                {mode === 'cash' ? 'Ghi nhận tiền mặt' : 'Báo khách chưa trả'}
-                            </Text>
-                        </XStack>
-                        <Pressable onPress={onClose} hitSlop={12}>
-                            <X size={18} color={appTheme.colors.textMuted} />
-                        </Pressable>
-                    </XStack>
-
-                    <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={18} style={{ marginBottom: 14 }}>
-                        {mode === 'cash'
-                            ? 'Nhập số tiền thực thu từ khách (có thể cao hơn hoặc thấp hơn giá ước tính). Chụp ảnh biên lai bắt buộc.'
-                            : 'Khách chưa thanh toán. Hệ thống tạo công nợ để kế toán theo dõi.'}
-                    </Text>
-
-                    {/* Giá trị tham chiếu */}
-                    {refAmount !== null && refAmount > 0 ? (
-                        <XStack
-                            padding={10} borderRadius={10}
-                            backgroundColor={appTheme.colors.primarySoft}
-                            borderWidth={1} borderColor={appTheme.colors.primaryMuted}
-                            alignItems="center" justifyContent="space-between"
-                            style={{ marginBottom: 14 }}
-                        >
-                            <YStack gap={2}>
-                                <Text fontSize={11} color={appTheme.colors.textMuted}>
-                                    Giá trị ước tính (tham khảo)
-                                </Text>
-                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.primary}>
-                                    {refAmount.toLocaleString('vi-VN')} ₫
-                                </Text>
-                                <Text fontSize={10} color={appTheme.colors.textMuted}>
-                                    Giá trị thực tế có thể khác — nhập đúng số tiền thu được
-                                </Text>
-                            </YStack>
-                            <Pressable
-                                onPress={fillRefAmount}
-                                style={{
-                                    paddingHorizontal: 12, paddingVertical: 7,
-                                    borderRadius: 8,
-                                    backgroundColor: appTheme.colors.primary,
-                                }}
-                            >
-                                <Text fontSize={12} fontWeight="700" color="#fff">Điền vào</Text>
-                            </Pressable>
-                        </XStack>
-                    ) : null}
-
-                    {/* Amount */}
-                    <View style={{ marginBottom: 14, gap: 6 }}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            SỐ TIỀN THỰC THU (VNĐ) *
-                        </Text>
-                        <TextInput
-                            value={amount}
-                            onChangeText={handleAmountChange}
-                            keyboardType="numeric"
-                            placeholder="Nhập số tiền khách trả thực tế..."
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            returnKeyType="done"
-                            style={s.amountInput}
-                        />
-                        {parsed > 0 ? (
-                            <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">
-                                = {parsed.toLocaleString('vi-VN')} ₫
-                            </Text>
-                        ) : null}
-                    </View>
-
-                    {/* Receipt photo — chỉ cho TH2 */}
-                    {mode === 'cash' ? (
-                        <View style={{ marginBottom: 14, gap: 6 }}>
-                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                                ẢNH BIÊN LAI *
-                            </Text>
-                            {/* onCapture gọi lên parent → parent đóng overlay này, mở CameraModal thật */}
-                            <PhotoCaptureCard
-                                label="Chụp biên lai thanh toán"
-                                sublabel="Ảnh biên lai / phiếu thu có chữ ký khách (BR-018)"
-                                uri={receiptUri}
-                                required
-                                onCapture={onRequestCamera}
-                                onDelete={onDeleteReceipt}
-                            />
-                        </View>
-                    ) : null}
-
-                    {/* Notes */}
-                    <View style={{ marginBottom: 14, gap: 6 }}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            GHI CHÚ (TUỲ CHỌN)
-                        </Text>
-                        <TextInput
-                            value={notes}
-                            onChangeText={setNotes}
-                            placeholder="Ghi chú thêm..."
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            multiline
-                            blurOnSubmit
-                            style={s.notesInput}
-                        />
-                    </View>
-
-                    {/* API error */}
-                    {apiError ? (
-                        <XStack
-                            padding={10} borderRadius={8}
-                            backgroundColor={appTheme.colors.dangerSoft}
-                            borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                            gap={8} alignItems="center"
-                            style={{ marginBottom: 14 }}
-                        >
-                            <AlertTriangle size={13} color={appTheme.colors.danger} />
-                            <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{apiError}</Text>
-                        </XStack>
-                    ) : null}
-
-                    {/* Actions */}
-                    <XStack gap={10}>
-                        <Pressable style={[s.modalBtn, s.modalBtnSecondary, { flex: 1 }]} onPress={onClose}>
-                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.text}>Hủy</Text>
-                        </Pressable>
-                        <Pressable
-                            style={[s.modalBtn, {
-                                flex: 2,
-                                backgroundColor: !canSubmit || isLoading
-                                    ? appTheme.colors.primaryMuted
-                                    : appTheme.colors.primary,
-                            }]}
-                            onPress={handleConfirm}
-                            disabled={!canSubmit || isLoading}
-                        >
-                            <Text fontSize={14} fontWeight="900" color="#fff">
-                                {isLoading ? 'Đang gửi...' : 'Xác nhận'}
-                            </Text>
-                        </Pressable>
-                    </XStack>
-                </View>
-            </KeyboardAvoidingView>
-        </View>
-    );
-}
-
-// ─── Edit Payment Modal ───────────────────────────────────────────────────────
-// Dùng View + absoluteFill (không phải Modal) để tránh Modal-in-Modal
-
-function EditPaymentModal({
-    visible, tripId, payment, newReceiptUri, onRequestCamera, onDeleteNewReceipt,
-    onClose, onSuccess,
-}: {
-    visible: boolean;
-    tripId: number;
-    payment: ShipmentPayment;
-    newReceiptUri: string | null;
-    onRequestCamera: () => void;
-    onDeleteNewReceipt: () => void;
-    onClose: () => void;
-    onSuccess: () => void;
-}) {
-    const { showToast } = useToast();
-    const { displayValue: amount, rawValue: parsed, onChangeText: onAmountBase } = useMoneyInput(Number(payment.amount));
-    const [notes, setNotes] = useState(payment.notes ?? '');
-
-    const { isLoading, error, updatePayment, clearError } = useUpdatePayment(() => {
-        showToast({ type: 'success', message: 'Đã cập nhật ghi nhận tiền mặt' });
-        onSuccess();
-    });
-
-    const handleAmountChange = (text: string) => {
-        onAmountBase(text);
-        if (error) clearError();
-    };
-
-    const handleSave = async () => {
-        if (!parsed || parsed <= 0) {
-            showToast({ type: 'error', message: 'Vui lòng nhập số tiền hợp lệ' });
-            return;
-        }
-        await updatePayment(tripId, payment.id, parsed, newReceiptUri, notes.trim() || undefined);
-    };
-
-    const existingReceiptUrl = payment.receipt_urls[0] ?? null;
-    const displayUri = newReceiptUri ?? existingReceiptUrl;
-
-    if (!visible) return null;
-
-    return (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
-            <Pressable style={[StyleSheet.absoluteFill, s.modalBackdrop]} onPress={onClose} />
-            <KeyboardAvoidingView
-                style={s.modalOverlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                pointerEvents="box-none"
-            >
-                <View style={s.paymentCard}>
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={14}>
-                        <XStack alignItems="center" gap={8}>
-                            <Edit2 size={18} color={appTheme.colors.primary} />
-                            <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
-                                Sửa ghi nhận tiền mặt
-                            </Text>
-                        </XStack>
-                        <Pressable onPress={onClose} hitSlop={12}>
-                            <X size={18} color={appTheme.colors.textMuted} />
-                        </Pressable>
-                    </XStack>
-
-                    {/* Amount */}
-                    <View style={{ marginBottom: 14, gap: 6 }}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            SỐ TIỀN (VNĐ) *
-                        </Text>
-                        <TextInput
-                            value={amount}
-                            onChangeText={handleAmountChange}
-                            keyboardType="numeric"
-                            placeholder="Nhập số tiền..."
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            returnKeyType="done"
-                            style={s.amountInput}
-                        />
-                        {parsed > 0 ? (
-                            <Text fontSize={11} color={appTheme.colors.primary} fontWeight="700">
-                                = {parsed.toLocaleString('vi-VN')} ₫
-                            </Text>
-                        ) : null}
-                    </View>
-
-                    {/* Receipt photo */}
-                    <View style={{ marginBottom: 14, gap: 6 }}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            ẢNH BIÊN LAI {newReceiptUri ? '(MỚI)' : '(HIỆN TẠI)'}
-                        </Text>
-                        <PhotoCaptureCard
-                            label="Biên lai thanh toán"
-                            sublabel="Chụp lại để thay ảnh mới (nếu cần)"
-                            uri={displayUri}
-                            required={false}
-                            onCapture={onRequestCamera}
-                            onDelete={newReceiptUri ? onDeleteNewReceipt : () => {}}
-                        />
-                    </View>
-
-                    {/* Notes */}
-                    <View style={{ marginBottom: 14, gap: 6 }}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            GHI CHÚ (TUỲ CHỌN)
-                        </Text>
-                        <TextInput
-                            value={notes}
-                            onChangeText={setNotes}
-                            placeholder="Ghi chú thêm..."
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            multiline
-                            blurOnSubmit
-                            style={s.notesInput}
-                        />
-                    </View>
-
-                    {error ? (
-                        <XStack
-                            padding={10} borderRadius={8}
-                            backgroundColor={appTheme.colors.dangerSoft}
-                            borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                            gap={8} alignItems="center"
-                            style={{ marginBottom: 14 }}
-                        >
-                            <AlertTriangle size={13} color={appTheme.colors.danger} />
-                            <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{error}</Text>
-                        </XStack>
-                    ) : null}
-
-                    <XStack gap={10}>
-                        <Pressable style={[s.modalBtn, s.modalBtnSecondary, { flex: 1 }]} onPress={onClose}>
-                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.text}>Hủy</Text>
-                        </Pressable>
-                        <Pressable
-                            style={[s.modalBtn, {
-                                flex: 2,
-                                backgroundColor: !parsed || isLoading
-                                    ? appTheme.colors.primaryMuted
-                                    : appTheme.colors.primary,
-                            }]}
-                            onPress={handleSave}
-                            disabled={!parsed || isLoading}
-                        >
-                            <Text fontSize={14} fontWeight="900" color="#fff">
-                                {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
-                            </Text>
-                        </Pressable>
-                    </XStack>
-                </View>
-            </KeyboardAvoidingView>
-        </View>
-    );
-}
-
-// ─── Receipt request section (chỉ hiện cho chuyến cuối của đơn hàng cash) ────
+// ─── Receipt request section (cash_collected: tất cả tài nhập km; tài cuối tạo thêm phiếu thu) ────
 
 function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequest: boolean }) {
     if (!canRequest) return null;
+
+    const needsReceiptRequest = trip.is_final_shipment && trip.order_payment_type === 'cash';
+    const label = needsReceiptRequest ? 'Yêu cầu tạo phiếu thu' : 'Nhập km thực tế';
 
     return (
         <Pressable
@@ -680,12 +296,13 @@ function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequ
                     deliveryAddress:  trip.delivery_address,
                     shipmentIndex:    String(trip.shipment_index),
                     maxShipmentIndex: String(trip.max_shipment_index),
+                    orderPaymentType: trip.order_payment_type ?? '',
                 },
             })}
         >
             <FileText size={14} color={appTheme.colors.primary} />
             <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
-                Yêu cầu tạo phiếu thu
+                {label}
             </Text>
         </Pressable>
     );
@@ -710,40 +327,38 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [proofUri,   setProofUri]   = useState<string | null>(null);
     const [loadingUri, setLoadingUri] = useState<string | null>(null);
     const [returnUri,  setReturnUri]  = useState<string | null>(null);
-    const [cameraTarget, setCameraTarget] = useState<'proof' | 'loading' | 'return' | 'paymentReceipt' | 'editReceipt' | null>(null);
+    const [cameraTarget, setCameraTarget] = useState<'proof' | 'loading' | 'return' | null>(null);
 
     const [showRelease, setShowRelease] = useState(false);
     const [showExpense, setShowExpense] = useState(false);
 
-    const [showPayment,       setShowPayment]       = useState<'cash' | 'unpaid' | null>(null);
-    const [paymentReceiptUri, setPaymentReceiptUri] = useState<string | null>(null);
-    const [editingPayment,    setEditingPayment]    = useState<ShipmentPayment | null>(null);
-    const [editReceiptUri,    setEditReceiptUri]    = useState<string | null>(null);
-    const [paymentSummary,    setPaymentSummary]    = useState<PaymentSummary | null>(null);
-    const [payments,          setPayments]          = useState<ShipmentPayment[]>([]);
+    // Flag để trigger navigation sau khi hoàn thành chuyến (qua useEffect để đảm bảo render cycle)
+    const [justCompleted, setJustCompleted] = useState(false);
 
-    const { isUploading: completingProof, completeWithProof } = useCompletionProof(async (completedTrip) => {
-        const isLastDriverCash =
-            completedTrip.is_final_shipment && completedTrip.order_payment_type === 'cash';
-        if (isLastDriverCash) {
-            router.replace({
-                pathname: '/receipt-request',
-                params: {
-                    orderId:          String(completedTrip.order_id),
-                    shipmentId:       String(completedTrip.id),
-                    estimatedPrice:   completedTrip.estimated_price ?? '',
-                    cargoName:        completedTrip.cargo_name ?? '',
-                    pickupAddress:    completedTrip.pickup_address,
-                    deliveryAddress:  completedTrip.delivery_address,
-                    shipmentIndex:    String(completedTrip.shipment_index),
-                    maxShipmentIndex: String(completedTrip.max_shipment_index),
-                },
-            });
-        } else {
-            await showAlert({ type: 'success', title: 'Hoàn thành chuyến!', message: 'Giao hàng thành công.', okLabel: 'Tuyệt vời!' });
-            router.back();
-        }
+    const { isUploading: completingProof, completeWithProof } = useCompletionProof(() => {
+        setJustCompleted(true);
     });
+
+    useEffect(() => {
+        if (!justCompleted) return;
+        setJustCompleted(false);
+        // Mọi tài đều nhập km sau khi hoàn thành — tài cuối của đơn cash còn tạo yêu cầu phiếu thu
+        router.replace({
+            pathname: '/receipt-request',
+            params: {
+                orderId:          String(trip.order_id),
+                shipmentId:       String(trip.id),
+                estimatedPrice:   trip.estimated_price ?? '',
+                cargoName:        trip.cargo_name ?? '',
+                pickupAddress:    trip.pickup_address,
+                deliveryAddress:  trip.delivery_address,
+                shipmentIndex:    String(trip.shipment_index),
+                maxShipmentIndex: String(trip.max_shipment_index),
+                orderPaymentType: trip.order_payment_type ?? '',
+            },
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [justCompleted]);
     const { isUploading: submittingLoad, submitLoadingProof } = useLoadingProof(() => {
         showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển đến điểm giao', duration: 2500 });
         refresh();
@@ -758,18 +373,6 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
     useEffect(() => { void loadExpenses(); }, [loadExpenses]);
 
-    const loadPaymentData = () => {
-        Promise.all([
-            tripService.getPaymentSummary(trip.id),
-            tripService.getShipmentPayments(trip.id),
-        ]).then(([summaryRes, paymentsRes]) => {
-            setPaymentSummary(summaryRes);
-            setPayments(paymentsRes.payments);
-        }).catch(() => { /* silent — not critical */ });
-    };
-
-    useEffect(() => { loadPaymentData(); }, [trip.id]);
-
     const isWorking     = lifecycleLoading || completingProof || submittingLoad || completingReturn || releaseLoading;
     const nextAction    = NEXT_ACTIONS[trip.status as TripStatus];
     const accent        = STATUS_ACCENT[trip.status as TripStatus];
@@ -779,17 +382,11 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const isReturning   = trip.status === 'returning';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense   = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
-    const isOrderCollectible = trip.order_payment_type === 'cash' || trip.order_payment_type === 'mixed';
-    const canRecordCash   = isArrived && isOrderCollectible;
-    const canMarkUnpaid   = isArrived && isOrderCollectible && (paymentSummary?.remaining ?? 0) > 0;
 
-    // Chỉ hiện section yêu cầu phiếu thu cho chuyến cuối của đơn hàng cash (BR-008B)
-    const canRequestReceipt =
-        trip.status === 'completed' &&
-        trip.is_final_shipment &&
-        trip.order_payment_type === 'cash' || trip.order_payment_type === 'mixed';
+    // Mọi tài đều thấy nút này sau khi COMPLETED để nhập km (tài cuối cash còn tạo phiếu thu)
+    const canRequestReceipt = trip.status === 'completed';
 
-    const openCamera = async (target: 'proof' | 'loading' | 'return' | 'paymentReceipt' | 'editReceipt') => {
+    const openCamera = async (target: 'proof' | 'loading' | 'return') => {
         if (!permission?.granted) {
             const res = await requestPermission();
             if (!res.granted) return;
@@ -1011,66 +608,6 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     />
                 ) : null}
 
-                {/* ── Thanh toán (TH2 cash / TH3 credit) ── */}
-                {(canRecordCash || canMarkUnpaid || payments.length > 0) ? (
-                    <YStack
-                        padding={12} borderRadius={appTheme.radius.lg} gap={10}
-                        borderWidth={1} borderColor={appTheme.colors.border}
-                        backgroundColor={appTheme.colors.surface}
-                    >
-                        <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>
-                            THANH TOÁN
-                        </Text>
-                        {payments.length > 0 ? (
-                            <YStack gap={6}>
-                                {payments.map((p) => (
-                                    <XStack
-                                        key={p.id}
-                                        alignItems="center" gap={8}
-                                        padding={8} borderRadius={appTheme.radius.sm}
-                                        backgroundColor={appTheme.colors.successSoft}
-                                        borderWidth={1} borderColor={appTheme.colors.successBorder}
-                                    >
-                                        <YStack flex={1} gap={2}>
-                                            <Text fontSize={13} fontWeight="900" color={appTheme.colors.success}>
-                                                {fmt(Number(p.amount))}
-                                            </Text>
-                                            <Text fontSize={10} color={appTheme.colors.textMuted}>
-                                                {new Date(p.collected_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                            </Text>
-                                        </YStack>
-                                        <Pressable onPress={() => setEditingPayment(p)} hitSlop={8}>
-                                            <Edit2 size={14} color={appTheme.colors.primary} />
-                                        </Pressable>
-                                    </XStack>
-                                ))}
-                            </YStack>
-                        ) : null}
-                        <XStack gap={8}>
-                            {canRecordCash ? (
-                                <Pressable
-                                    style={[s.secondaryBtn, s.primaryOutlineBtn, { flex: 1 }]}
-                                    onPress={() => setShowPayment('cash')}
-                                >
-                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>
-                                        {payments.length > 0 ? '+ Thêm lần thu' : 'Thu tiền mặt'}
-                                    </Text>
-                                </Pressable>
-                            ) : null}
-                            {canMarkUnpaid ? (
-                                <Pressable
-                                    style={[s.secondaryBtn, s.warnBtn, { flex: 1 }]}
-                                    onPress={() => setShowPayment('unpaid')}
-                                >
-                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.warningText}>
-                                        Báo công nợ
-                                    </Text>
-                                </Pressable>
-                            ) : null}
-                        </XStack>
-                    </YStack>
-                ) : null}
-
                 {/* ── Phiếu thu (Yêu cầu tạo phiếu thu — chỉ last driver cash) ── */}
                 <ReceiptRequestSection
                     trip={trip}
@@ -1106,18 +643,14 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
             <CameraModal
                 visible={cameraTarget !== null}
                 label={
-                    cameraTarget === 'loading'        ? 'Chụp ảnh lấy hàng' :
-                    cameraTarget === 'proof'          ? 'Chụp ảnh xác nhận giao hàng' :
-                    cameraTarget === 'paymentReceipt' ? 'Chụp ảnh biên lai thanh toán' :
-                    cameraTarget === 'editReceipt'    ? 'Chụp ảnh biên lai (cập nhật)' :
-                                                        'Chụp ảnh hoàn hàng (tuỳ chọn)'
+                    cameraTarget === 'loading' ? 'Chụp ảnh lấy hàng' :
+                    cameraTarget === 'proof'   ? 'Chụp ảnh xác nhận giao hàng' :
+                                                 'Chụp ảnh hoàn hàng (tuỳ chọn)'
                 }
                 onCapture={(uri) => {
-                    if      (cameraTarget === 'loading')        setLoadingUri(uri);
-                    else if (cameraTarget === 'proof')          setProofUri(uri);
-                    else if (cameraTarget === 'return')         setReturnUri(uri);
-                    else if (cameraTarget === 'paymentReceipt') setPaymentReceiptUri(uri);
-                    else if (cameraTarget === 'editReceipt')    setEditReceiptUri(uri);
+                    if      (cameraTarget === 'loading') setLoadingUri(uri);
+                    else if (cameraTarget === 'proof')   setProofUri(uri);
+                    else if (cameraTarget === 'return')  setReturnUri(uri);
                     setCameraTarget(null);
                 }}
                 onClose={() => setCameraTarget(null)}
@@ -1141,35 +674,6 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 onSuccess={() => { setShowExpense(false); void loadExpenses(); }}
             />
 
-            {/* PaymentModal nhận receiptUri + callbacks từ đây — không có CameraModal bên trong Modal */}
-            {showPayment ? (
-                <PaymentModal
-                    visible
-                    tripId={trip.id}
-                    mode={showPayment}
-                    receiptUri={paymentReceiptUri}
-                    estimatedPrice={trip.estimated_price ? Number(trip.estimated_price) : null}
-                    remainingAmount={paymentSummary?.remaining ?? null}
-                    onRequestCamera={() => openCamera('paymentReceipt')}
-                    onDeleteReceipt={() => setPaymentReceiptUri(null)}
-                    onClose={() => { setShowPayment(null); setPaymentReceiptUri(null); }}
-                    onSuccess={() => { setShowPayment(null); setPaymentReceiptUri(null); refresh(); void loadPaymentData(); }}
-                />
-            ) : null}
-
-            {/* EditPaymentModal — dùng View+absoluteFill, không phải Modal */}
-            {editingPayment ? (
-                <EditPaymentModal
-                    visible
-                    tripId={trip.id}
-                    payment={editingPayment}
-                    newReceiptUri={editReceiptUri}
-                    onRequestCamera={() => openCamera('editReceipt')}
-                    onDeleteNewReceipt={() => setEditReceiptUri(null)}
-                    onClose={() => { setEditingPayment(null); setEditReceiptUri(null); }}
-                    onSuccess={() => { setEditingPayment(null); setEditReceiptUri(null); void loadPaymentData(); }}
-                />
-            ) : null}
         </View>
     );
 }
@@ -1276,46 +780,4 @@ const s = StyleSheet.create({
 
     // Stop dot
     stopDot: { width: 10, height: 10, borderRadius: 5 },
-
-    // Payment / Edit modal overlay (View + absoluteFill, không dùng RN Modal)
-    modalBackdrop: {
-        backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    modalOverlay: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    paymentCard: {
-        backgroundColor: appTheme.colors.surface,
-        borderRadius: appTheme.radius.xl,
-        padding: 20,
-        margin: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.18,
-        shadowRadius: 12,
-        elevation: 10,
-    },
-    modalBtn: {
-        paddingVertical: 12, borderRadius: 10,
-        alignItems: 'center', justifyContent: 'center',
-    },
-    modalBtnSecondary: {
-        backgroundColor: appTheme.colors.surfaceSoft,
-        borderWidth: 1, borderColor: appTheme.colors.border,
-    },
-    amountInput: {
-        borderWidth: 1.5, borderColor: appTheme.colors.border,
-        borderRadius: 10, padding: 12,
-        fontSize: 20, fontWeight: '900',
-        color: appTheme.colors.text,
-        backgroundColor: appTheme.colors.background,
-    },
-    notesInput: {
-        borderWidth: 1.5, borderColor: appTheme.colors.border,
-        borderRadius: 10, padding: 12, fontSize: 14,
-        color: appTheme.colors.text, minHeight: 60,
-        backgroundColor: appTheme.colors.background,
-        textAlignVertical: 'top',
-    },
 });

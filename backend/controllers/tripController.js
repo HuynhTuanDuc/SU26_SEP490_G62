@@ -372,6 +372,24 @@ const getDriverReceiptDetail = async (req, res) => {
     }
 };
 
+// POST /api/trips/receipts/:receiptId/record-collection — driver xác nhận hình thức thu tiền
+// Body: { collection_type: 'cash_collected' | 'bank_transfer' | 'client_credit' }
+const recordReceiptCollection = async (req, res) => {
+    try {
+        const receiptId = Number(req.params.receiptId);
+        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+        const { collection_type } = req.body;
+        if (!collection_type) return res.status(400).json({ error: 'Thiếu collection_type' });
+        const result = await tripService.recordReceiptCollection(receiptId, req.user.userId, collection_type);
+        res.status(201).json(result);
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('đã được ghi nhận') || err.message.includes('đã được cập nhật') ? 409
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -395,4 +413,5 @@ module.exports = {
     getPendingReceiptOrder,
     getDriverReceipts,
     getDriverReceiptDetail,
+    recordReceiptCollection,
 };

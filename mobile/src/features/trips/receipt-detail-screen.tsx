@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, ScrollView, StyleSheet, View,
+    ActivityIndicator, ScrollView, StyleSheet, View, Pressable,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Receipt, MapPin, Truck, User, Ruler } from 'phosphor-react-native';
+import { Receipt, MapPin, Truck, User, Ruler, Buildings, CurrencyCircleDollar, Clock } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { AppText }      from '@/components/app-text';
 import { appTheme }     from '@/theme/app-theme';
 import { tripService }  from '@/services/trip-service';
+import { useToast }     from '@/providers/ui-provider';
 import type { DriverReceiptDetail, PaymentType } from '@/types/trip';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -64,6 +65,183 @@ function Row({ label, value, bold }: { label: string; value: string | null | und
     );
 }
 
+// ─── Payment collection section ───────────────────────────────────────────────
+
+type CollectionType = 'cash_collected' | 'bank_transfer' | 'client_credit';
+
+function CollectionStatusBadge({ type }: { type: CollectionType }) {
+    const configs = {
+        cash_collected: {
+            label: 'Tài đã thu tiền mặt — nợ công ty',
+            color: appTheme.colors.success,
+            bg: appTheme.colors.successSoft,
+            border: appTheme.colors.successBorder,
+        },
+        bank_transfer: {
+            label: 'Khách đã trả về công ty',
+            color: appTheme.colors.statusTransit,
+            bg: '#EBF5FF',
+            border: '#BFD9F7',
+        },
+        client_credit: {
+            label: 'Đã ghi nhận công nợ khách',
+            color: appTheme.colors.warning,
+            bg: appTheme.colors.warningSoft,
+            border: appTheme.colors.warningBorder,
+        },
+    };
+    const cfg = configs[type];
+    return (
+        <XStack
+            padding={12} borderRadius={12} gap={8} alignItems="center"
+            backgroundColor={cfg.bg} borderWidth={1} borderColor={cfg.border}
+        >
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cfg.color }} />
+            <Text fontSize={13} fontWeight="700" color={cfg.color} flex={1}>{cfg.label}</Text>
+        </XStack>
+    );
+}
+
+function PaymentCollectionSection({
+    receipt,
+    onRecorded,
+}: {
+    receipt: DriverReceiptDetail;
+    onRecorded: () => void;
+}) {
+    const { showToast } = useToast();
+    const [isLoading, setIsLoading] = useState<CollectionType | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    // Determine current collection status
+    const collectionDone: CollectionType | null =
+        receipt.has_driver_debt ? 'cash_collected' :
+        receipt.has_customer_debt ? 'client_credit' :
+        receipt.payment_type !== 'cash_collected' ? (receipt.payment_type as CollectionType) :
+        null;
+
+    if (collectionDone) {
+        return (
+            <YStack gap={8}>
+                <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted} letterSpacing={0.5}>
+                    HÌNH THỨC THU TIỀN
+                </Text>
+                <CollectionStatusBadge type={collectionDone} />
+            </YStack>
+        );
+    }
+
+    const handleRecord = async (type: CollectionType) => {
+        setIsLoading(type);
+        setError(null);
+        try {
+            await tripService.recordReceiptCollection(receipt.receipt_id, type);
+            showToast({
+                type: 'success',
+                message:
+                    type === 'cash_collected' ? 'Đã ghi nhận — bạn đang giữ tiền, nhớ nộp về công ty' :
+                    type === 'bank_transfer'  ? 'Đã xác nhận khách trả về công ty' :
+                                                'Đã ghi nhận công nợ khách hàng',
+            });
+            onRecorded();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Không thể ghi nhận');
+        } finally {
+            setIsLoading(null);
+        }
+    };
+
+    return (
+        <YStack gap={10}>
+            <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted} letterSpacing={0.5}>
+                XÁC NHẬN THU TIỀN
+            </Text>
+            <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={18}>
+                Khách thanh toán theo hình thức nào?
+            </Text>
+
+            {/* Option 1: Company received (bank/QR) */}
+            <Pressable
+                style={({ pressed }) => [
+                    styles.collectionBtn,
+                    { borderColor: '#BFD9F7', backgroundColor: pressed ? '#D9ECFF' : '#EBF5FF' },
+                ]}
+                onPress={() => void handleRecord('bank_transfer')}
+                disabled={isLoading !== null}
+            >
+                <Buildings size={20} color={appTheme.colors.statusTransit} weight="fill" />
+                <YStack flex={1} gap={2}>
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.statusTransit}>
+                        Khách trả về công ty
+                    </Text>
+                    <Text fontSize={11} color={appTheme.colors.textMuted}>
+                        Chuyển khoản / QR — công ty đã nhận
+                    </Text>
+                </YStack>
+                {isLoading === 'bank_transfer' && (
+                    <ActivityIndicator size="small" color={appTheme.colors.statusTransit} />
+                )}
+            </Pressable>
+
+            {/* Option 2: Driver received cash → driver debt */}
+            <Pressable
+                style={({ pressed }) => [
+                    styles.collectionBtn,
+                    {
+                        borderColor: appTheme.colors.successBorder,
+                        backgroundColor: pressed ? appTheme.colors.successSoft : '#F0FBF4',
+                    },
+                ]}
+                onPress={() => void handleRecord('cash_collected')}
+                disabled={isLoading !== null}
+            >
+                <CurrencyCircleDollar size={20} color={appTheme.colors.success} weight="fill" />
+                <YStack flex={1} gap={2}>
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>
+                        Tài đã thu tiền mặt
+                    </Text>
+                    <Text fontSize={11} color={appTheme.colors.textMuted}>
+                        Bạn cầm tiền mặt — hệ thống ghi nợ tài
+                    </Text>
+                </YStack>
+                {isLoading === 'cash_collected' && (
+                    <ActivityIndicator size="small" color={appTheme.colors.success} />
+                )}
+            </Pressable>
+
+            {/* Option 3: Customer hasn't paid → customer debt */}
+            <Pressable
+                style={({ pressed }) => [
+                    styles.collectionBtn,
+                    {
+                        borderColor: appTheme.colors.warningBorder,
+                        backgroundColor: pressed ? appTheme.colors.warningSoft : '#FFFBEB',
+                    },
+                ]}
+                onPress={() => void handleRecord('client_credit')}
+                disabled={isLoading !== null}
+            >
+                <Clock size={20} color={appTheme.colors.warning} weight="fill" />
+                <YStack flex={1} gap={2}>
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.warning}>
+                        Khách chưa thanh toán
+                    </Text>
+                    <Text fontSize={11} color={appTheme.colors.textMuted}>
+                        Ghi công nợ — kế toán theo dõi thu hồi
+                    </Text>
+                </YStack>
+                {isLoading === 'client_credit' && (
+                    <ActivityIndicator size="small" color={appTheme.colors.warning} />
+                )}
+            </Pressable>
+
+            {error ? (
+                <Text fontSize={12} color={appTheme.colors.danger} textAlign="center">{error}</Text>
+            ) : null}
+        </YStack>
+    );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function ReceiptDetailScreen() {
@@ -74,14 +252,16 @@ export function ReceiptDetailScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [error,     setError]     = useState<string | null>(null);
 
-    useEffect(() => {
+    const load = () => {
         if (!id) { setError('ID phiếu thu không hợp lệ'); setIsLoading(false); return; }
         setIsLoading(true);
         tripService.getDriverReceiptDetail(id)
             .then(({ receipt: data }) => setReceipt(data))
             .catch((err) => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
             .finally(() => setIsLoading(false));
-    }, [id]);
+    };
+
+    useEffect(() => { load(); }, [id]);
 
     if (isLoading) {
         return (
@@ -228,6 +408,16 @@ export function ReceiptDetailScreen() {
                         </>
                     ) : null}
 
+                    <Divider />
+
+                    {/* Payment collection actions */}
+                    <YStack paddingVertical={14} gap={0}>
+                        <PaymentCollectionSection
+                            receipt={receipt}
+                            onRecorded={() => load()}
+                        />
+                    </YStack>
+
                     {/* Footer */}
                     <View style={styles.footer}>
                         <Text fontSize={10} color={appTheme.colors.textMuted} textAlign="center">
@@ -287,6 +477,14 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: appTheme.colors.border,
         borderStyle: 'dashed',
+    },
+    collectionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        padding: 14,
+        borderRadius: 14,
+        borderWidth: 1.5,
     },
 });
 
