@@ -173,21 +173,21 @@ const releaseTrip = async (tripId, driverId, reason) => {
 // Bắt buộc 2 ảnh:
 //   proofFileUrl   — ảnh xác nhận giao hàng (BR-015/016/017)
 //   receiptFileUrl — ảnh biên lai/hóa đơn có chữ ký khách
-const completeTrip = async (tripId, driverId, proofFileUrl, receiptFileUrl) => {
+const completeTrip = async (tripId, driverId, proofFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.ARRIVED) throw new Error('Chuyến phải ở trạng thái "arrived" để hoàn thành');
     if (!proofFileUrl) throw new Error('Ảnh xác nhận giao hàng là bắt buộc (BR-015)');
-    if (!receiptFileUrl) throw new Error('Ảnh biên lai/hóa đơn là bắt buộc');
 
-    // Lưu cả 2 ảnh vào delivery_proofs
     await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
-    await tripRepository.saveDeliveryProof(tripId, driverId, receiptFileUrl);
 
-    const completedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
+    await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
 
-    const isFinal = await tripRepository.isFinalShipment(tripId);
+    // Lấy full trip (có order_payment_type, is_final_shipment) để mobile điều hướng đúng
+    const completedTrip = await tripRepository.getFullTripById(tripId);
+
+    const isFinal = completedTrip.is_final_shipment;
 
     notificationService.createForUser(driverId, {
         title: isFinal ? 'Hoàn thành toàn bộ đơn hàng!' : 'Hoàn thành chuyến',
@@ -241,67 +241,6 @@ const startTransit = async (tripId, driverId, proofFileUrl) => {
     return updatedTrip;
 };
 
-// Driver gửi yêu cầu tạo phiếu thu — coordinator nhận và xử lý
-// Chỉ được gửi 1 lần mỗi chuyến (UNIQUE constraint trên shipment_id)
-const requestReceipt = async (tripId, driverId, { actual_km } = {}) => {
-    const trip = await tripRepository.getTripById(tripId);
-    if (!trip) throw new Error('Chuyến không tồn tại');
-    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền yêu cầu phiếu thu cho chuyến này');
-    if (!['transit', 'arrived', 'completed'].includes(trip.status)) {
-        throw new Error('Chỉ có thể yêu cầu phiếu thu khi chuyến đang vận chuyển, đã đến nơi, hoặc đã hoàn thành');
-    }
-
-    const existing = await pool.query(
-        'SELECT id, status FROM shipment_receipt_requests WHERE shipment_id = $1',
-        [tripId],
-    );
-    if (existing.rows.length > 0) {
-        throw new Error('Yêu cầu tạo phiếu thu đã được gửi cho chuyến này rồi. Vui lòng chờ coordinator xử lý.');
-    }
-
-    const km = actual_km ? Number(actual_km) : null;
-    if (km !== null && (isNaN(km) || km <= 0)) {
-        throw new Error('Số km thực tế không hợp lệ');
-    }
-
-    const result = await pool.query(
-        `INSERT INTO shipment_receipt_requests (shipment_id, driver_id, actual_km, status, requested_at)
-         VALUES ($1, $2, $3, 'pending', NOW())
-         RETURNING *`,
-        [tripId, driverId, km],
-    );
-
-    // Notify all active coordinators
-    const coordResult = await pool.query(
-        `SELECT a.id FROM accounts a
-         JOIN roles r ON r.id = a.role_id
-         WHERE r.name = 'coordinator' AND a.is_active = TRUE`,
-    );
-    const coordIds = coordResult.rows.map(r => r.id);
-    if (coordIds.length > 0) {
-        notificationService.createForUsers(coordIds, {
-            title: 'Yêu cầu tạo phiếu thu',
-            message: `Tài xế yêu cầu phiếu thu cho chuyến #${tripId}${km ? ` (${km} km thực tế)` : ''} — Đơn #${trip.order_id}.`,
-            type: 'RECEIPT_REQUEST',
-            entityType: 'shipments',
-            entityId: tripId,
-        }, { displayMode: 'alert' }).catch(() => {});
-    }
-
-    return result.rows[0];
-};
-
-const getReceiptRequest = async (tripId, driverId) => {
-    const trip = await tripRepository.getTripById(tripId);
-    if (!trip) throw new Error('Chuyến không tồn tại');
-    if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền xem chuyến này');
-
-    const result = await pool.query(
-        'SELECT * FROM shipment_receipt_requests WHERE shipment_id = $1',
-        [tripId],
-    );
-    return result.rows[0] ?? null;
-};
 
 // ITEM 2 — TH3: Driver marks customer unpaid → creates Customer Debt
 const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
@@ -429,6 +368,146 @@ const getOrderDetail = async (orderId, driverId) => {
     return detail;
 };
 
+// Mọi driver đều nhập km sau khi hoàn thành; chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
+const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) => {
+    const shipment = await tripRepository.getTripById(shipmentId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+    if (Number(shipment.owner_driver_id) !== Number(driverId))
+        throw new Error('Bạn không có quyền gửi yêu cầu phiếu thu cho chuyến này');
+    if (shipment.status !== 'completed')
+        throw new Error('Chuyến phải ở trạng thái "completed" để gửi yêu cầu phiếu thu');
+    if (Number(shipment.order_id) !== Number(orderId))
+        throw new Error('Chuyến không thuộc đơn hàng này');
+
+    // km bắt buộc với mọi driver
+    const km = actualKm !== undefined && actualKm !== null && String(actualKm).trim() !== ''
+        ? Number(actualKm) : null;
+    if (km === null || isNaN(km) || km <= 0)
+        throw new Error('Số km thực tế là bắt buộc và phải lớn hơn 0');
+
+    // Lưu km vào order_shipments cho mọi driver
+    await tripRepository.saveShipmentActualKm(shipmentId, km);
+
+    const isFinal = await tripRepository.isFinalShipment(shipmentId);
+
+    // Kiểm tra payment_type của order
+    const orderRes = await pool.query(`SELECT payment_type FROM orders WHERE id = $1`, [orderId]);
+    const orderPaymentType = orderRes.rows[0]?.payment_type;
+
+    // Chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
+    if (!isFinal || orderPaymentType !== 'cash') {
+        return { km_saved: true, receipt_request_created: false };
+    }
+
+    // Driver cuối đơn cash: tạo yêu cầu phiếu thu (BR-018B — chỉ 1 lần)
+    const existing = await tripRepository.getOrderReceiptRequestByOrderId(orderId);
+    if (existing) throw new Error('Đơn hàng này đã có yêu cầu tạo phiếu thu rồi (BR-018B)');
+
+    let request;
+    try {
+        request = await tripRepository.createOrderReceiptRequest(orderId, driverId, shipmentId);
+    } catch (err) {
+        if (err.code === '23505') throw new Error('Đơn hàng này đã có yêu cầu tạo phiếu thu rồi (BR-018B)');
+        throw err;
+    }
+
+    // Thông báo cho coordinator
+    const coordResult = await pool.query(
+        `SELECT a.id FROM accounts a
+         JOIN roles r ON r.id = a.role_id
+         WHERE r.name IN ('coordinator', 'admin') AND a.is_active = TRUE`,
+    );
+    const coordIds = coordResult.rows.map(r => r.id);
+    if (coordIds.length > 0) {
+        notificationService.createForUsers(coordIds, {
+            title: 'Yêu cầu tạo phiếu thu',
+            message: `Tài xế yêu cầu phiếu thu cho đơn #${orderId} (${km} km).`,
+            type: 'RECEIPT_REQUEST',
+            entityType: 'orders',
+            entityId: orderId,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
+
+    notificationService.createForUser(driverId, {
+        title: 'Đã gửi yêu cầu tạo phiếu thu',
+        message: `Yêu cầu phiếu thu cho đơn #${orderId} đã được gửi. Coordinator sẽ xem xét sớm.`,
+        type: 'RECEIPT_REQUESTED',
+        entityType: 'orders',
+        entityId: orderId,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return { km_saved: true, receipt_request_created: true, request };
+};
+
+const getOrderReceiptRequest = async (orderId) => {
+    return tripRepository.getOrderReceiptRequestByOrderId(orderId);
+};
+
+const getPendingReceiptOrder = async (driverId) => {
+    return tripRepository.getPendingReceiptOrder(driverId);
+};
+
+const getDriverReceipts = async (driverId, opts) => {
+    return tripRepository.getDriverReceipts(driverId, opts);
+};
+
+const getDriverReceiptDetail = async (receiptId, driverId) => {
+    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
+    if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền xem');
+    return receipt;
+};
+
+// Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
+// 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
+const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
+    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
+    if (!ALLOWED.includes(collectionType)) {
+        throw new Error('Hình thức thanh toán không hợp lệ');
+    }
+
+    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
+    if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền');
+
+    if (receipt.has_driver_debt || receipt.has_customer_debt) {
+        throw new Error('Hình thức thanh toán đã được ghi nhận cho chuyến này');
+    }
+
+    const shipmentId = receipt.shipment_id;
+    const amount     = Number(receipt.amount);
+
+    if (collectionType === 'cash_collected') {
+        const shipment = await tripRepository.getTripById(shipmentId);
+        await paymentRepository.createDriverDebt({
+            driverId,
+            shipmentId,
+            orderId: shipment.order_id,
+            amount,
+            notes: null,
+        });
+        notificationService.createForUser(driverId, {
+            title: 'Đã ghi nhận thu tiền mặt',
+            message: `Bạn đang giữ ${amount.toLocaleString('vi-VN')}đ — nộp về công ty khi có dịp.`,
+            type: 'DEBT_CREATED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'silent' }).catch(() => {});
+    } else if (collectionType === 'client_credit') {
+        const shipment = await tripRepository.getTripById(shipmentId);
+        const orderRes = await pool.query(`SELECT customer_id FROM orders WHERE id = $1`, [shipment.order_id]);
+        if (!orderRes.rows[0]) throw new Error('Không tìm thấy đơn hàng liên quan');
+        await paymentRepository.createCustomerDebt({
+            customerId: orderRes.rows[0].customer_id,
+            driverId,
+            shipmentId,
+            orderId: shipment.order_id,
+            amount,
+        });
+    }
+    // bank_transfer — khách trả về DN, không cần tạo debt hay cập nhật DB
+
+    return { collection_type: collectionType, amount, recorded: true };
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -439,11 +518,15 @@ module.exports = {
     startTransit,
     markUnpaid,
     returnComplete,
-    requestReceipt,
-    getReceiptRequest,
     getDriverStats,
     getOrderHistory,
     getAvailableShipmentDetail,
     getAvailableOrderDetail,
     getOrderDetail,
+    requestOrderReceipt,
+    getOrderReceiptRequest,
+    getPendingReceiptOrder,
+    getDriverReceipts,
+    getDriverReceiptDetail,
+    recordReceiptCollection,
 };

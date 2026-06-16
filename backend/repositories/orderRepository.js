@@ -725,8 +725,8 @@ const createOrderWithMultipleShipments = async ({
 
         const shipmentResult = await client.query(// ghi 1 lần và lấy bản ghi ordershipment vừa tạo
             `INSERT INTO order_shipments
-                (order_id, shipment_index, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, actual_price, claimed_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()), $13, CASE WHEN $10 = 'claimed' THEN NOW() ELSE NULL END)
+                (order_id, shipment_index, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()), CASE WHEN $10 = 'claimed' THEN NOW() ELSE NULL END)
              RETURNING *`,
             [
                 order.id,
@@ -741,7 +741,6 @@ const createOrderWithMultipleShipments = async ({
                 shipmentData.status,
                 shipmentData.notes,
                 shipmentData.created_at || null,
-                orderData.total_actual_price || 0,
             ],
         );
 
@@ -921,7 +920,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
                             arrivedAt,
-                            total_actual_price !== undefined ? total_actual_price : 0,
+                            shipmentData.actual_price ?? null,
                             nextStatus,
                         ],
                     );

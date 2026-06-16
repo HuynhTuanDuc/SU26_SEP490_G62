@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-    KeyboardAvoidingView, Platform,
-    Pressable, ScrollView, StyleSheet, TextInput, View,
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCameraPermissions } from 'expo-camera';
 import {
     AlertTriangle, CheckCircle, ChevronDown, ChevronUp,
-    Clock, FileText, Info, MapPin, Package,
+    FileText, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
 import { Image } from 'react-native';
@@ -25,12 +22,10 @@ import { useCompletionProof }   from '@/hooks/use-completion-proof';
 import { useLoadingProof }      from '@/hooks/use-loading-proof';
 import { useReturnComplete }    from '@/hooks/use-return-complete';
 import { useReleaseTrip }       from '@/hooks/use-release-trip';
-import { useReceiptRequest, useLoadReceiptRequest } from '@/hooks/use-receipt-request';
 import { useShipmentExpenses }  from '@/hooks/use-shipment-expenses';
-import { tripService }          from '@/services/trip-service';
 import { useTripLifecycle }     from '@/hooks/use-trip-lifecycle';
 import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
-import type { ActiveTrip, Expense, ReceiptRequest, TripStatus, TripStop } from '@/types/trip';
+import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
 import { CameraModal }      from './components/camera-modal';
@@ -43,8 +38,8 @@ import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status
 const STATUS_ADVANCE_TOAST: Partial<Record<TripStatus, string>> = {
     picking:   'Đang di chuyển đến điểm lấy hàng',
     transit:   'Đang vận chuyển hàng đến điểm giao',
-    arrived:   'Đã đến điểm giao — tiến hành giao hàng',
-    failed:    'Ghi nhận giao thất bại — cần hoàn hàng về điểm lấy',
+    arrived:   'Đã đến điểm giao – tiến hành giao hàng',
+    failed:    'Ghi nhận giao thất bại – cần hoàn hàng về điểm lấy',
     returning: 'Đang hoàn hàng về điểm lấy',
 };
 
@@ -207,10 +202,9 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
     );
 }
 
-// ─── Stops section ───────────────────────────────────────────────────────────
+// ─── Stops section ────────────────────────────────────────────────────────────
 
 // Derive stop visual state từ trip status khi DB chưa có timestamp
-// (xảy ra khi driver update status mà chưa kịp sync DB)
 function deriveStopState(
     stop: TripStop,
     tripStatus: TripStatus,
@@ -280,270 +274,37 @@ function StopsSection({ stops, tripStatus }: { stops: TripStop[]; tripStatus: Tr
     );
 }
 
-// ─── Receipt Request Modal (Yêu cầu tạo phiếu thu) ──────────────────────────
+// ─── Receipt request section (cash_collected: tất cả tài nhập km; tài cuối tạo thêm phiếu thu) ────
 
-function ReceiptRequestModal({
-    visible, trip, onClose, onSuccess,
-}: {
-    visible: boolean;
-    trip: ActiveTrip;
-    onClose: () => void;
-    onSuccess: () => void;
-}) {
-    const { showToast } = useToast();
-    const [actualKm, setActualKm] = useState('');
-    const { isLoading, error, request, clearError } = useReceiptRequest(() => {
-        showToast({ type: 'success', message: 'Đã gửi yêu cầu — coordinator sẽ xử lý sớm nhất' });
-        onSuccess();
-    });
-
-    const handleSubmit = async () => {
-        const km = actualKm.trim() ? Number(actualKm.replace(',', '.')) : undefined;
-        if (km !== undefined && (isNaN(km) || km <= 0)) {
-            showToast({ type: 'error', message: 'Số km không hợp lệ' });
-            return;
-        }
-        await request(trip.id, km);
-    };
-
-    if (!visible) return null;
-
-    return (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
-            <Pressable style={[StyleSheet.absoluteFill, s.modalBackdrop]} onPress={onClose} />
-            <KeyboardAvoidingView
-                style={s.modalOverlay}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                pointerEvents="box-none"
-            >
-                <View style={s.paymentCard}>
-                    {/* Header */}
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={14}>
-                        <XStack alignItems="center" gap={8}>
-                            <FileText size={18} color={appTheme.colors.primary} />
-                            <Text fontSize={16} fontWeight="900" color={appTheme.colors.text}>
-                                Yêu cầu tạo phiếu thu
-                            </Text>
-                        </XStack>
-                        <Pressable onPress={onClose} hitSlop={12}>
-                            <X size={18} color={appTheme.colors.textMuted} />
-                        </Pressable>
-                    </XStack>
-
-                    {/* Trip info */}
-                    <YStack
-                        padding={12} borderRadius={appTheme.radius.md}
-                        backgroundColor={appTheme.colors.surfaceSoft}
-                        borderWidth={1} borderColor={appTheme.colors.border}
-                        gap={6} style={{ marginBottom: 14 }}
-                    >
-                        <XStack alignItems="center" gap={6}>
-                            <Info size={12} color={appTheme.colors.textMuted} />
-                            <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>
-                                THÔNG TIN CHUYẾN
-                            </Text>
-                        </XStack>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
-                            Đơn #{trip.order_id} · Chuyến {trip.shipment_index}/{trip.max_shipment_index}
-                        </Text>
-                        <Text fontSize={12} color={appTheme.colors.textMuted} numberOfLines={1}>
-                            {trip.pickup_address}
-                        </Text>
-                        <Text fontSize={12} color={appTheme.colors.textMuted} numberOfLines={1}>
-                            → {trip.delivery_address}
-                        </Text>
-                        {trip.cargo_name ? (
-                            <Text fontSize={12} color={appTheme.colors.text}>Hàng: {trip.cargo_name}</Text>
-                        ) : null}
-                        {trip.estimated_price ? (
-                            <XStack justifyContent="space-between">
-                                <Text fontSize={12} color={appTheme.colors.textMuted}>Giá ước tính</Text>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>
-                                    {fmt(trip.estimated_price)}
-                                </Text>
-                            </XStack>
-                        ) : null}
-                    </YStack>
-
-                    {/* Actual km input */}
-                    <View style={{ marginBottom: 14, gap: 6 }}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
-                            SỐ KM THỰC TẾ (TUỲ CHỌN)
-                        </Text>
-                        <TextInput
-                            value={actualKm}
-                            onChangeText={(t) => { setActualKm(t); if (error) clearError(); }}
-                            keyboardType="numeric"
-                            placeholder="Bỏ trống = dùng giá ước tính ban đầu"
-                            placeholderTextColor={appTheme.colors.textMuted}
-                            returnKeyType="done"
-                            style={s.amountInput}
-                        />
-                        {actualKm.trim() && Number(actualKm) > 0 ? (
-                            <XStack gap={6} alignItems="center">
-                                <AlertTriangle size={11} color={appTheme.colors.warningText} />
-                                <Text fontSize={11} color={appTheme.colors.warningText} flex={1}>
-                                    Coordinator sẽ tính lại giá theo {actualKm} km thực tế
-                                </Text>
-                            </XStack>
-                        ) : null}
-                    </View>
-
-                    {/* One-time warning */}
-                    <XStack
-                        padding={10} borderRadius={appTheme.radius.sm}
-                        backgroundColor={appTheme.colors.warningSoft}
-                        borderWidth={1} borderColor={appTheme.colors.warningBorder}
-                        gap={6} alignItems="center"
-                        style={{ marginBottom: 14 }}
-                    >
-                        <AlertTriangle size={12} color={appTheme.colors.warningText} />
-                        <Text fontSize={11} color={appTheme.colors.warningText} flex={1} lineHeight={16}>
-                            Phiếu thu chỉ được tạo 1 lần cho mỗi chuyến. Kiểm tra kỹ trước khi xác nhận.
-                        </Text>
-                    </XStack>
-
-                    {/* API error */}
-                    {error ? (
-                        <XStack
-                            padding={10} borderRadius={8}
-                            backgroundColor={appTheme.colors.dangerSoft}
-                            borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                            gap={8} alignItems="center"
-                            style={{ marginBottom: 14 }}
-                        >
-                            <AlertTriangle size={13} color={appTheme.colors.danger} />
-                            <Text fontSize={12} color={appTheme.colors.danger} flex={1}>{error}</Text>
-                        </XStack>
-                    ) : null}
-
-                    {/* Actions */}
-                    <XStack gap={10}>
-                        <Pressable style={[s.modalBtn, s.modalBtnSecondary, { flex: 1 }]} onPress={onClose}>
-                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.text}>Hủy</Text>
-                        </Pressable>
-                        <Pressable
-                            style={[s.modalBtn, {
-                                flex: 2,
-                                backgroundColor: isLoading
-                                    ? appTheme.colors.primaryMuted
-                                    : appTheme.colors.primary,
-                            }]}
-                            onPress={handleSubmit}
-                            disabled={isLoading}
-                        >
-                            <Text fontSize={14} fontWeight="900" color="#fff">
-                                {isLoading ? 'Đang gửi...' : 'Xác nhận gửi yêu cầu'}
-                            </Text>
-                        </Pressable>
-                    </XStack>
-                </View>
-            </KeyboardAvoidingView>
-        </View>
-    );
-}
-
-// ─── Receipt Request Section ──────────────────────────────────────────────────
-
-function ReceiptRequestSection({
-    trip,
-    receiptRequest,
-    canRequest,
-    onRequestSuccess,
-}: {
-    trip: ActiveTrip;
-    receiptRequest: ReceiptRequest | null;
-    canRequest: boolean;
-    onRequestSuccess: () => void;
-}) {
-    const [showModal, setShowModal] = useState(false);
-
+function ReceiptRequestSection({ trip, canRequest }: { trip: ActiveTrip; canRequest: boolean }) {
     if (!canRequest) return null;
 
-    if (receiptRequest) {
-        if (receiptRequest.status === 'pending' || receiptRequest.status === 'processing') {
-            return (
-                <XStack
-                    padding={12} borderRadius={appTheme.radius.md}
-                    backgroundColor={appTheme.colors.warningSoft}
-                    borderWidth={1} borderColor={appTheme.colors.warningBorder}
-                    alignItems="center" gap={8}
-                >
-                    <Clock size={14} color={appTheme.colors.warningText} />
-                    <YStack flex={1} gap={2}>
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.warningText}>
-                            Đã gửi yêu cầu tạo phiếu thu
-                        </Text>
-                        <Text fontSize={11} color={appTheme.colors.warningText}>
-                            Đang chờ coordinator xử lý
-                            {receiptRequest.actual_km ? ` · ${receiptRequest.actual_km} km` : ''}
-                        </Text>
-                    </YStack>
-                </XStack>
-            );
-        }
-
-        if (receiptRequest.status === 'approved') {
-            return (
-                <XStack
-                    padding={12} borderRadius={appTheme.radius.md}
-                    backgroundColor={appTheme.colors.successSoft}
-                    borderWidth={1} borderColor={appTheme.colors.successBorder}
-                    alignItems="center" gap={8}
-                >
-                    <CheckCircle size={14} color={appTheme.colors.success} />
-                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.success} flex={1}>
-                        Phiếu thu đã được tạo — xem chi tiết trong thông báo
-                    </Text>
-                </XStack>
-            );
-        }
-
-        if (receiptRequest.status === 'rejected') {
-            return (
-                <YStack
-                    padding={12} borderRadius={appTheme.radius.md}
-                    backgroundColor={appTheme.colors.dangerSoft}
-                    borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                    gap={4}
-                >
-                    <XStack alignItems="center" gap={8}>
-                        <XCircle size={14} color={appTheme.colors.danger} />
-                        <Text fontSize={12} fontWeight="700" color={appTheme.colors.danger}>
-                            Yêu cầu phiếu thu bị từ chối
-                        </Text>
-                    </XStack>
-                    {receiptRequest.coordinator_notes ? (
-                        <Text fontSize={11} color={appTheme.colors.danger} style={{ paddingLeft: 22 }}>
-                            Lý do: {receiptRequest.coordinator_notes}
-                        </Text>
-                    ) : null}
-                </YStack>
-            );
-        }
-    }
+    const needsReceiptRequest = trip.is_final_shipment && trip.order_payment_type === 'cash';
+    const label = needsReceiptRequest ? 'Yêu cầu tạo phiếu thu' : 'Nhập km thực tế';
 
     return (
-        <>
-            <Pressable
-                style={[s.secondaryBtn, s.primaryOutlineBtn]}
-                onPress={() => setShowModal(true)}
-            >
-                <FileText size={14} color={appTheme.colors.primary} />
-                <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
-                    Yêu cầu tạo phiếu thu
-                </Text>
-            </Pressable>
-
-            {showModal ? (
-                <ReceiptRequestModal
-                    visible
-                    trip={trip}
-                    onClose={() => setShowModal(false)}
-                    onSuccess={() => { setShowModal(false); onRequestSuccess(); }}
-                />
-            ) : null}
-        </>
+        <Pressable
+            style={[s.secondaryBtn, s.primaryOutlineBtn]}
+            onPress={() => router.push({
+                pathname: '/receipt-request',
+                params: {
+                    orderId:          String(trip.order_id),
+                    shipmentId:       String(trip.id),
+                    estimatedPrice:   trip.estimated_price ?? '',
+                    cargoName:        trip.cargo_name ?? '',
+                    pickupAddress:    trip.pickup_address,
+                    deliveryAddress:  trip.delivery_address,
+                    shipmentIndex:    String(trip.shipment_index),
+                    maxShipmentIndex: String(trip.max_shipment_index),
+                    orderPaymentType: trip.order_payment_type ?? '',
+                },
+            })}
+        >
+            <FileText size={14} color={appTheme.colors.primary} />
+            <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
+                {label}
+            </Text>
+        </Pressable>
     );
 }
 
@@ -564,20 +325,42 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
     // Camera state
     const [proofUri,   setProofUri]   = useState<string | null>(null);
-    const [receiptUri, setReceiptUri] = useState<string | null>(null);
     const [loadingUri, setLoadingUri] = useState<string | null>(null);
     const [returnUri,  setReturnUri]  = useState<string | null>(null);
-    const [cameraTarget, setCameraTarget] = useState<'proof' | 'receipt' | 'loading' | 'return' | null>(null);
+    const [cameraTarget, setCameraTarget] = useState<'proof' | 'loading' | 'return' | null>(null);
 
     const [showRelease, setShowRelease] = useState(false);
     const [showExpense, setShowExpense] = useState(false);
 
-    const { isUploading: completingProof, completeWithProof } = useCompletionProof(async () => {
-        await showAlert({ type: 'success', title: 'Hoàn thành chuyến!', message: 'Giao hàng thành công.', okLabel: 'Tuyệt vời!' });
-        router.back();
+    // Flag để trigger navigation sau khi hoàn thành chuyến (qua useEffect để đảm bảo render cycle)
+    const [justCompleted, setJustCompleted] = useState(false);
+
+    const { isUploading: completingProof, completeWithProof } = useCompletionProof(() => {
+        setJustCompleted(true);
     });
+
+    useEffect(() => {
+        if (!justCompleted) return;
+        setJustCompleted(false);
+        // Mọi tài đều nhập km sau khi hoàn thành — tài cuối của đơn cash còn tạo yêu cầu phiếu thu
+        router.replace({
+            pathname: '/receipt-request',
+            params: {
+                orderId:          String(trip.order_id),
+                shipmentId:       String(trip.id),
+                estimatedPrice:   trip.estimated_price ?? '',
+                cargoName:        trip.cargo_name ?? '',
+                pickupAddress:    trip.pickup_address,
+                deliveryAddress:  trip.delivery_address,
+                shipmentIndex:    String(trip.shipment_index),
+                maxShipmentIndex: String(trip.max_shipment_index),
+                orderPaymentType: trip.order_payment_type ?? '',
+            },
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [justCompleted]);
     const { isUploading: submittingLoad, submitLoadingProof } = useLoadingProof(() => {
-        showToast({ type: 'success', message: 'Đã lấy hàng — bắt đầu vận chuyển đến điểm giao', duration: 2500 });
+        showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển đến điểm giao', duration: 2500 });
         refresh();
     });
     const { isUploading: completingReturn, completeReturn } = useReturnComplete(async () => {
@@ -598,17 +381,12 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const isArrived     = trip.status === 'arrived';
     const isReturning   = trip.status === 'returning';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
-    const canAddExpense = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
+    const canAddExpense   = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
 
-    // Yêu cầu tạo phiếu thu: từ lúc đang vận chuyển trở đi
-    const canRequestReceipt = ['transit', 'arrived', 'completed'].includes(trip.status);
+    // Mọi tài đều thấy nút này sau khi COMPLETED để nhập km (tài cuối cash còn tạo phiếu thu)
+    const canRequestReceipt = trip.status === 'completed';
 
-    // Receipt request — load khi section hiện, reload sau khi gửi yêu cầu thành công
-    const { receiptRequest, loadReceiptRequest } = useLoadReceiptRequest(canRequestReceipt ? trip.id : null);
-
-    useEffect(() => { void loadReceiptRequest(); }, [loadReceiptRequest]);
-
-    const openCamera = async (target: 'proof' | 'receipt' | 'loading' | 'return') => {
+    const openCamera = async (target: 'proof' | 'loading' | 'return') => {
         if (!permission?.granted) {
             const res = await requestPermission();
             if (!res.granted) return;
@@ -720,7 +498,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     ) : null}
                 </CollapsibleSection>
 
-                {/* ── Stops (collapsible) — Item 4 ── */}
+                {/* ── Stops (collapsible) – Item 4 ── */}
                 <StopsSection stops={trip.stops ?? []} tripStatus={trip.status as TripStatus} />
 
                 {/* ── Expenses (collapsible) ── */}
@@ -732,7 +510,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     />
                 </CollapsibleSection>
 
-                {/* ── Loading proof section (PICKING) — Item 1 ── */}
+                {/* ── Loading proof section (PICKING) – Item 1 ── */}
                 {isPicking ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.successSoft}
@@ -761,7 +539,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     </YStack>
                 ) : null}
 
-                {/* ── Delivery proof section (ARRIVED) — 2 ảnh bắt buộc ── */}
+                {/* ── Delivery proof section (ARRIVED) — chỉ ảnh xác nhận giao hàng ── */}
                 {isArrived ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.successSoft}
@@ -769,39 +547,30 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                         padding={14} gap={10}
                     >
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
-                            ẢNH XÁC NHẬN GIAO HÀNG (2 ẢNH BẮT BUỘC)
+                            ẢNH XÁC NHẬN GIAO HÀNG (BẮT BUỘC)
                         </Text>
                         <PhotoCaptureCard
                             label="Ảnh xác nhận giao hàng"
-                            sublabel="Chụp hàng / người nhận tại điểm giao (BR-015)"
+                            sublabel="Chụp hàng / người nhận tại điểm giao (BR-015/016)"
                             uri={proofUri}
                             required
                             onCapture={() => openCamera('proof')}
                             onDelete={() => setProofUri(null)}
                         />
-                        <PhotoCaptureCard
-                            label="Ảnh biên lai / hóa đơn"
-                            sublabel="Chụp biên lai hoặc hóa đơn có chữ ký của khách"
-                            uri={receiptUri}
-                            required
-                            onCapture={() => openCamera('receipt')}
-                            onDelete={() => setReceiptUri(null)}
-                        />
                         <LifecycleActionButton
                             label={completingProof ? 'Đang tải ảnh...' : 'Hoàn thành chuyến'}
                             tone="primary"
                             onPress={() => {
-                                if (proofUri && receiptUri)
-                                    void completeWithProof(trip.id, proofUri, receiptUri);
+                                if (proofUri) void completeWithProof(trip.id, proofUri);
                             }}
                             isLoading={completingProof}
-                            disabled={!proofUri || !receiptUri}
-                            icon={<CheckCircle size={17} color={(proofUri && receiptUri) ? '#fff' : appTheme.colors.textMuted} />}
+                            disabled={!proofUri}
+                            icon={<CheckCircle size={17} color={proofUri ? '#fff' : appTheme.colors.textMuted} />}
                         />
                     </YStack>
                 ) : null}
 
-                {/* ── Return complete section (RETURNING) — Item 5 ── */}
+                {/* ── Return complete section (RETURNING) – Item 5 ── */}
                 {isReturning ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.border}
@@ -839,12 +608,10 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     />
                 ) : null}
 
-                {/* ── Phiếu thu (Yêu cầu tạo phiếu thu) ── */}
+                {/* ── Phiếu thu (Yêu cầu tạo phiếu thu — chỉ last driver cash) ── */}
                 <ReceiptRequestSection
                     trip={trip}
-                    receiptRequest={receiptRequest}
                     canRequest={canRequestReceipt}
-                    onRequestSuccess={() => void loadReceiptRequest()}
                 />
 
                 {/* ── Secondary actions row ── */}
@@ -873,20 +640,16 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                 </XStack>
             </ScrollView>
 
-            {/* ── Modals ── */}
-            {/* Một CameraModal duy nhất — tránh Modal-in-Modal */}
             <CameraModal
                 visible={cameraTarget !== null}
                 label={
                     cameraTarget === 'loading' ? 'Chụp ảnh lấy hàng' :
                     cameraTarget === 'proof'   ? 'Chụp ảnh xác nhận giao hàng' :
-                    cameraTarget === 'receipt' ? 'Chụp ảnh biên lai / hóa đơn' :
                                                  'Chụp ảnh hoàn hàng (tuỳ chọn)'
                 }
                 onCapture={(uri) => {
                     if      (cameraTarget === 'loading') setLoadingUri(uri);
                     else if (cameraTarget === 'proof')   setProofUri(uri);
-                    else if (cameraTarget === 'receipt') setReceiptUri(uri);
                     else if (cameraTarget === 'return')  setReturnUri(uri);
                     setCameraTarget(null);
                 }}
@@ -915,7 +678,6 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     );
 }
 
-// ─── Screen shell ─────────────────────────────────────────────────────────────
 
 export function ActiveTripScreen() {
     const { trip, isLoading, error, refresh } = useActiveTrip();
@@ -956,7 +718,6 @@ export function ActiveTripScreen() {
     );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
     // Collapsible badge
@@ -1019,47 +780,4 @@ const s = StyleSheet.create({
 
     // Stop dot
     stopDot: { width: 10, height: 10, borderRadius: 5 },
-
-    // Receipt request / Payment modal
-    modalBackdrop: {
-        backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    modalOverlay: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    modalBtn: {
-        paddingVertical: 12, borderRadius: 10,
-        alignItems: 'center', justifyContent: 'center',
-    },
-    modalBtnSecondary: {
-        backgroundColor: appTheme.colors.surfaceSoft,
-        borderWidth: 1, borderColor: appTheme.colors.border,
-    },
-    amountInput: {
-        borderWidth: 1.5, borderColor: appTheme.colors.border,
-        borderRadius: 10, padding: 12,
-        fontSize: 20, fontWeight: '900',
-        color: appTheme.colors.text,
-        backgroundColor: appTheme.colors.background,
-    },
-    notesInput: {
-        borderWidth: 1.5, borderColor: appTheme.colors.border,
-        borderRadius: 10, padding: 12, fontSize: 14,
-        color: appTheme.colors.text, minHeight: 60,
-        backgroundColor: appTheme.colors.background,
-        textAlignVertical: 'top',
-    },
-    paymentCard: {
-        backgroundColor: appTheme.colors.surface,
-        borderRadius: appTheme.radius.xl,
-        padding: 20,
-        margin: 20,
-        // Shadow để nổi lên trên backdrop
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.18,
-        shadowRadius: 12,
-        elevation: 10,
-    },
 });

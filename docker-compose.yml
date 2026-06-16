@@ -8,7 +8,8 @@ services:
       POSTGRES_DB: SEP490
     volumes:
       - db_data:/var/lib/postgresql/data
-      - './DB script:/docker-entrypoint-initdb.d'
+      - './DB script/DB script.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro'
+      - './DB script/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro'
     ports:
       - "5432:5432"
     networks:

@@ -11,6 +11,34 @@ const recordCashPayment = async ({ shipmentId, amount, collectedBy, notes }) => 
     return { payment: result.rows[0] };
 };
 
+const getPendingReceiptShell = async (shipmentId) => {
+    const result = await pool.query(
+        `SELECT *
+         FROM shipment_receipts
+         WHERE shipment_id = $1
+           AND payment_type IS NULL
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [shipmentId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const confirmReceiptShell = async ({ paymentId, paymentType, amount, collectedBy, notes }) => {
+    const result = await pool.query(
+        `UPDATE shipment_receipts
+         SET payment_type = $1,
+             amount = $2,
+             collected_by = $3,
+             notes = $4,
+             collected_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [paymentType, amount, collectedBy, notes ?? null, paymentId],
+    );
+    return result.rows[0] ?? null;
+};
+
 const addPaymentReceipt = async (paymentId, fileUrl) => {
     const result = await pool.query(
         `INSERT INTO payment_receipts (payment_id, file_url)
@@ -38,6 +66,7 @@ const getShipmentPayments = async (shipmentId) => {
          FROM shipment_receipts sp
          LEFT JOIN payment_receipts pr ON pr.payment_id = sp.id
          WHERE sp.shipment_id = $1
+           AND sp.payment_type IS NOT NULL
          GROUP BY sp.id
          ORDER BY sp.collected_at ASC`,
         [shipmentId],
@@ -51,7 +80,7 @@ const getShipmentFinancialSummary = async (shipmentId) => {
         `SELECT
             COALESCE(os.actual_price, os.estimated_price, 0)          AS trip_value,
             o.payment_type                                             AS order_payment_type,
-            COALESCE(SUM(sp.amount), 0)                               AS cash_collected,
+            COALESCE(SUM(sp.amount) FILTER (WHERE sp.payment_type IS NOT NULL), 0) AS cash_collected,
             COALESCE(SUM(d.total_amount)
                 FILTER (WHERE d.debt_type = 'customer'
                           AND d.status NOT IN ('paid')), 0)           AS customer_debt_total
@@ -90,6 +119,16 @@ const createDriverDebt = async ({ driverId, shipmentId, orderId, amount, notes }
     );
 };
 
+// Tạo customer debt khi driver báo khách chưa trả (§15 TH3)
+const createCustomerDebt = async ({ customerId, driverId, shipmentId, orderId, amount }) => {
+    await pool.query(
+        `INSERT INTO debts
+             (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, paid_amount, status, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', NOW(), NOW())`,
+        [customerId, driverId, shipmentId ?? null, orderId ?? null, amount],
+    );
+};
+
 const getPaymentById = async (paymentId) => {
     const result = await pool.query(
         `SELECT sp.id, sp.shipment_id, sp.payment_type, sp.amount::text, sp.collected_by,
@@ -123,5 +162,7 @@ const replacePaymentReceipts = async (paymentId, newFileUrl) => {
 
 module.exports = {
     recordCashPayment, addPaymentReceipt, getShipmentPayments, getShipmentFinancialSummary,
-    createDriverDebt, getPaymentById, updateShipmentPayment, replacePaymentReceipts,
+    createDriverDebt, createCustomerDebt,
+    getPaymentById, updateShipmentPayment, replacePaymentReceipts,
+    getPendingReceiptShell, confirmReceiptShell,
 };

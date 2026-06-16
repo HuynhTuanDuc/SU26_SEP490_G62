@@ -157,7 +157,7 @@ function LeaveCard({ leave, onDelete }: { leave: LeaveRequest; onDelete: (id: nu
 
 function RegisterLeaveOverlay({ onClose, onSuccess }: {
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (leaveDate: string) => void;
 }) {
     const [date, setDate]             = useState<Date>(new Date());
     const [leaveType, setLeaveType]   = useState<LeaveType>('unpaid');
@@ -172,14 +172,15 @@ function RegisterLeaveOverlay({ onClose, onSuccess }: {
     };
 
     const handleSubmit = async () => {
+        const isoDate = dateToIso(date);
         const ok = await submit({
-            leaveDate: dateToIso(date),
+            leaveDate: isoDate,
             leaveType,
             reason: reason.trim() || undefined,
         });
         if (ok) {
             Alert.alert('Thành công', 'Đã đăng ký nghỉ thành công.', [
-                { text: 'Đóng', onPress: onSuccess },
+                { text: 'Đóng', onPress: () => onSuccess(isoDate) },
             ]);
         }
     };
@@ -326,7 +327,11 @@ export function LeaveScreen() {
         else setMonth((m) => m - 1);
     };
     const goToNext = () => {
-        if (year > now.getFullYear() || (year === now.getFullYear() && month >= now.getMonth() + 1)) return;
+        // Cho phép xem trước tối đa 12 tháng — tài xế có thể đăng ký nghỉ trước
+        const limit      = new Date(now.getFullYear(), now.getMonth() + 12, 1);
+        const limitYear  = limit.getFullYear();
+        const limitMonth = limit.getMonth() + 1;
+        if (year > limitYear || (year === limitYear && month >= limitMonth)) return;
         if (month === 12) { setMonth(1); setYear((y) => y + 1); }
         else setMonth((m) => m + 1);
     };
@@ -430,7 +435,14 @@ export function LeaveScreen() {
             {showForm ? (
                 <RegisterLeaveOverlay
                     onClose={() => setShowForm(false)}
-                    onSuccess={() => { setShowForm(false); reload(); }}
+                    onSuccess={(leaveDate) => {
+                        setShowForm(false);
+                        // Navigate to the month of the registered leave so it's visible
+                        const [y, m] = leaveDate.split('-').map(Number);
+                        setYear(y);
+                        setMonth(m);
+                        // reload triggered automatically by useEffect([reload]) when month/year changes
+                    }}
                 />
             ) : null}
         </View>

@@ -23,9 +23,10 @@ import {
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { AppText }    from '@/components/app-text';
-import { ScreenHeader } from '@/components/screen-header';
-import { appTheme }   from '@/theme/app-theme';
+import { AppText }              from '@/components/app-text';
+import { ScreenHeader }         from '@/components/screen-header';
+import { NotificationSkeleton } from '@/components/skeleton';
+import { appTheme }             from '@/theme/app-theme';
 import { useNotifications } from '@/hooks/use-notifications';
 import type { AppNotification } from '@/types/notification';
 
@@ -323,6 +324,21 @@ export function NotificationsScreen() {
             <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>Đọc tất cả</Text>
         </Pressable>
     ) : null;
+
+    if (isLoading && notifications.length === 0) {
+        return (
+            <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
+                <ScreenHeader title="Thông báo" showBack right={headerRight} />
+                <YStack
+                    paddingHorizontal={appTheme.spacing.screenX}
+                    paddingTop={16}
+                    gap={10}
+                >
+                    <NotificationSkeleton count={6} />
+                </YStack>
+            </View>
+        );
+    }
 
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>

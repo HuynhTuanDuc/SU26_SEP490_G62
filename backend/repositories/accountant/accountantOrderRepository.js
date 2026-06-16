@@ -140,9 +140,8 @@ const insertDebtForShipment = async (client, {
     driverPaymentState, paymentType,
     createdByUserId,
 }) => {
-    // Map payment_type về schema DB mới (debt -> client_credit)
     const normalizedPaymentType =
-        paymentType === 'debt' ? 'client_credit' : (paymentType || null);
+        paymentType === 'debt' ? 'mixed' : (paymentType || null);
 
     // Tài xế giữ tiền → tạo công nợ tài xế (chỉ set driver_id, các FK khác = NULL)
     if (driverPaymentState === 'driver_holding') {
@@ -159,7 +158,7 @@ const insertDebtForShipment = async (client, {
                 $6, NOW(), NOW())`,
             [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
-    } else if (normalizedPaymentType === 'client_credit') {
+    } else if (normalizedPaymentType === 'mixed') {
         // Khách nợ → tạo công nợ khách (chỉ set customer_id, các FK khác = NULL)
         const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
@@ -361,7 +360,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             c.phone AS customer_phone,
             COALESCE(d_agg.debt_total, 0) AS debt_total,
             COALESCE(d_agg.debt_paid, 0) AS debt_paid,
-            -- debt_remaining: chỉ tính khi đơn có customer debt (client_credit / debt)
+            -- debt_remaining: chỉ tính khi đơn có customer debt
             -- Nếu không có customer debt (cash / bank_transfer), remaining = 0
             CASE
                 WHEN COALESCE(d_agg.debt_total, 0) > 0

@@ -13,6 +13,7 @@ router.post('/import-excel', uploadExcel.single('file'), coordinatorController.i
 
 // Receipt request management (driver yêu cầu → coordinator xử lý)
 router.get('/receipt-requests',          coordinatorController.getReceiptRequests);
+router.get('/receipt-requests/:id',      coordinatorController.getReceiptRequestDetail);
 router.post('/receipt-requests/:id/approve', coordinatorController.approveReceiptRequest);
 router.post('/receipt-requests/:id/reject',  coordinatorController.rejectReceiptRequest);
 

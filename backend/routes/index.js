@@ -19,6 +19,7 @@ const vehicleManagementRoutes = require('./vehicleManagementRoutes');
 const leaveRoutes = require('./leaveRoutes');
 const accountantRoutes = require('./accountant/accountantRoutes');
 const cashCollectionRoutes   = require('./cashCollectionRoutes');
+const companyRoutes          = require('./companyRoutes');
 
 
 // Register route modules
@@ -40,5 +41,6 @@ router.use('/api/payroll', payrollRoutes);
 router.use('/api/debts', debtRoutes);
 router.use('/api/leave',            leaveRoutes);
 router.use('/api/cash-collections', cashCollectionRoutes);
+router.use('/api/company',          companyRoutes);
 
 module.exports = router;

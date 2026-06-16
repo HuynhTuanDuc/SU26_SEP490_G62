@@ -4,8 +4,8 @@ import type {
     CancelDeliveryResponse,
     ClaimTripResponse,
     CompleteTripResponse,
-    ReceiptRequest,
     ReleaseTripResponse,
+    RequestOrderReceiptResponse,
     TripPoolResponse,
     TripStatus,
     UpdateStatusResponse,
@@ -19,6 +19,9 @@ export const tripService = {
     },
 
     getActiveTrip: () => apiClient.get<ActiveTripResponse>('/api/trips/active'),
+
+    getPendingReceiptOrder: () =>
+        apiClient.get<{ order: import('@/types/trip').PendingReceiptOrder | null }>('/api/trips/pending-receipt'),
 
     claim: (shipmentId: number) =>
         apiClient.post<ClaimTripResponse>(`/api/trips/${shipmentId}/claim`, {}),
@@ -41,11 +44,9 @@ export const tripService = {
     returnComplete: (tripId: number, formData: FormData) =>
         apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, formData),
 
-    // TH3: Báo khách chưa trả → tạo customer debt
     markUnpaid: (tripId: number, amount: number, notes?: string) =>
         apiClient.post<{ message: string; debt: object }>(`/api/trips/${tripId}/mark-unpaid`, { amount, notes }),
 
-    // TH2: Ghi nhận khách trả tiền mặt → tạo driver debt
     recordPayment: (tripId: number, formData: FormData) =>
         apiClient.postForm<{ message: string; payment: object; debt: object }>(`/api/trips/${tripId}/payment`, formData),
 
@@ -70,28 +71,45 @@ export const tripService = {
     createExpense: (formData: FormData) =>
         apiClient.postForm<import('@/types/trip').CreateExpenseResponse>('/api/expenses', formData),
 
-    // Trạng thái tài chính chuyến — trip_value, cash_collected, remaining...
     getPaymentSummary: (tripId: number) =>
         apiClient.get<import('@/types/trip').PaymentSummary>(`/api/trips/${tripId}/payment-summary`),
 
-    // Danh sách ghi nhận tiền mặt của chuyến
     getShipmentPayments: (tripId: number) =>
         apiClient.get<{ payments: import('@/types/trip').ShipmentPayment[] }>(`/api/trips/${tripId}/payments`),
 
-    // Sửa ghi nhận tiền mặt (amount + thay ảnh nếu có)
     updatePayment: (tripId: number, paymentId: number, formData: FormData) =>
         apiClient.patchForm<{ message: string; payment: import('@/types/trip').ShipmentPayment }>(
             `/api/trips/${tripId}/payments/${paymentId}`, formData,
         ),
 
-    // Yêu cầu tạo phiếu thu (driver → coordinator) — chỉ 1 lần mỗi chuyến
-    requestReceipt: (tripId: number, actualKm?: number) =>
-        apiClient.post<{ message: string; request: ReceiptRequest }>(
-            `/api/trips/${tripId}/request-receipt`,
-            { actual_km: actualKm ?? null },
+    requestOrderReceipt: (orderId: number, body: { shipment_id: number; actual_km: number }) =>
+        apiClient.post<RequestOrderReceiptResponse>(
+            `/api/orders/${orderId}/request-receipt`, body,
         ),
 
-    // Lấy trạng thái yêu cầu phiếu thu hiện tại của chuyến
-    getReceiptRequest: (tripId: number) =>
-        apiClient.get<{ request: ReceiptRequest | null }>(`/api/trips/${tripId}/receipt-request`),
+    // Lấy trạng thái yêu cầu phiếu thu cấp Order
+    getOrderReceiptRequest: (orderId: number) =>
+        apiClient.get<{ request: import('@/types/trip').OrderReceiptRequest | null }>(
+            `/api/orders/${orderId}/receipt-request`,
+        ),
+
+    // Phiếu thu đã được coordinator tạo — driver xem + show cho khách
+    getDriverReceipts: (page = 1, limit = 20) =>
+        apiClient.get<{ receipts: import('@/types/trip').DriverReceiptSummary[] }>(
+            `/api/trips/receipts?page=${page}&limit=${limit}`,
+        ),
+
+    getDriverReceiptDetail: (receiptId: number) =>
+        apiClient.get<{ receipt: import('@/types/trip').DriverReceiptDetail }>(
+            `/api/trips/receipts/${receiptId}`,
+        ),
+
+    recordReceiptCollection: (receiptId: number, collectionType: 'cash_collected' | 'bank_transfer' | 'client_credit') =>
+        apiClient.post<{ collection_type: string; amount: number; recorded: boolean }>(
+            `/api/trips/receipts/${receiptId}/record-collection`,
+            { collection_type: collectionType },
+        ),
+
+    getCompanyInfo: () =>
+        apiClient.get<{ info: import('@/types/trip').CompanyInfo }>('/api/company/info'),
 };

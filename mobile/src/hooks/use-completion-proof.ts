@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { tripService } from '@/services/trip-service';
-import type { ActiveTrip } from '@/types/trip';
 
 type State = {
     isUploading: boolean;
@@ -17,18 +16,15 @@ async function compressImage(uri: string): Promise<string> {
     return result.uri;
 }
 
-export function useCompletionProof(onSuccess?: (trip: ActiveTrip) => void) {
+export function useCompletionProof(onSuccess?: () => void) {
     const [state, setState] = useState<State>({ isUploading: false, error: null });
 
-    // proofUri   — ảnh xác nhận giao hàng (bắt buộc, BR-015/016/017)
-    // receiptUri — ảnh biên lai/hóa đơn có chữ ký khách (bắt buộc)
-    const completeWithProof = async (tripId: number, proofUri: string, receiptUri: string) => {
+    // proofUri — ảnh xác nhận giao hàng (bắt buộc, BR-015/016/017)
+    // Ảnh biên lai được chụp riêng ở màn hình receipt-request (BR-008A/B)
+    const completeWithProof = async (tripId: number, proofUri: string) => {
         setState({ isUploading: true, error: null });
         try {
-            const [compressedProof, compressedReceipt] = await Promise.all([
-                compressImage(proofUri),
-                compressImage(receiptUri),
-            ]);
+            const compressedProof = await compressImage(proofUri);
 
             const formData = new FormData();
             formData.append('proof', {
@@ -36,20 +32,13 @@ export function useCompletionProof(onSuccess?: (trip: ActiveTrip) => void) {
                 type: 'image/jpeg',
                 name: 'proof.jpg',
             } as unknown as Blob);
-            formData.append('receipt', {
-                uri: compressedReceipt,
-                type: 'image/jpeg',
-                name: 'receipt.jpg',
-            } as unknown as Blob);
 
-            const { trip } = await tripService.completeWithProof(tripId, formData);
+            await tripService.completeWithProof(tripId, formData);
             setState({ isUploading: false, error: null });
-            onSuccess?.(trip);
-            return trip;
+            onSuccess?.();
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Không thể hoàn thành chuyến';
             setState({ isUploading: false, error: message });
-            return null;
         }
     };
 

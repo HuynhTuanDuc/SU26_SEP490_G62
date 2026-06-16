@@ -31,20 +31,29 @@ const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, 
         );
     }
 
-    if (summary.remaining !== null && amt > summary.remaining) {
-        const msg = summary.remaining <= 0
-            ? `Chuyến này đã được ghi nhận đủ số tiền (${fmtVND(summary.trip_value)}). Không thể ghi thêm.`
-            : `Số tiền ${fmtVND(amt)} vượt quá phần còn lại ${fmtVND(summary.remaining)} ` +
-              `(giá trị chuyến ${fmtVND(summary.trip_value)}, đã thu ${fmtVND(summary.cash_collected)}, đã báo nợ ${fmtVND(summary.customer_debt_total)}).`;
-        throw new Error(msg);
-    }
+    // Không chặn theo estimated_price — giá trị đơn hàng chỉ là ước tính,
+    // số tiền thực thu có thể cao hơn hoặc thấp hơn. Kế toán sẽ xác nhận.
 
-    const { payment } = await paymentRepository.recordCashPayment({
-        shipmentId,
-        amount: amt,
-        collectedBy: driverId,
-        notes: notes?.trim() ?? null,
-    });
+    const normalizedNotes = notes?.trim() ?? null;
+    const pendingShell = await paymentRepository.getPendingReceiptShell(shipmentId);
+    const { payment } = pendingShell
+        ? {
+            payment: await paymentRepository.confirmReceiptShell({
+                paymentId: pendingShell.id,
+                paymentType: 'cash_collected',
+                amount: amt,
+                collectedBy: driverId,
+                notes: normalizedNotes,
+            }),
+        }
+        : await paymentRepository.recordCashPayment({
+            shipmentId,
+            amount: amt,
+            collectedBy: driverId,
+            notes: normalizedNotes,
+        });
+
+    if (!payment) throw new Error('Không thể xác nhận phiếu thu cho chuyến này');
 
     await paymentRepository.addPaymentReceipt(payment.id, receiptUrl);
 
@@ -54,7 +63,7 @@ const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, 
         shipmentId,
         orderId: shipment.order_id,
         amount: amt,
-        notes: notes?.trim() ?? null,
+        notes: normalizedNotes,
     });
 
     return { payment };

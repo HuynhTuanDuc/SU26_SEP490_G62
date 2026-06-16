@@ -10,6 +10,7 @@ export default function TabLayout() {
             <Tabs.Screen name="index" />
             <Tabs.Screen name="kpi" />
             <Tabs.Screen name="history" />
+            <Tabs.Screen name="receipts" />
             <Tabs.Screen name="payroll" />
             <Tabs.Screen name="profile" />
         </Tabs>

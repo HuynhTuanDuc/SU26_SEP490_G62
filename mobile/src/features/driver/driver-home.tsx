@@ -1,13 +1,13 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
     AlertOctagon, Banknote, Bell, CalendarOff,
-    Package, PackageCheck,
+    FileText, Package, PackageCheck,
     TriangleAlert, Truck,
 } from 'lucide-react-native';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { AppButton } from '@/components/app-button';
@@ -15,12 +15,59 @@ import { ActiveTripBannerSkeleton, StatRowSkeleton } from '@/components/skeleton
 import { StatCard } from '@/components/stat-card';
 import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
-import { useActiveTrip }   from '@/hooks/use-active-trip';
-import { useHomeSummary }  from '@/hooks/use-home-summary';
-import { useNotifications } from '@/hooks/use-notifications';
-import { useProfile }      from '@/hooks/use-profile';
-import { useTripStats }    from '@/hooks/use-trip-stats';
-import type { TripStatus } from '@/types/trip';
+import { useActiveTrip }      from '@/hooks/use-active-trip';
+import { useHomeSummary }     from '@/hooks/use-home-summary';
+import { useNotifications }   from '@/hooks/use-notifications';
+import { usePendingReceipt }  from '@/hooks/use-pending-receipt';
+import { useProfile }         from '@/hooks/use-profile';
+import { useTripStats }       from '@/hooks/use-trip-stats';
+import type { PendingReceiptOrder, TripStatus } from '@/types/trip';
+
+// ─── Pending receipt banner ───────────────────────────────────────────────────
+
+function PendingReceiptBanner({ order }: { order: PendingReceiptOrder }) {
+    return (
+        <Pressable
+            onPress={() => router.push({
+                pathname: '/receipt-request',
+                params: {
+                    orderId:          String(order.order_id),
+                    shipmentId:       String(order.shipment_id),
+                    estimatedPrice:   order.estimated_price ?? '',
+                    cargoName:        order.cargo_name ?? '',
+                    pickupAddress:    order.pickup_address,
+                    deliveryAddress:  order.delivery_address,
+                    shipmentIndex:    String(order.shipment_index),
+                    maxShipmentIndex: String(order.max_shipment_index),
+                },
+            })}
+            style={{ borderRadius: appTheme.radius.lg }}
+        >
+            <XStack
+                padding={16} borderRadius={appTheme.radius.lg}
+                backgroundColor={appTheme.colors.primarySoft}
+                borderWidth={1.5} borderColor={appTheme.colors.primaryMuted}
+                alignItems="center" gap={12}
+            >
+                <XStack
+                    width={42} height={42} borderRadius={14}
+                    backgroundColor={appTheme.colors.primary + '22'}
+                    alignItems="center" justifyContent="center"
+                >
+                    <FileText size={20} color={appTheme.colors.primary} />
+                </XStack>
+                <YStack flex={1} gap={2}>
+                    <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
+                        Chưa gửi yêu cầu tạo phiếu thu
+                    </Text>
+                    <Text fontSize={12} color={appTheme.colors.primary} numberOfLines={1}>
+                        Đơn #{order.order_id}{order.cargo_name ? ` · ${order.cargo_name}` : ''} — Nhấn để gửi ngay
+                    </Text>
+                </YStack>
+            </XStack>
+        </Pressable>
+    );
+}
 
 // ─── Active trip banner ───────────────────────────────────────────────────────
 
@@ -157,9 +204,15 @@ export function DriverHomeScreen() {
     const { unreadCount } = useNotifications();
     const { debt_remaining, open_incident_count, reload: reloadSummary } = useHomeSummary();
     const { trip: activeTrip, isLoading: tripLoading } = useActiveTrip();
+    const { order: pendingReceipt, load: loadPendingReceipt } = usePendingReceipt();
 
-    // Load summary on mount
+    // Load on mount
     useEffect(() => { reloadSummary(); }, [reloadSummary]);
+
+    // Reload pending receipt khi quay lại màn hình (driver vừa submit hoặc bỏ qua)
+    useFocusEffect(useCallback(() => {
+        void loadPendingReceipt();
+    }, [loadPendingReceipt]));
 
     const displayName = profileLoading ? '...' : (profile?.full_name ?? 'Tài xế');
 
@@ -248,6 +301,11 @@ export function DriverHomeScreen() {
                     isLoading={tripLoading}
                     onPress={() => router.push('/active-trip')}
                 />
+
+                {/* Pending receipt request reminder */}
+                {pendingReceipt ? (
+                    <PendingReceiptBanner order={pendingReceipt} />
+                ) : null}
 
                 {/* Stats */}
                 {stats ? (
