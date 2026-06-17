@@ -388,7 +388,7 @@ const getVehicleGroupById = async (client, vehicleGroupId) => {
     return result.rows[0] ?? null;
 };
 
-//Chọn loại xe rồi hiển thị các phương tiện 
+//Chọn loại xe rồi hiển thị các phương tiện active, có tài xế, xe chưa chạy đơn, xe không bảo trì; tài xế chưa bận.
 const listCoordinatorVehicleGroups = async () => {
     const result = await pool.query(
         `SELECT
