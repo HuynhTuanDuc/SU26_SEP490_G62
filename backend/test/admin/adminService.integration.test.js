@@ -131,4 +131,22 @@ describe('Admin Service Integration Tests', () => {
         const profile = await pool.query('SELECT phone FROM profiles WHERE id = 1');
         assert.strictEqual(profile.rows[0].phone, null);
     });
+
+    it('disables user successfully', async () => {
+        const result = await adminService.toggleUserStatus(3, false, 1);
+
+        const account = await pool.query('SELECT is_active FROM accounts WHERE id = 3');
+        assert.strictEqual(account.rows[0].is_active, false);
+        assert.strictEqual(result.changed, true);
+    });
+
+    it('does not update database when status is unchanged', async () => {
+        const before = await pool.query('SELECT updated_at FROM accounts WHERE id = 4');
+
+        const result = await adminService.toggleUserStatus(4, false, 1);
+
+        const after = await pool.query('SELECT updated_at FROM accounts WHERE id = 4');
+        assert.strictEqual(result.changed, false);
+        assert.strictEqual(before.rows[0].updated_at.getTime(), after.rows[0].updated_at.getTime());
+    });
 });

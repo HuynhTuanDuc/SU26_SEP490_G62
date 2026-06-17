@@ -44,8 +44,13 @@ const toggleUserStatus = async (req, res) => {
         const { is_active } = req.body;
         const currentUserId = req.user.userId;
 
-        await adminService.toggleUserStatus(userId, is_active, currentUserId);
-        res.json({ message: `Da ${is_active ? 'mo khoa' : 'khoa'} tai khoan.` });
+        const result = await adminService.toggleUserStatus(userId, is_active, currentUserId);
+        const action = is_active ? 'mo khoa' : 'khoa';
+        const message = result.changed
+            ? `Da ${action} tai khoan.`
+            : `Tai khoan da o trang thai ${is_active ? 'hoat dong' : 'da khoa'}.`;
+
+        res.json({ message, user: result });
     } catch (err) {
         console.error('Error toggling user status:', err);
         const status = err.status || 500;

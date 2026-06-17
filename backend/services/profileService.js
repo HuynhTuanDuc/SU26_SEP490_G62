@@ -3,61 +3,16 @@ const bcrypt = require('bcryptjs');
 const profileRepository = require('../repositories/profileRepository');
 const emailService = require('./emailService');
 const pool = require('../config/database');
-
-const GENDER_VALUES = new Set(['male', 'female', 'other']);
+const {
+    normalizeOptionalText,
+    normalizePhone,
+    normalizeDob,
+    normalizeGender,
+    normalizeEmail,
+} = require('../utils/userValidation');
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const EMAIL_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
 const emailVerificationStore = new Map();
-
-const normalizeOptionalText = (value) => {
-    if (value === undefined || value === null) return null;
-    if (typeof value !== 'string') throw new Error('Gia tri khong hop le');
-    const trimmed = value.trim().replace(/\s+/g, ' ');
-    return trimmed || null;
-};
-
-const normalizePhone = (value) => {
-    if (value === undefined || value === null || value === '') return null;
-    if (typeof value !== 'string') throw new Error('So dien thoai khong hop le');
-    const normalized = value.trim().replace(/\s+/g, '');
-    if (!normalized) return null;
-    if (!/^0\d{9,10}$/.test(normalized)) {
-        throw new Error('So dien thoai khong hop le');
-    }
-    return normalized;
-};
-
-const normalizeDob = (value) => {
-    if (value === undefined || value === null || value === '') return null;
-    if (typeof value !== 'string') throw new Error('Ngay sinh khong hop le');
-    const trimmed = value.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) throw new Error('Ngay sinh khong hop le');
-    const date = new Date(`${trimmed}T00:00:00.000Z`);
-    if (Number.isNaN(date.getTime())) throw new Error('Ngay sinh khong hop le');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (date > today) throw new Error('Ngay sinh khong the trong tuong lai');
-    return trimmed;
-};
-
-const normalizeGender = (value) => {
-    if (value === undefined || value === null || value === '') return null;
-    if (typeof value !== 'string') throw new Error('Gioi tinh khong hop le');
-    const normalized = value.trim().toLowerCase();
-    if (!GENDER_VALUES.has(normalized)) {
-        throw new Error('Gioi tinh khong hop le (male / female / other)');
-    }
-    return normalized;
-};
-
-const normalizeEmail = (value) => {
-    if (typeof value !== 'string') throw new Error('Email khong hop le');
-    const normalized = value.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
-        throw new Error('Email khong hop le');
-    }
-    return normalized;
-};
 
 const sanitizeProfileUpdate = (data = {}) => {
     const { email, role_id, role, is_active, id, created_at, updated_at, ...rest } = data;
@@ -66,7 +21,7 @@ const sanitizeProfileUpdate = (data = {}) => {
     if ('full_name' in rest) normalized.full_name = normalizeOptionalText(rest.full_name);
     if ('phone' in rest) normalized.phone = normalizePhone(rest.phone);
     if ('dob' in rest) normalized.dob = normalizeDob(rest.dob);
-    if ('gender' in rest) normalized.gender = normalizeGender(rest.gender);
+    if ('gender' in rest) normalized.gender = normalizeGender(rest.gender, { includeHint: true });
     if ('address' in rest) normalized.address = normalizeOptionalText(rest.address);
     if ('city' in rest) normalized.city = normalizeOptionalText(rest.city);
     if ('country' in rest) normalized.country = normalizeOptionalText(rest.country);

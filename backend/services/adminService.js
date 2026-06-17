@@ -1,6 +1,17 @@
 const profileRepository = require('../repositories/profileRepository');
 const bcrypt = require('bcryptjs');
 const emailService = require('./emailService');
+const {
+    normalizePositiveInteger,
+    normalizeRole,
+    normalizeRequiredText,
+    normalizePhone,
+    normalizeGender,
+    normalizeDob,
+    normalizeOptionalText,
+    assertBoolean,
+    isProtectedUserRole,
+} = require('../utils/userValidation');
 
 class AdminError extends Error {
     constructor(message, status = 400) {
@@ -10,100 +21,55 @@ class AdminError extends Error {
     }
 }
 
-const normalizeUserId = (userId) => {
-    const parsedId = Number.parseInt(userId, 10);
-    if (!Number.isInteger(parsedId) || parsedId <= 0) {
-        throw new AdminError('ID nguoi dung khong hop le.', 400);
+const createAdminError = (message, status = 400) => new AdminError(message, status);
+
+const normalizeUserId = (userId) => normalizePositiveInteger(userId, {
+    fieldLabel: 'ID nguoi dung',
+    errorFactory: createAdminError,
+});
+
+const normalizeManagerRole = (role) => normalizeRole(role, { errorFactory: createAdminError });
+
+const normalizeFullName = (fullName) => normalizeRequiredText(fullName, {
+    fieldLabel: 'Ho ten',
+    errorFactory: createAdminError,
+});
+
+const normalizeUserPhone = (phone) => normalizePhone(phone, { errorFactory: createAdminError });
+
+const normalizeUserGender = (gender) => normalizeGender(gender, { errorFactory: createAdminError });
+
+const normalizeUserDob = (dob) => normalizeDob(dob, { errorFactory: createAdminError });
+
+const normalizeHometown = (city) => normalizeOptionalText(city, {
+    fieldLabel: 'Que quan',
+    errorFactory: createAdminError,
+});
+
+const ensureRoleExists = async (role) => {
+    const roleId = await profileRepository.getRoleIdByName(role);
+    if (!roleId) {
+        throw new AdminError('Vai tro khong hop le.', 400);
     }
-    return parsedId;
+    return roleId;
 };
 
-const normalizeRole = (role) => {
-    if (typeof role !== 'string' || !role.trim()) {
-        throw new AdminError('Vai tro khong duoc de trong.', 400);
+const ensureUserExists = async (userId) => {
+    const existingUser = await profileRepository.getProfileById(userId);
+    if (!existingUser) {
+        throw new AdminError('Nguoi dung khong ton tai.', 404);
     }
-    return role.trim().toLowerCase();
+    return existingUser;
 };
 
-const normalizeFullName = (fullName) => {
-    if (typeof fullName !== 'string') {
-        throw new AdminError('Ho ten khong hop le.', 400);
+const ensureUserCanBeManaged = (user, action) => {
+    if (isProtectedUserRole(user?.role)) {
+        throw new AdminError(`Khong the ${action} tai khoan ${String(user.role).toLowerCase()}.`, 403);
     }
-
-    const trimmedName = fullName.trim().replace(/\s+/g, ' ');
-    if (!trimmedName) {
-        throw new AdminError('Ho ten khong duoc de trong.', 400);
-    }
-
-    return trimmedName;
-};
-
-const normalizePhone = (phone) => {
-    if (phone === undefined || phone === null) return null;
-    if (typeof phone !== 'string') {
-        throw new AdminError('So dien thoai khong hop le.', 400);
-    }
-
-    const normalizedPhone = phone.trim().replace(/\s+/g, '');
-    if (!normalizedPhone) return null;
-    if (!/^0\d{9,10}$/.test(normalizedPhone)) {
-        throw new AdminError('So dien thoai khong hop le.', 400);
-    }
-
-    return normalizedPhone;
-};
-
-const normalizeGender = (gender) => {
-    if (gender === undefined || gender === null || gender === '') return null;
-    if (typeof gender !== 'string') {
-        throw new AdminError('Gioi tinh khong hop le.', 400);
-    }
-
-    const normalizedGender = gender.trim().toLowerCase();
-    if (!['male', 'female', 'other'].includes(normalizedGender)) {
-        throw new AdminError('Gioi tinh khong hop le.', 400);
-    }
-
-    return normalizedGender;
-};
-
-const normalizeDob = (dob) => {
-    if (dob === undefined || dob === null || dob === '') return null;
-    if (typeof dob !== 'string') {
-        throw new AdminError('Ngay sinh khong hop le.', 400);
-    }
-
-    const trimmedDob = dob.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDob)) {
-        throw new AdminError('Ngay sinh khong hop le.', 400);
-    }
-
-    const date = new Date(`${trimmedDob}T00:00:00.000Z`);
-    if (Number.isNaN(date.getTime())) {
-        throw new AdminError('Ngay sinh khong hop le.', 400);
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (date > today) {
-        throw new AdminError('Ngay sinh khong the trong tuong lai.', 400);
-    }
-
-    return trimmedDob;
-};
-
-const normalizeHometown = (city) => {
-    if (city === undefined || city === null) return null;
-    if (typeof city !== 'string') {
-        throw new AdminError('Que quan khong hop le.', 400);
-    }
-
-    const normalizedCity = city.trim().replace(/\s+/g, ' ');
-    return normalizedCity || null;
 };
 
 const getAllUsers = async () => {
-    return await profileRepository.getAllUsers();
+    return profileRepository.getAllUsers();
 };
 
 const createUser = async (email, full_name, phone, role, gender, dob, city) => {
@@ -113,16 +79,12 @@ const createUser = async (email, full_name, phone, role, gender, dob, city) => {
     }
 
     const normalizedFullName = normalizeFullName(full_name || '');
-    const normalizedPhone = normalizePhone(phone);
-    const normalizedGender = normalizeGender(gender);
-    const normalizedDob = normalizeDob(dob);
+    const normalizedPhone = normalizeUserPhone(phone);
+    const normalizedGender = normalizeUserGender(gender);
+    const normalizedDob = normalizeUserDob(dob);
     const normalizedCity = normalizeHometown(city);
-    const normalizedRole = normalizeRole(role);
-
-    const roleId = await profileRepository.getRoleIdByName(normalizedRole);
-    if (!roleId) {
-        throw new AdminError('Vai tro khong hop le.', 400);
-    }
+    const normalizedRole = normalizeManagerRole(role);
+    const roleId = await ensureRoleExists(normalizedRole);
 
     const existingAccount = await profileRepository.getAccountByEmail(email);
     if (existingAccount) {
@@ -155,22 +117,17 @@ const createUser = async (email, full_name, phone, role, gender, dob, city) => {
 
 const updateUser = async (userId, full_name, phone, role, gender, dob, city) => {
     const normalizedUserId = normalizeUserId(userId);
-    const normalizedRole = normalizeRole(role);
+    const normalizedRole = normalizeManagerRole(role);
     const normalizedFullName = normalizeFullName(full_name);
-    const normalizedPhone = normalizePhone(phone);
-    const normalizedGender = normalizeGender(gender);
-    const normalizedDob = normalizeDob(dob);
+    const normalizedPhone = normalizeUserPhone(phone);
+    const normalizedGender = normalizeUserGender(gender);
+    const normalizedDob = normalizeUserDob(dob);
     const normalizedCity = normalizeHometown(city);
 
-    const existingUser = await profileRepository.getProfileById(normalizedUserId);
-    if (!existingUser) {
-        throw new AdminError('Nguoi dung khong ton tai.', 404);
-    }
+    const existingUser = await ensureUserExists(normalizedUserId);
+    ensureUserCanBeManaged(existingUser, 'cap nhat');
 
-    const roleId = await profileRepository.getRoleIdByName(normalizedRole);
-    if (!roleId) {
-        throw new AdminError('Vai tro khong hop le.', 400);
-    }
+    const roleId = await ensureRoleExists(normalizedRole);
 
     try {
         await profileRepository.adminUpdateUser(
@@ -194,16 +151,32 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city) => 
 
 const toggleUserStatus = async (userId, is_active, currentUserId) => {
     const normalizedUserId = normalizeUserId(userId);
+    const normalizedCurrentUserId = normalizeUserId(currentUserId);
+    const normalizedStatus = assertBoolean(is_active, {
+        fieldLabel: 'is_active',
+        errorFactory: createAdminError,
+    });
 
-    if (is_active === undefined) {
-        throw new AdminError('Thieu is_active.', 400);
-    }
-
-    if (Number(normalizedUserId) === Number(currentUserId)) {
+    if (normalizedUserId === normalizedCurrentUserId) {
         throw new AdminError('Khong the tu khoa tai khoan cua chinh minh.', 400);
     }
 
-    await profileRepository.adminToggleUserStatus(normalizedUserId, is_active);
+    const existingUser = await ensureUserExists(normalizedUserId);
+    ensureUserCanBeManaged(existingUser, normalizedStatus ? 'mo khoa' : 'khoa');
+
+    if (existingUser.is_active === normalizedStatus) {
+        return {
+            id: normalizedUserId,
+            is_active: normalizedStatus,
+            changed: false,
+        };
+    }
+
+    const updatedUser = await profileRepository.adminToggleUserStatus(normalizedUserId, normalizedStatus);
+    return {
+        ...updatedUser,
+        changed: true,
+    };
 };
 
 module.exports = {

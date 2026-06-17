@@ -90,7 +90,7 @@ describe('Admin Service', () => {
         it('throws 400 when role is missing', async () => {
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '0987654321', undefined),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai tro khong duoc de trong.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai tro khong hop le.',
             );
         });
 
@@ -114,6 +114,15 @@ describe('Admin Service', () => {
             await assert.rejects(
                 () => adminService.updateUser(999, 'Updated', '0987654321', 'manager'),
                 (err) => err instanceof AdminError && err.status === 404 && err.message === 'Nguoi dung khong ton tai.',
+            );
+        });
+
+        it('throws 403 when updating protected roles', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1, role: 'manager', is_active: true }));
+
+            await assert.rejects(
+                () => adminService.updateUser(1, 'Updated', '0987654321', 'driver'),
+                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Khong the cap nhat tai khoan manager.',
             );
         });
 
@@ -145,6 +154,7 @@ describe('Admin Service', () => {
 
     describe('toggleUserStatus', () => {
         it('locks account successfully', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 2, role: 'driver', is_active: true }));
             mock.method(profileRepository, 'adminToggleUserStatus', async () => ({ id: 2 }));
 
             await adminService.toggleUserStatus(2, false, 1);
@@ -154,10 +164,36 @@ describe('Admin Service', () => {
             assert.strictEqual(args[1], false);
         });
 
+        it('does not call repository when account is already disabled', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 2, role: 'driver', is_active: false }));
+            mock.method(profileRepository, 'adminToggleUserStatus', async () => ({ id: 2, is_active: false }));
+
+            const result = await adminService.toggleUserStatus(2, false, 1);
+
+            assert.strictEqual(profileRepository.adminToggleUserStatus.mock.calls.length, 0);
+            assert.deepStrictEqual(result, { id: 2, is_active: false, changed: false });
+        });
+
         it('prevents locking self', async () => {
             await assert.rejects(
                 () => adminService.toggleUserStatus(1, false, 1),
                 (err) => err instanceof AdminError && err.status === 400 && err.message === 'Khong the tu khoa tai khoan cua chinh minh.',
+            );
+        });
+
+        it('rejects non-boolean is_active', async () => {
+            await assert.rejects(
+                () => adminService.toggleUserStatus(2, 'false', 1),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'is_active khong hop le.',
+            );
+        });
+
+        it('rejects disabling protected roles', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 2, role: 'manager', is_active: true }));
+
+            await assert.rejects(
+                () => adminService.toggleUserStatus(2, false, 1),
+                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Khong the khoa tai khoan manager.',
             );
         });
     });

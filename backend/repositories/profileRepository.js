@@ -39,7 +39,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role, a.is_active, p.avatar_url, p.dob, p.gender, p.city
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id
@@ -77,11 +77,11 @@ const getFullProfile = async (userId) => {
 };
 
 const updateProfile = async (userId, data) => {
-    const fields = Object.keys(data).filter((k) => ALLOWED_UPDATE_FIELDS.includes(k));
+    const fields = Object.keys(data).filter((key) => ALLOWED_UPDATE_FIELDS.includes(key));
     if (fields.length === 0) return getFullProfile(userId);
 
-    const setClauses = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
-    const values = fields.map((f) => data[f]);
+    const setClauses = fields.map((field, index) => `${field} = $${index + 2}`).join(', ');
+    const values = fields.map((field) => data[field]);
 
     const result = await pool.query(
         `UPDATE profiles
@@ -114,9 +114,10 @@ const updateLastLogin = async (accountId) => {
 
 const getProfileById = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, a.is_active
+        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, r.name AS role, a.is_active
          FROM profiles p
          JOIN accounts a ON a.id = p.id
+         LEFT JOIN roles r ON r.id = a.role_id
          WHERE p.id = $1`,
         [profileId],
     );
@@ -146,7 +147,8 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
 
         const accountResult = await client.query(
             `INSERT INTO accounts (email, password_hash, role_id, is_active)
-             VALUES ($1, $2, $3, true) RETURNING id`,
+             VALUES ($1, $2, $3, true)
+             RETURNING id`,
             [email.toLowerCase(), passwordHash, roleId],
         );
         const accountId = accountResult.rows[0].id;
@@ -181,7 +183,7 @@ const adminUpdateUser = async (userId, data, roleId) => {
         );
 
         if (profileResult.rowCount === 0) {
-            throw new Error('Người dùng không tồn tại.');
+            throw new Error('Nguoi dung khong ton tai.');
         }
 
         const accountResult = await client.query(
@@ -193,7 +195,7 @@ const adminUpdateUser = async (userId, data, roleId) => {
         );
 
         if (accountResult.rowCount === 0) {
-            throw new Error('Người dùng không tồn tại.');
+            throw new Error('Nguoi dung khong ton tai.');
         }
 
         await client.query('COMMIT');
@@ -211,12 +213,12 @@ const adminToggleUserStatus = async (userId, isActive) => {
         `UPDATE accounts
          SET is_active = $1, updated_at = NOW()
          WHERE id = $2
-         RETURNING id`,
+         RETURNING id, is_active`,
         [isActive, userId],
     );
 
     if (result.rowCount === 0) {
-        throw new Error('Người dùng không tồn tại.');
+        throw new Error('Nguoi dung khong ton tai.');
     }
 
     return result.rows[0];
