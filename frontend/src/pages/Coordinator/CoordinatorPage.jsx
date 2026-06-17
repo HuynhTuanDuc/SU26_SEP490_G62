@@ -1,6 +1,7 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
+import AppSidebar from "../../components/layout/AppSidebar";
 import { message as toast } from "antd";
 import {
   getTodayStr,
@@ -620,34 +621,13 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   return (
     <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      <aside className="sidebar">
-        <div>
-          <div className="brand">
-            <div className="brand-mark">L</div>
-            {!sidebarCollapsed && (
-              <div>
-                <div className="brand-name">Logistics HQ</div>
-                <div className="brand-sub">Coordinator dashboard</div>
-              </div>
-            )}
-          </div>
-          <button
-            className="sidebar-toggle"
-            type="button"
-            onClick={() => setSidebarCollapsed((value) => !value)}
-            aria-label={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-            title={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-          >
-            {sidebarCollapsed ? "›" : "‹"}
-          </button>
-          <nav className="nav">
-            <button className="nav-item active"><span className="nav-icon">☰</span><span className="nav-label">Đơn hàng</span></button>
-            {/* <button className="nav-item">Map</button>
-            <button className="nav-item">Drivers</button>
-            <button className="nav-item">Reports</button> */}
-          </nav>
-        </div>
-      </aside>
+      <AppSidebar
+        user={user}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        collapsed={sidebarCollapsed}
+        onCollapse={setSidebarCollapsed}
+      />
 
       <main className="content">
         <header className="topbar">

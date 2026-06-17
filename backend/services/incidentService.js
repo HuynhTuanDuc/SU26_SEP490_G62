@@ -26,6 +26,12 @@ const STATUS_LABEL = {
     resolved:      'Đã giải quyết',
     closed:        'Đã đóng',
 };
+// Lấy tất cả incidents (dành cho nhân viên điều phối)
+const getAllIncidents = async () => {
+    const result = await incidentRepository.getAllIncidents();
+    if (!result) throw new Error('Không thể lấy danh sách sự cố');
+    return result;
+}
 
 // Lấy incidents của 1 shipment (driver xem + check duplicate)
 const getShipmentIncidents = async (shipmentId, driverId) => {
@@ -213,6 +219,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
 };
 
 module.exports = {
+    getAllIncidents,
     createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
     getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };

@@ -1107,9 +1107,9 @@ BEGIN
     IF v_shipment_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM incidents WHERE shipment_id = v_shipment_id
     ) THEN
-        INSERT INTO incidents (shipment_id, reported_by, incident_type, severity_level,
+        INSERT INTO incidents (shipment_id, vehicle_id, reported_by, incident_type, severity_level,
                                description, location, status, occurred_at)
-        VALUES (v_shipment_id, v_driver2_id, 'customer_refusal', 'low',
+        VALUES (v_shipment_id, NULL, v_driver2_id, 'customer_refusal', 'low',
                 'Khách hàng không ra nhận hàng sau nhiều lần gọi điện. Đã chờ 30 phút tại điểm giao.',
                 '22 Nguyễn Văn Cừ, Q.5, TP.HCM', 'open', NOW() - INTERVAL '30 minutes');
     END IF;

@@ -10,6 +10,7 @@ import {
   Settings,
   Truck,
   Users,
+  AlertTriangle,
 } from 'lucide-react';
 
 const SW = 1.75; // stroke weight — soft & modern
@@ -32,8 +33,8 @@ const MENU_CONFIG = {
     { key: 'settings', Icon: Settings, label: 'Cài đặt', disabled: true },
   ],
   coordinator: [
-    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },
-    { key: 'trips', Icon: Truck, label: 'Chuyến xe' },
+    { key: 'orders', Icon: FileText, label: 'Đơn hàng' },
+    { key: 'incidents', Icon: AlertTriangle, label: 'Sự cố' },
   ],
   accountant: [
     { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },

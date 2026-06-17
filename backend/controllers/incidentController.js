@@ -1,5 +1,17 @@
 const incidentService = require('../services/incidentService');
 
+
+// ─── GET /api/incidents ──────────────────────────────────────────────────────
+const getAllIncidents = async (req, res) => {
+    try {
+        const incidents = await incidentService.getAllIncidents();
+        res.json({ incidents });
+    } catch (err) {
+        res.status(500).json({ "Lỗi lấy danh sách sự cố": err.message });
+    }
+};
+
+
 // ─── POST /api/incidents ──────────────────────────────────────────────────────
 
 const createIncident = async (req, res) => {
@@ -134,6 +146,7 @@ const updateMyIncident = async (req, res) => {
 };
 
 module.exports = {
+    getAllIncidents,
     createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
     getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };
