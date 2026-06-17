@@ -81,7 +81,40 @@ const sendEmailChangeVerificationCode = async (toEmail, fullName, code) => {
     }
 };
 
+const sendPasswordResetCodeEmail = async (toEmail, fullName, code) => {
+    try {
+        if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
+            console.log(`[Email Service] Can cau hinh SMTP de gui ma dat lai mat khau toi ${toEmail}: ${code}`);
+            return;
+        }
+
+        const transporter = createTransporter();
+        const mailOptions = {
+            from: `"He thong Quan ly (Security)" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+            to: toEmail,
+            subject: 'Ma xac nhan dat lai mat khau',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.5; color: #333;">
+                    <h2 style="color: #1D4ED8;">Xin chao ${fullName || 'ban'},</h2>
+                    <p>He thong vua nhan yeu cau quen mat khau cho tai khoan cua ban.</p>
+                    <p>Nhap ma xac nhan ben duoi de tiep tuc dat lai mat khau:</p>
+                    <div style="background-color: #EFF6FF; padding: 18px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                        <span style="font-size: 28px; letter-spacing: 6px; font-weight: 700; color: #1D4ED8;">${code}</span>
+                    </div>
+                    <p>Ma co hieu luc trong 10 phut. Neu ban khong yeu cau dat lai mat khau, hay bo qua email nay.</p>
+                </div>
+            `,
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[Email Service] Da gui ma dat lai mat khau toi ${toEmail} (Message ID: ${info.messageId})`);
+    } catch (error) {
+        console.error('[Email Service] Loi khi gui ma dat lai mat khau:', error);
+    }
+};
+
 module.exports = {
     sendWelcomeEmail,
     sendEmailChangeVerificationCode,
+    sendPasswordResetCodeEmail,
 };

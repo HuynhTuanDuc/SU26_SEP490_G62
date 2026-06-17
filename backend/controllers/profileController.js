@@ -29,7 +29,11 @@ const sendEmailChangeCode = async (req, res) => {
         const result = await profileService.sendEmailChangeCode(req.user.userId);
         res.json(result);
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        const status = err.retry_after_seconds ? 429 : 400;
+        res.status(status).json({
+            error: err.message,
+            retry_after_seconds: err.retry_after_seconds || 0,
+        });
     }
 };
 

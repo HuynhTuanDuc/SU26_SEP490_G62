@@ -27,7 +27,7 @@ const getAccountById = async (accountId) => {
 
 const getProfileByAccountId = async (accountId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.dob, p.gender, p.city
+        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          LEFT JOIN roles r ON p.role_id = r.id
@@ -39,7 +39,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role, a.is_active, p.dob, p.gender, p.city
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name as role, a.is_active, p.avatar_url, p.dob, p.gender, p.city
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id

@@ -6,6 +6,7 @@ const pool = require('../config/database');
 
 const GENDER_VALUES = new Set(['male', 'female', 'other']);
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
+const EMAIL_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
 const emailVerificationStore = new Map();
 
 const normalizeOptionalText = (value) => {
@@ -131,12 +132,21 @@ const sendEmailChangeCode = async (userId) => {
         throw new Error('Khong tim thay email hien tai');
     }
 
+    const existingVerification = emailVerificationStore.get(String(userId));
+    if (existingVerification?.cooldownUntil && existingVerification.cooldownUntil > Date.now()) {
+        const retryAfterSeconds = Math.ceil((existingVerification.cooldownUntil - Date.now()) / 1000);
+        const cooldownError = new Error(`Vui long cho ${retryAfterSeconds} giay truoc khi yeu cau ma moi`);
+        cooldownError.retry_after_seconds = retryAfterSeconds;
+        throw cooldownError;
+    }
+
     const code = generateVerificationCode();
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
 
     emailVerificationStore.set(String(userId), {
         codeHash,
         expiresAt: Date.now() + EMAIL_CODE_TTL_MS,
+        cooldownUntil: Date.now() + EMAIL_CODE_RESEND_COOLDOWN_MS,
         verified: false,
     });
 
@@ -144,6 +154,7 @@ const sendEmailChangeCode = async (userId) => {
     return {
         message: 'Da gui ma xac nhan toi email hien tai',
         expires_in_seconds: Math.floor(EMAIL_CODE_TTL_MS / 1000),
+        retry_after_seconds: Math.floor(EMAIL_CODE_RESEND_COOLDOWN_MS / 1000),
     };
 };
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Button, DatePicker, Form, Input, message, Modal, Select, Space, Typography } from 'antd';
+import { Avatar, Button, DatePicker, Form, Input, Upload, message, Modal, Select, Space, Typography } from 'antd';
+import { CameraOutlined, UserOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { apiRequest } from '../../services/apiClient';
 
@@ -18,6 +19,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
   const [saving, setSaving] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const token = localStorage.getItem('token');
 
@@ -40,6 +43,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
           verification_code: '',
           new_email: '',
         });
+        setResendCooldown(0);
       } catch (error) {
         message.error(error.message || 'Khong the tai ho so.');
       } finally {
@@ -49,6 +53,55 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
     loadProfile();
   }, [form, open, token]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
+  const handleAvatarUpload = async ({ file, onSuccess, onError }) => {
+    try {
+      setUploadingAvatar(true);
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const data = await apiRequest('/api/profile/me/avatar', {
+        method: 'POST',
+        token,
+        body: formData,
+      });
+
+      const nextProfile = { ...profile, avatar_url: data.avatar_url };
+      setProfile(nextProfile);
+      message.success(data.message || 'Cap nhat avatar thanh cong.');
+      onProfileUpdated?.({
+        email: nextProfile.email,
+        full_name: nextProfile.full_name,
+        phone: nextProfile.phone,
+        gender: nextProfile.gender,
+        dob: nextProfile.dob,
+        city: nextProfile.city,
+        avatar_url: nextProfile.avatar_url,
+      });
+      onSuccess?.(data, file);
+    } catch (error) {
+      message.error(error.message || 'Khong the tai avatar len.');
+      onError?.(error);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     try {
@@ -76,6 +129,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         gender: mergedProfile.gender,
         dob: mergedProfile.dob,
         city: mergedProfile.city,
+        avatar_url: mergedProfile.avatar_url,
       });
     } catch (error) {
       if (error?.errorFields) return;
@@ -92,8 +146,17 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         method: 'POST',
         token,
       });
+      setResendCooldown(Number(data.retry_after_seconds || 60));
       message.success(data.message || 'Da gui ma xac nhan.');
     } catch (error) {
+      if (Number.isFinite(Number(error?.retry_after_seconds)) && Number(error.retry_after_seconds) > 0) {
+        setResendCooldown(Number(error.retry_after_seconds));
+      } else if (error?.message && typeof error.message === 'string') {
+        const match = error.message.match(/(\d+)/);
+        if (match) {
+          setResendCooldown(Number(match[1]));
+        }
+      }
       message.error(error.message || 'Khong the gui ma xac nhan.');
     } finally {
       setSendingCode(false);
@@ -126,6 +189,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         gender: nextProfile.gender,
         dob: nextProfile.dob,
         city: nextProfile.city,
+        avatar_url: nextProfile.avatar_url,
       });
     } catch (error) {
       if (error?.errorFields) return;
@@ -145,6 +209,28 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       width={680}
     >
       <Form form={form} layout="vertical" disabled={loading}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+          <Avatar
+            size={72}
+            src={profile?.avatar_url || undefined}
+            icon={!profile?.avatar_url ? <UserOutlined /> : undefined}
+          />
+          <Space direction="vertical" size={4}>
+            <Text strong>Avatar</Text>
+            <Text type="secondary">Tai anh dai dien len Cloudinary.</Text>
+            <Upload
+              accept="image/*"
+              showUploadList={false}
+              customRequest={handleAvatarUpload}
+              disabled={uploadingAvatar}
+            >
+              <Button icon={<CameraOutlined />} loading={uploadingAvatar}>
+                {uploadingAvatar ? 'Dang tai anh...' : 'Chon avatar'}
+              </Button>
+            </Upload>
+          </Space>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           <Form.Item
             name="full_name"
@@ -190,8 +276,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
             </div>
 
             <Space wrap>
-              <Button onClick={handleSendCode} loading={sendingCode}>
-                Gui ma xac nhan
+              <Button onClick={handleSendCode} loading={sendingCode} disabled={sendingCode || resendCooldown > 0}>
+                {resendCooldown > 0 ? `Gui lai sau ${resendCooldown}s` : 'Gui ma xac nhan'}
               </Button>
             </Space>
 
