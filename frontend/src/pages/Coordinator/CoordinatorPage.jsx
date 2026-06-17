@@ -2,6 +2,8 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
 import { message as toast } from "antd";
+import ProfileModal from "../../components/profile/ProfileModal";
+import { getStoredToken, saveSession } from "../../services/storage";
 
 //Đặt yêu cầu cho empty form 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
@@ -216,6 +218,7 @@ function buildTripFromOrder(order) {
 }
 
 export default function CoordinatorPage({ user, onLogout }) {
+  const [currentUser, setCurrentUser] = useState(user);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState([]);
@@ -231,6 +234,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [formErrors, setFormErrors] = useState({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -357,6 +361,12 @@ export default function CoordinatorPage({ user, onLogout }) {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.reload();
+  };
+
+  const handleProfileUpdated = (nextProfile) => {
+    const mergedUser = { ...currentUser, ...nextProfile };
+    setCurrentUser(mergedUser);
+    saveSession({ token: getStoredToken(), user: mergedUser });
   };
 
   const filteredTrips = useMemo(() => {
@@ -854,14 +864,15 @@ export default function CoordinatorPage({ user, onLogout }) {
                 className="avatar profile-trigger"
                 type="button"
                 onClick={() => setProfileMenuOpen((value) => !value)}
-                title={user?.email}
+                title={currentUser?.email}
               >
-                {user?.full_name?.[0] || "A"}
+                {currentUser?.full_name?.[0] || "A"}
               </button>
               {profileMenuOpen && (
                 <div className="profile-menu">
-                  <div className="profile-menu-name">{user?.full_name || user?.email || "Coordinator"}</div>
-                  <div className="profile-menu-email">{user?.email}</div>
+                  <div className="profile-menu-name">{currentUser?.full_name || currentUser?.email || "Coordinator"}</div>
+                  <div className="profile-menu-email">{currentUser?.email}</div>
+                  <button type="button" onClick={() => { setProfileMenuOpen(false); setProfileModalOpen(true); }}>Ho so ca nhan</button>
                   <button type="button" onClick={handleLogout}>Đăng xuất</button>
                 </div>
               )}
@@ -1662,6 +1673,11 @@ export default function CoordinatorPage({ user, onLogout }) {
           </div>
         </section>
 
+        <ProfileModal
+          open={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          onProfileUpdated={handleProfileUpdated}
+        />
       </main>
     </div>
   );

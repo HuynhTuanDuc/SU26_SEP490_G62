@@ -33,7 +33,6 @@ CREATE TABLE profiles (
     dob         DATE,
     gender      TEXT CHECK (gender IN ('male','female','other')),
     address     TEXT,
-    city        TEXT,
     country     TEXT NOT NULL DEFAULT 'VN',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
