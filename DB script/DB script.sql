@@ -33,7 +33,6 @@ CREATE TABLE profiles (
     dob         DATE,
     gender      TEXT CHECK (gender IN ('male','female','other')),
     address     TEXT,
-    city        TEXT,
     country     TEXT NOT NULL DEFAULT 'VN',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -118,7 +117,7 @@ CREATE TABLE orders (
     partner_name TEXT,
     cargo_name          TEXT,
     cargo_weight_kg     NUMERIC(10,2),
-    payment_type        TEXT CHECK (payment_type IN ('cash','bank_transfer','mixed')),
+    payment_type        TEXT CHECK (payment_type IN ('cash','bank_transfer','client_credit')),
     vehicle_group_id    INT REFERENCES vehicle_groups(id),
 
     total_estimated_price   NUMERIC(12,2) NOT NULL DEFAULT 0,

@@ -37,6 +37,45 @@ const googleLogin = async (req, res) => {
     }
 };
 
+const requestPasswordReset = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const result = await authService.requestPasswordReset(email);
+        res.json(result);
+    } catch (err) {
+        console.error('Request password reset error:', err);
+        const status = Number.isInteger(err.status) ? err.status : 500;
+        res.status(status).json({
+            error: status === 500 ? 'Internal server error' : err.message,
+            retry_after_seconds: err.retry_after_seconds || 0,
+        });
+    }
+};
+
+const verifyPasswordResetCode = async (req, res) => {
+    try {
+        const { email, code } = req.body;
+        const result = await authService.verifyPasswordResetCode(email, code);
+        res.json(result);
+    } catch (err) {
+        console.error('Verify password reset code error:', err);
+        const status = Number.isInteger(err.status) ? err.status : 500;
+        res.status(status).json({ error: status === 500 ? 'Internal server error' : err.message });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    try {
+        const { email, code, newPassword, confirmPassword } = req.body;
+        const result = await authService.resetPassword(email, code, newPassword, confirmPassword);
+        res.json(result);
+    } catch (err) {
+        console.error('Reset password error:', err);
+        const status = Number.isInteger(err.status) ? err.status : 500;
+        res.status(status).json({ error: status === 500 ? 'Internal server error' : err.message });
+    }
+};
+
 // GET /auth/me (protected endpoint)
 const getCurrentUser = async (req, res) => {
     try {
@@ -62,6 +101,9 @@ const getAllRoles = async (req, res) => {
 module.exports = {
     login,
     googleLogin,
+    requestPasswordReset,
+    verifyPasswordResetCode,
+    resetPassword,
     getCurrentUser,
     getAllRoles,
 };

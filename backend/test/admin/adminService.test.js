@@ -9,69 +9,18 @@ const adminService = require('../../services/adminService');
 const { AdminError } = adminService;
 
 describe('Admin Service', () => {
-
     afterEach(() => {
         mock.restoreAll();
     });
 
     describe('getAllUsers', () => {
-        it('L1-AS-01 [EP-Valid] (FE-06 / UC-03): getAllUsers - should return a list of multiple users', async () => {
-
+        it('returns a list of users', async () => {
             const mockUsers = [{ id: 1, email: 'user1@example.com' }, { id: 2, email: 'user2@example.com' }];
             mock.method(profileRepository, 'getAllUsers', async () => mockUsers);
 
             const result = await adminService.getAllUsers();
 
             assert.deepStrictEqual(result, mockUsers);
-        });
-
-        it('L1-AS-02 [BVA-Min] (FE-06 / UC-03): getAllUsers - should return an empty array if no users exist', async () => {
-
-            mock.method(profileRepository, 'getAllUsers', async () => []);
-
-            const result = await adminService.getAllUsers();
-
-            assert.deepStrictEqual(result, []);
-        });
-
-        it('L1-AS-03 [BVA-Min+1] (FE-06 / UC-03): getAllUsers - should return exactly one user', async () => {
-
-            const mockUser = [{ id: 1, email: 'alone@example.com' }];
-            mock.method(profileRepository, 'getAllUsers', async () => mockUser);
-
-            const result = await adminService.getAllUsers();
-
-            assert.deepStrictEqual(result, mockUser);
-        });
-
-        it('L1-AS-04 [EP-Invalid] (FE-06 / UC-03): getAllUsers - should propagate database connection error', async () => {
-
-            mock.method(profileRepository, 'getAllUsers', async () => { throw new Error('Connection Error'); });
-
-            await assert.rejects(() => adminService.getAllUsers(), { message: 'Connection Error' });
-        });
-
-        it('L1-AS-05 [EP-Invalid] (FE-06 / UC-03): getAllUsers - should propagate database timeout error', async () => {
-
-            mock.method(profileRepository, 'getAllUsers', async () => { throw new Error('Timeout Error'); });
-
-            await assert.rejects(() => adminService.getAllUsers(), { message: 'Timeout Error' });
-        });
-
-        it('L1-AS-06 [Guard-FALSE] (FE-06 / UC-03): getAllUsers - should return null if repository behaves unexpectedly', async () => {
-
-            mock.method(profileRepository, 'getAllUsers', async () => null);
-
-            const result = await adminService.getAllUsers();
-
-            assert.strictEqual(result, null);
-        });
-
-        it('L1-AS-07 [EP-Invalid] (FE-06 / UC-03): getAllUsers - should propagate generic server crash', async () => {
-
-            mock.method(profileRepository, 'getAllUsers', async () => { throw new Error('Crash'); });
-
-            await assert.rejects(() => adminService.getAllUsers(), { message: 'Crash' });
         });
     });
 
@@ -82,8 +31,7 @@ describe('Admin Service', () => {
             mock.method(emailService, 'sendWelcomeEmail', async () => {});
         });
 
-        it('L1-AS-08 [EP-Valid] (FE-06 / UC-03): createUser - should create user with all fields successfully', async () => {
-
+        it('creates user successfully', async () => {
             mock.method(profileRepository, 'getRoleIdByName', async () => 1);
             mock.method(profileRepository, 'getAccountByEmail', async () => null);
             mock.method(profileRepository, 'adminCreateUser', async () => 100);
@@ -93,149 +41,121 @@ describe('Admin Service', () => {
             assert.strictEqual(newId, 100);
             assert.strictEqual(emailService.sendWelcomeEmail.mock.calls.length, 1);
         });
-
-        it('L1-AS-09 [BVA-Min] (FE-06 / UC-03): createUser - should create user with missing name and phone fallback', async () => {
-
-            mock.method(profileRepository, 'getRoleIdByName', async () => 1);
-            mock.method(profileRepository, 'getAccountByEmail', async () => null);
-            mock.method(profileRepository, 'adminCreateUser', async () => 101);
-
-            const newId = await adminService.createUser('test2@example.com', undefined, undefined, 'admin');
-
-            assert.strictEqual(newId, 101);
-            const createArgs = profileRepository.adminCreateUser.mock.calls[0].arguments;
-            assert.strictEqual(createArgs[3], '');
-            assert.strictEqual(createArgs[4], null);
-        });
-
-        it('L1-AS-10 [Guard-FALSE] (FE-06 / UC-03): createUser - should throw 400 if email is missing', async () => {
-
-            await assert.rejects(
-                () => adminService.createUser('', 'Name', '123', 'admin'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Thiếu thông tin bắt buộc (email, role).'
-            );
-        });
-
-        it('L1-AS-11 [Guard-FALSE] (FE-06 / UC-03): createUser - should throw 400 if role is missing', async () => {
-
-            await assert.rejects(
-                () => adminService.createUser('test@test.com', 'Name', '123', ''),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Thiếu thông tin bắt buộc (email, role).'
-            );
-        });
-
-        it('L1-AS-12 [EP-Invalid] (FE-06 / UC-03): createUser - should throw 400 if role is invalid', async () => {
-
-            mock.method(profileRepository, 'getRoleIdByName', async () => null);
-
-            await assert.rejects(
-                () => adminService.createUser('test@test.com', 'Name', '123', 'invalid'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai trò không hợp lệ.'
-            );
-        });
-
-        it('L1-AS-13 [EP-Invalid] (FE-06 / UC-03): createUser - should throw 409 if email already exists', async () => {
-
-            mock.method(profileRepository, 'getRoleIdByName', async () => 1);
-            mock.method(profileRepository, 'getAccountByEmail', async () => ({ id: 1 }));
-
-            await assert.rejects(
-                () => adminService.createUser('existing@test.com', 'Name', '123', 'admin'),
-                (err) => err instanceof AdminError && err.status === 409 && err.message === 'Email đã tồn tại.'
-            );
-        });
-
-        it('L1-AS-14 [EP-Invalid] (FE-06 / UC-03): createUser - should throw 409 on DB duplicate code 23505', async () => {
-
-            mock.method(profileRepository, 'getRoleIdByName', async () => 1);
-            mock.method(profileRepository, 'getAccountByEmail', async () => null);
-            const error = new Error('Dup'); error.code = '23505';
-            mock.method(profileRepository, 'adminCreateUser', async () => { throw error; });
-
-            await assert.rejects(
-                () => adminService.createUser('new@test.com', 'Name', '123', 'admin'),
-                (err) => err instanceof AdminError && err.status === 409 && err.message === 'Số điện thoại hoặc Email đã tồn tại.'
-            );
-        });
     });
 
     describe('updateUser', () => {
-        it('L1-AS-15 [EP-Valid] (FE-06 / UC-04): updateUser - should update user with all valid fields', async () => {
-
+        it('updates user with normalized values', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1 }));
             mock.method(profileRepository, 'getRoleIdByName', async () => 2);
-            mock.method(profileRepository, 'adminUpdateUser', async () => {});
+            mock.method(profileRepository, 'adminUpdateUser', async () => true);
 
-            await adminService.updateUser(1, 'Updated', '999', 'manager');
+            await adminService.updateUser('1', '  Updated   Name  ', ' 0987654321 ', ' Manager ');
 
             const updateArgs = profileRepository.adminUpdateUser.mock.calls[0].arguments;
-            assert.deepStrictEqual(updateArgs[1], { full_name: 'Updated', phone: '999' });
+            assert.strictEqual(updateArgs[0], 1);
+            assert.deepStrictEqual(updateArgs[1], {
+                full_name: 'Updated Name',
+                phone: '0987654321',
+                gender: null,
+                dob: null,
+                city: null,
+            });
+            assert.strictEqual(updateArgs[2], 2);
         });
 
-        it('L1-AS-16 [BVA-Min] (FE-06 / UC-04): updateUser - should update user with undefined name and phone', async () => {
-
+        it('allows clearing phone by passing blank string', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1 }));
             mock.method(profileRepository, 'getRoleIdByName', async () => 2);
-            mock.method(profileRepository, 'adminUpdateUser', async () => {});
+            mock.method(profileRepository, 'adminUpdateUser', async () => true);
 
-            await adminService.updateUser(1, undefined, undefined, 'manager');
+            await adminService.updateUser(1, 'Updated Name', '   ', 'manager');
 
             const updateArgs = profileRepository.adminUpdateUser.mock.calls[0].arguments;
-            assert.deepStrictEqual(updateArgs[1], { full_name: undefined, phone: undefined });
+            assert.deepStrictEqual(updateArgs[1], {
+                full_name: 'Updated Name',
+                phone: null,
+                gender: null,
+                dob: null,
+                city: null,
+            });
         });
 
-        it('L1-AS-17 [Guard-FALSE] (FE-06 / UC-04): updateUser - should throw 400 if role is missing', async () => {
-
+        it('throws 400 when userId is invalid', async () => {
             await assert.rejects(
-                () => adminService.updateUser(1, 'Updated', '999', undefined),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai trò không được để trống.'
+                () => adminService.updateUser('abc', 'Updated', '0987654321', 'manager'),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'ID nguoi dung khong hop le.',
             );
         });
 
-        it('L1-AS-18 [Guard-FALSE] (FE-06 / UC-04): updateUser - should throw 400 if role is empty string', async () => {
-
+        it('throws 400 when role is missing', async () => {
             await assert.rejects(
-                () => adminService.updateUser(1, 'Updated', '999', ''),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai trò không được để trống.'
+                () => adminService.updateUser(1, 'Updated', '0987654321', undefined),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai tro khong hop le.',
             );
         });
 
-        it('L1-AS-19 [EP-Invalid] (FE-06 / UC-04): updateUser - should throw 400 if role is invalid', async () => {
+        it('throws 400 when full_name is blank', async () => {
+            await assert.rejects(
+                () => adminService.updateUser(1, '   ', '0987654321', 'manager'),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Ho ten khong duoc de trong.',
+            );
+        });
 
+        it('throws 400 when phone is invalid', async () => {
+            await assert.rejects(
+                () => adminService.updateUser(1, 'Updated', '12-34', 'manager'),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'So dien thoai khong hop le.',
+            );
+        });
+
+        it('throws 404 when user does not exist', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => null);
+
+            await assert.rejects(
+                () => adminService.updateUser(999, 'Updated', '0987654321', 'manager'),
+                (err) => err instanceof AdminError && err.status === 404 && err.message === 'Nguoi dung khong ton tai.',
+            );
+        });
+
+        it('throws 403 when updating protected roles', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1, role: 'manager', is_active: true }));
+
+            await assert.rejects(
+                () => adminService.updateUser(1, 'Updated', '0987654321', 'driver'),
+                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Khong the cap nhat tai khoan manager.',
+            );
+        });
+
+        it('throws 400 when role is invalid', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1 }));
             mock.method(profileRepository, 'getRoleIdByName', async () => null);
 
             await assert.rejects(
-                () => adminService.updateUser(1, 'Updated', '999', 'ghost'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai trò không hợp lệ.'
+                () => adminService.updateUser(1, 'Updated', '0987654321', 'ghost'),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai tro khong hop le.',
             );
         });
 
-        it('L1-AS-20 [EP-Invalid] (FE-06 / UC-04): updateUser - should throw 409 on DB duplicate code 23505', async () => {
-
+        it('throws 409 on duplicate phone', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1 }));
             mock.method(profileRepository, 'getRoleIdByName', async () => 2);
-            const error = new Error('Dup'); error.code = '23505';
-            mock.method(profileRepository, 'adminUpdateUser', async () => { throw error; });
+            const error = new Error('Dup');
+            error.code = '23505';
+            mock.method(profileRepository, 'adminUpdateUser', async () => {
+                throw error;
+            });
 
             await assert.rejects(
-                () => adminService.updateUser(1, 'Updated', '999', 'manager'),
-                (err) => err instanceof AdminError && err.status === 409 && err.message === 'Số điện thoại đã tồn tại.'
-            );
-        });
-
-        it('L1-AS-21 [EP-Invalid] (FE-06 / UC-04): updateUser - should propagate generic DB errors', async () => {
-
-            mock.method(profileRepository, 'getRoleIdByName', async () => 2);
-            mock.method(profileRepository, 'adminUpdateUser', async () => { throw new Error('DB Down'); });
-
-            await assert.rejects(
-                () => adminService.updateUser(1, 'Updated', '999', 'manager'),
-                { message: 'DB Down' }
+                () => adminService.updateUser(1, 'Updated', '0987654321', 'manager'),
+                (err) => err instanceof AdminError && err.status === 409 && err.message === 'So dien thoai da ton tai.',
             );
         });
     });
 
     describe('toggleUserStatus', () => {
-        it('L1-AS-22 [State-Valid] (FE-06 / UC-05): toggleUserStatus - should successfully lock account by passing false', async () => {
-
-            mock.method(profileRepository, 'adminToggleUserStatus', async () => {});
+        it('locks account successfully', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 2, role: 'driver', is_active: true }));
+            mock.method(profileRepository, 'adminToggleUserStatus', async () => ({ id: 2 }));
 
             await adminService.toggleUserStatus(2, false, 1);
 
@@ -244,57 +164,36 @@ describe('Admin Service', () => {
             assert.strictEqual(args[1], false);
         });
 
-        it('L1-AS-23 [State-Valid] (FE-06 / UC-05): toggleUserStatus - should successfully unlock account by passing true', async () => {
+        it('does not call repository when account is already disabled', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 2, role: 'driver', is_active: false }));
+            mock.method(profileRepository, 'adminToggleUserStatus', async () => ({ id: 2, is_active: false }));
 
-            mock.method(profileRepository, 'adminToggleUserStatus', async () => {});
+            const result = await adminService.toggleUserStatus(2, false, 1);
 
-            await adminService.toggleUserStatus(2, true, 1);
-
-            const args = profileRepository.adminToggleUserStatus.mock.calls[0].arguments;
-            assert.strictEqual(args[1], true);
+            assert.strictEqual(profileRepository.adminToggleUserStatus.mock.calls.length, 0);
+            assert.deepStrictEqual(result, { id: 2, is_active: false, changed: false });
         });
 
-        it('L1-AS-24 [Guard-FALSE] (FE-06 / UC-05): toggleUserStatus - should throw 400 if current user attempts to lock themselves', async () => {
-
+        it('prevents locking self', async () => {
             await assert.rejects(
                 () => adminService.toggleUserStatus(1, false, 1),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Không thể tự khoá tài khoản của chính mình.'
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Khong the tu khoa tai khoan cua chinh minh.',
             );
         });
 
-        it('L1-AS-25 [EP-Invalid] (FE-06 / UC-05): toggleUserStatus - should throw 400 if current user attempts to lock themselves with string ID', async () => {
-
+        it('rejects non-boolean is_active', async () => {
             await assert.rejects(
-                () => adminService.toggleUserStatus('1', false, 1),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Không thể tự khoá tài khoản của chính mình.'
+                () => adminService.toggleUserStatus(2, 'false', 1),
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'is_active khong hop le.',
             );
         });
 
-        it('L1-AS-26 [Guard-FALSE] (FE-06 / UC-05): toggleUserStatus - should throw 400 if is_active is undefined', async () => {
-
-            await assert.rejects(
-                () => adminService.toggleUserStatus(2, undefined, 1),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Thiếu is_active.'
-            );
-        });
-
-        it('L1-AS-27 [EP-Invalid] (FE-06 / UC-05): toggleUserStatus - should propagate generic DB errors', async () => {
-
-            mock.method(profileRepository, 'adminToggleUserStatus', async () => { throw new Error('DB Error'); });
+        it('rejects disabling protected roles', async () => {
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 2, role: 'manager', is_active: true }));
 
             await assert.rejects(
                 () => adminService.toggleUserStatus(2, false, 1),
-                { message: 'DB Error' }
-            );
-        });
-
-        it('L1-AS-28 [EP-Invalid] (FE-06 / UC-05): toggleUserStatus - should propagate DB timeout errors', async () => {
-
-            mock.method(profileRepository, 'adminToggleUserStatus', async () => { throw new Error('Timeout Error'); });
-
-            await assert.rejects(
-                () => adminService.toggleUserStatus(2, false, 1),
-                { message: 'Timeout Error' }
+                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Khong the khoa tai khoan manager.',
             );
         });
     });

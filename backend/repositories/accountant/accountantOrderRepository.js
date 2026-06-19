@@ -134,14 +134,19 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 
 const PASS_THROUGH_EXPENSE_TYPES = new Set(['toll', 'parking']);
 
+const normalizeCustomerDebtPaymentType = (paymentType) => {
+    if (!paymentType) return null;
+    if (paymentType === 'debt') return 'client_credit';
+    return paymentType;
+};
+
 const insertDebtForShipment = async (client, {
     shipmentId, orderId, driverId, customerId, partnerId,
     actualPrice,
     driverPaymentState, paymentType,
     createdByUserId,
 }) => {
-    const normalizedPaymentType =
-        paymentType === 'debt' ? 'mixed' : (paymentType || null);
+    const normalizedPaymentType = normalizeCustomerDebtPaymentType(paymentType);
 
     // Tài xế giữ tiền → tạo công nợ tài xế (chỉ set driver_id, các FK khác = NULL)
     if (driverPaymentState === 'driver_holding') {
@@ -158,7 +163,7 @@ const insertDebtForShipment = async (client, {
                 $6, NOW(), NOW())`,
             [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
-    } else if (normalizedPaymentType === 'mixed') {
+    } else if (normalizedPaymentType === 'client_credit') {
         // Khách nợ → tạo công nợ khách (chỉ set customer_id, các FK khác = NULL)
         const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(

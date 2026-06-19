@@ -6,12 +6,20 @@ import UserList from "../../features/admin/UserList";
 import VehicleList from "../../features/admin/VehicleList";
 import { C } from "../../styles/theme";
 import "../../styles/admin/Admin.css";
+import { saveSession, getStoredToken } from "../../services/storage";
 
 const { Title, Text } = Typography;
 
 export default function AdminPage({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("users");
   const [collapsed, setCollapsed] = useState(false);
+  const [currentUser, setCurrentUser] = useState(user);
+
+  const handleProfileUpdated = (nextProfile) => {
+    const mergedUser = { ...currentUser, ...nextProfile };
+    setCurrentUser(mergedUser);
+    saveSession({ token: getStoredToken(), user: mergedUser });
+  };
 
   const handleLogout = () => {
     if (onLogout) {
@@ -37,7 +45,7 @@ export default function AdminPage({ user, onLogout }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", background: C.surface }}>
       <AppSidebar
-        user={user}
+        user={currentUser}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         collapsed={collapsed}
@@ -45,7 +53,7 @@ export default function AdminPage({ user, onLogout }) {
       />
 
       <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <AppHeader user={user} onLogout={handleLogout} />
+        <AppHeader user={currentUser} onLogout={handleLogout} onProfileUpdated={handleProfileUpdated} />
 
         <section style={{ padding: 24, flex: 1, overflow: "auto" }}>
           <div style={{ marginBottom: 20 }}>

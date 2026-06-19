@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
-import PropTypes from "prop-types";
 import OrderFormModal from "./OrderFormModal";
 import PaymentModal from "./PaymentModal";
 import RevenueTable from "./RevenueTable";
 import DebtTable from "./DebtTable";
 import OrderDetailModal from "./OrderDetailModal";
 import "../../styles/Orders.css";
+import ProfileModal from "../../components/profile/ProfileModal";
+import { getStoredToken, saveSession } from "../../services/storage";
 
 export default function Accountant({ user, onLogout }) {
   const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
   const token = localStorage.getItem("token");
+  const [currentUser, setCurrentUser] = useState(user);
 
   // ── Active sidebar view ──────────────────────────────────────
   const [activeView, setActiveView] = useState("revenue"); // "revenue" | "debt"
@@ -30,6 +32,7 @@ export default function Accountant({ user, onLogout }) {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // ── Stats ─────────────────────────────────────────────────────
   const [stats, setStats] = useState({
@@ -112,6 +115,12 @@ export default function Accountant({ user, onLogout }) {
     fetchStats();
   };
 
+  const handleProfileUpdated = (nextProfile) => {
+    const mergedUser = { ...currentUser, ...nextProfile };
+    setCurrentUser(mergedUser);
+    saveSession({ token: getStoredToken(), user: mergedUser });
+  };
+
   // ── Handlers ──────────────────────────────────────────────────
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -178,17 +187,24 @@ export default function Accountant({ user, onLogout }) {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="profile-btn" onClick={onLogout} title="Đăng xuất">
+          <button className="profile-btn" onClick={() => setProfileOpen(true)} title="Ho so ca nhan">
             <div className="profile-avatar">
-              {user?.full_name ? user.full_name.charAt(0) : "A"}
+              {currentUser?.full_name ? currentUser.full_name.charAt(0) : "A"}
             </div>
             <div className="profile-info">
-              <span className="profile-name">{user?.full_name || "Trần Kế Toán"}</span>
+              <span className="profile-name">{currentUser?.full_name || "Trần Kế Toán"}</span>
               <span className="profile-role">Kế toán (Thu)</span>
             </div>
             <svg className="logout-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
+          </button>
+          <button className="profile-btn" onClick={onLogout} title="Đăng xuất" style={{ marginTop: 8 }}>
+            <div className="profile-avatar">↩</div>
+            <div className="profile-info">
+              <span className="profile-name">Dang xuat</span>
+              <span className="profile-role">{currentUser?.email || ""}</span>
+            </div>
           </button>
         </div>
       </aside>
@@ -226,7 +242,7 @@ export default function Accountant({ user, onLogout }) {
               </svg>
               <span className="notification-badge"></span>
             </button>
-            <div className="user-avatar" title={user?.email}>H</div>
+            <div className="user-avatar" title={currentUser?.email}>{currentUser?.full_name?.[0] || "H"}</div>
           </div>
         </header>
 
@@ -403,14 +419,13 @@ export default function Accountant({ user, onLogout }) {
         onOpenPayment={handleOpenPayment}
         onRefresh={refreshData}
       />
+
+      <ProfileModal
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        onProfileUpdated={handleProfileUpdated}
+      />
     </div>
   );
 }
 
-Accountant.propTypes = {
-  user: PropTypes.shape({
-    full_name: PropTypes.string,
-    email: PropTypes.string,
-  }),
-  onLogout: PropTypes.func,
-};
