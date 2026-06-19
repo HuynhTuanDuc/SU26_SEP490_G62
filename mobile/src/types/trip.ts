@@ -336,6 +336,8 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     driver_phone: string | null;
     plate_number: string | null;
     coordinator_name: string | null;
+    driver_collection_type: PaymentType | null;
+    driver_confirmed_at: string | null;
     has_driver_debt: boolean;
     has_customer_debt: boolean;
     pickup_address: string | null;
