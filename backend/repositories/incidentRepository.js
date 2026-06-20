@@ -124,6 +124,20 @@ const getIncidentsByShipment = async (shipmentId) => {
     return result.rows;
 };
 
+// Kiểm tra driver có sự cố đang mở (không gắn chuyến) cùng loại không
+const getOpenIncidentsByDriverAndType = async (driverId, incidentType) => {
+    const result = await pool.query(
+        `SELECT id FROM incidents
+         WHERE reported_by = $1
+           AND incident_type = $2
+           AND shipment_id IS NULL
+           AND status IN ('open', 'investigating')
+         LIMIT 1`,
+        [driverId, incidentType],
+    );
+    return result.rows[0] ?? null;
+};
+
 // Driver cập nhật sự cố của mình (chỉ khi còn open)
 const updateIncident = async (incidentId, driverId, { severityLevel, description, location }) => {
     const result = await pool.query(
@@ -159,6 +173,7 @@ module.exports = {
     getIncidentById,
     getIncidentsByDriver,
     getIncidentsByShipment,
+    getOpenIncidentsByDriverAndType,
     updateIncident,
     getCoordinatorIds,
     updateIncidentStatus,

@@ -13,6 +13,8 @@ import {
   normalizeStatus,
   resolveFareValue
 } from "../../features/coordinator/coordinatorValidates";
+import ProfileModal from "../../components/profile/ProfileModal";
+import { getStoredToken, saveSession } from "../../services/storage";
 
 import {
   emptyForm,
@@ -35,6 +37,7 @@ import {
 import OrderModal from "../../features/coordinator/orderModal";
 
 export default function CoordinatorPage({ user, onLogout }) {
+  const [currentUser, setCurrentUser] = useState(user);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState([]);
@@ -50,6 +53,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [formErrors, setFormErrors] = useState({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -177,6 +181,12 @@ export default function CoordinatorPage({ user, onLogout }) {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     window.location.reload();
+  };
+
+  const handleProfileUpdated = (nextProfile) => {
+    const mergedUser = { ...currentUser, ...nextProfile };
+    setCurrentUser(mergedUser);
+    saveSession({ token: getStoredToken(), user: mergedUser });
   };
 
   const filteredTrips = useMemo(() => {
@@ -649,17 +659,34 @@ export default function CoordinatorPage({ user, onLogout }) {
             </button>
             <div className="top-profile">
               <button
-                className="avatar profile-trigger"
+                className="profile-trigger"
                 type="button"
                 onClick={() => setProfileMenuOpen((value) => !value)}
-                title={user?.email}
+                title={currentUser?.email}
               >
-                {user?.full_name?.[0] || "A"}
+                <span
+                  className="avatar"
+                  style={currentUser?.avatar_url ? {
+                    backgroundImage: `url(${currentUser.avatar_url})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                  } : undefined}
+                >
+                  {currentUser?.avatar_url ? '' : (currentUser?.full_name?.[0] || "A")}
+                </span>
+                <span className="profile-trigger-copy">
+                  <span className="profile-trigger-name">{currentUser?.full_name || "Coordinator"}</span>
+                  <span className="profile-trigger-role">Coordinator</span>
+                </span>
+                <svg className="profile-trigger-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
               </button>
               {profileMenuOpen && (
                 <div className="profile-menu">
-                  <div className="profile-menu-name">{user?.full_name || user?.email || "Coordinator"}</div>
-                  <div className="profile-menu-email">{user?.email}</div>
+                  <div className="profile-menu-name">{currentUser?.full_name || currentUser?.email || "Coordinator"}</div>
+                  <div className="profile-menu-email">{currentUser?.email}</div>
+                  <button type="button" onClick={() => { setProfileMenuOpen(false); setProfileModalOpen(true); }}>Ho so ca nhan</button>
                   <button type="button" onClick={handleLogout}>Đăng xuất</button>
                 </div>
               )}
@@ -1192,6 +1219,11 @@ export default function CoordinatorPage({ user, onLogout }) {
           </div>
         </section>
 
+        <ProfileModal
+          open={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          onProfileUpdated={handleProfileUpdated}
+        />
       </main>
     </div>
   );

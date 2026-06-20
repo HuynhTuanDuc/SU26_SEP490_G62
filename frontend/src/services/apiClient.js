@@ -20,7 +20,11 @@ async function parseResponse(response) {
       (payload && typeof payload === "object" && (payload.error || payload.message)) ||
       (typeof payload === "string" && payload.trim()) ||
       `Request failed with status ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    if (payload && typeof payload === "object") {
+      Object.assign(error, payload);
+    }
+    throw error;
   }
 
   return payload;

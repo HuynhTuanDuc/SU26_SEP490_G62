@@ -199,7 +199,7 @@ export function IncidentFormScreen() {
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-    const parsedShipmentId = Number(shipmentId);
+    const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
 
     const { isSubmitting, error, submit, clearError } = useSubmitIncident(
         (incident) => {
@@ -280,9 +280,6 @@ export function IncidentFormScreen() {
             errors.description = 'Mô tả sự cố là bắt buộc';
         } else if (description.trim().length < 10) {
             errors.description = 'Mô tả phải có ít nhất 10 ký tự';
-        }
-        if (!parsedShipmentId) {
-            errors.shipment = 'Không tìm thấy thông tin chuyến';
         }
         setFieldErrors(errors);
         return Object.keys(errors).length === 0;

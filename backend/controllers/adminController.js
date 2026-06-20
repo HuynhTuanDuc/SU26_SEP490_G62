@@ -13,13 +13,13 @@ const getAllUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
     try {
-        const { email, full_name, phone, role } = req.body;
-        const newId = await adminService.createUser(email, full_name, phone, role);
-        res.status(201).json({ message: 'Tạo người dùng thành công.', id: newId });
+        const { email, full_name, phone, role, gender, dob, city } = req.body;
+        const newId = await adminService.createUser(email, full_name, phone, role, gender, dob, city);
+        res.status(201).json({ message: 'Tao nguoi dung thanh cong.', id: newId });
     } catch (err) {
         console.error('Error creating user:', err);
         const status = err.status || 500;
-        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
+        const errorMsg = err.status ? err.message : 'Loi may chu.';
         res.status(status).json({ error: errorMsg, details: err.message });
     }
 };
@@ -27,13 +27,13 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        const { full_name, phone, role } = req.body;
-        await adminService.updateUser(userId, full_name, phone, role);
-        res.json({ message: 'Cập nhật thành công.' });
+        const { full_name, phone, role, gender, dob, city } = req.body;
+        await adminService.updateUser(userId, full_name, phone, role, gender, dob, city);
+        res.json({ message: 'Cap nhat thanh cong.' });
     } catch (err) {
         console.error('Error updating user:', err);
         const status = err.status || 500;
-        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
+        const errorMsg = err.status ? err.message : 'Loi may chu.';
         res.status(status).json({ error: errorMsg, details: err.message });
     }
 };
@@ -44,12 +44,17 @@ const toggleUserStatus = async (req, res) => {
         const { is_active } = req.body;
         const currentUserId = req.user.userId;
 
-        await adminService.toggleUserStatus(userId, is_active, currentUserId);
-        res.json({ message: `Đã ${is_active ? 'mở khoá' : 'khoá'} tài khoản.` });
+        const result = await adminService.toggleUserStatus(userId, is_active, currentUserId);
+        const action = is_active ? 'mo khoa' : 'khoa';
+        const message = result.changed
+            ? `Da ${action} tai khoan.`
+            : `Tai khoan da o trang thai ${is_active ? 'hoat dong' : 'da khoa'}.`;
+
+        res.json({ message, user: result });
     } catch (err) {
         console.error('Error toggling user status:', err);
         const status = err.status || 500;
-        res.status(status).json({ error: err.status ? err.message : 'Lỗi máy chủ', details: err.message });
+        res.status(status).json({ error: err.status ? err.message : 'Loi may chu', details: err.message });
     }
 };
 

@@ -96,28 +96,38 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         ? severityLevel
         : INCIDENT_SEVERITY.MEDIUM;
 
-    const shipment = await tripRepository.getTripById(shipmentId);
-    if (!shipment) throw new Error('Chuyến vận chuyển không tồn tại');
-    if (Number(shipment.owner_driver_id) !== Number(driverId)) {
-        throw new Error('Bạn không có quyền báo sự cố cho chuyến này');
-    }
-    if (!ACTIVE_STATUSES.includes(shipment.status)) {
-        throw new Error('Chỉ có thể báo sự cố khi chuyến đang hoạt động');
+    const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
+
+    if (parsedShipmentId) {
+        const shipment = await tripRepository.getTripById(parsedShipmentId);
+        if (!shipment) throw new Error('Chuyến vận chuyển không tồn tại');
+        if (Number(shipment.owner_driver_id) !== Number(driverId)) {
+            throw new Error('Bạn không có quyền báo sự cố cho chuyến này');
+        }
+        if (!ACTIVE_STATUSES.includes(shipment.status)) {
+            throw new Error('Chỉ có thể báo sự cố khi chuyến đang hoạt động');
+        }
+
+        // Chỉ 1 sự cố mỗi loại (incident_type) trên 1 chuyến
+        const existing = await incidentRepository.getIncidentsByShipment(parsedShipmentId);
+        const duplicate = existing.find((i) => i.incident_type === incidentType);
+        if (duplicate) {
+            throw new Error(`DUPLICATE_TYPE:Chuyến này đã có sự cố loại "${TYPE_LABEL[incidentType] ?? incidentType}". Vui lòng chỉnh sửa sự cố đã tạo thay vì tạo mới.`);
+        }
+    } else {
+        // Không có chuyến: chỉ 1 sự cố đang mở (open/investigating) mỗi loại trên cùng driver
+        const existing = await incidentRepository.getOpenIncidentsByDriverAndType(driverId, incidentType);
+        if (existing) {
+            throw new Error(`DUPLICATE_TYPE:Bạn đang có sự cố loại "${TYPE_LABEL[incidentType] ?? incidentType}" chưa được xử lý. Vui lòng chỉnh sửa sự cố đó thay vì tạo mới.`);
+        }
     }
 
     if (imageUrls.length > MAX_IMAGES_PER_INCIDENT) {
         throw new Error(`Tối đa ${MAX_IMAGES_PER_INCIDENT} ảnh minh chứng`);
     }
 
-    // Chỉ 1 sự cố mỗi loại (incident_type) trên 1 chuyến
-    const existing = await incidentRepository.getIncidentsByShipment(shipmentId);
-    const duplicate = existing.find((i) => i.incident_type === incidentType);
-    if (duplicate) {
-        throw new Error(`DUPLICATE_TYPE:Chuyến này đã có sự cố loại "${TYPE_LABEL[incidentType] ?? incidentType}". Vui lòng chỉnh sửa sự cố đã tạo thay vì tạo mới.`);
-    }
-
     const incident = await incidentRepository.createIncident({
-        shipmentId,
+        shipmentId: parsedShipmentId,
         reportedBy: driverId,
         incidentType,
         severityLevel: severity,
@@ -127,11 +137,15 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
 
     await Promise.all(imageUrls.map((url) => incidentRepository.addIncidentEvidence(incident.id, url)));
 
+    const contextMsg = parsedShipmentId
+        ? `trên chuyến #${parsedShipmentId}`
+        : 'ngoài chuyến (xe không có chuyến)';
+
     // Notify coordinators (alert — họ cần xử lý ngay)
     const coordinatorIds = await incidentRepository.getCoordinatorIds();
     notificationService.createForUsers(coordinatorIds, {
         title: `Sự cố mới: ${TYPE_LABEL[incidentType]}`,
-        message: `Tài xế báo cáo sự cố trên chuyến #${shipmentId}: ${description.trim().slice(0, 80)}`,
+        message: `Tài xế báo cáo sự cố ${contextMsg}: ${description.trim().slice(0, 80)}`,
         type: 'INCIDENT_REPORTED',
         entityType: 'incidents',
         entityId: incident.id,

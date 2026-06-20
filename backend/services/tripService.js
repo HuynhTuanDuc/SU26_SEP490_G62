@@ -460,7 +460,7 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
 // Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
 // 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
 const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
-    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
+    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
     if (!ALLOWED.includes(collectionType)) {
         throw new Error('Hình thức thanh toán không hợp lệ');
     }
@@ -468,7 +468,8 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
     const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
     if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền');
 
-    if (receipt.has_driver_debt || receipt.has_customer_debt) {
+    // Dùng driver_collection_type làm trạng thái authoritative (persistent, bao gồm cả bank_transfer)
+    if (receipt.driver_collection_type) {
         throw new Error('Hình thức thanh toán đã được ghi nhận cho chuyến này');
     }
 
@@ -503,7 +504,17 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
             amount,
         });
     }
-    // bank_transfer — khách trả về DN, không cần tạo debt hay cập nhật DB
+    // bank_transfer / qr_transfer — không tạo debt; chỉ ghi driver_collection_type
+
+    // Ghi xác nhận vào shipment_receipts để persist qua các lần reload
+    if (receipt.shipment_receipt_id) {
+        await pool.query(
+            `UPDATE shipment_receipts
+             SET driver_collection_type = $1, driver_confirmed_at = NOW()
+             WHERE id = $2`,
+            [collectionType, receipt.shipment_receipt_id],
+        );
+    }
 
     return { collection_type: collectionType, amount, recorded: true };
 };
