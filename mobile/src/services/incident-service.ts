@@ -8,7 +8,7 @@ import type {
 } from '@/types/incident';
 
 export type CreateIncidentPayload = {
-    shipmentId: number;
+    shipmentId?: number | null;
     incidentType: IncidentType;
     severityLevel: IncidentSeverity;
     description: string;
@@ -25,7 +25,9 @@ export type UpdateIncidentPayload = {
 export const incidentService = {
     createIncident: (payload: CreateIncidentPayload): Promise<CreateIncidentResponse> => {
         const formData = new FormData();
-        formData.append('shipmentId',    String(payload.shipmentId));
+        if (payload.shipmentId) {
+            formData.append('shipmentId', String(payload.shipmentId));
+        }
         formData.append('incidentType',  payload.incidentType);
         formData.append('severityLevel', payload.severityLevel);
         formData.append('description',   payload.description);
