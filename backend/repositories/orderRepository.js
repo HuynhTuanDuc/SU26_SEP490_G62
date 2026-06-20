@@ -211,28 +211,6 @@ const listOrders = async ({
     };
 };
 
-//Lấy tài xế theo Id
-const getDriverById = async (client, driverId) => {
-    if (!driverId) return null;
-    const result = await client.query(
-        `SELECT
-            d.profile_id AS id,
-            p.full_name,
-            p.phone,
-            d.vehicle_id,
-            v.plate_number,
-            v.vehicle_group_id,
-            v.status AS vehicle_status
-         FROM drivers d
-         JOIN profiles p ON p.id = d.profile_id
-         LEFT JOIN vehicles v ON v.id = d.vehicle_id
-         WHERE d.profile_id = $1
-         LIMIT 1`,
-        [driverId],
-    );
-    return result.rows[0] ?? null;
-};
-
 //Lấy Id nhóm xe
 const getDefaultVehicleGroupId = async (client) => {
     const result = await client.query(
@@ -241,27 +219,7 @@ const getDefaultVehicleGroupId = async (client) => {
     return result.rows[0]?.id ?? null;
 };
 
-//Lấy thông tin lái xe theo BKS
-const getDriverByPlate = async (client, plateNumber) => {
-    if (!plateNumber) return null;
-    const result = await client.query(
-        `SELECT
-            d.profile_id AS id,
-            p.full_name,
-            p.phone,
-            d.vehicle_id,
-            v.plate_number,
-            v.vehicle_group_id,
-            v.status AS vehicle_status
-         FROM vehicles v
-         LEFT JOIN drivers d ON d.vehicle_id = v.id
-         LEFT JOIN profiles p ON p.id = d.profile_id
-         WHERE UPPER(v.plate_number) = UPPER($1)
-         LIMIT 1`,
-        [plateNumber],
-    );
-    return result.rows[0] ?? null;
-};
+
 //Lấy xe theo BKS
 const getVehicleByPlate = async (client, plateNumber, vehicleGroupId = null) => {
     if (!plateNumber) return null;
@@ -446,28 +404,6 @@ const listCoordinatorVehicleGroups = async () => {
     return result.rows;
 };
 
-//Tìm tài xế theo tên
-const findDriverByName = async (client, driverName) => {
-    if (!driverName) return null;
-    const result = await client.query(
-        `SELECT
-            d.profile_id AS id,
-            p.full_name,
-            p.phone,
-            d.vehicle_id,
-            v.plate_number,
-            v.vehicle_group_id,
-            v.status AS vehicle_status
-         FROM drivers d
-         JOIN profiles p ON p.id = d.profile_id
-         JOIN roles r ON r.id = p.role_id
-         LEFT JOIN vehicles v ON v.id = d.vehicle_id
-         WHERE r.name = 'driver' AND LOWER(p.full_name) = LOWER($1)
-         LIMIT 1`,
-        [driverName],
-    );
-    return result.rows[0] ?? null;
-};
 
 //Tạo tài xế dựa trên import 
 const createImportedDriverAccount = async (client, driverName) => {
@@ -507,55 +443,6 @@ const createImportedDriverAccount = async (client, driverName) => {
     );
 
     return accountId;
-};
-
-//Tìm hoặc tạo tài xế
-const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, vehicleGroupId }) => {
-    const name = String(driverName || '').trim();
-    const plate = String(plateNumber || '').trim().toUpperCase();
-    if (!name && !plate) return null;
-
-    let vehicle = null;
-    if (plate) {
-        const vehicleResult = await client.query(
-            `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
-             VALUES ($1, $2, 'active')
-             ON CONFLICT (plate_number) DO UPDATE
-             SET vehicle_group_id = COALESCE(vehicles.vehicle_group_id, EXCLUDED.vehicle_group_id),
-                 updated_at = NOW()
-             RETURNING id, plate_number, vehicle_group_id, assigned_driver_id, status`,
-            [plate, vehicleGroupId],
-        );
-        vehicle = vehicleResult.rows[0];
-    }
-
-    const driverByPlate = plate ? await getDriverByPlate(client, plate) : null;
-    if (driverByPlate?.id) return driverByPlate;
-
-    let driver = name ? await findDriverByName(client, name) : null;
-    let driverId = driver?.id;
-    if (!driverId && name) {
-        driverId = await createImportedDriverAccount(client, name);
-    }
-
-    if (!driverId) return null;
-
-    if (vehicle?.id) {
-        await client.query(
-            `UPDATE drivers
-             SET vehicle_id = $2
-             WHERE profile_id = $1 AND (vehicle_id IS NULL OR vehicle_id = $2)`,
-            [driverId, vehicle.id],
-        );
-        await client.query(
-            `UPDATE vehicles
-             SET assigned_driver_id = $2, updated_at = NOW()
-             WHERE id = $1 AND (assigned_driver_id IS NULL OR assigned_driver_id = $2)`,
-            [vehicle.id, driverId],
-        );
-    }
-
-    return getDriverById(client, driverId);
 };
 
 //Nếu sdt tồn tại trả về custormer, nếu ko tồn tại, tạo thêm customer 
@@ -1078,12 +965,9 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
 //Gửi phương thức ra ngoài 
 module.exports = {
     listOrders,
-    getDriverById,
-    getDriverByPlate,
     getVehicleByPlate,
     getVehicleGroupById,
     listCoordinatorVehicleGroups,
-    findOrCreateDriverWithVehicle,
     getDefaultVehicleGroupId,
     findOrCreateCustomer,
     validateVehicleShipmentAssignment,

@@ -50,8 +50,6 @@ const isBeforeToday = (dateText) => {
     return inputDate < today;
 };
 
-
-
 const parseRoute = (routeStr) => {
     const route = safeTrim(routeStr);
     if (!route) return { pickupAddress: '', deliveryAddress: '' };
