@@ -4,7 +4,7 @@ import {
     FileText, Package, PackageCheck,
     TriangleAlert, Truck,
 } from 'lucide-react-native';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { router, useFocusEffect } from 'expo-router';
@@ -217,11 +217,11 @@ export function DriverHomeScreen() {
     const displayName = profileLoading ? '...' : (profile?.full_name ?? 'Tài xế');
 
     const handleReportIncident = () => {
-        if (!activeTrip) {
-            Alert.alert('Không có chuyến đang thực hiện', 'Bạn cần có chuyến đang hoạt động để báo sự cố.');
-            return;
+        if (activeTrip) {
+            router.push({ pathname: '/report-incident', params: { shipmentId: String(activeTrip.id) } });
+        } else {
+            router.push('/report-incident');
         }
-        router.push({ pathname: '/report-incident', params: { shipmentId: String(activeTrip.id) } });
     };
 
     const GRID_ACTIONS: ActionItem[] = [
