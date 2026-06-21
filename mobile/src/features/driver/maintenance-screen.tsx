@@ -283,7 +283,7 @@ export function MaintenanceScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <StatusBar style="dark" />
-            <ScreenHeader title="Bảo dưỡng xe" />
+            <ScreenHeader title="Bảo dưỡng xe" showBack />
 
             <ScrollView
                 contentContainerStyle={{ paddingHorizontal: appTheme.spacing.screenX, paddingTop: 16, paddingBottom: appTheme.spacing.screenBottom }}
