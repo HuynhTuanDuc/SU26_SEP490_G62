@@ -36,7 +36,7 @@ import {
 
 import OrderModal from "../../features/coordinator/orderModal";
 
-export default function CoordinatorPage({ user, onLogout }) {
+export default function OrdersPage({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(user);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -52,6 +52,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [page, setPage] = useState("orders");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [dateFromFilter, setDateFromFilter] = useState("");
@@ -633,12 +634,16 @@ export default function CoordinatorPage({ user, onLogout }) {
     <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <AppSidebar
         user={user}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+        activeTab={page}
+        onTabChange={setPage}
         collapsed={sidebarCollapsed}
         onCollapse={setSidebarCollapsed}
       />
+      
 
+      {page === "incidents" && (
+        <IncidentPage />
+      )}
       <main className="content">
         <header className="topbar">
           <div className="search-box">

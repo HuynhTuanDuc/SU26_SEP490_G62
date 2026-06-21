@@ -224,7 +224,6 @@ export default function OrderModal({
                                   step="0.1"
                                   value={trip.distance}
                                   onChange={(e) => updateTripField(index, 'distance', e.target.value)}
-                                  placeholder="VD: 120"
                                   className={formErrors[`trip_${index}_distance`] ? 'input-error' : ''}
                                   style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                                 />

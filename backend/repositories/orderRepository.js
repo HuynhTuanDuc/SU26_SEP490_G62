@@ -446,17 +446,14 @@ const createImportedDriverAccount = async (client, driverName) => {
 };
 
 //Nếu sdt tồn tại trả về custormer, nếu ko tồn tại, tạo thêm customer 
-const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
-    const normalizedPhone = normalizePhone(customerPhone);
-    const normalizedName = safeTrim(customerName);
-
-    if (normalizedPhone) {
+const findOrCreateCustomer = async (client, customerName, customerPhone) => {
+    if (customerPhone) {
         const existingCustomer = await client.query(// Nếu có khách hàng tìm bởi số điện thoại
             `SELECT id, full_name, phone 
              FROM customers
              WHERE phone = $1
              LIMIT 1`,
-            [normalizedPhone],//Query tìm khách hàng 
+            [customerPhone],//Query tìm khách hàng 
         );
         if (existingCustomer.rows[0]) return existingCustomer.rows[0];//Thì return khách hàng
 
@@ -468,7 +465,7 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
         `INSERT INTO customers (customer_type, full_name, phone)
         VALUES('individual', $1, $2)
         RETURNING id, full_name, phone`,
-        [normalizedName || normalizedPhone, normalizedPhone],
+        [customerName || customerPhone, customerPhone],
     );
     return createdCustomer.rows[0];
 };
@@ -679,60 +676,22 @@ const createOrderWithMultipleShipments = async ({
     };
 };
 
-//Phương thức tạo order dựa trên dữ liệu được import 
-const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
-    return createOrderWithShipment({
-        client,
-        userId,
-        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash', created_at: orderData.created_at || null },
-        shipmentData: {
-            ...shipmentData,
-            cargo_name: orderData.cargo_name,
-            vehicle_group_id: shipmentData.vehicle_group_id,
-            owner_driver_id: shipmentData.owner_driver_id || null,
-            vehicle_id: shipmentData.vehicle_id || null,
-            estimated_distance_km: shipmentData.estimated_distance_km ?? null,
-            arrived_at: shipmentData.arrived_at || null,
-            plate_number: shipmentData.plate_number || null,
-            status: shipmentData.status || 'available',
-            created_at: shipmentData.created_at || null,
-        },
-    });
-};
+
 
 //Phương thức cập nhât order
-const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray) => {
-    const {
-        customer_name,
-        customer_phone,
-        cargo_name,
-        cargo_weight_kg,
-        pickup_address,
-        delivery_address,
-        estimated_price,
-        notes,
-        plate,
-        driver_id,
-        vehicle_id,
-        vehicle_group_id,
-        distance,
-        arrived_at,
-        date,
-        partner_name,
-        total_actual_price,
-    } = payload;
+const updateOrder = async ({
+    orderId, 
+    orderData,
+    shipmentsDataArray}) => {
+
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        const customer = (customer_name || customer_phone)
-            ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
-            : null;
+        
         const totalEstimatedPrice = shipmentsDataArray ? shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0) : null;
-        const arrivedAt = safeTrim(arrived_at || date) || null;
-        const orderNotes = notes !== undefined ? safeTrim(notes) : '';
-
+        
         const orderResult = await client.query(
             `UPDATE orders
              SET customer_id = COALESCE($6, customer_id),
@@ -747,13 +706,13 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
              RETURNING *`,
             [
                 orderId,
-                safeTrim(cargo_name),
-                normalizeNumber(cargo_weight_kg),
+               orderData.cargo_name,
+                orderData.cargo_weight_kg,
                 totalEstimatedPrice !== null ? totalEstimatedPrice : undefined,
-                orderNotes,
-                customer?.id ?? null,
-                partner_name !== undefined ? partner_name : null,
-                total_actual_price !== undefined ? total_actual_price : 0,
+                orderData.notes,
+                orderData.customer_id !== undefined ? orderData.customer_id : null,
+                orderData.partner_name !== undefined ? orderData.partner_name : null,
+                orderData.total_actual_price !== undefined ? orderData.total_actual_price : 0,
             ],
         );
 
@@ -806,7 +765,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             shipmentData.vehicle_id,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
-                            arrivedAt,
+                            orderData.arrived_at,
                             shipmentData.actual_price ?? null,
                             nextStatus,
                         ],
@@ -835,16 +794,16 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                         );
                     }
 
-                    if (safeTrim(shipmentData.pickup_address)) {
+                    if (shipmentData.pickup_address) {
                         await client.query(
                             `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'pickup'`,
-                            [existing.id, safeTrim(shipmentData.pickup_address)],
+                            [existing.id, shipmentData.pickup_address],
                         );
                     }
-                    if (safeTrim(shipmentData.delivery_address)) {
+                    if (shipmentData.delivery_address) {
                         await client.query(
                             `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'delivery'`,
-                            [existing.id, safeTrim(shipmentData.delivery_address)],
+                            [existing.id, shipmentData.delivery_address],
                         );
                     }
                 } else if (!existing && shipmentData) {
@@ -885,11 +844,11 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     await insertStops(
                         client,
                         newShipmentId,
-                        safeTrim(shipmentData.pickup_address),
-                        safeTrim(shipmentData.delivery_address),
-                        customer_name,
-                        customer_phone,
-                        orderNotes
+                        shipmentData.pickup_address,
+                        shipmentData.delivery_address,
+                        orderData.customer_name,
+                        orderData.customer_phone,
+                        orderData.notes
                     );
                 } else if (existing && !shipmentData) {
                     if (existing.status !== 'available') {
@@ -960,6 +919,27 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
     } finally {
         client.release();
     }
+};
+
+//Phương thức tạo order dựa trên dữ liệu được import 
+const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
+    return createOrderWithShipment({
+        client,
+        userId,
+        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash', created_at: orderData.created_at || null },
+        shipmentData: {
+            ...shipmentData,
+            cargo_name: orderData.cargo_name,
+            vehicle_group_id: shipmentData.vehicle_group_id,
+            owner_driver_id: shipmentData.owner_driver_id || null,
+            vehicle_id: shipmentData.vehicle_id || null,
+            estimated_distance_km: shipmentData.estimated_distance_km ?? null,
+            arrived_at: shipmentData.arrived_at || null,
+            plate_number: shipmentData.plate_number || null,
+            status: shipmentData.status || 'available',
+            created_at: shipmentData.created_at || null,
+        },
+    });
 };
 
 //Gửi phương thức ra ngoài 

@@ -85,7 +85,9 @@ const parseExcelDate = (value) => {
 };
 
 const findOrCreateCustomer = async (client, customerName, customerPhone) => {
-    return orderRepository.findOrCreateCustomer(client, customerName, customerPhone, normalizePhone, safeTrim);
+    customerPhone = normalizePhone(customerPhone);
+    customerName = safeTrim(customerName);
+    return orderRepository.findOrCreateCustomer(client, customerName, customerPhone);
 };
 
 const listOrders = async (query = {}) => {
@@ -145,6 +147,7 @@ const createOrder = async (userId, payload) => {
         await dbClient.query('BEGIN');
 
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
+        
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
 
         const shipmentsDataArray = [];
@@ -236,6 +239,8 @@ const createOrder = async (userId, payload) => {
             userId,
             orderData: {
                 customer_id: customer?.id ?? null,
+                customer_name: safeTrim(customer_name),
+                customer_phone: normalizePhone(customer_phone),
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 payment_type: payload.payment_type,
@@ -257,6 +262,138 @@ const createOrder = async (userId, payload) => {
     } finally {
         dbClient?.release?.();
     }
+};
+
+
+
+const updateOrder = async (orderId, payload) => {
+    const {
+        customer_name,
+        customer_phone,
+        cargo_name,
+        cargo_weight_kg,
+        pickup_address,
+        delivery_address,
+        estimated_price,
+        notes,
+        date,
+        arrived_at,
+        plate,
+        driver_id,
+        vehicle_id,
+        vehicle_group_id,
+        distance,
+        is_partner,
+        partner_name,
+        partner_fee,
+    } = payload;
+
+    let { trips } = payload;
+    if (!trips || !Array.isArray(trips) || trips.length === 0) {
+        trips = [{
+            plate: payload.plate,
+            vehicle_group_id: payload.vehicle_group_id,
+            distance: payload.distance
+        }];
+    }
+
+    const shipmentsDataArray = [];
+    const dbClient = await pool.connect();
+    const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
+    try {
+        
+        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+        const existingShipmentsRes = await dbClient.query(
+            `SELECT id
+             FROM order_shipments
+             WHERE order_id = $1
+             ORDER BY shipment_index ASC`,
+            [orderId],
+        );
+        const existingShipments = existingShipmentsRes.rows;
+        const usedVehicleIds = new Set();
+        const usedDriverIds = new Set();
+
+        for (let index = 0; index < trips.length; index++) {
+            const trip = trips[index];
+            const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
+            const normalizedDistance = normalizeNumber(distance);
+
+            if (normalizedDistance === null || normalizedDistance <= 0) {
+                throw new Error('Quãng đường là bắt buộc để tính cước');
+            }
+
+            const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
+            const vehicleGroup = finalVehicleGroupId ? await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId) : null;
+            if (!vehicleGroup) {
+                throw new Error('Nhóm xe không tồn tại');
+            }
+
+            const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
+            if (plate && !vehicle) {
+                throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
+            }
+            if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
+                throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
+            }
+
+            const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
+            const finalDriverId = vehicle?.assigned_driver_id ?? null;
+            const finalVehicleId = vehicle?.id ?? null;
+            if (!finalDriverId || !finalVehicleId) {
+                throw new Error(`Xe ${vehicle?.plate_number || plate} chua co tai xe duoc gan`);
+            }
+
+            await orderRepository.validateVehicleShipmentAssignment(dbClient, {
+                vehicleId: finalVehicleId,
+                driverId: finalDriverId,
+                excludeShipmentId: existingShipments[index]?.id ?? null,
+            });
+            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
+            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
+
+            shipmentsDataArray.push({
+                owner_driver_id: finalDriverId,
+                vehicle_id: finalVehicleId,
+                estimated_price: normalizedPrice,
+                estimated_distance_km: normalizedDistance,
+                plate_number: vehicle?.plate_number,
+                pickup_address: safeTrim(trip_pickup || pickup_address),
+                delivery_address: safeTrim(trip_delivery || delivery_address),
+                status: SHIPMENT_STATUS.CLAIMED,
+                assignmentData: {
+                    driver_id: finalDriverId,
+                    vehicle_id: finalVehicleId,
+                    assigned_by: payload.updated_by ?? null,
+                },
+            });
+        }
+
+    } finally {
+        dbClient.release();
+    }
+
+    return orderRepository.updateOrder({
+        orderId,
+        orderData: {
+            customer_id: customer?.id ?? null,
+            customer_name: safeTrim(customer_name),
+            customer_phone: normalizePhone(customer_phone),
+            cargo_name: safeTrim(cargo_name),
+            cargo_weight_kg: normalizeNumber(cargo_weight_kg),
+            pickup_address: safeTrim(pickup_address),
+            delivery_address: safeTrim(delivery_address),
+            notes: safeTrim(notes),
+            arrived_at: safeTrim(arrived_at || date) || null,
+            partner_name: is_partner ? safeTrim(partner_name) : null,
+            total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
+        },
+        shipmentsDataArray
+    });
+};
+
+const cancelOrder = async (orderId, reason) => {
+    return orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
 };
 
 const importOrdersFromExcel = async (userId, fileBuffer) => {
@@ -371,130 +508,6 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
     } finally {
         dbClient?.release?.();
     }
-};
-
-const updateOrder = async (orderId, payload) => {
-    const {
-        customer_name,
-        customer_phone,
-        cargo_name,
-        cargo_weight_kg,
-        pickup_address,
-        delivery_address,
-        estimated_price,
-        notes,
-        date,
-        arrived_at,
-        plate,
-        driver_id,
-        vehicle_id,
-        vehicle_group_id,
-        distance,
-        is_partner,
-        partner_name,
-        partner_fee,
-    } = payload;
-
-    let { trips } = payload;
-    if (!trips || !Array.isArray(trips) || trips.length === 0) {
-        trips = [{
-            plate: payload.plate,
-            vehicle_group_id: payload.vehicle_group_id,
-            distance: payload.distance
-        }];
-    }
-
-    const shipmentsDataArray = [];
-    const dbClient = await pool.connect();
-
-    try {
-        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
-        const existingShipmentsRes = await dbClient.query(
-            `SELECT id
-             FROM order_shipments
-             WHERE order_id = $1
-             ORDER BY shipment_index ASC`,
-            [orderId],
-        );
-        const existingShipments = existingShipmentsRes.rows;
-        const usedVehicleIds = new Set();
-        const usedDriverIds = new Set();
-
-        for (let index = 0; index < trips.length; index++) {
-            const trip = trips[index];
-            const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
-            const normalizedDistance = normalizeNumber(distance);
-
-            if (normalizedDistance === null || normalizedDistance <= 0) {
-                throw new Error('Quãng đường là bắt buộc để tính cước');
-            }
-
-            const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
-            const vehicleGroup = finalVehicleGroupId ? await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId) : null;
-            if (!vehicleGroup) {
-                throw new Error('Nhóm xe không tồn tại');
-            }
-
-            const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
-            if (plate && !vehicle) {
-                throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
-            }
-            if (vehicle?.vehicle_status && vehicle.vehicle_status !== 'active') {
-                throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.vehicle_status})`);
-            }
-
-            const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
-            const finalDriverId = vehicle?.assigned_driver_id ?? null;
-            const finalVehicleId = vehicle?.id ?? null;
-            if (!finalDriverId || !finalVehicleId) {
-                throw new Error(`Xe ${vehicle?.plate_number || plate} chua co tai xe duoc gan`);
-            }
-
-            await orderRepository.validateVehicleShipmentAssignment(dbClient, {
-                vehicleId: finalVehicleId,
-                driverId: finalDriverId,
-                excludeShipmentId: existingShipments[index]?.id ?? null,
-            });
-            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
-            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
-
-            shipmentsDataArray.push({
-                owner_driver_id: finalDriverId,
-                vehicle_id: finalVehicleId,
-                estimated_price: normalizedPrice,
-                estimated_distance_km: normalizedDistance,
-                plate_number: vehicle?.plate_number,
-                pickup_address: safeTrim(trip_pickup || pickup_address),
-                delivery_address: safeTrim(trip_delivery || delivery_address),
-                status: SHIPMENT_STATUS.CLAIMED,
-                assignmentData: {
-                    driver_id: finalDriverId,
-                    vehicle_id: finalVehicleId,
-                    assigned_by: payload.updated_by ?? null,
-                },
-            });
-        }
-
-    } finally {
-        dbClient.release();
-    }
-
-    return orderRepository.updateOrder(orderId, {
-        customer_name,
-        customer_phone,
-        cargo_name,
-        cargo_weight_kg,
-        pickup_address,
-        delivery_address,
-        notes,
-        arrived_at: arrived_at || date,
-        partner_name: is_partner ? safeTrim(partner_name) : null,
-        total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
-    }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
-};
-
-const cancelOrder = async (orderId, reason) => {
-    return orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
 };
 
 module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder };
