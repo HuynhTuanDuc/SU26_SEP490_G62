@@ -94,3 +94,10 @@ docs/accountant-business-notes.md
 
 # SPEC documents (personal)
 docs/SPEC-accountant.md
+
+# Accountant branch test files (personal, not for team)
+# Backend tests
+backend/test/accountant/*.test.js
+backend/test/accountant/payment.http.test.js
+# Frontend tests
+frontend/test/debtPaymentService.test.js

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import OrderFormModal from "./OrderFormModal";
 import PaymentModal from "./PaymentModal";
+import DebtPaymentModal from "./DebtPaymentModal";
 import RevenueTable from "./RevenueTable";
 import DebtTable from "./DebtTable";
 import OrderDetailModal from "./OrderDetailModal";
@@ -33,6 +34,10 @@ export default function Accountant({ user, onLogout }) {
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState(null);
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  // ── Debt Payment Modal ────────────────────────────────────────
+  const [isDebtPaymentOpen, setIsDebtPaymentOpen] = useState(false);
+  const [selectedPerson, setSelectedPerson] = useState(null);
 
   // ── Stats ─────────────────────────────────────────────────────
   const [stats, setStats] = useState({
@@ -129,6 +134,12 @@ export default function Accountant({ user, onLogout }) {
   const handleOpenPayment = (order) => {
     setSelectedOrderForPayment(order);
     setIsPaymentModalOpen(true);
+  };
+
+  // Mở modal thu tiền cho customer hoặc driver
+  const handleOpenDebtPayment = (person) => {
+    setSelectedPerson(person);
+    setIsDebtPaymentOpen(true);
   };
 
   // ── Pagination meta ────────────────────────────────────────────
@@ -357,7 +368,11 @@ export default function Accountant({ user, onLogout }) {
               </div>
 
               {/* Debt Table */}
-              <DebtTable apiBase={API_BASE} token={token} />
+              <DebtTable
+                apiBase={API_BASE}
+                token={token}
+                onDebtPayment={handleOpenDebtPayment}
+              />
             </>
           )}
         </div>
@@ -402,6 +417,16 @@ export default function Accountant({ user, onLogout }) {
         token={token}
         onOpenPayment={handleOpenPayment}
         onRefresh={refreshData}
+      />
+
+      <DebtPaymentModal
+        isOpen={isDebtPaymentOpen}
+        onClose={() => {
+          setIsDebtPaymentOpen(false);
+          setSelectedPerson(null);
+        }}
+        person={selectedPerson}
+        onPaymentRecorded={refreshData}
       />
 
       <ProfileModal

@@ -14,7 +14,7 @@ const DEBT_TYPE_CFG = {
   driver:   { label: "Tài xế nợ",   color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
 };
 
-export default function DebtTable({ apiBase, token }) {
+export default function DebtTable({ apiBase, token, onDebtPayment }) {
   const [debts, setDebts] = useState([]);
   const [groupedDebts, setGroupedDebts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -342,6 +342,7 @@ export default function DebtTable({ apiBase, token }) {
           toggleExpand={toggleExpand}
           pagination={pagination}
           handlePageChange={handlePageChange}
+          onDebtPayment={onDebtPayment}
         />
       ) : (
         <DetailDebtView
@@ -471,7 +472,7 @@ function DetailDebtView({ debts, pagination, handlePageChange }) {
 }
 
 // Component view nhóm theo người
-function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts, toggleExpand, pagination, handlePageChange }) {
+function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts, toggleExpand, pagination, handlePageChange, onDebtPayment }) {
   if (debts.length === 0) {
     return (
       <div style={{ padding: 60, textAlign: "center" }}>
@@ -556,6 +557,35 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
                 {/* Status */}
                 {renderBadge(statusCfg.label, statusCfg.color, statusCfg.bg, statusCfg.border)}
+
+                {/* Action: Thu tiền */}
+                {totalRemaining > 0 && onDebtPayment && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDebtPayment({
+                        type: debt.debt_type,
+                        id: debt.debt_type === 'driver' ? debt.driver_id : (debt.customer_ids?.[0]),
+                        name: personName,
+                        phone: personPhone,
+                        remaining: totalRemaining,
+                      });
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#16a34a',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Thu tiền
+                  </button>
+                )}
               </div>
 
               {/* Expanded detail */}
