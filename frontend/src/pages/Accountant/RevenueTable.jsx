@@ -4,34 +4,45 @@ import PropTypes from "prop-types";
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN");
 
 const DEBT_STATUS = {
-  paid: { label: "Đã thu đủ", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
-  partial: { label: "Thu một phần", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
-  unpaid: { label: "Chưa thu", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+  paid:    { label: "Đã thu đủ",   color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+  partial: { label: "Thu 1 phần", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+  unpaid:  { label: "Chưa thu",    color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+};
+
+const ORDER_STATUS = {
+  open:         { label: "Mới tạo",        color: "#64748b", bg: "#f8fafc", border: "#cbd5e1" },
+  assigned:     { label: "Đã điều phối",   color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
+  in_progress:  { label: "Đang vận chuyển", color: "#d97706", bg: "#fffbeb", border: "#fde68a" },
+  completed:    { label: "Hoàn thành",     color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+  cancelled:    { label: "Đã hủy",          color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
 };
 
 function OrderCard({ order, onOpenPayment, onOpenDetail }) {
+  // Debt status (trạng thái công nợ)
   const debtStatus =
     order.debt_status ||
     (order.payment_type === "client_credit" ? "unpaid" : "paid");
-  const statusCfg = DEBT_STATUS[debtStatus] || DEBT_STATUS.paid;
+  const debtCfg = DEBT_STATUS[debtStatus] || DEBT_STATUS.paid;
 
-  // Giá trị thực tế (SUM order_shipments.actual_price) — là giá trị CHÍNH
-  const actual = Number(order.actual_price || 0);
-  // Giá trị ước tính (SUM order_shipments.estimated_price) — chỉ để tham khảo
+  // Order status (trạng thái đơn hàng)
+  const orderStatus = order.status || "open";
+  const orderCfg = ORDER_STATUS[orderStatus] || ORDER_STATUS.open;
+
+  // Doanh thu = SUM(order_shipments.actual_price)
+  const revenue = Number(order.actual_price || 0);
+  // Ước tính = SUM(order_shipments.estimated_price)
   const estimated = Number(order.estimated_price || 0);
-  // Tiền đã thu (SUM confirmed debt_payments cho debt thuộc đơn này)
-  const paid = Number(order.debt_paid || 0);
-  // Tiền còn nợ = actual - paid (công thức tổng quát, kể cả cash/bank)
-  const remaining = Number(order.debt_remaining ?? Math.max(actual - paid, 0));
+  // Thực thu = SUM(confirmed debt_payments) cho đơn này
+  const collected = Number(order.debt_paid || 0);
+  // Còn nợ = revenue - collected
+  const remaining = revenue - collected;
+
+  const hasDiff = estimated > 0 && Math.abs(estimated - revenue) > 0.01;
   const shipmentCount = Number(order.shipment_count) || 0;
-  // Có chênh lệch giữa ước tính và thực tế không
-  const hasDiff = estimated > 0 && Math.abs(estimated - actual) > 0.01;
 
   const orderDate = order.created_at
     ? new Date(order.created_at).toLocaleDateString("vi-VN", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
+        day: "2-digit", month: "2-digit", year: "numeric",
       })
     : "—";
 
@@ -45,160 +56,150 @@ function OrderCard({ order, onOpenPayment, onOpenDetail }) {
         boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
+      {/* Main row */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "60px 90px 1fr 120px 140px 70px 110px 110px 100px 120px",
-          gap: 12,
+          gridTemplateColumns: "60px 90px 1fr 1fr 100px 70px 110px 110px 90px 80px 140px",
+          gap: 8,
           alignItems: "center",
           padding: "12px 16px",
           background: "#fff",
           userSelect: "none",
+          minWidth: 1000,
         }}
       >
-        <span
-          style={{
-            fontWeight: 700,
-            color: "#1e40af",
-            fontSize: 13,
-            whiteSpace: "nowrap",
-          }}
-        >
+        {/* ID */}
+        <span style={{ fontWeight: 700, color: "#1e40af", fontSize: 13, whiteSpace: "nowrap" }}>
           #{order.id}
         </span>
 
+        {/* Ngày */}
         <span style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap" }}>{orderDate}</span>
 
+        {/* Khách hàng */}
         <div style={{ overflow: "hidden" }}>
-          <div style={{ fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }}>
             {order.customer_name || "Khách lẻ"}
           </div>
-          <div style={{ fontSize: 11, color: "#94a3b8" }}>{order.customer_company || ""}</div>
+          <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {order.customer_phone || ""}
+          </div>
         </div>
 
-        <span style={{ fontFamily: "monospace", fontSize: 12, color: "#475569" }}>{order.customer_phone || "—"}</span>
+        {/* Hàng hóa */}
+        <span style={{ fontSize: 11, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={order.cargo_name}>
+          {order.cargo_name || "—"}
+        </span>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: 26,
-              height: 26,
-              borderRadius: "50%",
-              background: "#e5eeff",
-              color: "#00236f",
-              fontWeight: 700,
-              fontSize: 12,
-            }}
-          >
+        {/* Trạng thái đơn */}
+        <span style={{ textAlign: "center" }}>
+          <span style={{
+            display: "inline-block",
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 700,
+            color: orderCfg.color,
+            background: orderCfg.bg,
+            border: `1px solid ${orderCfg.border}`,
+            whiteSpace: "nowrap",
+          }}>
+            {orderCfg.label}
+          </span>
+        </span>
+
+        {/* Chuyến */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <span style={{
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 22, height: 22, borderRadius: "50%",
+            background: "#e5eeff", color: "#00236f", fontWeight: 700, fontSize: 11,
+          }}>
             {shipmentCount}
           </span>
-          <span style={{ fontSize: 12, color: "#64748b" }}>chuyến</span>
         </div>
 
-        <div
-          title={hasDiff ? `Ước tính: ${fmt(estimated)}đ` : ""}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            cursor: hasDiff ? "help" : "default",
-          }}
-        >
-          <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 13 }}>
-            {fmt(actual)}đ
-          </span>
-          {hasDiff && (
-            <span style={{ fontSize: 10, color: "#94a3b8", textDecoration: "line-through" }}>
-              {fmt(estimated)}đ
-            </span>
-          )}
-        </div>
-        <span style={{ fontWeight: 700, color: "#16a34a", textAlign: "right", fontSize: 13 }}>
-          {fmt(paid)}đ
-        </span>
-        <span
-          style={{
-            fontWeight: remaining > 0 ? 700 : 500,
-            color: remaining > 0 ? "#dc2626" : "#16a34a",
-            textAlign: "right",
-            fontSize: 13,
-          }}
-        >
-          {fmt(remaining)}đ
-        </span>
-
-        <span style={{ textAlign: "center" }}>
-          <span
+        {/* Doanh thu */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1 }}>Doanh thu</div>
+          <div
+            title={hasDiff ? `Ước tính: ${fmt(estimated)}đ` : ""}
             style={{
-              display: "inline-block",
-              padding: "3px 10px",
-              borderRadius: 999,
-              fontSize: 11,
-              fontWeight: 700,
-              color: statusCfg.color,
-              background: statusCfg.bg,
-              border: `1px solid ${statusCfg.border}`,
-              whiteSpace: "nowrap",
+              fontWeight: 700, color: "#0f172a", fontSize: 13,
+              cursor: hasDiff ? "help" : "default",
             }}
           >
-            {statusCfg.label}
+            {fmt(revenue)}đ
+          </div>
+          {hasDiff && (
+            <div style={{ fontSize: 10, color: "#94a3b8", textDecoration: "line-through" }}>
+              {fmt(estimated)}đ
+            </div>
+          )}
+        </div>
+
+        {/* Thực thu */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1 }}>Thực thu</div>
+          <div style={{ fontWeight: 700, color: "#16a34a", fontSize: 13 }}>
+            {fmt(collected)}đ
+          </div>
+        </div>
+
+        {/* Còn nợ */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 1 }}>Còn nợ</div>
+          <div style={{
+            fontWeight: remaining > 0 ? 700 : 500,
+            color: remaining > 0 ? "#dc2626" : "#16a34a",
+            fontSize: 13,
+          }}>
+            {fmt(Math.max(remaining, 0))}đ
+          </div>
+        </div>
+
+        {/* Trạng thái công nợ */}
+        <span style={{ textAlign: "center" }}>
+          <span style={{
+            display: "inline-block",
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 700,
+            color: debtCfg.color,
+            background: debtCfg.bg,
+            border: `1px solid ${debtCfg.border}`,
+            whiteSpace: "nowrap",
+          }}>
+            {debtCfg.label}
           </span>
         </span>
 
-        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-          {(debtStatus === "unpaid" || debtStatus === "partial") ? (
-            <button
-              onClick={() => onOpenPayment?.(order)}
-              style={{
-                padding: "5px 10px",
-                background: "#1d4ed8",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Ghi thu
-            </button>
-          ) : (
-            <button
-              onClick={() => onOpenPayment?.(order)}
-              style={{
-                padding: "5px 10px",
-                background: "#f1f5f9",
-                color: "#475569",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Lịch sử
-            </button>
-          )}
+        {/* Hành động */}
+        <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
+          <button
+            onClick={() => onOpenPayment?.(order)}
+            style={{
+              padding: "5px 10px",
+              background: debtStatus === "paid" ? "#f1f5f9" : "#1d4ed8",
+              color: debtStatus === "paid" ? "#475569" : "#fff",
+              border: "none", borderRadius: 6,
+              fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            {debtStatus === "paid" ? "Lịch sử" : "Ghi thu"}
+          </button>
           <button
             onClick={() => onOpenDetail?.(order)}
             style={{
               padding: "5px 10px",
-              background: "#1d4ed8",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
+              background: "#1d4ed8", color: "#fff",
+              border: "none", borderRadius: 6,
+              fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
-            Xem chi tiết
+            Chi tiết
           </button>
         </div>
       </div>
@@ -239,8 +240,8 @@ export default function RevenueTable({ orders, loading, pagination, apiBase, tok
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "60px 90px 1fr 120px 140px 70px 110px 110px 100px 120px",
-            gap: 12,
+            gridTemplateColumns: "60px 90px 1fr 1fr 100px 70px 110px 110px 90px 80px 140px",
+            gap: 8,
             padding: "10px 16px",
             background: "#f8fafc",
             borderBottom: "2px solid #e2e8f0",
@@ -249,18 +250,20 @@ export default function RevenueTable({ orders, loading, pagination, apiBase, tok
             color: "#64748b",
             textTransform: "uppercase",
             letterSpacing: "0.05em",
+            minWidth: 1000,
           }}
         >
           <span>ID</span>
           <span>Ngày</span>
           <span>Khách hàng</span>
-          <span>SĐT</span>
-          <span>Chuyến</span>
-          <span style={{ textAlign: "right" }} title="Giá trị thực tế (SUM order_shipments.actual_price)">Tổng giá trị</span>
-          <span style={{ textAlign: "right" }}>Đã thu</span>
-          <span style={{ textAlign: "right" }}>Còn nợ</span>
+          <span>Hàng hóa</span>
           <span style={{ textAlign: "center" }}>Trạng thái</span>
-          <span style={{ textAlign: "right" }}>Hành động</span>
+          <span style={{ textAlign: "center" }}>Chuyến</span>
+          <span style={{ textAlign: "right" }}>Doanh thu</span>
+          <span style={{ textAlign: "right" }}>Thực thu</span>
+          <span style={{ textAlign: "right" }}>Còn nợ</span>
+          <span style={{ textAlign: "center" }}>Công nợ</span>
+          <span style={{ textAlign: "center" }}>Hành động</span>
         </div>
 
         {/* Order cards */}

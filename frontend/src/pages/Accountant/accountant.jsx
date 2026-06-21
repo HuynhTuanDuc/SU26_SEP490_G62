@@ -20,7 +20,7 @@ export default function Accountant({ user, onLogout }) {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeStatusFilter, setActiveStatusFilter] = useState("all");
+  // Chỉ dùng debtFilter vì Accountant chỉ xem orders đã hoàn thành (derived_status='completed')
   const [debtFilter, setDebtFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -62,7 +62,6 @@ export default function Accountant({ user, onLogout }) {
     setLoadingOrders(true);
     try {
       const params = new URLSearchParams({ page, limit: 20 });
-      if (activeStatusFilter !== "all") params.set("status", activeStatusFilter);
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
 
       const response = await fetch(`${API_BASE}/accountant/orders?${params}`, {
@@ -100,11 +99,11 @@ export default function Accountant({ user, onLogout }) {
   // ── Effects ────────────────────────────────────────────────────
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeStatusFilter, searchTerm, debtFilter]);
+  }, [searchTerm, debtFilter]);
 
   useEffect(() => {
     fetchOrders(currentPage);
-  }, [currentPage, activeStatusFilter, searchTerm]);
+  }, [currentPage, searchTerm]);
 
   useEffect(() => {
     fetchStats();
@@ -327,21 +326,6 @@ export default function Accountant({ user, onLogout }) {
                       {label}
                     </button>
                   ))}
-                </div>
-
-                <div className="filter-subtabs">
-                  <select
-                    className="select-status-filter"
-                    value={activeStatusFilter}
-                    onChange={(e) => setActiveStatusFilter(e.target.value)}
-                  >
-                    <option value="all">Tất cả trạng thái</option>
-                    <option value="open">Mới tạo</option>
-                    <option value="assigned">Đã điều phối</option>
-                    <option value="in_progress">Đang vận chuyển</option>
-                    <option value="completed">Đã giao hàng</option>
-                    <option value="cancelled">Đã hủy</option>
-                  </select>
                 </div>
               </div>
 
