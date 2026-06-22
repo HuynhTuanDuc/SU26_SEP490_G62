@@ -18,6 +18,8 @@ router.use(verifyToken);
 
 router.get('/me',                profileController.getMyProfile);
 router.patch('/me',              profileController.updateMyProfile);
+router.post('/me/email/send-code', profileController.sendEmailChangeCode);
+router.post('/me/email/verify',  profileController.verifyEmailChangeCode);
 router.patch('/me/password',     profileController.changePassword);
 router.post('/me/avatar',        handleUpload(uploadAvatar.single('avatar')), profileController.updateAvatar);
 router.post('/me/device-token',  profileController.registerDeviceToken);

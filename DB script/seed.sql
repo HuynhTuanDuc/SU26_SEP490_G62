@@ -17,6 +17,25 @@ ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS reject_reason TEXT;
 ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
 ALTER TABLE debt_payments ADD COLUMN IF NOT EXISTS confirmed_by INT REFERENCES profiles(id);
 
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS dob DATE;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS gender TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT 'VN';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'profiles_gender_check'
+    ) THEN
+        ALTER TABLE profiles
+            ADD CONSTRAINT profiles_gender_check
+            CHECK (gender IN ('male', 'female', 'other'));
+    END IF;
+END $$;
+
 
 DROP TABLE IF EXISTS bills CASCADE;
 
@@ -66,16 +85,24 @@ WITH account_data AS (
         'driver1@example.com', 'driver2@example.com', 'driver3@example.com', 'driver4@example.com'
     )
 )
-INSERT INTO profiles (id, full_name, phone, role_id)
+INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, address, city, country)
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'),       'Manager',            '0901234560', (SELECT id FROM roles WHERE name = 'manager')),
-    ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'),       'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator')),
-    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'),  'Tran Accountant',    '0901234562', (SELECT id FROM roles WHERE name = 'accountant')),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'),     'Le Driver 1',        '0901234563', (SELECT id FROM roles WHERE name = 'driver')),
-    ((SELECT id FROM account_data WHERE email = 'driver2@example.com'),     'Pham Driver 2',      '0901234564', (SELECT id FROM roles WHERE name = 'driver')),
-    ((SELECT id FROM account_data WHERE email = 'driver3@example.com'),     'Do Driver 3',        '0901234565', (SELECT id FROM roles WHERE name = 'driver')),
-    ((SELECT id FROM account_data WHERE email = 'driver4@example.com'),     'Vo Driver 4',        '0901234566', (SELECT id FROM roles WHERE name = 'driver'))
-ON CONFLICT (id) DO NOTHING;
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'),       'Manager',            '0901234560', (SELECT id FROM roles WHERE name = 'manager'),     DATE '1988-05-12', 'male',   '12 Nguyen Hue, District 1',        'Ho Chi Minh', 'VN'),
+    ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'),       'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator'), DATE '1992-09-21', 'female', '88 Le Loi, Hai Chau',               'Da Nang',     'VN'),
+    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'),  'Tran Accountant',    '0901234562', (SELECT id FROM roles WHERE name = 'accountant'),  DATE '1991-03-14', 'female', '25 Vo Thi Sau, Ninh Kieu',          'Can Tho',     'VN'),
+    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'),     'Le Driver 1',        '0901234563', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1995-07-08', 'male',   '101 Tran Hung Dao, Thu Duc',        'Ho Chi Minh', 'VN'),
+    ((SELECT id FROM account_data WHERE email = 'driver2@example.com'),     'Pham Driver 2',      '0901234564', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1994-11-02', 'male',   '55 Hung Vuong, Thanh Khe',          'Da Nang',     'VN'),
+    ((SELECT id FROM account_data WHERE email = 'driver3@example.com'),     'Do Driver 3',        '0901234565', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1997-01-18', 'other',  '7 Nguyen Van Cu, Ninh Kieu',        'Can Tho',     'VN'),
+    ((SELECT id FROM account_data WHERE email = 'driver4@example.com'),     'Vo Driver 4',        '0901234566', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1990-12-27', 'male',   '240 Le Duan, Hai Chau',             'Da Nang',     'VN')
+ON CONFLICT (id) DO UPDATE
+    SET full_name = EXCLUDED.full_name,
+        phone = EXCLUDED.phone,
+        role_id = EXCLUDED.role_id,
+        dob = EXCLUDED.dob,
+        gender = EXCLUDED.gender,
+        address = EXCLUDED.address,
+        city = EXCLUDED.city,
+        country = EXCLUDED.country;
 
 -- =============================================================================
 -- SECTION 4: DRIVERS
@@ -189,6 +216,29 @@ ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS vehicle_group_id INT REFERENCES vehicle_groups(id);
 ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS final_price NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+DO $$
+DECLARE
+    v_constraint_name TEXT;
+BEGIN
+    SELECT con.conname
+    INTO v_constraint_name
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+    WHERE rel.relname = 'orders'
+      AND nsp.nspname = 'public'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) LIKE '%payment_type%'
+      AND pg_get_constraintdef(con.oid) NOT LIKE '%client_credit%';
+
+    IF v_constraint_name IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE public.orders DROP CONSTRAINT %I', v_constraint_name);
+        ALTER TABLE public.orders
+            ADD CONSTRAINT orders_payment_type_check
+            CHECK (payment_type IN ('cash', 'bank_transfer', 'client_credit'));
+    END IF;
+END $$;
 
 -- =============================================================================
 -- SECTION 10: BASE ORDERS (open + completed)

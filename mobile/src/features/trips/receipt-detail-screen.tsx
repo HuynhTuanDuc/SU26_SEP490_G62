@@ -72,10 +72,10 @@ function Row({ label, value, bold }: { label: string; value: string | null | und
 
 // ─── Payment collection section ───────────────────────────────────────────────
 
-type CollectionType = 'cash_collected' | 'bank_transfer' | 'client_credit';
+type CollectionType = 'cash_collected' | 'bank_transfer' | 'client_credit' | 'qr_transfer';
 
 function CollectionStatusBadge({ type }: { type: CollectionType }) {
-    const configs = {
+    const configs: Record<CollectionType, { label: string; color: string; bg: string; border: string }> = {
         cash_collected: {
             label: 'Tài đã thu tiền mặt — nợ công ty',
             color: appTheme.colors.success,
@@ -83,10 +83,16 @@ function CollectionStatusBadge({ type }: { type: CollectionType }) {
             border: appTheme.colors.successBorder,
         },
         bank_transfer: {
-            label: 'Khách đã trả về công ty',
+            label: 'Khách đã trả về công ty (chuyển khoản)',
             color: appTheme.colors.statusTransit,
             bg: '#EBF5FF',
             border: '#BFD9F7',
+        },
+        qr_transfer: {
+            label: 'Khách đã trả về công ty (QR / ví)',
+            color: appTheme.colors.primary,
+            bg: appTheme.colors.primarySoft,
+            border: appTheme.colors.primaryMuted,
         },
         client_credit: {
             label: 'Đã ghi nhận công nợ khách',
@@ -95,7 +101,7 @@ function CollectionStatusBadge({ type }: { type: CollectionType }) {
             border: appTheme.colors.warningBorder,
         },
     };
-    const cfg = configs[type];
+    const cfg = configs[type] ?? configs.bank_transfer;
     return (
         <XStack
             padding={12} borderRadius={12} gap={8} alignItems="center"
@@ -117,14 +123,9 @@ function PaymentCollectionSection({
     const { showToast } = useToast();
     const [isLoading, setIsLoading] = useState<CollectionType | null>(null);
     const [error, setError] = useState<string | null>(null);
-    // bank_transfer không tạo debt nên cần local state để hide buttons sau khi chọn
-    const [localDone, setLocalDone] = useState<CollectionType | null>(null);
 
-    // Debt records are authoritative; fall back to in-session local state
-    const collectionDone: CollectionType | null =
-        receipt.has_driver_debt   ? 'cash_collected' :
-        receipt.has_customer_debt ? 'client_credit'  :
-        localDone;
+    // driver_collection_type là authoritative (persistent trong DB cho cả bank_transfer/qr_transfer)
+    const collectionDone = (receipt.driver_collection_type as CollectionType | null) ?? null;
 
     if (collectionDone) {
         return (
@@ -147,14 +148,10 @@ function PaymentCollectionSection({
                 message:
                     type === 'cash_collected' ? 'Đã ghi nhận — bạn đang giữ tiền, nhớ nộp về công ty' :
                     type === 'bank_transfer'  ? 'Đã xác nhận khách trả về công ty' :
+                    type === 'qr_transfer'    ? 'Đã xác nhận khách thanh toán QR' :
                                                 'Đã ghi nhận công nợ khách hàng',
             });
-            if (type === 'bank_transfer') {
-                // Không có DB record — dùng local state để ẩn nút trong session này
-                setLocalDone('bank_transfer');
-            } else {
-                onRecorded(); // reload để lấy has_driver_debt / has_customer_debt mới
-            }
+            onRecorded(); // reload để lấy driver_collection_type mới từ DB
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Không thể ghi nhận');
         } finally {

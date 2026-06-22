@@ -5,6 +5,9 @@ const { verifyToken } = require('../middleware/authMiddleware');
 
 router.post('/login',  authController.login);
 router.post('/google', authController.googleLogin);
+router.post('/forgot-password/request', authController.requestPasswordReset);
+router.post('/forgot-password/verify', authController.verifyPasswordResetCode);
+router.post('/forgot-password/reset', authController.resetPassword);
 router.get('/roles',   authController.getAllRoles);
 router.get('/me',      verifyToken, authController.getCurrentUser);
 
