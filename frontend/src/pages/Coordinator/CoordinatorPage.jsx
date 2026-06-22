@@ -18,7 +18,7 @@ const emptyForm = () => ({
   is_partner: false,
   partner_name: "",
   partner_fee: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }]
 });
 
 const requiredFields = [
@@ -115,6 +115,18 @@ const splitRoute = (route) => {
   return { pickup: parts[0].trim(), delivery: parts.slice(1).join(" - ").trim() };
 };
 
+const firstStop = (trip, key, fallbackKey) => {
+  const list = Array.isArray(trip?.[key]) ? trip[key].map((value) => String(value ?? "").trim()).filter(Boolean) : [];
+  if (list.length > 0) return list[0];
+  return String(trip?.[fallbackKey] ?? "").trim();
+};
+
+const lastStop = (trip, key, fallbackKey) => {
+  const list = Array.isArray(trip?.[key]) ? trip[key].map((value) => String(value ?? "").trim()).filter(Boolean) : [];
+  if (list.length > 0) return list[list.length - 1];
+  return String(trip?.[fallbackKey] ?? "").trim();
+};
+
 
 
 
@@ -152,6 +164,8 @@ function buildTripFromOrder(order) {
     arrived_at: trip.arrived_at || "",
     pickup_address: trip.pickup_address || "",
     delivery_address: trip.delivery_address || "",
+    pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : (trip.pickup_address ? [trip.pickup_address] : []),
+    delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : (trip.delivery_address ? [trip.delivery_address] : []),
     fare: resolveFareValue(trip.actual_price, trip.fare),
     status: trip.status || "",
     driverName: trip.driverName || "",
@@ -167,14 +181,16 @@ function buildTripFromOrder(order) {
     arrived_at: order.arrived_at || "",
     pickup_address: order.pickup_address || "",
     delivery_address: order.delivery_address || "",
+    pickup_addresses: Array.isArray(order.pickup_addresses) ? order.pickup_addresses : (order.pickup_address ? [order.pickup_address] : []),
+    delivery_addresses: Array.isArray(order.delivery_addresses) ? order.delivery_addresses : (order.delivery_address ? [order.delivery_address] : []),
     fare: resolveFareValue(order.total_actual_price, order.estimated_price, order.total_estimated_price),
     status: order.status || "",
     driverName: order.driver_name || "",
   }];
 
   const firstTrip = trips[0] || {};
-  const pickupAddress = firstTrip.pickup_address || order.pickup_address || "";
-  const deliveryAddress = firstTrip.delivery_address || order.delivery_address || "";
+  const pickupAddress = firstStop(firstTrip, "pickup_addresses", "pickup_address") || order.pickup_address || "";
+  const deliveryAddress = lastStop(firstTrip, "delivery_addresses", "delivery_address") || order.delivery_address || "";
   const arrivedAt = firstTrip.arrived_at || order.arrived_at;
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
@@ -452,8 +468,16 @@ export default function CoordinatorPage({ user, onLogout }) {
       form.trips.forEach((trip, index) => {
         if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
         if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
-        if (!String(trip.pickup_address || "").trim()) errors[`trip_${index}_pickup_address`] = `Điểm lấy hàng chuyến ${index + 1} là bắt buộc`;
-        if (!String(trip.delivery_address || "").trim()) errors[`trip_${index}_delivery_address`] = `Điểm giao hàng chuyến ${index + 1} là bắt buộc`;
+
+        const pickupStops = Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip.pickup_address];
+        const deliveryStops = Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip.delivery_address];
+        if (!pickupStops.some((value) => String(value ?? "").trim())) {
+          errors[`trip_${index}_pickup_address`] = `Ít nhất một điểm lấy hàng cho chuyến ${index + 1} là bắt buộc`;
+        }
+        if (!deliveryStops.some((value) => String(value ?? "").trim())) {
+          errors[`trip_${index}_delivery_address`] = `Ít nhất một điểm giao hàng cho chuyến ${index + 1} là bắt buộc`;
+        }
+
         const dist = normalizeNumericText(trip.distance);
         if (!dist) {
           errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
@@ -483,7 +507,14 @@ export default function CoordinatorPage({ user, onLogout }) {
   const updateTripField = (index, key, value) => {
     setForm((current) => {
       const updatedTrips = current.trips.map((trip, i) =>
-        i === index ? { ...trip, [key]: value } : trip
+        i === index ? {
+          ...trip,
+          [key]: value,
+          ...(key === "pickup_address" ? { pickup_addresses: [value, ...(trip.pickup_addresses || []).slice(1)] } : {}),
+          ...(key === "delivery_address" ? { delivery_addresses: [value, ...(trip.delivery_addresses || []).slice(1)] } : {}),
+          ...(key === "pickup_addresses" ? { pickup_address: value } : {}),
+          ...(key === "delivery_addresses" ? { delivery_address: value } : {}),
+        } : trip
       );
       return { ...current, trips: updatedTrips };
     });
@@ -493,11 +524,45 @@ export default function CoordinatorPage({ user, onLogout }) {
     }
   };
 
+  const updateTripStopList = (index, key, stopIndex, value) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) => {
+        if (i !== index) return trip;
+        const nextStops = Array.isArray(trip[key]) ? [...trip[key]] : [];
+        nextStops[stopIndex] = value;
+        return { ...trip, [key]: nextStops };
+      });
+      return { ...current, trips: updatedTrips };
+    });
+  };
+
+  const addTripStop = (index, key) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) => {
+        if (i !== index) return trip;
+        const nextStops = Array.isArray(trip[key]) ? [...trip[key], ""] : [""];
+        return { ...trip, [key]: nextStops };
+      });
+      return { ...current, trips: updatedTrips };
+    });
+  };
+
+  const removeTripStop = (index, key, stopIndex) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) => {
+        if (i !== index) return trip;
+        const nextStops = (Array.isArray(trip[key]) ? trip[key] : []).filter((_, idx) => idx !== stopIndex);
+        return { ...trip, [key]: nextStops.length > 0 ? nextStops : [""] };
+      });
+      return { ...current, trips: updatedTrips };
+    });
+  };
+
   const addTrip = () => {
     setForm((current) => ({ //current là state hiện tại của form, dùng setForm thì current = form 
       ...current,//Tạo object mới có thông tin từ form 
       //sau đó ghi đè trips. Lấy trip  hiện tại, tạo thêm trips từ {}, rỗng vẫn tạo 
-      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }]
     }));
   };
 
@@ -582,14 +647,18 @@ export default function CoordinatorPage({ user, onLogout }) {
       distance: trip.distance || "",
       trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
         ...t,
-        pickup_address: t.pickup_address || trip.pickupAddress || routeAddresses.pickup || "",
-        delivery_address: t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || "",
+        pickup_address: firstStop(t, "pickup_addresses", "pickup_address") || trip.pickupAddress || routeAddresses.pickup || "",
+        delivery_address: lastStop(t, "delivery_addresses", "delivery_address") || trip.deliveryAddress || routeAddresses.delivery || "",
+        pickup_addresses: Array.isArray(t.pickup_addresses) && t.pickup_addresses.length > 0 ? t.pickup_addresses : [t.pickup_address || trip.pickupAddress || routeAddresses.pickup || ""],
+        delivery_addresses: Array.isArray(t.delivery_addresses) && t.delivery_addresses.length > 0 ? t.delivery_addresses : [t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || ""],
       })) : [{
         vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
         plate: trip.plate || "",
         distance: trip.distance || "",
         pickup_address: trip.pickupAddress || routeAddresses.pickup || "",
         delivery_address: trip.deliveryAddress || routeAddresses.delivery || "",
+        pickup_addresses: [trip.pickupAddress || routeAddresses.pickup || ""],
+        delivery_addresses: [trip.deliveryAddress || routeAddresses.delivery || ""],
       }],
       note: trip.notes || "",
     });
@@ -781,7 +850,13 @@ export default function CoordinatorPage({ user, onLogout }) {
         is_partner: form.is_partner,
         partner_name: form.is_partner ? form.partner_name : null,
         partner_fee: form.is_partner ? form.partner_fee : null,
-        trips: form.trips,
+        trips: form.trips.map((trip) => ({
+          ...trip,
+          pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses.filter(Boolean) : [trip.pickup_address].filter(Boolean),
+          delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses.filter(Boolean) : [trip.delivery_address].filter(Boolean),
+          pickup_address: firstStop(trip, "pickup_addresses", "pickup_address"),
+          delivery_address: lastStop(trip, "delivery_addresses", "delivery_address"),
+        })),
       };
 
       const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
@@ -1168,33 +1243,65 @@ export default function CoordinatorPage({ user, onLogout }) {
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 4 }}>
-                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
-                        <span>Điểm lấy hàng</span>
-                        <input
-                          value={trip.pickup_address || ""}
-                          onChange={(e) => updateTripField(index, 'pickup_address', e.target.value)}
-                          placeholder="Địa chỉ lấy hàng"
-                          className={formErrors[`trip_${index}_pickup_address`] ? 'input-error' : ''}
-                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
-                        />
-                        {formErrors[`trip_${index}_pickup_address`] && (
-                          <div className="field-error">{formErrors[`trip_${index}_pickup_address`]}</div>
-                        )}
-                      </label>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                          <span>Điểm lấy hàng</span>
+                          <input
+                            value={trip.pickup_address || ""}
+                            onChange={(e) => updateTripField(index, 'pickup_address', e.target.value)}
+                            placeholder="Địa chỉ lấy hàng"
+                            className={formErrors[`trip_${index}_pickup_address`] ? 'input-error' : ''}
+                            style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                          {formErrors[`trip_${index}_pickup_address`] && (
+                            <div className="field-error">{formErrors[`trip_${index}_pickup_address`]}</div>
+                          )}
+                        </label>
+                        {(trip.pickup_addresses || [trip.pickup_address]).map((address, stopIndex) => (
+                          <div key={`pickup-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              value={address || ""}
+                              onChange={(e) => updateTripStopList(index, 'pickup_addresses', stopIndex, e.target.value)}
+                              placeholder={`Điểm lấy #${stopIndex + 1}`}
+                              style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
+                            />
+                            <button type="button" onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}>×</button>
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => addTripStop(index, 'pickup_addresses')} style={{ alignSelf: 'start', border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+                          + Thêm điểm lấy
+                        </button>
+                      </div>
 
-                      <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
-                        <span>Điểm giao hàng</span>
-                        <input
-                          value={trip.delivery_address || ""}
-                          onChange={(e) => updateTripField(index, 'delivery_address', e.target.value)}
-                          placeholder="Địa chỉ giao hàng"
-                          className={formErrors[`trip_${index}_delivery_address`] ? 'input-error' : ''}
-                          style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
-                        />
-                        {formErrors[`trip_${index}_delivery_address`] && (
-                          <div className="field-error">{formErrors[`trip_${index}_delivery_address`]}</div>
-                        )}
-                      </label>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                          <span>Điểm giao hàng</span>
+                          <input
+                            value={trip.delivery_address || ""}
+                            onChange={(e) => updateTripField(index, 'delivery_address', e.target.value)}
+                            placeholder="Địa chỉ giao hàng"
+                            className={formErrors[`trip_${index}_delivery_address`] ? 'input-error' : ''}
+                            style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                          {formErrors[`trip_${index}_delivery_address`] && (
+                            <div className="field-error">{formErrors[`trip_${index}_delivery_address`]}</div>
+                          )}
+                        </label>
+                        {(trip.delivery_addresses || [trip.delivery_address]).map((address, stopIndex) => (
+                          <div key={`delivery-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              value={address || ""}
+                              onChange={(e) => updateTripStopList(index, 'delivery_addresses', stopIndex, e.target.value)}
+                              placeholder={`Điểm giao #${stopIndex + 1}`}
+                              style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
+                            />
+                            <button type="button" onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}>×</button>
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => addTripStop(index, 'delivery_addresses')} style={{ alignSelf: 'start', border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+                          + Thêm điểm giao
+                        </button>
+                      </div>
                     </div>
                     {getTripFare(trip) && (
                       <div style={{ fontSize: 13, color: '#18227f', fontWeight: 600 }}>

@@ -223,6 +223,8 @@ const createOrder = async (userId, payload) => {
                 notes: orderNotes,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
                 delivery_address: safeTrim(trip_delivery || delivery_address),
+                pickup_addresses: (Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip_pickup || pickup_address]).filter(Boolean),
+                delivery_addresses: (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip_delivery || delivery_address]).filter(Boolean),
                 assignmentData: finalDriverId && finalVehicleId ? {
                     driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
@@ -340,6 +342,8 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     cargo_weight_kg: cargoWeight,
                     pickup_address: pickupAddress,
                     delivery_address: deliveryAddress,
+                    pickup_addresses: [pickupAddress],
+                    delivery_addresses: [deliveryAddress],
                     estimated_price: estimatedPrice,
                     vehicle_group_id: finalVehicleGroupId,
                     notes,
@@ -348,6 +352,8 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                 shipmentData: {
                     pickup_address: pickupAddress,
                     delivery_address: deliveryAddress,
+                    pickup_addresses: [pickupAddress],
+                    delivery_addresses: [deliveryAddress],
                     cargo_weight_kg: cargoWeight,
                     estimated_price: estimatedPrice,
                     estimated_distance_km: distanceValue,
@@ -468,6 +474,8 @@ const updateOrder = async (orderId, payload) => {
                 plate_number: vehicle?.plate_number,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
                 delivery_address: safeTrim(trip_delivery || delivery_address),
+                pickup_addresses: (Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip_pickup || pickup_address]).filter(Boolean),
+                delivery_addresses: (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip_delivery || delivery_address]).filter(Boolean),
                 status: SHIPMENT_STATUS.CLAIMED,
                 assignmentData: {
                     driver_id: finalDriverId,
