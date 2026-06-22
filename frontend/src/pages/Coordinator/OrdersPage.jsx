@@ -3,6 +3,7 @@ import { apiRequest } from "../../services/apiClient";
 import "../../styles/Coordinator.css";
 import AppSidebar from "../../components/layout/AppSidebar";
 import { message as toast } from "antd";
+import IncidentPage from "./IncidentPage";
 import {
   getTodayStr,
   canCancelTrip,
@@ -641,9 +642,7 @@ export default function OrdersPage({ user, onLogout }) {
       />
       
 
-      {page === "incidents" && (
-        <IncidentPage />
-      )}
+      {page === "incidents" ? (<IncidentPage user={user} onLogout={handleLogout} />) : (
       <main className="content">
         <header className="topbar">
           <div className="search-box">
@@ -1230,6 +1229,7 @@ export default function OrdersPage({ user, onLogout }) {
           onProfileUpdated={handleProfileUpdated}
         />
       </main>
+      )}
     </div>
   );
 
