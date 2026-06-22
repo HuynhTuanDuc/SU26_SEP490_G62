@@ -25,5 +25,6 @@ router.get('/shipment/:shipmentId',      driverOnly,      incidentController.get
 router.get('/:id',                       driverOnly,      incidentController.getIncidentDetail);
 router.patch('/:id',                     driverOnly,      incidentController.updateMyIncident);
 router.patch('/:id/status',              coordinatorOnly, incidentController.updateIncidentStatus);
+router.post('/:id/reassign',             coordinatorOnly, incidentController.reassignVehicle);
 
 module.exports = router;

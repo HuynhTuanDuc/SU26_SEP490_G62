@@ -29,7 +29,7 @@ const STATUS_LABEL = {
 // Lấy tất cả incidents (dành cho nhân viên điều phối)
 const getAllIncidents = async () => {
     const result = await incidentRepository.getAllIncidents();
-    if (!result) throw new Error('Không thể lấy danh sách sự cố');
+    if (!result) throw new Error('Không thể lấy danh sách sự cố từ dữ liệu');
     return result;
 }
 
@@ -232,8 +232,83 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     return updated;
 };
 
+const reassignVehicle = async (incidentId, coordinatorId, replacementDriverId, replacementVehicleId) => {
+    const incident = await incidentRepository.getIncidentById(incidentId);
+    if (!incident) throw new Error('Sự cố không tồn tại');
+    if (!incident.shipment_id) throw new Error('Sự cố này không liên kết với chuyến nào');
+
+    const pool = require('../config/database');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Lấy thông tin shipment hiện tại
+        const shipmentResult = await client.query('SELECT * FROM order_shipments WHERE id = $1 FOR UPDATE', [incident.shipment_id]);
+        const shipment = shipmentResult.rows[0];
+        if (!shipment) throw new Error('Chuyến vận chuyển không tồn tại');
+
+        // Cập nhật shipment với tài xế và xe mới
+        await client.query(
+            `UPDATE order_shipments 
+             SET owner_driver_id = $1, vehicle_id = $2, updated_at = NOW() 
+             WHERE id = $3`,
+            [replacementDriverId, replacementVehicleId, shipment.id]
+        );
+
+        // Đóng assignment cũ
+        await client.query(
+            `UPDATE shipment_assignments
+             SET completed_at = NOW()
+             WHERE shipment_id = $1 AND driver_id = $2 AND completed_at IS NULL`,
+            [shipment.id, shipment.owner_driver_id]
+        );
+
+        // Ghi lịch sử điều phối (shipment_assignment_history)
+        await client.query(
+            `INSERT INTO shipment_assignment_history
+                 (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id, changed_by, change_reason, incident_id, changed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 'incident_reassign', $7, NOW())`,
+            [shipment.id, shipment.owner_driver_id, shipment.vehicle_id, replacementDriverId, replacementVehicleId, coordinatorId, incidentId]
+        );
+
+        // Tạo assignment mới
+        await client.query(
+            `INSERT INTO shipment_assignments
+                 (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by)
+             VALUES ($1, $2, $3, 'coordinator_assign', $4)`,
+            [shipment.id, replacementDriverId, replacementVehicleId, coordinatorId]
+        );
+
+        // Cập nhật sự cố (đã được xử lý bằng cách thay xe)
+        await client.query(
+            `UPDATE incidents
+             SET replacement_driver_id = $1, replacement_vehicle_id = $2, status = 'resolved', resolved_at = NOW(), resolved_by = $3, resolution_note = 'Điều phối xe/tài xế thay thế'
+             WHERE id = $4`,
+            [replacementDriverId, replacementVehicleId, coordinatorId, incidentId]
+        );
+
+        await client.query('COMMIT');
+
+        // Thông báo cho tài xế mới
+        notificationService.createForUser(replacementDriverId, {
+            title: 'Nhiệm vụ đột xuất: Thay thế xe sự cố',
+            message: `Bạn được điều phối để tiếp tục chuyến #${shipment.id} thay cho xe bị sự cố. Vui lòng kiểm tra ứng dụng ngay.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: shipment.id,
+        }, { displayMode: 'alert' }).catch(() => {});
+
+        return incidentRepository.getIncidentById(incidentId);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     getAllIncidents,
     createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
-    getShipmentIncidents, updateMyIncident, updateIncidentStatus,
+    getShipmentIncidents, updateMyIncident, updateIncidentStatus, reassignVehicle,
 };
