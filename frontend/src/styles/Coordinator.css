@@ -1,6 +1,6 @@
 .coordinator-shell {
   min-height: 100vh;
-  display: grid;
+  display: flex;
   grid-template-columns: 280px 1fr;
   background: linear-gradient(180deg, #f7f4fb 0%, #f3f0f8 100%);
   color: #1f2430;
@@ -63,7 +63,6 @@
 .coordinator-shell .nav-footer { margin-top: auto; }
 
 .coordinator-shell .content {
-  padding: 18px 24px 28px;
   min-width: 0;
 }
 .coordinator-shell .topbar,
@@ -74,9 +73,12 @@
   align-items: center;
 }
 .coordinator-shell .topbar { justify-content: space-between; gap: 16px; }
+
 .coordinator-shell .search-box {
   flex: 1;
+  margin-top: 22px;
   max-width: 560px;
+  max-height: 46px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -116,7 +118,9 @@
   width: 44px; height: 44px; border-radius: 50%;
   background: #1a2a98; color: #fff; display: grid; place-items: center; font-weight: 800;
 }
-.coordinator-shell .hero { justify-content: space-between; margin: 24px 0 18px; gap: 16px; }
+.coordinator-shell .primary-btn.create{ margin:10px }
+
+.coordinator-shell .hero { justify-content: space-between; margin: 24px 0 0px; gap: 16px; }
 .coordinator-shell .hero h1 { margin: 0; font-size: 28px; }
 .coordinator-shell .hero p { margin: 6px 0 0; color: #50586a; }
 .coordinator-shell .filters { gap: 12px; flex-wrap: wrap; }
@@ -126,6 +130,8 @@
   border: 1px solid rgba(20, 30, 70, 0.14);
   margin-top: 22px;
 }
+
+
 
 .coordinator-shell .filter-field input {
   height: 45.6px;
@@ -144,7 +150,6 @@
 .coordinator-shell .filter.active { background: #18227f; color: #fff; }
 
 .coordinator-shell .order-filters {
-  width: 100%;
   justify-content: flex-end;
 }
 
@@ -359,8 +364,9 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  z-index: 30;
+  z-index: 50;
 }
+
 
 .coordinator-shell .modal-card {
   display: block;
@@ -1137,8 +1143,12 @@
 .coordinator-shell .orders-table tr.row-no-checkin td {
   background-color: #fffbeb !important;
 }
+.coordinator-shell .table-trip-id-cell {
+  max-width: 120px;
+  
+}
 .coordinator-shell .table-route-cell {
-  min-width: 400px;
+  min-width: 300px;
   white-space: normal !important;
   word-break: break-word;
   overflow-wrap: break-word;

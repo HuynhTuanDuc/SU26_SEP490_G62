@@ -162,9 +162,7 @@ const createOrder = async (userId, payload) => {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
             }
 
-            if (!plate) {
-                throw new Error('BKS là bắt buộc khi tạo đơn');
-            }
+            
 
             const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
             if (!orderVehicleGroupId) orderVehicleGroupId = finalVehicleGroupId;
@@ -330,6 +328,7 @@ const updateOrder = async (orderId, payload) => {
             }
 
             const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
+            if(vehicle == null){}
             if (plate && !vehicle) {
                 throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
             }
@@ -340,10 +339,10 @@ const updateOrder = async (orderId, payload) => {
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
-            if (!finalDriverId || !finalVehicleId) {
+            if (plate && (!finalDriverId || !finalVehicleId)) {
                 throw new Error(`Xe ${vehicle?.plate_number || plate} chua co tai xe duoc gan`);
             }
-
+            if (finalDriverId && finalVehicleId) {
             await orderRepository.validateVehicleShipmentAssignment(dbClient, {
                 vehicleId: finalVehicleId,
                 driverId: finalDriverId,
@@ -351,7 +350,7 @@ const updateOrder = async (orderId, payload) => {
             });
             ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
             ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
-
+            }
             shipmentsDataArray.push({
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
@@ -360,12 +359,12 @@ const updateOrder = async (orderId, payload) => {
                 plate_number: vehicle?.plate_number,
                 pickup_address: safeTrim(trip_pickup || pickup_address),
                 delivery_address: safeTrim(trip_delivery || delivery_address),
-                status: SHIPMENT_STATUS.CLAIMED,
-                assignmentData: {
+                status: finalVehicleId ? SHIPMENT_STATUS.CLAIMED : SHIPMENT_STATUS.AVAILABLE,
+                assignmentData: finalVehicleId ?{
                     driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
                     assigned_by: payload.updated_by ?? null,
-                },
+                } : null,
             });
         }
 
@@ -437,7 +436,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             const missing = [];
             if (!date) missing.push('Ngày');
             if (!checkIn) missing.push('Chấm công');
-            if (!plate) missing.push('BKS');
+            
             if (!pickupAddress) missing.push('Điểm lấy hàng');
             if (!deliveryAddress) missing.push('Điểm giao hàng');
             if (distanceValue === null || distanceValue <= 0) missing.push('Quãng đường');
