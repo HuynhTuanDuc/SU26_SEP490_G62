@@ -51,6 +51,8 @@ const login = async (req, res) => {
 
         res.json({
             message: 'Login successful',
+            // Keep bearer token in the JSON response for mobile clients.
+            token: result.token,
             user: result.user,
         });
     } catch (err) {
@@ -70,6 +72,8 @@ const googleLogin = async (req, res) => {
 
         res.json({
             message: 'Google login successful',
+            // Keep bearer token in the JSON response for mobile clients.
+            token: result.token,
             user: result.user,
         });
     } catch (err) {
@@ -132,12 +136,14 @@ const getCurrentUser = async (req, res) => {
 
 const refresh = async (req, res) => {
     try {
+        // Refresh is a web/cookie flow; mobile continues using bearer login tokens.
         const refreshToken = readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME);
         const result = await authService.refreshSession(refreshToken);
         setSessionCookies(res, result.accessToken, result.refreshToken);
 
         res.json({
             message: 'Session refreshed',
+            token: result.accessToken ?? result.token,
             user: result.user,
         });
     } catch (err) {

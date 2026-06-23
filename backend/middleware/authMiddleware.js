@@ -17,6 +17,9 @@ const readCookieValue = (cookieHeader, cookieName) => {
 // Middleware: Verify JWT token
 const verifyToken = async (req, res, next) => {
     try {
+        // Dual-mode HTTP auth:
+        // - mobile sends Authorization: Bearer <token>
+        // - web uses the HttpOnly access-token cookie
         const bearerToken = req.headers['authorization']?.split(' ')[1];
         const cookieToken = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
         const token = bearerToken || cookieToken;

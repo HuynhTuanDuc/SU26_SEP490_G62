@@ -15,6 +15,10 @@ export function getStoredUser() {
   return safeParseJSON(localStorage.getItem(USER_KEY));
 }
 
+export function getStoredToken() {
+  return localStorage.getItem("token") || "";
+}
+
 export function getRememberedEmail() {
   return localStorage.getItem(REMEMBER_EMAIL_KEY) || "";
 }

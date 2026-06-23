@@ -9,6 +9,7 @@ function buildRealtimeUrl() {
 }
 
 export function connectRealtime({ onMessage, onOpen, onClose, onError } = {}) {
+  // Web client uses cookie-authenticated websocket sessions.
   const socket = new WebSocket(buildRealtimeUrl());
 
   socket.addEventListener("open", () => {

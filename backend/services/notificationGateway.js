@@ -91,7 +91,12 @@ const initNotificationGateway = (server) => {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname !== '/ws/notifications') return;
 
-        const token = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
+        // Dual-mode auth:
+        // - web clients authenticate with the HttpOnly access-token cookie
+        // - mobile clients authenticate with an explicit bearer token in ?token=
+        const token =
+            url.searchParams.get('token')
+            || readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
         if (!token) {
             socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
             socket.destroy();
