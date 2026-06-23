@@ -4,8 +4,22 @@ const incidentService = require('../services/incidentService');
 // ─── GET /api/incidents ──────────────────────────────────────────────────────
 const getAllIncidents = async (req, res) => {
     try {
-        const incidents = await incidentService.getAllIncidents();
-        res.json({ incidents });
+        const { page, limit, fromDate, toDate } = req.query;
+        const result = await incidentService.getAllIncidents({
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 10,
+            fromDate,
+            toDate
+        });
+        res.json({ 
+            incidents: result.data,
+            pagination: {
+                total: result.total,
+                page: result.page,
+                limit: result.limit,
+                totalPages: result.totalPages
+            }
+        });
     } catch (err) {
         res.status(500).json({ "Lỗi lấy danh sách sự cố": err.message });
     }
@@ -101,6 +115,7 @@ const updateIncidentStatus = async (req, res) => {
         if (!incidentId) return res.status(400).json({ error: 'ID không hợp lệ' });
 
         const { status, resolution } = req.body;
+        
         if (!status) return res.status(400).json({ error: 'status là bắt buộc' });
 
         const incident = await incidentService.updateIncidentStatus(incidentId, coordinatorId, { status, resolution });

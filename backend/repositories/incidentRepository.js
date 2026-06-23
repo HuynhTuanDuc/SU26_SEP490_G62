@@ -1,22 +1,61 @@
 const pool = require('../config/database');
 
 
-const getAllIncidents = async () => {
-    const result = await pool.query(
-        `SELECT
-    i.*,
-    i.status AS incident_status,
-    os.order_id,
-    os.status AS shipment_status,
-    os.actual_price,
-    os.estimated_price,
-    p.full_name
-FROM incidents i
-JOIN order_shipments os ON os.id = i.shipment_id
-JOIN orders o ON o.id = os.order_id
-JOIN profiles p ON p.id = i.reported_by;`
-    );
-    return result.rows;
+const getAllIncidents = async ({ page = 1, limit = 10, fromDate, toDate } = {}) => {
+    const offset = (page - 1) * limit;
+
+    let whereClauses = [];
+    let queryParams = [];
+    let paramIndex = 1;
+
+    if (fromDate) {
+        whereClauses.push(`i.created_at >= $${paramIndex++}`);
+        queryParams.push(fromDate);
+    }
+
+    if (toDate) {
+        // Appending time to cover the whole day
+        whereClauses.push(`i.created_at <= $${paramIndex++}`);
+        queryParams.push(`${toDate} 23:59:59`);
+    }
+
+    const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const countQuery = `SELECT COUNT(*) FROM incidents i ${whereString}`;
+    const totalResult = await pool.query(countQuery, queryParams);
+    const total = parseInt(totalResult.rows[0].count, 10);
+
+    const dataQuery = `
+        SELECT
+            i.*,
+            i.status AS incident_status,
+            os.order_id,
+            os.status AS shipment_status,
+            os.actual_price,
+            os.estimated_price,
+            p.full_name,
+            p.avatar_url
+        FROM incidents i
+        JOIN order_shipments os ON os.id = i.shipment_id
+        JOIN orders o ON o.id = os.order_id
+        JOIN profiles p ON p.id = i.reported_by
+        ${whereString}
+        ORDER BY 
+            CASE WHEN i.status IN ('open', 'investigating') THEN 1 ELSE 2 END ASC,
+            i.created_at DESC
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+
+    queryParams.push(limit, offset);
+
+    const result = await pool.query(dataQuery, queryParams);
+    return {
+        data: result.rows,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+    };
 };
 
 
@@ -153,16 +192,34 @@ const updateIncident = async (incidentId, driverId, { severityLevel, description
     return result.rows[0] ?? null;
 };
 
-const updateIncidentStatus = async (incidentId, { status, resolution = null }) => {
-    const isClosing = status === 'resolved' || status === 'closed';
+const updateIncidentStatus = async (
+    incidentId,
+    {
+        status,
+        resolution = null
+    }
+) => {
+    const isClosing =
+        status === "resolved" ||
+        status === "closed";
+
     const result = await pool.query(
-        `UPDATE incidents
-         SET status     = $2
-             ${isClosing ? ', resolved_at = NOW()' : ''}
-         WHERE id = $1
-         RETURNING *`,
-        [incidentId, status],
+        `
+        UPDATE incidents
+        SET
+            status = $2,
+            resolution_note = $3
+            ${isClosing ? ", resolved_at = NOW()" : ""}
+        WHERE id = $1
+        RETURNING *
+        `,
+        [
+            incidentId,
+            status,
+            resolution
+        ]
     );
+
     return result.rows[0] ?? null;
 };
 

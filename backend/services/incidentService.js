@@ -27,10 +27,8 @@ const STATUS_LABEL = {
     closed: 'Đã đóng',
 };
 // Lấy tất cả incidents (dành cho nhân viên điều phối)
-const getAllIncidents = async () => {
-    const result = await incidentRepository.getAllIncidents();
-    if (!result) throw new Error('Không thể lấy danh sách sự cố từ dữ liệu');
-    return result;
+const getAllIncidents = async (options) => {
+    return await incidentRepository.getAllIncidents(options);
 }
 
 // Lấy incidents của 1 shipment (driver xem + check duplicate)
@@ -220,7 +218,6 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     const msgBody = resolution
         ? `Trạng thái: ${statusText}. Phản hồi: ${resolution.slice(0, 100)}`
         : `Sự cố #${incidentId} được cập nhật trạng thái: ${statusText}.`;
-
     notificationService.createForUser(driverId, {
         title: `Phản hồi sự cố #${incidentId}`,
         message: msgBody,
