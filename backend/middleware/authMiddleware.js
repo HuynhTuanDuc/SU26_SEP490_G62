@@ -1,10 +1,28 @@
 const authService = require('../services/authService');
 const profileRepository = require('../repositories/profileRepository');
 
+const readCookieValue = (cookieHeader, cookieName) => {
+    if (!cookieHeader) return null;
+
+    const cookie = String(cookieHeader)
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${cookieName}=`));
+
+    if (!cookie) return null;
+
+    return decodeURIComponent(cookie.slice(cookieName.length + 1));
+};
+
 // Middleware: Verify JWT token
 const verifyToken = async (req, res, next) => {
     try {
-        const token = req.headers['authorization']?.split(' ')[1];
+        // Dual-mode HTTP auth:
+        // - mobile sends Authorization: Bearer <token>
+        // - web uses the HttpOnly access-token cookie
+        const bearerToken = req.headers['authorization']?.split(' ')[1];
+        const cookieToken = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
+        const token = bearerToken || cookieToken;
         if (!token) return res.status(403).json({ error: 'No token provided' });
 
         const decoded = authService.verifyToken(token);

@@ -6,7 +6,7 @@ import UserList from "../../features/admin/UserList";
 import VehicleList from "../../features/admin/VehicleList";
 import { C } from "../../styles/theme";
 import "../../styles/admin/Admin.css";
-import { saveSession, getStoredToken } from "../../services/storage";
+import { saveSession } from "../../services/storage";
 
 const { Title, Text } = Typography;
 
@@ -18,18 +18,11 @@ export default function AdminPage({ user, onLogout }) {
   const handleProfileUpdated = (nextProfile) => {
     const mergedUser = { ...currentUser, ...nextProfile };
     setCurrentUser(mergedUser);
-    saveSession({ token: getStoredToken(), user: mergedUser });
+    saveSession({ user: mergedUser });
   };
 
   const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-      return;
-    }
-
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.reload();
+    onLogout?.();
   };
 
   const pageTitleMap = {
@@ -65,8 +58,8 @@ export default function AdminPage({ user, onLogout }) {
             </Text>
           </div>
 
-          {activeTab === "users" && <UserList />}
-          {activeTab === "vehicles" && <VehicleList />}
+          {activeTab === "users" && <UserList user={currentUser} />}
+          {activeTab === "vehicles" && <VehicleList user={currentUser} />}
         </section>
       </main>
     </div>

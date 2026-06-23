@@ -1,6 +1,7 @@
 const profileRepository = require('../repositories/profileRepository');
 const bcrypt = require('bcryptjs');
 const emailService = require('./emailService');
+const notificationGateway = require('./notificationGateway');
 const {
     normalizePositiveInteger,
     normalizeRole,
@@ -106,6 +107,11 @@ const createUser = async (email, full_name, phone, role, gender, dob, city) => {
             normalizedCity,
         );
         emailService.sendWelcomeEmail(email, password, normalizedFullName, normalizedRole);
+        notificationGateway.broadcastToRole('manager', {
+            type: 'manager.users.changed',
+            action: 'created',
+            userId: newId,
+        });
         return newId;
     } catch (err) {
         if (err.code === '23505') {
@@ -141,6 +147,11 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city) => 
             },
             roleId,
         );
+        notificationGateway.broadcastToRole('manager', {
+            type: 'manager.users.changed',
+            action: 'updated',
+            userId: normalizedUserId,
+        });
     } catch (err) {
         if (err.code === '23505') {
             throw new AdminError('So dien thoai da ton tai.', 409);
@@ -173,6 +184,12 @@ const toggleUserStatus = async (userId, is_active, currentUserId) => {
     }
 
     const updatedUser = await profileRepository.adminToggleUserStatus(normalizedUserId, normalizedStatus);
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.users.changed',
+        action: 'status_changed',
+        userId: normalizedUserId,
+        is_active: normalizedStatus,
+    });
     return {
         ...updatedUser,
         changed: true,

@@ -78,6 +78,8 @@ const selectOrderProjection = `
                 'arrived_at', s_all.arrived_at,
                 'pickup_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'pickup' LIMIT 1),
                 'delivery_address', (SELECT address FROM trip_stops WHERE shipment_id = s_all.id AND stop_type = 'delivery' LIMIT 1),
+                'pickup_addresses', (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts WHERE ts.shipment_id = s_all.id AND ts.stop_type = 'pickup'),
+                'delivery_addresses', (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts WHERE ts.shipment_id = s_all.id AND ts.stop_type = 'delivery'),
                 'fare', s_all.estimated_price,
                 'status', s_all.status,
                 'driverName', d_all.full_name
@@ -587,14 +589,37 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
 };
 
 // phương thức thêm điểm đi và điểm dừng
-const insertStops = async (client, shipmentId, pickupAddress, deliveryAddress, contactName, contactPhone, notes) => {
-    await client.query(
-        `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
-         VALUES
-            ($1, 1, 'pickup', $2, $4, $5, $6),
-            ($1, 2, 'delivery', $3, $4, $5, $6)`,
-        [shipmentId, pickupAddress, deliveryAddress, contactName || null, contactPhone || null, notes || null],
-    );
+const normalizeStopList = (stops) => {
+    const source = Array.isArray(stops) ? stops : (stops ? [stops] : []);
+    return source.map((stop) => String(stop ?? '').trim()).filter(Boolean);
+};
+
+const insertStops = async (client, shipmentId, pickupStops, deliveryStops, contactName, contactPhone, notes) => {
+    const pickups = normalizeStopList(pickupStops);
+    const deliveries = normalizeStopList(deliveryStops);
+
+    if (pickups.length === 0 || deliveries.length === 0) {
+        throw new Error('Thiếu điểm lấy hàng hoặc điểm giao hàng');
+    }
+
+    let stopIndex = 1;
+    for (const address of pickups) {
+        await client.query(
+            `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
+             VALUES ($1, $2, 'pickup', $3, $4, $5, $6)`,
+            [shipmentId, stopIndex, address, contactName || null, contactPhone || null, notes || null],
+        );
+        stopIndex += 1;
+    }
+
+    for (const address of deliveries) {
+        await client.query(
+            `INSERT INTO trip_stops(shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes)
+             VALUES ($1, $2, 'delivery', $3, $4, $5, $6)`,
+            [shipmentId, stopIndex, address, contactName || null, contactPhone || null, notes || null],
+        );
+        stopIndex += 1;
+    }
 };
 
 //Phương thức tạo order với 1 chuyến(cũ)
@@ -648,8 +673,8 @@ const createOrderWithShipment = async ({
     await insertStops(
         client,
         shipmentResult.rows[0].id,
-        shipmentData.pickup_address,
-        shipmentData.delivery_address,
+        shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+        shipmentData.delivery_addresses ?? shipmentData.delivery_address,
         orderData.customer_name,
         orderData.customer_phone,
     );
@@ -768,8 +793,8 @@ const createOrderWithMultipleShipments = async ({
         await insertStops(//Chèn vào bảng trip stop 
             client,
             shipment.id,
-            shipmentData.pickup_address,
-            shipmentData.delivery_address,
+            shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+            shipmentData.delivery_addresses ?? shipmentData.delivery_address,
             orderData.customer_name,
             orderData.customer_phone,
             shipmentData.notes
@@ -948,16 +973,21 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                         );
                     }
 
-                    if (safeTrim(shipmentData.pickup_address)) {
-                        await client.query(
-                            `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'pickup'`,
-                            [existing.id, safeTrim(shipmentData.pickup_address)],
-                        );
-                    }
-                    if (safeTrim(shipmentData.delivery_address)) {
-                        await client.query(
-                            `UPDATE trip_stops SET address = $2 WHERE shipment_id = $1 AND stop_type = 'delivery'`,
-                            [existing.id, safeTrim(shipmentData.delivery_address)],
+                    if (
+                        shipmentData.pickup_addresses
+                        || shipmentData.pickup_address
+                        || shipmentData.delivery_addresses
+                        || shipmentData.delivery_address
+                    ) {
+                        await client.query(`DELETE FROM trip_stops WHERE shipment_id = $1`, [existing.id]);
+                        await insertStops(
+                            client,
+                            existing.id,
+                            shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+                            shipmentData.delivery_addresses ?? shipmentData.delivery_address,
+                            customer_name,
+                            customer_phone,
+                            orderNotes
                         );
                     }
                 } else if (!existing && shipmentData) {
@@ -998,8 +1028,8 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                     await insertStops(
                         client,
                         newShipmentId,
-                        safeTrim(shipmentData.pickup_address),
-                        safeTrim(shipmentData.delivery_address),
+                        shipmentData.pickup_addresses ?? shipmentData.pickup_address,
+                        shipmentData.delivery_addresses ?? shipmentData.delivery_address,
                         customer_name,
                         customer_phone,
                         orderNotes
