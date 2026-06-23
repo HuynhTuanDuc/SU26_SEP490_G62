@@ -13,18 +13,18 @@ const ACTIVE_STATUSES = ['claimed', 'picking', 'transit', 'arrived', 'failed', '
 
 const TYPE_LABEL = {
     vehicle_breakdown: 'Sự cố xe',
-    cargo_damage:      'Hàng hóa bị hỏng',
-    road_incident:     'Đường sá / giao thông',
-    customer_refusal:  'Khách từ chối nhận',
-    traffic_jam:       'Tắc đường',
-    other:             'Khác',
+    cargo_damage: 'Hàng hóa bị hỏng',
+    road_incident: 'Đường sá / giao thông',
+    customer_refusal: 'Khách từ chối nhận',
+    traffic_jam: 'Tắc đường',
+    other: 'Khác',
 };
 
 const STATUS_LABEL = {
-    open:          'Mới tiếp nhận',
+    open: 'Mới tiếp nhận',
     investigating: 'Đang xử lý',
-    resolved:      'Đã giải quyết',
-    closed:        'Đã đóng',
+    resolved: 'Đã giải quyết',
+    closed: 'Đã đóng',
 };
 // Lấy tất cả incidents (dành cho nhân viên điều phối)
 const getAllIncidents = async () => {
@@ -61,8 +61,8 @@ const updateMyIncident = async (incidentId, driverId, { severityLevel, descripti
 
     const updated = await incidentRepository.updateIncident(incidentId, driverId, {
         severityLevel: severityLevel ?? null,
-        description:   description ? description.trim() : null,
-        location:      location !== undefined ? (location?.trim() || null) : undefined,
+        description: description ? description.trim() : null,
+        location: location !== undefined ? (location?.trim() || null) : undefined,
     });
 
     if (!updated) throw new Error('Không thể cập nhật sự cố');
@@ -75,7 +75,7 @@ const updateMyIncident = async (incidentId, driverId, { severityLevel, descripti
         type: 'INCIDENT_REPORTED',
         entityType: 'incidents',
         entityId: incidentId,
-    }, { displayMode: 'silent' }).catch(() => {});
+    }, { displayMode: 'silent' }).catch(() => { });
 
     return incidentRepository.getIncidentById(incidentId);
 };
@@ -149,7 +149,7 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         type: 'INCIDENT_REPORTED',
         entityType: 'incidents',
         entityId: incident.id,
-    }, { displayMode: 'alert' }).catch(() => {});
+    }, { displayMode: 'alert' }).catch(() => { });
 
     // Notify driver — xác nhận sự cố đã được ghi nhận (silent — họ vừa submit xong)
     notificationService.createForUser(driverId, {
@@ -158,7 +158,7 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         type: 'INCIDENT_REPORTED',
         entityType: 'incidents',
         entityId: incident.id,
-    }, { displayMode: 'silent' }).catch(() => {});
+    }, { displayMode: 'silent' }).catch(() => { });
 
     return incidentRepository.getIncidentById(incident.id);
 };
@@ -174,7 +174,7 @@ const getMyCounts = async (driverId) => {
     );
     const row = result.rows[0];
     return {
-        open_count:   Number(row.open_count   ?? 0),
+        open_count: Number(row.open_count ?? 0),
         closed_count: Number(row.closed_count ?? 0),
     };
 };
@@ -227,7 +227,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
         type: 'INCIDENT_FEEDBACK',
         entityType: 'incidents',
         entityId: incidentId,
-    }, { displayMode: status === 'resolved' || status === 'closed' ? 'toast' : 'silent' }).catch(() => {});
+    }, { displayMode: status === 'resolved' || status === 'closed' ? 'toast' : 'silent' }).catch(() => { });
 
     return updated;
 };
@@ -296,7 +296,7 @@ const reassignVehicle = async (incidentId, coordinatorId, replacementDriverId, r
             type: 'TRIP_ASSIGNED',
             entityType: 'shipments',
             entityId: shipment.id,
-        }, { displayMode: 'alert' }).catch(() => {});
+        }, { displayMode: 'alert' }).catch(() => { });
 
         return incidentRepository.getIncidentById(incidentId);
     } catch (err) {
@@ -305,6 +305,8 @@ const reassignVehicle = async (incidentId, coordinatorId, replacementDriverId, r
     } finally {
         client.release();
     }
+
+
 };
 
 module.exports = {

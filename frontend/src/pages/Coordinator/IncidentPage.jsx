@@ -4,6 +4,7 @@ import "../../styles/IncidentPage.css";
 import { message } from "antd";
 import AppSidebar from "../../components/layout/AppSidebar";
 import AppHeader from "../../components/layout/AppHeader";
+import IncidentModal, { StatusModal } from "../../features/coordinator/incidentModal";
 
 
 export default function IncidentPage({ user, onLogout }) {
@@ -15,9 +16,10 @@ export default function IncidentPage({ user, onLogout }) {
     // Modal state
     const [selectedIncident, setSelectedIncident] = useState(null);
     const [replacementDriverId, setReplacementDriverId] = useState("");
-    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [incidentModalOpen, setIncidentModalOpen] = useState(false);
     const [isDispatching, setIsDispatching] = useState(false);
-
+    const [statusModalOpen, setStatusModalOpen] = useState(false);
+    const [newStatus, setNewStatus] = useState("");
     useEffect(() => {
         fetchIncidents();
         // fetchDrivers();
@@ -26,12 +28,13 @@ export default function IncidentPage({ user, onLogout }) {
     //Tải danh sách sự cố từ API
     const fetchIncidents = async () => {
         setLoading(true);
-        try{
+        try {
             const token = localStorage.getItem("token");
-            if(!token){
+            if (!token) {
                 message.error("Vui lòng đăng nhập lại");
+                return;
             }
-            const res = await apiRequest("/api/incidents", {token});
+            const res = await apiRequest("/api/incidents", { token });
             setIncidents(res.incidents || []);
         } catch (err) {
             console.error("Tải danh danh sự cố thất bại khi fetch", err);
@@ -48,12 +51,41 @@ export default function IncidentPage({ user, onLogout }) {
     //         console.error("Failed to fetch drivers", err);
     //     }
     // };
+    const handleStatusModal = (incident) => {
+        setSelectedIncident(incident);
+        setNewStatus(incident.status);
+        setStatusModalOpen(true);
+    }
 
-    // const handleOpenDispatchModal = (incident) => {
-    //     setSelectedIncident(incident);
-    //     setReplacementDriverId("");
-    //     setIsModalOpen(true);
-    // };
+    const handleOpenDispatchModal = (incident) => {
+        setSelectedIncident(incident);
+        setReplacementDriverId("");
+        setIsModalOpen(true);
+    };
+    const handleUpdateStatus = async () => {
+        try {
+            const token = localStorage.getItem("token");
+
+            await apiRequest(
+                `/api/incidents/${selectedIncident.id}/status`,
+                {
+                    method: "PATCH",
+                    token,
+                    body: {
+                        status: newStatus
+                    }
+                }
+            );
+
+            message.success("Cập nhật trạng thái thành công");
+
+            setStatusModalOpen(false);
+
+            fetchIncidents();
+        } catch (err) {
+            message.error("Không thể cập nhật trạng thái: ", err);
+        }
+    };
 
     // const handleDispatch = async () => {
     //     if (!replacementDriverId) {
@@ -85,15 +117,24 @@ export default function IncidentPage({ user, onLogout }) {
     //         setIsDispatching(false);
     //     }
     // };
+    const handleDispatch = async () => {
+        if (!replacementDriverId) {
+            message.warning("Vui lòng chọn tài xế thay thế");
+            return;
+        }
 
-    // const filteredIncidents = incidents.filter(inc => {
-    //     const query = searchQuery.toLowerCase();
-    //     return (
-    //         (inc.description || "").toLowerCase().includes(query) ||
-    //         (inc.full_name || "").toLowerCase().includes(query) ||
-    //         (inc.incident_type || "").toLowerCase().includes(query)
-    //     );
-    // });
+        const selectedDriver = drivers.find(d => String(d.profile_id) === String(replacementDriverId))
+    }
+
+
+    const filteredIncidents = incidents.filter(inc => {
+        const query = searchQuery.toLowerCase();
+        return (
+            (inc.description || "").toLowerCase().includes(query) ||
+            (inc.full_name || "").toLowerCase().includes(query) ||
+            (inc.incident_type || "").toLowerCase().includes(query)
+        );
+    });
 
     // const openCount = incidents.filter(i => i.status === 'open' || i.status === 'investigating').length;
 
@@ -109,116 +150,19 @@ export default function IncidentPage({ user, onLogout }) {
     //     return map[type] || type;
     // };
 
+    const formatType = (type) => {
+        const map = {
+            vehicle_breakdown: 'Sự cố xe',
+            cargo_damage: 'Hàng hóa bị hỏng',
+            road_incident: 'Tai nạn',
+            customer_refusal: 'Khách từ chối nhận',
+            traffic_jam: 'Tắc đường',
+            other: 'Khác'
+        };
+        return map[type] || type;
+    }
+
     return (
-        // <main className="content incident-page">
-        //     <header className="incident-topbar">
-        //         <h1 className="incident-title">Danh Sách Sự Cố Khẩn Cấp</h1>
-        //         <div className="incident-topbar-actions">
-        //             <div className="incident-search">
-        //                 <span className="search-icon">⌕</span>
-        //                 <input
-        //                     type="text"
-        //                     placeholder="Tìm kiếm..."
-        //                     value={searchQuery}
-        //                     onChange={(e) => setSearchQuery(e.target.value)}
-        //                 />
-        //             </div>
-        //             <button className="btn-icon">🔔</button>
-        //             <button className="btn-icon">❔</button>
-        //             <button className="emergency-btn">
-        //                 🛡️ Emergency Protocol
-        //             </button>
-        //         </div>
-        //     </header>
-
-        //     <div className="incident-stats-row">
-        //         <div className="incident-stats-left">
-        //             <div className="stat-card alert">
-        //                 <div className="stat-icon">⚠️</div>
-        //                 <div className="stat-info">
-        //                     <span>Tổng sự cố</span>
-        //                     <strong>{incidents.length}</strong>
-        //                 </div>
-        //             </div>
-        //             <div className="stat-card warning">
-        //                 <div className="stat-icon">🚧</div>
-        //                 <div className="stat-info">
-        //                     <span>Đang xử lý</span>
-        //                     <strong>{openCount}</strong>
-        //                 </div>
-        //             </div>
-        //         </div>
-        //     </div>
-
-        //     <div className="incident-main-content">
-        //         <div className="list-card full-width">
-        //             <div className="card-header">
-        //                 <div className="card-title">Danh sách chi tiết</div>
-        //                 <div className="live-badge">LIVE UPDATE</div>
-        //             </div>
-                    
-        //             {loading ? (
-        //                 <div className="p-8 text-center text-gray-500">Đang tải dữ liệu...</div>
-        //             ) : (
-        //                 <table className="incident-table">
-        //                     <thead>
-        //                         <tr>
-        //                             <th>CHUYẾN ĐI</th>
-        //                             <th>TÀI XẾ HIỆN TẠI</th>
-        //                             <th>LOẠI SỰ CỐ</th>
-        //                             <th>TRẠNG THÁI</th>
-        //                             <th>THAO TÁC</th>
-        //                         </tr>
-        //                     </thead>
-        //                     <tbody>
-        //                         {filteredIncidents.length === 0 ? (
-        //                             <tr>
-        //                                 <td colSpan="5" className="text-center p-8 text-gray-500">Không có sự cố nào</td>
-        //                             </tr>
-        //                         ) : filteredIncidents.map((inc) => (
-        //                             <tr key={inc.id}>
-        //                                 <td>
-        //                                     <div className="location-info">
-        //                                         <span>Chuyến #{inc.shipment_id || "N/A"}</span>
-        //                                         <small>{new Date(inc.created_at).toLocaleString()}</small>
-        //                                     </div>
-        //                                 </td>
-        //                                 <td>
-        //                                     <div className="driver-info">
-        //                                         <div className="driver-avatar">
-        //                                             {(inc.full_name || "?").charAt(0).toUpperCase()}
-        //                                         </div>
-        //                                         <span>{inc.full_name || "N/A"}</span>
-        //                                     </div>
-        //                                 </td>
-        //                                 <td>
-        //                                     <div className={`incident-type-badge ${inc.severity_level === 'high' || inc.severity_level === 'critical' ? 'type-severe' : 'type-warning'}`}>
-        //                                         {formatType(inc.incident_type)}
-        //                                     </div>
-        //                                 </td>
-        //                                 <td>
-        //                                     <div className="location-info">
-        //                                         <span>{inc.status === 'resolved' || inc.status === 'closed' ? 'Đã giải quyết' : 'Đang chờ xử lý'}</span>
-        //                                         {inc.location && <small>📍 {inc.location}</small>}
-        //                                     </div>
-        //                                 </td>
-        //                                 <td>
-        //                                     {(inc.status === 'open' || inc.status === 'investigating') && (
-        //                                         <button 
-        //                                             className="btn-dispatch"
-        //                                             onClick={() => handleOpenDispatchModal(inc)}
-        //                                         >
-        //                                             Điều phối xe thay thế
-        //                                         </button>
-        //                                     )}
-        //                                 </td>
-        //                             </tr>
-        //                         ))}
-        //                     </tbody>
-        //                 </table>
-        //             )}
-        //         </div>
-        //     </div>
 
         //     {isModalOpen && (
         //         <div className="modal-overlay">
@@ -227,7 +171,7 @@ export default function IncidentPage({ user, onLogout }) {
         //                 <p className="modal-desc">
         //                     Chọn tài xế và xe thay thế cho chuyến #{selectedIncident?.shipment_id} (Tài xế cũ: {selectedIncident?.full_name})
         //                 </p>
-                        
+
         //                 <div className="form-group">
         //                     <label>Chọn tài xế thay thế</label>
         //                     <select 
@@ -258,8 +202,117 @@ export default function IncidentPage({ user, onLogout }) {
         //         </div>
         //     )}
         // </main>
-            <main className="content incident-page">
-                
-            </main>
+
+        <main className="content incident-page">
+            <IncidentModal
+                open={incidentModalOpen}
+                onClose={() => setIncidentModalOpen(false)}
+            />
+            <StatusModal
+                open={statusModalOpen}
+                newStatus={newStatus}
+                setNewStatus={setNewStatus}
+                handleUpdateStatus={handleUpdateStatus}
+                setStatusModalOpen={setStatusModalOpen}
+            />
+
+            <section className="hero">
+                <div className="search-box">
+                    <span className="search-icon">⌕</span>
+
+                </div>
+            </section>
+            <header className="incident-topbar">
+                <h1>Danh sách sự cố khẩn cấp</h1>
+
+            </header>
+            <div className="incident-stats-row">
+
+            </div>
+            <div className="incident-main-content">
+                <div className="list-card full-width">
+                    <div className="card-title">
+                        Danh sách chi tiết
+                    </div>
+
+                    {loading ? (
+                        <div className="">Đang tải dữ liệu ... </div>
+                    ) : (
+                        <table className="incident-table">
+                            <thead>
+                                <tr>
+                                    <th>Chuyến</th>
+                                    <th>Lái xe hiện tại</th>
+                                    <th>Loại sự cố</th>
+                                    <th>Mô tả</th>
+                                    <th>Vị trí</th>
+                                    <th>Trạng thái</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredIncidents.length === 0 ? (
+                                    <tr>Không có sự cố nào hiện tại</tr>
+                                ) : filteredIncidents.map((inc) => (
+                                    <tr key={inc.id}>
+                                        <td>
+                                            <div>
+                                                <span>#{inc.shipment_id}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <div className="driver-avatar">
+                                                    {(inc.full_name || "?").charAt(0).toUpperCase()}
+                                                </div>
+                                                <span>{inc.full_name || "N/A"}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div className={`incident-type-badge ${inc.severity_level === 'high' || inc.severity_level === 'critical' ? 'type-servere' : 'type-warning'}`}>
+                                                {formatType(inc.incident_type)}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {inc.description}
+                                        </td>
+                                        <td>
+                                            <div>
+                                                {inc.location && <small>{inc.location}</small>}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <span>{inc.status === 'resolved' || inc.status === 'closed' ? 'Đã giải quyết' : 'Đang chờ xử lý'}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {(inc.status === 'open' || inc.status === 'investigating') && (
+                                                <div>
+                                                    <button
+                                                        className="btn-dispatch"
+                                                        onClick={() => handleOpenDispatchModal(inc)}
+                                                    >
+                                                        Điều phối xe thay thế
+                                                    </button>
+                                                    <button
+                                                        className="btn-resolve"
+                                                        onClick={() => handleStatusModal(inc)}
+                                                    >
+                                                        Cập nhật trạng thái
+                                                    </button>
+                                                </div>
+                                            )
+                                            }
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )
+                    }
+                </div>
+            </div>
+        </main>
     );
 }

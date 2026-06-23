@@ -276,7 +276,7 @@ export default function OrdersPage({ user, onLogout }) {
     if (form.trips && form.trips.length > 0) {
       form.trips.forEach((trip, index) => {
         if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
-        
+
         if (!String(trip.pickup_address || "").trim()) errors[`trip_${index}_pickup_address`] = `Điểm lấy hàng chuyến ${index + 1} là bắt buộc`;
         if (!String(trip.delivery_address || "").trim()) errors[`trip_${index}_delivery_address`] = `Điểm giao hàng chuyến ${index + 1} là bắt buộc`;
         const dist = normalizeNumericText(trip.distance);
@@ -634,27 +634,8 @@ export default function OrdersPage({ user, onLogout }) {
 
   return (
     <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      
-      
-      <AppSidebar
-        user={user}
-        activeTab={page}
-        onTabChange={setPage}
-        collapsed={sidebarCollapsed}
-        onCollapse={setSidebarCollapsed}
-      />
-      
-
-      {page === "incidents" ? (<IncidentPage user={user} onLogout={handleLogout} />) : (
       <main className="content">
-        
-
-        <AppHeader
-        user={user}        onLogout={handleLogout}
-        />
-
         <div className="topbar">
-          
           <div className="topbar-actions">
             {/* <label className="import-btn">
               {importing ? "Importing..." : "+ Import Excel"}
@@ -663,7 +644,7 @@ export default function OrdersPage({ user, onLogout }) {
             <button className="primary-btn create" onClick={openCreateModal}>
               + Tạo mới
             </button>
-            
+
           </div>
         </div>
 
@@ -695,7 +676,7 @@ export default function OrdersPage({ user, onLogout }) {
                 onChange={(event) => setDateToFilter(event.target.value)}
               />
             </label>
-            
+
             <button
               type="button"
               className="filter"
@@ -1084,7 +1065,7 @@ export default function OrdersPage({ user, onLogout }) {
                     <React.Fragment key={trip.id}>
                       <tr>
 
-                        <td className ="table-trip-id-cell">
+                        <td className="table-trip-id-cell">
                           {trip.trips && trip.trips.length > 1 && (
                             <button
                               onClick={() => toggleRow(trip.id)}
@@ -1197,7 +1178,6 @@ export default function OrdersPage({ user, onLogout }) {
           onProfileUpdated={handleProfileUpdated}
         />
       </main>
-      )}
     </div>
   );
 

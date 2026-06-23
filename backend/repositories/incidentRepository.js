@@ -3,18 +3,18 @@ const pool = require('../config/database');
 
 const getAllIncidents = async () => {
     const result = await pool.query(
-        `SELECT 
-	i.*,
-	os.order_id,
-	os.status,
-	os.actual_price,
-	os.estimated_price,
-	p.full_name
-
-    FROM incidents i
-    JOIN order_shipments os ON os.id = i.shipment_id
-    JOIN orders o ON o.id = os.order_id
-    JOIN profiles p ON p.id = i.reported_by;`
+        `SELECT
+    i.*,
+    i.status AS incident_status,
+    os.order_id,
+    os.status AS shipment_status,
+    os.actual_price,
+    os.estimated_price,
+    p.full_name
+FROM incidents i
+JOIN order_shipments os ON os.id = i.shipment_id
+JOIN orders o ON o.id = os.order_id
+JOIN profiles p ON p.id = i.reported_by;`
     );
     return result.rows;
 };
@@ -165,6 +165,8 @@ const updateIncidentStatus = async (incidentId, { status, resolution = null }) =
     );
     return result.rows[0] ?? null;
 };
+
+
 
 module.exports = {
     getAllIncidents,

@@ -176,6 +176,7 @@ const updateMyIncident = async (req, res) => {
     }
 };
 
+
 module.exports = {
     getAllIncidents,
     createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
