@@ -1,4 +1,3 @@
-const TOKEN_KEY = "token";
 const USER_KEY = "user";
 const REMEMBER_EMAIL_KEY = "rememberEmail";
 
@@ -12,10 +11,6 @@ function safeParseJSON(value) {
   }
 }
 
-export function getStoredToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
 export function getStoredUser() {
   return safeParseJSON(localStorage.getItem(USER_KEY));
 }
@@ -24,18 +19,13 @@ export function getRememberedEmail() {
   return localStorage.getItem(REMEMBER_EMAIL_KEY) || "";
 }
 
-export function saveSession({ token, user }) {
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-  }
-
+export function saveSession({ user }) {
   if (user) {
     localStorage.setItem(USER_KEY, JSON.stringify(user));
   }
 }
 
 export function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 }
 

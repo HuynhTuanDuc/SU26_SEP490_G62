@@ -1,9 +1,10 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
+import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import "../../styles/Coordinator.css";
 import { message as toast } from "antd";
 import ProfileModal from "../../components/profile/ProfileModal";
-import { getStoredToken, saveSession } from "../../services/storage";
+import { saveSession } from "../../services/storage";
 
 //Đặt yêu cầu cho empty form 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
@@ -17,7 +18,6 @@ const emptyForm = () => ({
   note: "",
   is_partner: false,
   partner_name: "",
-  partner_fee: "",
   trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }]
 });
 
@@ -190,7 +190,7 @@ function buildTripFromOrder(order) {
 
   const firstTrip = trips[0] || {};
   const pickupAddress = firstStop(firstTrip, "pickup_addresses", "pickup_address") || order.pickup_address || "";
-  const deliveryAddress = lastStop(firstTrip, "delivery_addresses", "delivery_address") || order.delivery_address || "";
+  const deliveryAddress = firstStop(firstTrip, "delivery_addresses", "delivery_address") || order.delivery_address || "";
   const arrivedAt = firstTrip.arrived_at || order.arrived_at;
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
@@ -228,7 +228,6 @@ function buildTripFromOrder(order) {
     notes: order.notes,
     is_partner: !!order.partner_name,
     partner_name: order.partner_name || "",
-    partner_fee: order.total_actual_price || "",
     trips,
   };
 }
@@ -243,6 +242,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [creating, setCreating] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [vehicleGroups, setVehicleGroups] = useState([]);
+  const [partners, setPartners] = useState([]);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
@@ -299,7 +299,6 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, [message, messageType]);
   const loadOrders = async (page = pagination.page) => {
     try {
-      const token = localStorage.getItem("token");
       const params = new URLSearchParams({
         page: String(page),
         limit: String(pagination.limit),
@@ -310,7 +309,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       if (dateToFilter) params.set("dateTo", dateToFilter);
       if (customerFilter.trim()) params.set("customer", customerFilter.trim());
 
-      const data = await apiRequest(`/api/orders?${params.toString()}`, { token });
+      const data = await apiRequest(`/api/orders?${params.toString()}`);
       const dbTrips = (data.orders || []).map(buildTripFromOrder);
       setTrips(dbTrips);
       setPagination(data.pagination || { page, limit: pagination.limit, total: dbTrips.length, totalPages: 1 });
@@ -327,8 +326,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   useEffect(() => {
     const loadVehicleGroups = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const data = await apiRequest("/api/coordinator/vehicle-groups", { token });
+        const data = await apiRequest("/api/coordinator/vehicle-groups");
         setVehicleGroups(data.vehicleGroups || []);
       } catch (error) {
         setMessage("Không thể tải danh sách nhóm xe/BKS.");
@@ -339,11 +337,24 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadVehicleGroups();
   }, []);
 
+  useEffect(() => {
+    const loadPartners = async () => {
+      try {
+        const data = await apiRequest("/api/coordinator/partners");
+        setPartners(data.partners || []);
+      } catch (error) {
+        setMessage("Không thể tải danh sách đối tác.");
+        setMessageType("error");
+      }
+    };
+
+    loadPartners();
+  }, []);
+
   const loadReceiptRequests = async () => {
     setReceiptRequestsLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const data = await apiRequest("/api/coordinator/receipt-requests", { token });
+      const data = await apiRequest("/api/coordinator/receipt-requests");
       setReceiptRequests(data.requests || []);
     } catch (error) {
       setMessage(error.message || "Không thể tải danh sách yêu cầu phiếu thu.");
@@ -357,6 +368,26 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadReceiptRequests();
   }, []);
 
+  useRoleRealtime(currentUser, {
+    onMessage: (payload) => {
+      if (!payload?.type) return;
+
+      if (
+        payload.type === "coordinator.receipt_requests.changed" ||
+        payload.type === "notification.created"
+      ) {
+        loadReceiptRequests();
+      }
+
+      if (
+        payload.type === "coordinator.orders.changed" ||
+        payload.type === "coordinator.receipt_requests.changed"
+      ) {
+        loadOrders(pagination.page);
+      }
+    },
+  });
+
   useEffect(() => {
     if (!message) return undefined;
 
@@ -369,20 +400,13 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, [message]);
 
   const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-      return;
-    }
-
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.reload();
+    onLogout?.();
   };
 
   const handleProfileUpdated = (nextProfile) => {
     const mergedUser = { ...currentUser, ...nextProfile };
     setCurrentUser(mergedUser);
-    saveSession({ token: getStoredToken(), user: mergedUser });
+    saveSession({ user: mergedUser });
   };
 
   const filteredTrips = useMemo(() => {
@@ -604,10 +628,8 @@ export default function CoordinatorPage({ user, onLogout }) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const token = localStorage.getItem("token");
       const data = await apiRequest("/api/coordinator/import-excel", {
         method: "POST",
-        token,
         body: formData,
       });
 
@@ -648,7 +670,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
         ...t,
         pickup_address: firstStop(t, "pickup_addresses", "pickup_address") || trip.pickupAddress || routeAddresses.pickup || "",
-        delivery_address: lastStop(t, "delivery_addresses", "delivery_address") || trip.deliveryAddress || routeAddresses.delivery || "",
+        delivery_address: firstStop(t, "delivery_addresses", "delivery_address") || trip.deliveryAddress || routeAddresses.delivery || "",
         pickup_addresses: Array.isArray(t.pickup_addresses) && t.pickup_addresses.length > 0 ? t.pickup_addresses : [t.pickup_address || trip.pickupAddress || routeAddresses.pickup || ""],
         delivery_addresses: Array.isArray(t.delivery_addresses) && t.delivery_addresses.length > 0 ? t.delivery_addresses : [t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || ""],
       })) : [{
@@ -685,8 +707,7 @@ export default function CoordinatorPage({ user, onLogout }) {
     setSelectedReceiptDetail(null);
 
     try {
-      const token = localStorage.getItem("token");
-      const detail = await apiRequest(`/api/coordinator/receipt-requests/${requestId}`, { token });
+      const detail = await apiRequest(`/api/coordinator/receipt-requests/${requestId}`);
       setSelectedReceiptDetail(detail);
 
       setReceiptForm({
@@ -743,7 +764,6 @@ export default function CoordinatorPage({ user, onLogout }) {
 
     setReceiptPublishing(true);
     try {
-      const token = localStorage.getItem("token");
       const payload = {
         notes: receiptForm.notes,
         expenses: receiptForm.expenses
@@ -758,7 +778,6 @@ export default function CoordinatorPage({ user, onLogout }) {
 
       const data = await apiRequest(`/api/coordinator/receipt-requests/${selectedReceiptDetail.request.id}/approve`, {
         method: "POST",
-        token,
         body: payload,
       });
 
@@ -803,10 +822,8 @@ export default function CoordinatorPage({ user, onLogout }) {
     if (!confirmed) return;
 
     try {
-      const token = localStorage.getItem("token");
       const data = await apiRequest(`/api/orders/${trip.orderId}`, {
         method: "DELETE",
-        token,
         body: { reason: "Coordinator cancelled order" },
       });
       const cancelledTrip = buildTripFromOrder(data.order);
@@ -836,7 +853,6 @@ export default function CoordinatorPage({ user, onLogout }) {
     setCreating(true);
 
     try {
-      const token = localStorage.getItem("token");
       const payload = {
         date: form.date,
         customer_name: form.customer_name,
@@ -849,19 +865,17 @@ export default function CoordinatorPage({ user, onLogout }) {
         notes: form.note,
         is_partner: form.is_partner,
         partner_name: form.is_partner ? form.partner_name : null,
-        partner_fee: form.is_partner ? form.partner_fee : null,
         trips: form.trips.map((trip) => ({
           ...trip,
           pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses.filter(Boolean) : [trip.pickup_address].filter(Boolean),
           delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses.filter(Boolean) : [trip.delivery_address].filter(Boolean),
           pickup_address: firstStop(trip, "pickup_addresses", "pickup_address"),
-          delivery_address: lastStop(trip, "delivery_addresses", "delivery_address"),
+          delivery_address: firstStop(trip, "delivery_addresses", "delivery_address"),
         })),
       };
 
       const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
         method: editingTrip ? "PATCH" : "POST",
-        token,
         body: payload,
       });
 
@@ -1116,39 +1130,42 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </label>
                 </div>
 
-                <div className="sheet-caption full" style={{ marginTop: 12 }}>Tùy chọn đối tác</div>
-                <div className="form-row full" style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#2a3144', fontWeight: 600 }}>
-                    <input
-                      type="checkbox"
-                      checked={form.is_partner}
-                      onChange={(e) => updateField("is_partner", e.target.checked)}
-                      style={{ width: 18, height: 18 }}
-                    />
-                    Tạo cho đối tác
-                  </label>
+                <div className="form-row full" style={{ marginTop: 12, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    type="button"
+                    onClick={() => updateField("is_partner", !form.is_partner)}
+                    style={{
+                      border: '1px solid #cfd6e6',
+                      background: form.is_partner ? '#18227f' : '#fff',
+                      color: form.is_partner ? '#fff' : '#2a3144',
+                      borderRadius: 14,
+                      padding: '11px 14px',
+                      cursor: 'pointer',
+                      font: 'inherit',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Đơn từ đối tác liên kết
+                  </button>
                 </div>
 
                 {form.is_partner && (
-                  <div className="form-row form-row-2">
-                    <label>
-                      <span>Bên liên kết (Tên đối tác)</span>
-                      <input
+                  <div className="form-row full" style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
+                      <span>Đối tác</span>
+                      <select
                         value={form.partner_name}
                         onChange={(event) => updateField("partner_name", event.target.value)}
-                        placeholder="Nhập tên bên liên kết"
-                      />
-                    </label>
-                    <label>
-                      <span>Cước phí đối tác</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={form.partner_fee}
-                        onChange={(event) => updateField("partner_fee", event.target.value)}
-                        placeholder="Ví dụ: 500000"
-                      />
+                        style={{ width: '100%', border: '1px solid #cfd6e6', borderRadius: 14, padding: '13px 14px', font: 'inherit', background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                      >
+                        <option value="">Chọn đối tác</option>
+                        {partners.map((partner) => (
+                          <option key={partner.id} value={partner.company_name}>
+                            {partner.contact_person ? `${partner.company_name} - ${partner.contact_person}` : partner.company_name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   </div>
                 )}

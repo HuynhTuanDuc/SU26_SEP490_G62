@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
+const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 
@@ -100,6 +101,14 @@ const ensureUniqueActiveAssignment = (seen, key, label) => {
         throw new Error(`${label} da duoc gan cho mot chuyen khac trong cung yeu cau`);
     }
     seen.add(String(key));
+};
+
+const broadcastCoordinatorOrderChange = (action, order) => {
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.orders.changed',
+        action,
+        orderId: order?.id ?? null,
+    });
 };
 
 const createOrder = async (userId, payload) => {
@@ -252,6 +261,7 @@ const createOrder = async (userId, payload) => {
         });
 
         await dbClient.query('COMMIT');
+        broadcastCoordinatorOrderChange('created', result.order);
         return result;
     } catch (err) {
         if (dbClient) {
@@ -489,7 +499,7 @@ const updateOrder = async (orderId, payload) => {
         dbClient.release();
     }
 
-    return orderRepository.updateOrder(orderId, {
+    const updatedOrder = await orderRepository.updateOrder(orderId, {
         customer_name,
         customer_phone,
         cargo_name,
@@ -501,10 +511,14 @@ const updateOrder = async (orderId, payload) => {
         partner_name: is_partner ? safeTrim(partner_name) : null,
         total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
+    broadcastCoordinatorOrderChange('updated', updatedOrder);
+    return updatedOrder;
 };
 
 const cancelOrder = async (orderId, reason) => {
-    return orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
+    const cancelledOrder = await orderRepository.cancelOrder(orderId, safeTrim(reason) || 'Coordinator cancelled order');
+    broadcastCoordinatorOrderChange('cancelled', cancelledOrder);
+    return cancelledOrder;
 };
 
 module.exports = { listOrders, createOrder, importOrdersFromExcel, updateOrder, cancelOrder };

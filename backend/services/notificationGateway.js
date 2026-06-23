@@ -1,12 +1,22 @@
 const WebSocket = require('ws');
 const authService = require('./authService');
 
-
 const clientsByUserId = new Map();
 const clientsByRole   = new Map();
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+const readCookieValue = (cookieHeader, cookieName) => {
+    if (!cookieHeader) return null;
+
+    const cookie = String(cookieHeader)
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${cookieName}=`));
+
+    if (!cookie) return null;
+    return decodeURIComponent(cookie.slice(cookieName.length + 1));
+};
 
 const sendJson = (socket, payload) => {
     if (socket.readyState !== WebSocket.OPEN) return;
@@ -81,7 +91,7 @@ const initNotificationGateway = (server) => {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname !== '/ws/notifications') return;
 
-        const token = url.searchParams.get('token');
+        const token = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
         if (!token) {
             socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
             socket.destroy();
@@ -135,6 +145,8 @@ const setupHeartbeat = (ws) => {
 
 module.exports = {
     initNotificationGateway,
+    sendJson,
+    readCookieValue,
     broadcastToUser,
     broadcastToRole,
     notifyCreated,

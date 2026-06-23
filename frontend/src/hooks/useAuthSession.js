@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../services/apiClient";
 import {
   clearSession,
-  getStoredToken,
   getStoredUser,
   saveRememberedEmail,
   saveSession,
@@ -13,20 +12,14 @@ export function useAuthSession() {
   const [loading, setLoading] = useState(true);
 
   const refreshSession = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) {
-      setUser(null);
-      return null;
-    }
-
-    const currentUser = await apiRequest("/auth/me", { token });
-    saveSession({ token, user: currentUser });
+    const currentUser = await apiRequest("/auth/me");
+    saveSession({ user: currentUser });
     setUser(currentUser);
     return currentUser;
   }, []);
 
-  const setSession = useCallback(({ token, user: nextUser, rememberEmail }) => {
-    saveSession({ token, user: nextUser });
+  const setSession = useCallback(({ user: nextUser, rememberEmail }) => {
+    saveSession({ user: nextUser });
 
     if (rememberEmail !== undefined) {
       saveRememberedEmail(rememberEmail);
@@ -35,7 +28,12 @@ export function useAuthSession() {
     setUser(nextUser);
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await apiRequest("/auth/logout", { method: "POST", retryOnAuthFailure: false });
+    } catch {
+      // Clear local session state even if the logout request fails.
+    }
     clearSession();
     setUser(null);
   }, []);
@@ -44,14 +42,6 @@ export function useAuthSession() {
     let active = true;
 
     const hydrateSession = async () => {
-      const token = getStoredToken();
-      if (!token) {
-        if (active) {
-          setLoading(false);
-        }
-        return;
-      }
-
       try {
         await refreshSession();
       } catch {

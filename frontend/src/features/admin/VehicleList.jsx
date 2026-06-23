@@ -28,6 +28,7 @@ import {
   WarningOutlined,
 } from "@ant-design/icons";
 import VehicleModal from "./VehicleModal";
+import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import {
   assignVehicleDriver,
   createVehicle,
@@ -184,7 +185,7 @@ const buildHistoryTimelineItems = (items) =>
     ),
   }));
 
-export default function VehicleList() {
+export default function VehicleList({ user }) {
   const [vehicles, setVehicles] = useState([]);
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
@@ -280,6 +281,23 @@ export default function VehicleList() {
     loadVehicleGroups();
     loadVehicles({ page: 1 });
   }, []);
+
+  useRoleRealtime(user, {
+    onMessage: (payload) => {
+      if (payload?.type === "manager.vehicles.changed") {
+        loadVehicleGroups();
+        loadVehicles();
+        if (detailVehicle?.id && payload.vehicleId && Number(detailVehicle.id) === Number(payload.vehicleId)) {
+          openDetail({ id: detailVehicle.id });
+        }
+        if (verifyMaintenanceTarget?.id && payload.vehicleId && Number(verifyMaintenanceTarget.id) === Number(payload.vehicleId)) {
+          fetchVehicleDetail(verifyMaintenanceTarget.id)
+            .then((data) => setVerifyMaintenanceTarget(data.vehicle))
+            .catch(() => {});
+        }
+      }
+    },
+  });
 
   const handleTableChange = (nextPagination) => {
     loadVehicles({

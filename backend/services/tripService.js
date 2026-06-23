@@ -1,6 +1,7 @@
 const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
 const notificationService = require('./notificationService');
+const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
 const pool = require('../config/database');
 
@@ -314,6 +315,12 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
             `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
             [trip.order_id],
         );
+        notificationGateway.broadcastToRole('coordinator', {
+            type: 'coordinator.receipt_requests.changed',
+            action: 'created',
+            orderId,
+            requestId: request?.id ?? null,
+        });
     }
 
     notificationService.createForUser(driverId, {

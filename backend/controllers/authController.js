@@ -1,15 +1,57 @@
 const authService = require('../services/authService');
 const roleRepository = require('../repositories/roleRepository');
 
+const ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
+const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const shouldUseSecureCookies = () => process.env.NODE_ENV === 'production';
+
+const getCookieOptions = (maxAge) => ({
+    httpOnly: true,
+    sameSite: shouldUseSecureCookies() ? 'none' : 'lax',
+    secure: shouldUseSecureCookies(),
+    maxAge,
+    path: '/',
+});
+
+const setSessionCookies = (res, accessToken, refreshToken) => {
+    res.cookie(authService.AUTH_COOKIE_NAME, accessToken, getCookieOptions(ACCESS_COOKIE_MAX_AGE_MS));
+    res.cookie(authService.REFRESH_COOKIE_NAME, refreshToken, getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS));
+};
+
+const clearSessionCookies = (res) => {
+    res.clearCookie(authService.AUTH_COOKIE_NAME, {
+        ...getCookieOptions(ACCESS_COOKIE_MAX_AGE_MS),
+        maxAge: undefined,
+    });
+    res.clearCookie(authService.REFRESH_COOKIE_NAME, {
+        ...getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS),
+        maxAge: undefined,
+    });
+};
+
+const readCookieValue = (cookieHeader, cookieName) => {
+    if (!cookieHeader) return null;
+
+    const cookie = String(cookieHeader)
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(`${cookieName}=`));
+
+    if (!cookie) return null;
+    return decodeURIComponent(cookie.slice(cookieName.length + 1));
+};
+
 // POST /auth/login
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
         const result = await authService.login(email, password);
+        setSessionCookies(res, result.token, result.refreshToken);
 
         res.json({
             message: 'Login successful',
-            ...result,
+            user: result.user,
         });
     } catch (err) {
         console.error('Login error:', err);
@@ -24,10 +66,11 @@ const googleLogin = async (req, res) => {
     try {
         const { credential } = req.body;
         const result = await authService.loginWithGoogle(credential);
+        setSessionCookies(res, result.token, result.refreshToken);
 
         res.json({
             message: 'Google login successful',
-            ...result,
+            user: result.user,
         });
     } catch (err) {
         console.error('Google login error:', err);
@@ -87,6 +130,30 @@ const getCurrentUser = async (req, res) => {
     }
 };
 
+const refresh = async (req, res) => {
+    try {
+        const refreshToken = readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME);
+        const result = await authService.refreshSession(refreshToken);
+        setSessionCookies(res, result.accessToken, result.refreshToken);
+
+        res.json({
+            message: 'Session refreshed',
+            user: result.user,
+        });
+    } catch (err) {
+        clearSessionCookies(res);
+        const status = Number.isInteger(err.status) ? err.status : 401;
+        res.status(status).json({ error: err.message || 'Unable to refresh session' });
+    }
+};
+
+const logout = async (req, res) => {
+    const refreshToken = readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME);
+    await authService.revokeRefreshToken(refreshToken);
+    clearSessionCookies(res);
+    res.json({ message: 'Logout successful' });
+};
+
 // GET /roles (public endpoint for reference)
 const getAllRoles = async (req, res) => {
     try {
@@ -105,5 +172,7 @@ module.exports = {
     verifyPasswordResetCode,
     resetPassword,
     getCurrentUser,
+    refresh,
+    logout,
     getAllRoles,
 };
