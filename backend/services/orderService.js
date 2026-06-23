@@ -12,6 +12,13 @@ const normalizeNumber = (value) => {
     return numericValue;
 };
 
+const normalizeNonNegativeAmount = (value, fieldLabel) => {
+    const amount = normalizeNumber(value);
+    if (amount === null) return 0;
+    if (amount < 0) throw new Error(`${fieldLabel} không được âm`);
+    return amount;
+};
+
 const safeTrim = (value) => String(value ?? '').trim();
 
 const normalizeText = (value) => safeTrim(value)
@@ -130,6 +137,7 @@ const createOrder = async (userId, payload) => {
         is_partner,
         partner_name,
         partner_fee,
+        prepaid_amount,
     } = payload;
 
     let { trips } = payload;
@@ -256,6 +264,7 @@ const createOrder = async (userId, payload) => {
                 notes: notes !== undefined ? safeTrim(notes) : '',
                 partner_name: is_partner ? safeTrim(partner_name) : null,
                 total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
+                prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
             },
             shipmentsDataArray
         });
@@ -411,6 +420,7 @@ const updateOrder = async (orderId, payload) => {
         is_partner,
         partner_name,
         partner_fee,
+        prepaid_amount,
     } = payload;
 
     let { trips } = payload;
@@ -510,6 +520,7 @@ const updateOrder = async (orderId, payload) => {
         arrived_at: arrived_at || date,
         partner_name: is_partner ? safeTrim(partner_name) : null,
         total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
+        prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
     broadcastCoordinatorOrderChange('updated', updatedOrder);
     return updatedOrder;

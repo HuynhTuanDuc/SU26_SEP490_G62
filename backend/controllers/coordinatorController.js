@@ -18,19 +18,6 @@ const listPartners = async (_req, res) => {
   }
 };
 
-const importExcel = async (req, res) => {
-  try {
-    if (!req.file?.buffer) {
-      return res.status(400).json({ error: 'Vui lòng upload file Excel' });
-    }
-
-    const result = await coordinatorService.importExcel(req.user.userId, req.file.buffer);
-    res.json({ message: 'Import Excel thành công', ...result });
-  } catch (err) {
-    res.status(422).json({ error: err.message });
-  }
-};
-
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
@@ -91,7 +78,6 @@ const rejectReceiptRequest = async (req, res) => {
 };
 
 module.exports = {
-    importExcel,
     listVehicleGroups,
     listPartners,
     getReceiptRequests,

@@ -418,13 +418,15 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
         throw err;
     }
 
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.receipt_requests.changed',
+        action: 'created',
+        requestId: request.id,
+        orderId,
+    });
+
     // Thông báo cho coordinator
-    const coordResult = await pool.query(
-        `SELECT a.id FROM accounts a
-         JOIN roles r ON r.id = a.role_id
-         WHERE r.name IN ('coordinator', 'admin') AND a.is_active = TRUE`,
-    );
-    const coordIds = coordResult.rows.map(r => r.id);
+    const coordIds = await notificationService.getUserIdsByRole('coordinator');
     if (coordIds.length > 0) {
         notificationService.createForUsers(coordIds, {
             title: 'Yêu cầu tạo phiếu thu',

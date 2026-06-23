@@ -38,7 +38,7 @@ const createOrder = async (req, res) => {
     const {
         customer_name, customer_phone, customer_company,
         customer_id,   // ← khi chọn đối tác từ danh sách
-        order_date, notes,
+        order_date, notes, prepaid_amount,
     } = req.body;
 
     if (!customer_name?.trim() && !customer_id) {
@@ -70,6 +70,7 @@ const createOrder = async (req, res) => {
             customer_id: customer_id || null,
             order_date,
             notes,
+            prepaid_amount,
             shipments,
             created_by: createdByUserId,
         };

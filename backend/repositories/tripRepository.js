@@ -824,11 +824,21 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
             COALESCE(sr.id, orr.id)                       AS receipt_id,
             ${RECEIPT_PAYMENT_TYPE_SQL}                  AS payment_type,
             COALESCE(sr.amount,
-                (SELECT SUM(os2.actual_price)
+                (SELECT GREATEST(
+                    COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
+                    0
+                )
                  FROM order_shipments os2
                  WHERE os2.order_id = orr.order_id
                    AND os2.actual_price IS NOT NULL)
             )                                             AS amount,
+            COALESCE(sr.gross_amount,
+                (SELECT COALESCE(SUM(os2.actual_price), 0)
+                 FROM order_shipments os2
+                 WHERE os2.order_id = orr.order_id
+                   AND os2.actual_price IS NOT NULL)
+            )                                             AS gross_amount,
+            COALESCE(sr.prepaid_amount, COALESCE(o.prepaid_amount, 0)) AS prepaid_amount,
             COALESCE(sr.collected_at, orr.processed_at)  AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)     AS notes,
             o.id                                          AS order_id,
@@ -860,9 +870,17 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             COALESCE(sr.id, NULL)        AS shipment_receipt_id,
             COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
             COALESCE(sr.amount,
-                (SELECT SUM(os2.actual_price) FROM order_shipments os2
+                (SELECT GREATEST(
+                    COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
+                    0
+                ) FROM order_shipments os2
                  WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
             )                            AS amount,
+            COALESCE(sr.gross_amount,
+                (SELECT COALESCE(SUM(os2.actual_price), 0) FROM order_shipments os2
+                 WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
+            )                            AS gross_amount,
+            COALESCE(sr.prepaid_amount, COALESCE(o.prepaid_amount, 0)) AS prepaid_amount,
             COALESCE(sr.collected_at, orr.processed_at) AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)   AS notes,
             o.id                         AS order_id,

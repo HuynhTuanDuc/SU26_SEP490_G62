@@ -524,8 +524,10 @@ const getShipmentPricingSnapshot = async (db, requestId) => {
         `SELECT
             rr.id,
             rr.order_id,
-            rr.driver_id
+            rr.driver_id,
+            COALESCE(o.prepaid_amount, 0) AS prepaid_amount
          FROM order_receipt_requests rr
+         JOIN orders o ON o.id = rr.order_id
          WHERE rr.id = $1`,
         [requestId],
     );
@@ -567,16 +569,21 @@ const computeReceiptAmount = (pricingSnapshot) => {
 
     const totalActualKm = shipmentBreakdown.reduce((sum, item) => sum + item.actual_km, 0);
     const totalActualIncome = shipmentBreakdown.reduce((sum, item) => sum + item.actual_income, 0);
+    const prepaidAmount = Math.max(Number(pricingSnapshot?.prepaid_amount || 0), 0);
     const primaryShipment = pricingSnapshot?.primaryShipment ?? null;
     const primaryBreakdown = primaryShipment
         ? shipmentBreakdown.find((item) => Number(item.shipment_id) === Number(primaryShipment.id)) ?? shipmentBreakdown[0]
         : shipmentBreakdown[0];
+    const remainingAmount = Math.max(totalActualIncome - prepaidAmount, 0);
 
     return {
         shipment_id: primaryBreakdown?.shipment_id ?? null,
         actual_km: totalActualKm,
         price_per_km: primaryBreakdown?.price_per_km ?? 0,
         actual_income: totalActualIncome,
+        gross_amount: totalActualIncome,
+        prepaid_amount: prepaidAmount,
+        remaining_amount: remainingAmount,
         shipment_breakdown: shipmentBreakdown,
     };
 };
@@ -704,6 +711,7 @@ const getReceiptRequestDetail = async (requestId) => {
             o.notes                    AS order_notes,
             o.total_actual_price       AS order_total_actual_price,
             o.final_price              AS order_final_price,
+            COALESCE(o.prepaid_amount, 0) AS order_prepaid_amount,
             c.id                       AS customer_id,
             c.full_name                AS customer_name,
             c.phone                    AS customer_phone,
@@ -729,6 +737,8 @@ const getReceiptRequestDetail = async (requestId) => {
     const totalActualPrice = sumShipmentActualRevenue(shipments);
     const totalPassThroughExpenses = sumPassThroughExpenses(shipments);
     const finalPrice = totalActualPrice + totalPassThroughExpenses;
+    const prepaidAmount = Math.max(Number(row.order_prepaid_amount || 0), 0);
+    const remainingReceiptAmount = Math.max(finalPrice - prepaidAmount, 0);
 
     return {
         request: {
@@ -757,6 +767,7 @@ const getReceiptRequestDetail = async (requestId) => {
             notes: row.order_notes,
             total_actual_price: totalActualPrice,
             final_price: finalPrice,
+            prepaid_amount: prepaidAmount,
         },
         shipment: primaryShipment,
         shipments,
@@ -767,6 +778,8 @@ const getReceiptRequestDetail = async (requestId) => {
             total_expenses: totalExpenses,
             total_pass_through_expenses: totalPassThroughExpenses,
             final_price: finalPrice,
+            prepaid_amount: prepaidAmount,
+            remaining_receipt_amount: remainingReceiptAmount,
             shipment_count: shipments.length,
             shipment_breakdown: computed.shipment_breakdown,
         },
@@ -858,16 +871,16 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         );
 
         // Tạo phiếu thu để driver xem trong tab Phiếu thu
-        const totalAmount = computed.shipment_breakdown.reduce(
-            (sum, s) => sum + Number(s.actual_income), 0,
-        );
+        const totalAmount = computed.remaining_amount;
         await client.query(
             `INSERT INTO shipment_receipts
-                 (shipment_id, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+                 (shipment_id, amount, gross_amount, prepaid_amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
             [
                 targetShipment.id,
                 totalAmount,
+                computed.gross_amount,
+                computed.prepaid_amount,
                 req.driver_id,
                 notes ?? null,
                 requestId,

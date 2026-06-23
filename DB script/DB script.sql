@@ -123,6 +123,7 @@ CREATE TABLE orders (
     total_estimated_price   NUMERIC(12,2) NOT NULL DEFAULT 0,
     total_actual_price      NUMERIC(12,2) NOT NULL DEFAULT 0,
     final_price            NUMERIC(12,2) NOT NULL DEFAULT 0,  -- snapshot of actual_price at invoice time
+    prepaid_amount         NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (prepaid_amount >= 0),
     derived_status      TEXT NOT NULL DEFAULT 'open'
                             CHECK (derived_status IN ('open','completed','cancelled','partial')),
     is_confidential     BOOLEAN NOT NULL DEFAULT FALSE,
@@ -265,7 +266,9 @@ CREATE TABLE shipment_receipts (
     payment_type        TEXT CHECK (payment_type IN (
                             'cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'
                         )),
-    amount              NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    amount              NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+    gross_amount        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (gross_amount >= 0),
+    prepaid_amount      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (prepaid_amount >= 0),
     collected_by        INT REFERENCES profiles(id),
     collected_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     notes               TEXT,

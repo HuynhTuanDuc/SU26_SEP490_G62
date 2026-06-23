@@ -234,6 +234,7 @@ function buildTripFromOrder(order) {
 
 export default function CoordinatorPage({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(user);
+  const [activeView, setActiveView] = useState("orders");
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [trips, setTrips] = useState([]);
@@ -243,7 +244,6 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [drivers, setDrivers] = useState([]);
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [partners, setPartners] = useState([]);
-  const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [form, setForm] = useState(emptyForm);
@@ -261,8 +261,13 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptDetailLoading, setReceiptDetailLoading] = useState(false);
   const [receiptPublishing, setReceiptPublishing] = useState(false);
+  const [receiptRejectingId, setReceiptRejectingId] = useState(null);
   const [selectedReceiptDetail, setSelectedReceiptDetail] = useState(null);
   const [receiptForm, setReceiptForm] = useState(emptyReceiptForm);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
 
   const toggleRow = (orderId) => {
     setExpandedRows(prev => {
@@ -351,6 +356,20 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadPartners();
   }, []);
 
+  const loadNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const data = await apiRequest("/api/notifications?limit=10&page=1");
+      setNotifications(data.notifications || []);
+      setNotificationUnreadCount(Number(data.unreadCount || 0));
+    } catch (error) {
+      setMessage(error.message || "Khong the tai thong bao.");
+      setMessageType("error");
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
   const loadReceiptRequests = async () => {
     setReceiptRequestsLoading(true);
     try {
@@ -368,9 +387,22 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadReceiptRequests();
   }, []);
 
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
   useRoleRealtime(currentUser, {
     onMessage: (payload) => {
       if (!payload?.type) return;
+
+      if (payload.type === "notification.created") {
+        setNotificationUnreadCount((current) => current + 1);
+        loadNotifications();
+      }
+
+      if (payload.type === "notification.read" || payload.type === "notification.read_all") {
+        loadNotifications();
+      }
 
       if (
         payload.type === "coordinator.receipt_requests.changed" ||
@@ -409,290 +441,29 @@ export default function CoordinatorPage({ user, onLogout }) {
     saveSession({ user: mergedUser });
   };
 
-  const filteredTrips = useMemo(() => {
-    const query = deferredSearchQuery.trim().toLowerCase();
-    const customer = customerFilter.trim().toLowerCase();
+  const handleOpenNotifications = async () => {
+    const nextOpen = !notificationMenuOpen;
+    setNotificationMenuOpen(nextOpen);
+    if (!nextOpen) return;
 
-    return trips.filter((trip) => {
-      const shipmentStatuses = Array.isArray(trip.trips) && trip.trips.length > 0
-        ? trip.trips.map((item) => normalizeStatus(item.status))
-        : [normalizeStatus(trip.status)];
-      const allowedStatuses = STATUS_TABS[activeTab];
-      const matchesTab = !allowedStatuses || shipmentStatuses.some((status) => allowedStatuses.has(status));
-
-      if (!matchesTab) return false;
-
-      const shipmentDates = Array.isArray(trip.trips) && trip.trips.length > 0
-        ? trip.trips
-          .map((item) => (item.arrived_at ? String(item.arrived_at).substring(0, 10) : ""))
-          .filter(Boolean)
-        : [];
-      const candidateDates = shipmentDates.length > 0
-        ? shipmentDates
-        : [trip.dateInput || formatDateForInput(trip.date)].filter(Boolean);
-      if ((dateFromFilter || dateToFilter) && !candidateDates.some((date) => (
-        (!dateFromFilter || date >= dateFromFilter) && (!dateToFilter || date <= dateToFilter)
-      ))) return false;
-
-      if (customer && !String(trip.customerName || "").toLowerCase().includes(customer)) {
-        return false;
-      }
-
-      if (!query) return true;
-
-      return [
-        trip.id,
-        trip.orderId,
-        trip.cargoName,
-        trip.pickupAddress,
-        trip.deliveryAddress,
-        trip.route,
-        trip.driverName,
-        trip.customerName,
-        trip.status,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(query));
-    });
-  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearchQuery, trips]);
-
-
-
-  const validateForm = () => {
-    const errors = {};
-
-    requiredFields.forEach(({ key, label }) => {
-      const value = String(form[key] ?? "").trim();
-      if (!value) {
-        errors[key] = `${label} là bắt buộc`;
-      }
-    });
-
-    if (form.date) {
-      const selectedDate = new Date(`${form.date}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (Number.isNaN(selectedDate.getTime())) {
-        errors.date = "Ngày không hợp lệ";
-      } else if (!editingTrip && selectedDate < today) {
-        errors.date = "Ngày không được trước hôm nay";
+    await loadNotifications();
+    if (notificationUnreadCount > 0) {
+      try {
+        await apiRequest("/api/notifications/read-all", { method: "PATCH" });
+        setNotificationUnreadCount(0);
+        setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+      } catch (error) {
+        setMessage(error.message || "Khong the danh dau da doc.");
+        setMessageType("error");
       }
     }
-    const phoneDigits = String(form.customer_phone ?? "").replace(/\D/g, "");
-    if (form.customer_phone && !/^0\d{9,10}$/.test(phoneDigits)) {
-      errors.customer_phone = "SĐT phải bắt đầu bằng 0 và có 10-11 chữ số";
-    }
-
-    const weight = normalizeNumericText(form.cargo_weight_kg);
-    if (weight && (!isFiniteNumber(weight) || Number(weight) <= 0)) {
-      errors.cargo_weight_kg = "Khối lượng phải là số lớn hơn 0";
-    }
-
-    if (form.trips && form.trips.length > 0) {
-      form.trips.forEach((trip, index) => {
-        if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
-        if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
-
-        const pickupStops = Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip.pickup_address];
-        const deliveryStops = Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip.delivery_address];
-        if (!pickupStops.some((value) => String(value ?? "").trim())) {
-          errors[`trip_${index}_pickup_address`] = `Ít nhất một điểm lấy hàng cho chuyến ${index + 1} là bắt buộc`;
-        }
-        if (!deliveryStops.some((value) => String(value ?? "").trim())) {
-          errors[`trip_${index}_delivery_address`] = `Ít nhất một điểm giao hàng cho chuyến ${index + 1} là bắt buộc`;
-        }
-
-        const dist = normalizeNumericText(trip.distance);
-        if (!dist) {
-          errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
-        } else if (!isFiniteNumber(dist) || Number(dist) <= 0) {
-          errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} phải > 0`;
-        }
-      });
-    } else {
-      errors.trips = "Cần ít nhất một chuyến xe";
-    }
-
-    setFormErrors(errors);
-    return errors;
   };
 
-  const updateField = (key, value) => {
-    setForm((current) => ({ ...current, [key]: value }));
-    if (formErrors[key]) {
-      setFormErrors((currentErrors) => {
-        const nextErrors = { ...currentErrors };
-        delete nextErrors[key];
-        return nextErrors;
-      });
-    }
-  };
-
-  const updateTripField = (index, key, value) => {
-    setForm((current) => {
-      const updatedTrips = current.trips.map((trip, i) =>
-        i === index ? {
-          ...trip,
-          [key]: value,
-          ...(key === "pickup_address" ? { pickup_addresses: [value, ...(trip.pickup_addresses || []).slice(1)] } : {}),
-          ...(key === "delivery_address" ? { delivery_addresses: [value, ...(trip.delivery_addresses || []).slice(1)] } : {}),
-          ...(key === "pickup_addresses" ? { pickup_address: value } : {}),
-          ...(key === "delivery_addresses" ? { delivery_address: value } : {}),
-        } : trip
-      );
-      return { ...current, trips: updatedTrips };
-    });
-    const errKey = `trip_${index}_${key}`;
-    if (formErrors[errKey]) {
-      setFormErrors((cur) => { const n = { ...cur }; delete n[errKey]; return n; });
-    }
-  };
-
-  const updateTripStopList = (index, key, stopIndex, value) => {
-    setForm((current) => {
-      const updatedTrips = current.trips.map((trip, i) => {
-        if (i !== index) return trip;
-        const nextStops = Array.isArray(trip[key]) ? [...trip[key]] : [];
-        nextStops[stopIndex] = value;
-        return { ...trip, [key]: nextStops };
-      });
-      return { ...current, trips: updatedTrips };
-    });
-  };
-
-  const addTripStop = (index, key) => {
-    setForm((current) => {
-      const updatedTrips = current.trips.map((trip, i) => {
-        if (i !== index) return trip;
-        const nextStops = Array.isArray(trip[key]) ? [...trip[key], ""] : [""];
-        return { ...trip, [key]: nextStops };
-      });
-      return { ...current, trips: updatedTrips };
-    });
-  };
-
-  const removeTripStop = (index, key, stopIndex) => {
-    setForm((current) => {
-      const updatedTrips = current.trips.map((trip, i) => {
-        if (i !== index) return trip;
-        const nextStops = (Array.isArray(trip[key]) ? trip[key] : []).filter((_, idx) => idx !== stopIndex);
-        return { ...trip, [key]: nextStops.length > 0 ? nextStops : [""] };
-      });
-      return { ...current, trips: updatedTrips };
-    });
-  };
-
-  const addTrip = () => {
-    setForm((current) => ({ //current là state hiện tại của form, dùng setForm thì current = form 
-      ...current,//Tạo object mới có thông tin từ form 
-      //sau đó ghi đè trips. Lấy trip  hiện tại, tạo thêm trips từ {}, rỗng vẫn tạo 
-      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }]
-    }));
-  };
-
-  const removeTrip = (index) => {
-    setForm((current) => ({
-      ...current,
-      trips: current.trips.filter((_, i) => i !== index)
-    }));
-  };
-
-  const getAvailablePlates = (vehicleGroupId) =>
-    vehicleGroups.find((g) => String(g.id) === String(vehicleGroupId))?.vehicles || [];
-
-  const getTripFare = (trip) => {
-    const group = vehicleGroups.find((g) => String(g.id) === String(trip.vehicle_group_id));
-    const dist = Number(normalizeDistanceText(trip.distance));
-    const pricePerKm = Number(group?.price_per_km || 0);
-    if (!Number.isFinite(dist) || dist <= 0 || !Number.isFinite(pricePerKm) || pricePerKm <= 0) return "";
-    return String(Math.round(dist * pricePerKm));
-  };
-
-  const totalFare = useMemo(() => {
-    if (!form.trips) return 0;
-    return form.trips.reduce((sum, trip) => {
-      const f = getTripFare(trip);
-      return sum + (f ? Number(f) : 0);
-    }, 0);
-  }, [form.trips, vehicleGroups]);
-
-  const handleExcelImport = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setImporting(true);
-    setMessage("");
-    setMessageType("info");
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const data = await apiRequest("/api/coordinator/import-excel", {
-        method: "POST",
-        body: formData,
-      });
-
-      setMessage(`Imported ${data.rows?.length || 0} rows from Excel.`);
-      setMessageType("success");
-
-      // Reload orders from database to show the newly imported ones reactively
-      await loadOrders(1);
-    } catch (err) {
-      setMessage(err.message || "Unable to import Excel file.");
-      setMessageType("error");
-    } finally {
-      setImporting(false);
-      event.target.value = "";
-    }
-  };
-
-  const openCreateModal = () => {
-    setEditingTrip(null);
-    setForm(emptyForm());
-    setFormErrors({});
-    setCreateOpen(true);
-  };
-
-  const openEditModal = (trip) => {
-    const routeAddresses = splitRoute(trip.route);
-    const driver = drivers.find((item) => String(item.id) === String(trip.driverId));
-    setEditingTrip(trip);
-    setForm({
-      date: trip.dateInput || formatDateForInput(trip.date),
-      driver_id: trip.driverId ? String(trip.driverId) : "",
-      plate: trip.plate || "",
-      customer_name: trip.customerName || "",
-      customer_phone: trip.customerPhone || "",
-      cargo_name: trip.cargoName || "",
-      cargo_weight_kg: trip.cargoWeightKg || "",
-      distance: trip.distance || "",
-      trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
-        ...t,
-        pickup_address: firstStop(t, "pickup_addresses", "pickup_address") || trip.pickupAddress || routeAddresses.pickup || "",
-        delivery_address: firstStop(t, "delivery_addresses", "delivery_address") || trip.deliveryAddress || routeAddresses.delivery || "",
-        pickup_addresses: Array.isArray(t.pickup_addresses) && t.pickup_addresses.length > 0 ? t.pickup_addresses : [t.pickup_address || trip.pickupAddress || routeAddresses.pickup || ""],
-        delivery_addresses: Array.isArray(t.delivery_addresses) && t.delivery_addresses.length > 0 ? t.delivery_addresses : [t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || ""],
-      })) : [{
-        vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
-        plate: trip.plate || "",
-        distance: trip.distance || "",
-        pickup_address: trip.pickupAddress || routeAddresses.pickup || "",
-        delivery_address: trip.deliveryAddress || routeAddresses.delivery || "",
-        pickup_addresses: [trip.pickupAddress || routeAddresses.pickup || ""],
-        delivery_addresses: [trip.deliveryAddress || routeAddresses.delivery || ""],
-      }],
-      note: trip.notes || "",
-    });
-    setFormErrors({});
-    setCreateOpen(true);
-  };
-
-  const closeOrderModal = () => {
-    setCreateOpen(false);
-    setEditingTrip(null);
-    setForm(emptyForm());
-    setFormErrors({});
+  const formatNotificationTime = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString("vi-VN");
   };
 
   const closeReceiptModal = () => {
@@ -709,13 +480,12 @@ export default function CoordinatorPage({ user, onLogout }) {
     try {
       const detail = await apiRequest(`/api/coordinator/receipt-requests/${requestId}`);
       setSelectedReceiptDetail(detail);
-
       setReceiptForm({
         notes: detail?.request?.coordinator_notes || "",
         expenses: [],
       });
     } catch (error) {
-      setMessage(error.message || "Không thể tải chi tiết yêu cầu phiếu thu.");
+      setMessage(error.message || "Khong the tai chi tiet yeu cau phieu thu.");
       setMessageType("error");
       closeReceiptModal();
     } finally {
@@ -781,15 +551,36 @@ export default function CoordinatorPage({ user, onLogout }) {
         body: payload,
       });
 
-      setMessage(data.message || "Đã tạo phiếu thu thành công.");
+      setMessage(data.message || "Da tao phieu thu thanh cong.");
       setMessageType("success");
       closeReceiptModal();
-      await Promise.all([loadReceiptRequests(), loadOrders(pagination.page)]);
+      await Promise.all([loadReceiptRequests(), loadOrders(pagination.page), loadNotifications()]);
     } catch (error) {
-      setMessage(error.message || "Không thể tạo phiếu thu.");
+      setMessage(error.message || "Khong the tao phieu thu.");
       setMessageType("error");
     } finally {
       setReceiptPublishing(false);
+    }
+  };
+
+  const rejectReceiptRequest = async (requestId) => {
+    const reason = window.prompt("Nhap ly do tu choi yeu cau phieu thu:");
+    if (reason === null) return;
+
+    setReceiptRejectingId(requestId);
+    try {
+      const data = await apiRequest(`/api/coordinator/receipt-requests/${requestId}/reject`, {
+        method: "POST",
+        body: { notes: reason.trim() },
+      });
+      setMessage(data.message || "Da tu choi yeu cau phieu thu.");
+      setMessageType("success");
+      await Promise.all([loadReceiptRequests(), loadNotifications()]);
+    } catch (error) {
+      setMessage(error.message || "Khong the tu choi yeu cau phieu thu.");
+      setMessageType("error");
+    } finally {
+      setReceiptRejectingId(null);
     }
   };
 
@@ -812,89 +603,274 @@ export default function CoordinatorPage({ user, onLogout }) {
     if (!shipment) return "-";
     const pickup = shipment.pickup_address || shipment.stops?.find((stop) => stop.stop_type === "pickup")?.address || "-";
     const delivery = shipment.delivery_address || shipment.stops?.find((stop) => stop.stop_type === "delivery")?.address || "-";
-    return `${pickup} → ${delivery}`;
+    return `${pickup} -> ${delivery}`;
   };
 
-  const handleCancelOrder = async (trip) => {
-    if (!canCancelTrip(trip)) return;
+    const renderOrdersPanel = () => (
+    <>
+      <section className="hero">
+        <div>
+          <h1>Dieu phoi don hang</h1>
+          <p>Theo doi don hang, loc nhanh va tao chuyen moi ngay trong mot man hinh.</p>
+        </div>
+        <div className="filters order-filters">
+          <label className="filter-field">
+            <span>Tu ngay</span>
+            <input
+              type="date"
+              value={dateFromFilter}
+              onChange={(event) => setDateFromFilter(event.target.value)}
+            />
+          </label>
+          <label className="filter-field">
+            <span>Den ngay</span>
+            <input
+              type="date"
+              value={dateToFilter}
+              min={dateFromFilter || undefined}
+              onChange={(event) => setDateToFilter(event.target.value)}
+            />
+          </label>
+          <label className="filter-field filter-field-customer">
+            <span>Khach hang</span>
+            <input
+              value={customerFilter}
+              onChange={(event) => setCustomerFilter(event.target.value)}
+              placeholder="Loc theo khach hang"
+            />
+          </label>
+          <button
+            type="button"
+            className="filter"
+            onClick={() => {
+              setDateFromFilter("");
+              setDateToFilter("");
+              setCustomerFilter("");
+            }}
+          >
+            Xoa loc
+          </button>
+          <button
+            className={activeTab === "all" ? "filter active" : "filter"}
+            onClick={() => setActiveTab("all")}
+          >
+            Tat ca
+          </button>
+          <button
+            className={activeTab === "new" ? "filter active" : "filter"}
+            onClick={() => setActiveTab("new")}
+          >
+            Moi
+          </button>
+          <button
+            className={activeTab === "waiting" ? "filter active" : "filter"}
+            onClick={() => setActiveTab("waiting")}
+          >
+            Dang xu ly
+          </button>
+        </div>
+      </section>
 
-    const confirmed = window.confirm(`Bạn có chắc muốn hủy đơn #${trip.orderId}?`);
-    if (!confirmed) return;
+      <section className="orders-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Danh sach don hang</h2>
+            <p>Hien thi don hang dang dieu phoi de de theo doi va cap nhat.</p>
+          </div>
+          <div className="upload-hint">
+            {pagination.total ? `${pagination.total} don` : `${filteredTrips.length} don`}
+          </div>
+        </div>
 
-    try {
-      const data = await apiRequest(`/api/orders/${trip.orderId}`, {
-        method: "DELETE",
-        body: { reason: "Coordinator cancelled order" },
-      });
-      const cancelledTrip = buildTripFromOrder(data.order);
-      setTrips((currentTrips) => currentTrips.map((item) => (
-        item.orderId === cancelledTrip.orderId ? cancelledTrip : item
-      )));
-      setMessage(data.message || "Đã hủy đơn hàng.");
-      setMessageType("success");
-    } catch (err) {
-      setMessage(err.message || "Không thể hủy đơn hàng.");
-      setMessageType("error");
-    }
-  };
+        <div className="table-wrap">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Ma don</th>
+                <th>Ngay</th>
+                <th>BKS</th>
+                <th>Lai xe</th>
+                <th>Khach hang</th>
+                <th>Hanh trinh</th>
+                <th>Quang duong</th>
+                <th>Cuoc xe</th>
+                <th>Ghi chu</th>
+                <th>Trang thai</th>
+                <th>Thao tac</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredTrips.length === 0 ? (
+                <tr>
+                  <td colSpan="11" className="empty-table-cell">
+                    Chua co don hang. Tao moi don de bat dau dieu phoi.
+                  </td>
+                </tr>
+              ) : (
+                filteredTrips.map((trip) => (
+                  <React.Fragment key={trip.id}>
+                    <tr className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
+                      <td>
+                        {trip.trips && trip.trips.length > 1 && (
+                          <button
+                            onClick={() => toggleRow(trip.id)}
+                            className="expand-btn"
+                            type="button"
+                            title={expandedRows.has(trip.id) ? "Thu gon" : "Mo rong"}
+                          >
+                            {expandedRows.has(trip.id) ? "-" : "+"}
+                          </button>
+                        )}
+                        <span className="trip-id">#{trip.orderId}</span>
+                      </td>
+                      <td>{trip.date || "-"}</td>
+                      <td>{trip.plate || "-"}</td>
+                      <td>{trip.driverName || "-"}</td>
+                      <td>{trip.customerName || "-"}</td>
+                      <td className="table-route-cell">{trip.route || "-"}</td>
+                      <td>{trip.distance ? `${trip.distance} km` : "-"}</td>
+                      <td>{formatCurrency(trip.fare)}</td>
+                      <td className="table-address-cell">{trip.notes || "-"}</td>
+                      <td>
+                        <span className={`trip-status status-${normalizeStatus(trip.statusClass || trip.status)}`}>
+                          {trip.statusLabel || trip.status || "-"}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <button className="table-edit-btn" type="button" onClick={() => openEditModal(trip)}>
+                            E
+                          </button>
+                          <button
+                            className="table-cancel-btn"
+                            type="button"
+                            disabled={!canCancelTrip(trip)}
+                            onClick={() => handleCancelOrder(trip)}
+                          >
+                            X
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedRows.has(trip.id) && trip.trips?.length > 1 && trip.trips.map((shipment, index) => (
+                      <tr key={`${trip.id}-shipment-${shipment.shipment_id || index}`} className="trip-subrow">
+                        <td>{`Chuyen ${shipment.shipment_index || index + 1}`}</td>
+                        <td>{shipment.arrived_at ? new Date(shipment.arrived_at).toLocaleDateString("vi-VN") : "-"}</td>
+                        <td>{shipment.plate || "-"}</td>
+                        <td>{shipment.driverName || "-"}</td>
+                        <td>{trip.customerName || "-"}</td>
+                        <td className="table-route-cell">
+                          {`${firstStop(shipment, "pickup_addresses", "pickup_address") || "-"} - ${lastStop(shipment, "delivery_addresses", "delivery_address") || "-"}`}
+                        </td>
+                        <td>{shipment.distance ? `${shipment.distance} km` : "-"}</td>
+                        <td>{formatCurrency(shipment.fare)}</td>
+                        <td className="table-address-cell">{shipment.trip_code || "-"}</td>
+                        <td>
+                          <span className={`trip-status status-${normalizeStatus(shipment.status)}`}>
+                            {shipment.status || "-"}
+                          </span>
+                        </td>
+                        <td>-</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
 
-  const handleCreateOrder = async (event) => {
-    event.preventDefault();
-    setMessage("");
-    setMessageType("info");
+  const renderReceiptManagement = () => (
+    <>
+      <section className="hero hero-compact">
+        <div>
+          <h1>Quan ly phieu thu</h1>
+          <p>Tap trung xu ly yeu cau phieu thu va theo doi thong tin moi tu tai xe.</p>
+        </div>
+        <div className="hero-metrics">
+          <div className="upload-hint">{receiptRequestsLoading ? "Dang tai..." : `${receiptRequests.length} yeu cau`}</div>
+          <div className="upload-hint">{notificationUnreadCount} thong bao moi</div>
+        </div>
+      </section>
 
-    const errors = validateForm();
-    if (Object.keys(errors).length > 0) {
-      setMessage("Vui lòng kiểm tra các trường bắt buộc.");
-      setMessageType("error");
-      return;
-    }
+      <section className="orders-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Receipt requests</h2>
+            <p>Tai xe gui yeu cau tao phieu thu, Coordinator kiem tra va publish tai day.</p>
+          </div>
+        </div>
 
-    setCreating(true);
-
-    try {
-      const payload = {
-        date: form.date,
-        customer_name: form.customer_name,
-        customer_phone: form.customer_phone,
-        cargo_name: form.cargo_name,
-        cargo_weight_kg: form.cargo_weight_kg,
-        pickup_address: form.trips[0]?.pickup_address || "",
-        delivery_address: form.trips[0]?.delivery_address || "",
-        arrived_at: form.date,
-        notes: form.note,
-        is_partner: form.is_partner,
-        partner_name: form.is_partner ? form.partner_name : null,
-        trips: form.trips.map((trip) => ({
-          ...trip,
-          pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses.filter(Boolean) : [trip.pickup_address].filter(Boolean),
-          delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses.filter(Boolean) : [trip.delivery_address].filter(Boolean),
-          pickup_address: firstStop(trip, "pickup_addresses", "pickup_address"),
-          delivery_address: firstStop(trip, "delivery_addresses", "delivery_address"),
-        })),
-      };
-
-      const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
-        method: editingTrip ? "PATCH" : "POST",
-        body: payload,
-      });
-
-      const savedTrip = buildTripFromOrder(data.order);
-      await loadOrders(editingTrip ? pagination.page : 1);
-
-      setCreateOpen(false);
-      setEditingTrip(null);
-      setMessage(data.message || (editingTrip ? "Order updated successfully." : "Order created successfully."));
-      setMessageType("success");
-      setForm(emptyForm());
-      setFormErrors({});
-    } catch (err) {
-      setMessage(err.message || "Unable to create order.");
-      setMessageType("error");
-    } finally {
-      setCreating(false);
-    }
-  };
+        <div className="table-wrap">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>Request</th>
+                <th>Don</th>
+                <th>Chuyen</th>
+                <th>Khach hang</th>
+                <th>Tai xe</th>
+                <th>KM thuc te</th>
+                <th>Cuoc</th>
+                <th>Trang thai</th>
+                <th>Thao tac</th>
+              </tr>
+            </thead>
+            <tbody>
+              {receiptRequestsLoading ? (
+                <tr>
+                  <td colSpan="9" className="empty-table-cell">Dang tai yeu cau phieu thu...</td>
+                </tr>
+              ) : receiptRequests.length === 0 ? (
+                <tr>
+                  <td colSpan="9" className="empty-table-cell">Chua co yeu cau phieu thu dang cho xu ly.</td>
+                </tr>
+              ) : (
+                receiptRequests.map((request) => (
+                  <tr key={request.id}>
+                    <td>#{request.id}</td>
+                    <td>#{request.order_id}</td>
+                    <td>{request.shipment_id ? `#${request.shipment_id}` : `${request.shipment_count || 0} chuyen`}</td>
+                    <td>{request.customer_name || "-"}</td>
+                    <td>{request.driver_name || "-"}</td>
+                    <td>{Number(request.total_actual_distance_km || 0) > 0 ? `${request.total_actual_distance_km} km` : "-"}</td>
+                    <td>{formatCurrency(resolveFareValue(request.actual_price, request.estimated_price))}</td>
+                    <td>
+                      <span className={`trip-status status-${normalizeStatus(request.status)}`}>
+                        {request.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="table-actions">
+                        <button
+                          className="assign-btn"
+                          type="button"
+                          onClick={() => openReceiptModal(request.id)}
+                        >
+                          Tao phieu thu
+                        </button>
+                        <button
+                          className="table-cancel-btn"
+                          type="button"
+                          disabled={receiptRejectingId === request.id}
+                          onClick={() => rejectReceiptRequest(request.id)}
+                        >
+                          {receiptRejectingId === request.id ? "..." : "X"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
 
   return (
     <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -913,41 +889,72 @@ export default function CoordinatorPage({ user, onLogout }) {
             className="sidebar-toggle"
             type="button"
             onClick={() => setSidebarCollapsed((value) => !value)}
-            aria-label={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-            title={sidebarCollapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+            aria-label={sidebarCollapsed ? "Mo rong sidebar" : "Thu gon sidebar"}
+            title={sidebarCollapsed ? "Mo rong sidebar" : "Thu gon sidebar"}
           >
-            {sidebarCollapsed ? "›" : "‹"}
+            {sidebarCollapsed ? ">" : "<"}
           </button>
           <nav className="nav">
-            <button className="nav-item active"><span className="nav-icon">☰</span><span className="nav-label">Đơn hàng</span></button>
-            {/* <button className="nav-item">Map</button>
-            <button className="nav-item">Drivers</button>
-            <button className="nav-item">Reports</button> */}
+            <button className={`nav-item ${activeView === "orders" ? "active" : ""}`} type="button" onClick={() => setActiveView("orders")}>
+              <span className="nav-icon">O</span><span className="nav-label">Don hang</span>
+            </button>
+            <button className={`nav-item ${activeView === "receipts" ? "active" : ""}`} type="button" onClick={() => setActiveView("receipts")}>
+              <span className="nav-icon">R</span><span className="nav-label">Phieu thu</span>
+            </button>
           </nav>
         </div>
         <button className="nav-item nav-footer" onClick={handleLogout}>
-          <span className="nav-icon">⇥</span><span className="nav-label">Đăng xuất</span>
+          <span className="nav-icon">L</span><span className="nav-label">Dang xuat</span>
         </button>
       </aside>
 
       <main className="content">
         <header className="topbar">
           <div className="search-box">
-            <span className="search-icon">⌕</span>
+            <span className="search-icon">?</span>
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Tên sản phẩm, điểm lấy hàng, giao hàng, tài xế, trạng thái"
+              placeholder={activeView === "receipts"
+                ? "Tim theo don, tai xe, khach hang, trang thai"
+                : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
             />
           </div>
           <div className="topbar-actions">
-            <label className="import-btn">
-              {importing ? "Importing..." : "+ Import Excel"}
-              <input type="file" accept=".xlsx,.xls" onChange={handleExcelImport} hidden />
-            </label>
-            <button className="primary-btn" onClick={openCreateModal}>
-              + Tạo mới
-            </button>
+            {activeView === "orders" && (
+              <button className="primary-btn" onClick={openCreateModal}>
+                + Tao moi
+              </button>
+            )}
+            <div className="notification-wrap">
+              <button className="icon-btn notification-btn" type="button" onClick={handleOpenNotifications} title="Thong bao">
+                <span>Bell</span>
+                {notificationUnreadCount > 0 && <span className="notification-count">{notificationUnreadCount > 9 ? "9+" : notificationUnreadCount}</span>}
+              </button>
+              {notificationMenuOpen && (
+                <div className="notification-menu">
+                  <div className="notification-menu-head">
+                    <strong>Thong bao Coordinator</strong>
+                    <span>{notificationUnreadCount} moi</span>
+                  </div>
+                  <div className="notification-menu-list">
+                    {notificationsLoading ? (
+                      <div className="notification-empty">Dang tai thong bao...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="notification-empty">Chua co thong bao.</div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div key={notification.id} className={`notification-item ${notification.is_read ? "" : "unread"}`}>
+                          <strong>{notification.title}</strong>
+                          <p>{notification.message || "-"}</p>
+                          <span>{formatNotificationTime(notification.created_at)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="top-profile">
               <button
                 className="profile-trigger"
@@ -959,97 +966,30 @@ export default function CoordinatorPage({ user, onLogout }) {
                   className="avatar"
                   style={currentUser?.avatar_url ? {
                     backgroundImage: `url(${currentUser.avatar_url})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
                   } : undefined}
                 >
-                  {currentUser?.avatar_url ? '' : (currentUser?.full_name?.[0] || "A")}
+                  {currentUser?.avatar_url ? "" : (currentUser?.full_name?.[0] || "A")}
                 </span>
                 <span className="profile-trigger-copy">
                   <span className="profile-trigger-name">{currentUser?.full_name || "Coordinator"}</span>
                   <span className="profile-trigger-role">Coordinator</span>
                 </span>
-                <svg className="profile-trigger-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
               </button>
               {profileMenuOpen && (
                 <div className="profile-menu">
                   <div className="profile-menu-name">{currentUser?.full_name || currentUser?.email || "Coordinator"}</div>
                   <div className="profile-menu-email">{currentUser?.email}</div>
                   <button type="button" onClick={() => { setProfileMenuOpen(false); setProfileModalOpen(true); }}>Ho so ca nhan</button>
-                  <button type="button" onClick={handleLogout}>Đăng xuất</button>
+                  <button type="button" onClick={handleLogout}>Dang xuat</button>
                 </div>
               )}
             </div>
           </div>
         </header>
 
-        <section className="hero">
-          {/* <div>
-            <h1>Danh sách đơn hàng</h1>
-            <p>Manage and dispatch active transport trips.</p>
-          </div> */}
-          <div></div>
-          <div className="filters order-filters">
-            <label className="filter-field">
-              <span>Từ ngày</span>
-              <input
-                type="date"
-                value={dateFromFilter}
-                onChange={(event) => setDateFromFilter(event.target.value)}
-
-              />
-            </label>
-            <label className="filter-field">
-              <span>Đến ngày</span>
-              <input
-                type="date"
-                value={dateToFilter}
-                min={dateFromFilter || undefined}
-                onChange={(event) => setDateToFilter(event.target.value)}
-              />
-            </label>
-            <label className="filter-field filter-field-customer">
-              <span>Khách hàng</span>
-              <input
-                value={customerFilter}
-                onChange={(event) => setCustomerFilter(event.target.value)}
-                placeholder="Lọc theo khách hàng"
-
-              />
-            </label>
-            <button
-              type="button"
-              className="filter"
-              onClick={() => {
-                setDateFromFilter("");
-                setDateToFilter("");
-                setCustomerFilter("");
-              }}
-            >
-              Xóa lọc
-            </button>
-            <button
-              className={activeTab === "all" ? "filter active" : "filter"}
-              onClick={() => setActiveTab("all")}
-            >
-              Tất cả
-            </button>
-            <button
-              className={activeTab === "new" ? "filter active" : "filter"}
-              onClick={() => setActiveTab("new")}
-            >
-              Mới
-            </button>
-            <button
-              className={activeTab === "waiting" ? "filter active" : "filter"}
-              onClick={() => setActiveTab("waiting")}
-            >
-              Đang xử lý
-            </button>
-          </div>
-        </section>
+        {activeView === "orders" ? renderOrdersPanel() : renderReceiptManagement()}
 
         {createOpen && (
           <section className="modal-backdrop" onClick={closeOrderModal}>
@@ -1279,7 +1219,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <input
                               value={address || ""}
                               onChange={(e) => updateTripStopList(index, 'pickup_addresses', stopIndex, e.target.value)}
-                              placeholder={`Điểm lấy #${stopIndex + 1}`}
+                              placeholder={stopIndex === 0 ? 'Điểm lấy hàng' : `Điểm lấy #${stopIndex + 1}`}
                               style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
                             />
                             <button type="button" onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}>×</button>
@@ -1309,7 +1249,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <input
                               value={address || ""}
                               onChange={(e) => updateTripStopList(index, 'delivery_addresses', stopIndex, e.target.value)}
-                              placeholder={`Điểm giao #${stopIndex + 1}`}
+                              placeholder={stopIndex === 0 ? 'Điểm giao hàng' : `Điểm giao #${stopIndex + 1}`}
                               style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
                             />
                             <button type="button" onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}>×</button>
@@ -1607,211 +1547,6 @@ export default function CoordinatorPage({ user, onLogout }) {
           </section>
         )}
 
-
-
-        <section className="orders-panel">
-          <div className="panel-head">
-            <div>
-              <h2>Yêu cầu phiếu thu</h2>
-              <p>Driver gửi yêu cầu tạo phiếu thu, coordinator kiểm tra và publish receipt.</p>
-            </div>
-            <div className="upload-hint">
-              {receiptRequestsLoading ? "Đang tải..." : `${receiptRequests.length} yêu cầu`}
-            </div>
-          </div>
-
-          <div className="table-wrap" style={{ marginBottom: 24 }}>
-            <table className="orders-table">
-              <thead>
-                <tr>
-                  <th>Request</th>
-                  <th>Đơn</th>
-                  <th>Chuyến</th>
-                  <th>Khách hàng</th>
-                  <th>Tài xế</th>
-                  <th>KM thực tế</th>
-                  <th>Cước</th>
-                  <th>Trạng thái</th>
-                  <th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {receiptRequestsLoading ? (
-                  <tr>
-                    <td colSpan="9" className="empty-table-cell">Đang tải yêu cầu phiếu thu...</td>
-                  </tr>
-                ) : receiptRequests.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" className="empty-table-cell">Chưa có yêu cầu phiếu thu đang chờ xử lý.</td>
-                  </tr>
-                ) : (
-                  receiptRequests.map((request) => (
-                    <tr key={request.id}>
-                      <td>#{request.id}</td>
-                      <td>#{request.order_id}</td>
-                      <td>{request.shipment_id ? `#${request.shipment_id}` : `${request.shipment_count || 0} chuyến`}</td>
-                      <td>{request.customer_name || "-"}</td>
-                      <td>{request.driver_name || "-"}</td>
-                      <td>{Number(request.total_actual_distance_km || 0) > 0 ? `${request.total_actual_distance_km} km` : "-"}</td>
-                      <td>{formatCurrency(resolveFareValue(request.actual_price, request.estimated_price))}</td>
-                      <td>
-                        <span className={`trip-status status-${normalizeStatus(request.status)}`}>
-                          {request.status}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          className="assign-btn"
-                          type="button"
-                          onClick={() => openReceiptModal(request.id)}
-                        >
-                          Tạo phiếu thu
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="panel-head">
-            <div>
-              <h2>Danh sách đơn hàng</h2>
-              <p>Hiển thị đơn hàng dạng bảng để dễ theo dõi và điều phối.</p>
-            </div>
-          </div>
-
-          <div className="table-wrap">
-            <table className="orders-table">
-              <thead>
-                <tr>
-                  <th>Mã đơn</th>
-                  <th>Ngày</th>
-                  <th>BKS</th>
-                  <th>Lái xe</th>
-                  <th>Khách hàng</th>
-                  <th>Hành trình</th>
-                  <th>Quãng đường</th>
-                  <th>Cước xe</th>
-                  <th>Ghi chú</th>
-                  <th>Trạng thái</th>
-                  <th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTrips.length === 0 ? (
-                  <tr>
-                    <td colSpan="11" className="empty-table-cell">
-                      No orders yet. Create an order or import an Excel file to load data.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredTrips.map((trip) => (
-                    <React.Fragment key={trip.id}>
-                      <tr className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
-                        <td>
-                          {trip.trips && trip.trips.length > 1 && (
-                            <button
-                              onClick={() => toggleRow(trip.id)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', marginRight: 8, color: '#18227f', fontWeight: 'bold' }}
-                            >
-                              {expandedRows.has(trip.id) ? '▼' : '▶'}
-                            </button>
-                          )}
-                          <span className="trip-id">
-                            #{trip.orderId || String(trip.id).replace(/^tmp-/, "")}
-                          </span>
-                        </td>
-                        <td>{trip.date || "-"}</td>
-                        <td>{trip.plate || "-"}</td>
-                        <td>{trip.driverName || "Unassigned"}</td>
-                        <td>{trip.customerName || "-"}</td>
-                        <td className="table-route-cell">{trip.route || "-"}</td>
-                        <td>{trip.distance || "-"}</td>
-                        <td>
-                          {typeof trip.fare === "number"
-                            ? trip.fare.toLocaleString("vi-VN") + " đ"
-                            : trip.fare || "-"}
-                        </td>
-                        <td className="table-address-cell">{trip.notes}</td>
-                        <td>
-                          <span className={`trip-status status-${trip.statusClass || normalizeStatus(trip.status)}`}>
-                            {trip.statusLabel || trip.status}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="table-actions">
-                            <button className="table-edit-btn" type="button" aria-label="Edit order" onClick={() => openEditModal(trip)}>
-                              ✎
-                            </button>
-                            <button
-                              className="table-cancel-btn"
-                              type="button"
-                              aria-label="Cancel order"
-                              title="Hủy đơn"
-                              disabled={!canCancelTrip(trip)}
-                              onClick={() => handleCancelOrder(trip)}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedRows.has(trip.id) && trip.trips && trip.trips.length > 1 && trip.trips.map((subTrip, idx) => (
-                        <tr key={`${trip.id}-sub-${idx}`} style={{ backgroundColor: '#f9faff' }}>
-                          <td style={{ paddingLeft: 40, color: '#6b7280', fontSize: 13 }}>↳ Chuyến {idx + 1}</td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>-</td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.plate || "-"}</td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.driverName || "Chưa gán"}</td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>{trip.customerName}</td>
-                          <td className="table-route-cell" style={{ color: '#6b7280', fontSize: 13 }}>
-                            {subTrip.pickup_address && subTrip.delivery_address ? `${subTrip.pickup_address} - ${subTrip.delivery_address}` : "-"}
-                          </td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>{subTrip.distance || "-"}</td>
-                          <td style={{ color: '#6b7280', fontSize: 13 }}>
-                            {typeof subTrip.fare === "number"
-                              ? subTrip.fare.toLocaleString("vi-VN") + " đ"
-                              : subTrip.fare || "-"}
-                          </td>
-                          <td className="table-address-cell" style={{ color: '#6b7280', fontSize: 13 }}>-</td>
-                          <td>
-                            <span className={`trip-status status-${normalizeStatus(subTrip.status || trip.status)}`}>
-                              {subTrip.status || trip.status}
-                            </span>
-                          </td>
-                          <td></td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="pagination-bar">
-            <button
-              type="button"
-              className="filter"
-              disabled={pagination.page <= 1}
-              onClick={() => loadOrders(pagination.page - 1)}
-            >
-              Trước
-            </button>
-            <span>
-              Trang {pagination.page} / {pagination.totalPages} · {pagination.total} đơn
-            </span>
-            <button
-              type="button"
-              className="filter"
-              disabled={pagination.page >= pagination.totalPages}
-              onClick={() => loadOrders(pagination.page + 1)}
-            >
-              Sau
-            </button>
-          </div>
-        </section>
 
         <ProfileModal
           open={profileModalOpen}
