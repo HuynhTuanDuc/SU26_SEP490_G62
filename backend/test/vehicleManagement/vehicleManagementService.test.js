@@ -1,10 +1,10 @@
 const { describe, it, afterEach, mock } = require('node:test');
 const assert = require('node:assert');
 
-const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
-const vehicleManagementService = require('../services/vehicleManagementService');
-const notificationService = require('../services/notificationService');
-const notificationGateway = require('../services/notificationGateway');
+const vehicleManagementRepository = require('../../repositories/vehicleManagementRepository');
+const vehicleManagementService = require('../../services/vehicleManagementService');
+const notificationService = require('../../services/notificationService');
+const notificationGateway = require('../../services/notificationGateway');
 
 describe('Vehicle Management Service', () => {
     afterEach(() => {
@@ -530,5 +530,156 @@ describe('Vehicle Management Service', () => {
                 note: 'End of service life',
             },
         );
+    });
+    // --- Missing Coverage Tests ---
+
+    it('should list vehicle groups', async () => {
+        mock.method(vehicleManagementRepository, 'listVehicleGroups', async () => [{ id: 1, name: 'Group A' }]);
+        const groups = await vehicleManagementService.listVehicleGroups();
+        assert.strictEqual(groups.length, 1);
+        assert.strictEqual(groups[0].name, 'Group A');
+    });
+
+    it('should get vehicle group detail', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 1, name: 'Group A' }));
+        const group = await vehicleManagementService.getVehicleGroupDetail(1);
+        assert.strictEqual(group.name, 'Group A');
+    });
+
+    it('should throw 404 if vehicle group not found', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => null);
+        await assert.rejects(
+            () => vehicleManagementService.getVehicleGroupDetail(99),
+            (err) => err.statusCode === 404 && err.message === 'Vehicle group not found'
+        );
+    });
+
+    it('should create vehicle group successfully', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupByName', async () => null);
+        mock.method(vehicleManagementRepository, 'createVehicleGroup', async () => 2);
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 2, name: 'Group B', price_per_km: 100 }));
+        
+        const group = await vehicleManagementService.createVehicleGroup({
+            name: 'Group B',
+            price_per_km: 100
+        });
+        
+        assert.strictEqual(group.id, 2);
+    });
+
+    it('should reject create vehicle group with duplicate name', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupByName', async () => ({ id: 1 }));
+        await assert.rejects(
+            () => vehicleManagementService.createVehicleGroup({ name: 'Group A', price_per_km: 100 }),
+            (err) => err.statusCode === 409 && err.message === 'Vehicle group name already exists'
+        );
+    });
+
+    it('should update vehicle group successfully', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async (id) => id === 1 ? { id: 1, name: 'Group A' } : null);
+        mock.method(vehicleManagementRepository, 'getVehicleGroupByName', async () => null);
+        mock.method(vehicleManagementRepository, 'updateVehicleGroup', async () => ({}));
+        
+        const group = await vehicleManagementService.updateVehicleGroup(1, {
+            name: 'Group A Modified',
+            price_per_km: 150
+        });
+        
+        assert.ok(group);
+    });
+
+    it('should delete vehicle group successfully', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 1 }));
+        mock.method(vehicleManagementRepository, 'deleteVehicleGroup', async () => ({}));
+        
+        const result = await vehicleManagementService.deleteVehicleGroup(1);
+        assert.strictEqual(result.id, 1);
+    });
+
+    it('should reject delete vehicle group if referenced', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleGroupById', async () => ({ id: 1 }));
+        mock.method(vehicleManagementRepository, 'deleteVehicleGroup', async () => {
+            const err = new Error('foreign key constraint');
+            err.code = '23503';
+            throw err;
+        });
+        
+        await assert.rejects(
+            () => vehicleManagementService.deleteVehicleGroup(1),
+            (err) => err.statusCode === 409 && err.message.includes('referenced by other records')
+        );
+    });
+
+    it('should list vehicles with pagination', async () => {
+        mock.method(vehicleManagementRepository, 'listVehicles', async () => ({
+            rows: [{ id: 1, plate_number: '29A-111' }],
+            total: 1
+        }));
+        
+        const result = await vehicleManagementService.listVehicles({ page: 1, limit: 10 });
+        assert.strictEqual(result.items.length, 1);
+        assert.strictEqual(result.pagination.total, 1);
+        assert.strictEqual(result.pagination.totalPages, 1);
+    });
+
+    it('should complete maintenance and upload bill pics', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 1,
+            status: 'maintenance',
+            assigned_driver_id: 7
+        }));
+        mock.method(vehicleManagementRepository, 'getDriverById', async () => ({
+            id: 7,
+            active_shipment_count: 0
+        }));
+        mock.method(vehicleManagementRepository, 'completeMaintenanceRecordAndSetStatus', async () => ({}));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        
+        await vehicleManagementService.completeMaintenance(1, 3, {
+            maintenance_record_id: 100,
+            bill_pics: ['url1', 'url2'],
+            performed_by: 7
+        });
+        
+        assert.strictEqual(vehicleManagementRepository.completeMaintenanceRecordAndSetStatus.mock.calls.length, 1);
+        assert.deepStrictEqual(vehicleManagementRepository.completeMaintenanceRecordAndSetStatus.mock.calls[0].arguments[0].billPics, ['url1', 'url2']);
+    });
+
+    it('should reject complete maintenance if vehicle is not in maintenance', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 1,
+            status: 'active'
+        }));
+        
+        await assert.rejects(
+            () => vehicleManagementService.completeMaintenance(1, 3, {}),
+            (err) => err.statusCode === 409 && err.message.includes('Complete maintenance is not allowed')
+        );
+    });
+
+    it('should restore vehicle from broken state', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 1,
+            status: 'broken'
+        }));
+        mock.method(vehicleManagementRepository, 'resolveFailureRecordAndSetStatus', async () => ({}));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        
+        await vehicleManagementService.restoreVehicle(1, 3, { failure_record_id: 200 });
+        
+        assert.strictEqual(vehicleManagementRepository.resolveFailureRecordAndSetStatus.mock.calls.length, 1);
+    });
+
+    it('should soft delete vehicle', async () => {
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({
+            id: 1,
+            status: 'active'
+        }));
+        mock.method(vehicleManagementRepository, 'retireVehicle', async () => ({}));
+        mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        
+        await vehicleManagementService.softDeleteVehicle(1, 3);
+        
+        assert.strictEqual(vehicleManagementRepository.retireVehicle.mock.calls.length, 1);
     });
 });
