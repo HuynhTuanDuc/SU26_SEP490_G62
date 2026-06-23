@@ -17,6 +17,8 @@ export function StatusModal({
     open,
     newStatus,
     setNewStatus,
+    resolutionNote,
+    setResolutionNote,
     handleUpdateStatus,
     setStatusModalOpen
 }) {
@@ -36,6 +38,17 @@ export function StatusModal({
                         <option value="resolved">Resolved</option>
                         <option value="closed">Closed</option>
                     </select>
+
+                    <div style={{ marginTop: '16px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 'bold' }}>Ghi chú giải quyết (Resolution Note)</label>
+                        <textarea
+                            value={resolutionNote}
+                            onChange={(e) => setResolutionNote(e.target.value)}
+                            rows={3}
+                            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            placeholder="Nhập ghi chú giải quyết sự cố..."
+                        />
+                    </div>
 
                     <div className="modal-actions">
                         <button
