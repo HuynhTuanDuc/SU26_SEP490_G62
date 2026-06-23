@@ -87,6 +87,7 @@ const getAllDebts = async ({
             c.phone           AS customer_phone,
             dr.id             AS driver_id,
             dr.full_name      AS driver_name,
+            dr.phone          AS driver_phone,
             o.id              AS order_id,
             o.cargo_name      AS order_cargo_name,
             o.created_at      AS order_date
@@ -223,6 +224,7 @@ const getDebtsGroupedByPerson = async ({
             MAX(sub.customer_company) AS customer_company,
             MAX(sub.customer_phone)   AS customer_phone,
             MAX(sub.driver_name)      AS driver_name,
+            MAX(sub.driver_phone)     AS driver_phone,
             COUNT(*)::int                                 AS debt_count,
             SUM(sub.total_amount)::text                   AS total_amount,
             SUM(sub.paid_amount)::text                    AS total_paid,
@@ -241,6 +243,7 @@ const getDebtsGroupedByPerson = async ({
                 c.company_name AS customer_company,
                 c.phone        AS customer_phone,
                 dr.full_name   AS driver_name,
+                dr.phone       AS driver_phone,
                 d.total_amount,
                 d.paid_amount,
                 d.due_date,
@@ -283,6 +286,7 @@ const getDebtsGroupedByPerson = async ({
             customer_company: row.customer_company,
             customer_phone: row.customer_phone,
             driver_name: row.driver_name,
+            driver_phone: row.driver_phone,
             debt_count: Number(row.debt_count),
             total_amount: totalAmount,
             total_paid: totalPaid,
@@ -331,10 +335,17 @@ const getDebtsByPerson = async (personType, personId) => {
             d.driver_id,
             o.cargo_name      AS order_cargo_name,
             o.created_at      AS order_date,
-            os.estimated_price AS shipment_price
+            os.estimated_price AS shipment_price,
+            c.full_name    AS customer_name,
+            c.company_name AS customer_company,
+            c.phone        AS customer_phone,
+            dr.full_name   AS driver_name,
+            dr.phone       AS driver_phone
         FROM debts d
         LEFT JOIN orders o ON o.id = d.order_id
         LEFT JOIN order_shipments os ON os.id = d.shipment_id
+        LEFT JOIN customers c ON c.id = d.customer_id
+        LEFT JOIN profiles dr ON dr.id = d.driver_id
         WHERE ${whereField} = $1 AND d.debt_type = $2
         ORDER BY d.created_at DESC
     `, [personId, personType]);
@@ -366,10 +377,17 @@ const getDebtsByCustomerIds = async (customerIds) => {
             d.notes,
             d.created_at,
             o.cargo_name AS order_cargo_name,
-            os.estimated_price AS shipment_price
+            os.estimated_price AS shipment_price,
+            c.full_name    AS customer_name,
+            c.company_name AS customer_company,
+            c.phone        AS customer_phone,
+            dr.full_name   AS driver_name,
+            dr.phone       AS driver_phone
         FROM debts d
         LEFT JOIN orders o ON o.id = d.order_id
         LEFT JOIN order_shipments os ON os.id = d.shipment_id
+        LEFT JOIN customers c ON c.id = d.customer_id
+        LEFT JOIN profiles dr ON dr.id = d.driver_id
         WHERE d.customer_id = ANY($1::int[])
         ORDER BY d.created_at DESC
     `, [customerIds]);
