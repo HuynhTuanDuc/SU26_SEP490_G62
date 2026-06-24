@@ -153,6 +153,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         setTotal((t) => t + 1);
 
         if (n.display_mode === 'silent') return;
+        if (n.display_mode === 'traffic_alert') {
+            void showAlert({
+                type: 'warning',
+                title: n.title,
+                message: n.message,
+                okLabel: 'Đã hiểu, tránh đường này',
+            });
+            return;
+        }
         if (n.display_mode === 'alert') {
             void showAlert({ type: 'info', title: n.title, message: n.message, okLabel: 'Đã hiểu' });
             return;
