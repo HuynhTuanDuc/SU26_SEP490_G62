@@ -8,6 +8,7 @@ router.use(verifyToken, requireRole('coordinator'));
 
 router.get('/vehicle-groups', coordinatorController.listVehicleGroups);
 router.get('/partners', coordinatorController.listPartners);
+router.get('/incidents', coordinatorController.getIncidents);
 
 // Receipt request management (driver yêu cầu → coordinator xử lý)
 router.get('/receipt-requests',          coordinatorController.getReceiptRequests);

@@ -272,6 +272,13 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [editingTrip, setEditingTrip] = useState(null);
   const [creating, setCreating] = useState(false);
   const [drivers, setDrivers] = useState([]);
+  const [incidentSearchQuery, setIncidentSearchQuery] = useState("");
+  const [incidents, setIncidents] = useState([]);
+  const [incidentsLoading, setIncidentsLoading] = useState(false);
+  const [incidentModalOpen, setIncidentModalOpen] = useState(false);
+  const [incidentSaving, setIncidentSaving] = useState(false);
+  const [selectedIncident, setSelectedIncident] = useState(null);
+  const [incidentForm, setIncidentForm] = useState({ status: "investigating", resolution: "", replacement_driver_id: "" });
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [partners, setPartners] = useState([]);
   const [message, setMessage] = useState("");
@@ -308,6 +315,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const deferredOrderSearchQuery = useDeferredValue(orderSearchQuery);
   const deferredReceiptSearchQuery = useDeferredValue(receiptSearchQuery);
+  const deferredIncidentSearchQuery = useDeferredValue(incidentSearchQuery);
 
 
 
@@ -373,6 +381,20 @@ export default function CoordinatorPage({ user, onLogout }) {
   }, []);
 
   useEffect(() => {
+    const loadDrivers = async () => {
+      try {
+        const data = await apiRequest("/api/drivers");
+        setDrivers(data.drivers || []);
+      } catch (error) {
+        setMessage("Khong the tai danh sach tai xe.");
+        setMessageType("error");
+      }
+    };
+
+    loadDrivers();
+  }, []);
+
+  useEffect(() => {
     const loadPartners = async () => {
       try {
         const data = await apiRequest("/api/coordinator/partners");
@@ -412,6 +434,26 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadReceiptRequests();
   }, [activeView, receiptKindFilter, receiptStatusFilter, receiptDateFromFilter, receiptDateToFilter, deferredReceiptSearchQuery]);
 
+  const loadIncidents = async () => {
+    setIncidentsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (deferredIncidentSearchQuery.trim()) params.set("search", deferredIncidentSearchQuery.trim());
+      const data = await apiRequest(`/api/coordinator/incidents${params.toString() ? `?${params.toString()}` : ""}`);
+      setIncidents(data.incidents || []);
+    } catch (error) {
+      setMessage(error.message || "Khong the tai danh sach su co.");
+      setMessageType("error");
+    } finally {
+      setIncidentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView !== "incidents") return;
+    loadIncidents();
+  }, [activeView, deferredIncidentSearchQuery]);
+
   useRoleRealtime(currentUser, {
     onMessage: (payload) => {
       if (!payload?.type) return;
@@ -428,6 +470,10 @@ export default function CoordinatorPage({ user, onLogout }) {
 
       if (activeView === "orders" && payload.type === "coordinator.orders.changed") {
         loadOrders(pagination.page);
+      }
+
+      if (activeView === "incidents" && payload.type === "coordinator.incidents.changed") {
+        loadIncidents();
       }
     },
   });
@@ -464,6 +510,47 @@ export default function CoordinatorPage({ user, onLogout }) {
     setReceiptModalOpen(false);
     setSelectedReceiptDetail(null);
     setReceiptForm(emptyReceiptForm());
+  };
+
+  const closeIncidentModal = () => {
+    setIncidentModalOpen(false);
+    setSelectedIncident(null);
+    setIncidentForm({ status: "investigating", resolution: "", replacement_driver_id: "" });
+  };
+
+  const openIncidentModal = (incident) => {
+    setSelectedIncident(incident);
+    setIncidentForm({
+      status: incident.status === "open" ? "investigating" : incident.status || "investigating",
+      resolution: "",
+      replacement_driver_id: incident.replacement_driver_id ? String(incident.replacement_driver_id) : "",
+    });
+    setIncidentModalOpen(true);
+  };
+
+  const handleIncidentSubmit = async () => {
+    if (!selectedIncident) return;
+    setIncidentSaving(true);
+    try {
+      await apiRequest(`/api/incidents/${selectedIncident.id}/status`, {
+        method: "PATCH",
+        body: {
+          status: incidentForm.status,
+          resolution: incidentForm.resolution || null,
+          replacementDriverId: incidentForm.replacement_driver_id ? Number(incidentForm.replacement_driver_id) : null,
+        },
+      });
+      setMessage("Cap nhat su co thanh cong.");
+      setMessageType("success");
+      closeIncidentModal();
+      loadIncidents();
+      loadOrders(pagination.page);
+    } catch (error) {
+      setMessage(error.message || "Khong the cap nhat su co.");
+      setMessageType("error");
+    } finally {
+      setIncidentSaving(false);
+    }
   };
 
   const openReceiptModal = async (requestId) => {
@@ -1116,6 +1203,196 @@ export default function CoordinatorPage({ user, onLogout }) {
     </>
   );
 
+  const renderIncidentsPanel = () => {
+    const replacementOptions = drivers.filter((driver) => {
+      if (!driver?.vehicle_id) return false;
+      if (!selectedIncident) return true;
+      return Number(driver.id) !== Number(selectedIncident.current_driver_id || selectedIncident.reported_by);
+    });
+
+    return (
+      <>
+        <section className="hero hero-compact">
+          <div>
+            <h1>Xu ly su co</h1>
+            <p>Theo doi su co dang mo, chon tai xe thay the va ap dung quy tac chia doanh thu theo moc lay hang.</p>
+          </div>
+          <div className="hero-metrics">
+            <div className="upload-hint">{incidentsLoading ? "Dang tai..." : `${incidents.length} su co`}</div>
+            <div className="upload-hint">{incidents.filter((item) => item.status === "open").length} moi tiep nhan</div>
+            <div className="upload-hint">{incidents.filter((item) => item.pickup_completed).length} da lay hang</div>
+          </div>
+        </section>
+
+        <section className="orders-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Incident queue</h2>
+              <p>Neu chua lay hang, doanh thu thuoc ve tai xe thay the. Neu da lay hang, doanh thu chia 50/50.</p>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table className="orders-table">
+              <thead>
+                <tr>
+                  <th>Su co</th>
+                  <th>Chuyen</th>
+                  <th>Tai xe bao cao</th>
+                  <th>Tai xe hien tai</th>
+                  <th>Trang thai chuyen</th>
+                  <th>Moc lay hang</th>
+                  <th>Quy tac doanh thu</th>
+                  <th>Trang thai su co</th>
+                  <th>Thao tac</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incidentsLoading ? (
+                  <tr>
+                    <td colSpan="9" className="empty-table-cell">Dang tai du lieu su co...</td>
+                  </tr>
+                ) : incidents.length === 0 ? (
+                  <tr>
+                    <td colSpan="9" className="empty-table-cell">Khong co su co nao phu hop.</td>
+                  </tr>
+                ) : (
+                  incidents.map((incident) => (
+                    <tr key={incident.id}>
+                      <td>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <strong>#{incident.id}</strong>
+                          <span>{incident.incident_type}</span>
+                        </div>
+                      </td>
+                      <td>{incident.shipment_id ? `#${incident.shipment_id}` : "-"}</td>
+                      <td>{incident.reported_by_name || "-"}</td>
+                      <td>{incident.current_driver_name || "-"}</td>
+                      <td>
+                        <span className={`trip-status status-${normalizeStatus(incident.shipment_status)}`}>
+                          {incident.shipment_status || "-"}
+                        </span>
+                      </td>
+                      <td>{incident.pickup_completed ? "Da lay hang" : "Chua lay hang"}</td>
+                      <td>{incident.pickup_completed ? "Chia 50/50" : "Tai xe thay the nhan 100%"}</td>
+                      <td>
+                        <span className={`trip-status status-${normalizeStatus(incident.status)}`}>
+                          {incident.status || "-"}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <Tooltip title="Xu ly su co">
+                            <Button
+                              className="coordinator-table-icon-btn"
+                              type="text"
+                              icon={<EyeOutlined />}
+                              onClick={() => openIncidentModal(incident)}
+                            />
+                          </Tooltip>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {incidentModalOpen && selectedIncident && (
+          <section className="modal-backdrop" onClick={closeIncidentModal}>
+            <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+              <div className="panel-head" style={{ padding: "16px 24px", borderBottom: "1px solid #e0e6ed", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h2>{`Su co #${selectedIncident.id}`}</h2>
+                  <p>{selectedIncident.description || "Khong co mo ta."}</p>
+                </div>
+                <Button
+                  className="coordinator-modal-close-btn"
+                  type="text"
+                  icon={<CloseOutlined />}
+                  onClick={closeIncidentModal}
+                />
+              </div>
+
+              <div className="create-form" style={{ paddingTop: 20 }}>
+                <div className="sheet-caption full">Thong tin xu ly</div>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    <span>Chuyen</span>
+                    <input value={selectedIncident.shipment_id ? `#${selectedIncident.shipment_id}` : "-"} disabled />
+                  </label>
+                  <label>
+                    <span>Tai xe bao cao</span>
+                    <input value={selectedIncident.reported_by_name || "-"} disabled />
+                  </label>
+                  <label>
+                    <span>Quy tac doanh thu</span>
+                    <input value={selectedIncident.pickup_completed ? "Da lay hang - chia 50/50" : "Chua lay hang - tai xe thay the nhan 100%"} disabled />
+                  </label>
+                </div>
+
+                <div className="form-row form-row-3">
+                  <label>
+                    <span>Trang thai</span>
+                    <select
+                      value={incidentForm.status}
+                      onChange={(event) => setIncidentForm((prev) => ({ ...prev, status: event.target.value }))}
+                    >
+                      <option value="open">open</option>
+                      <option value="investigating">investigating</option>
+                      <option value="resolved">resolved</option>
+                      <option value="closed">closed</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Tai xe thay the</span>
+                    <select
+                      value={incidentForm.replacement_driver_id}
+                      onChange={(event) => setIncidentForm((prev) => ({ ...prev, replacement_driver_id: event.target.value }))}
+                    >
+                      <option value="">Khong doi tai xe</option>
+                      {replacementOptions.map((driver) => (
+                        <option key={driver.id} value={driver.id}>
+                          {`${driver.full_name} - ${driver.plate_number || "Chua co xe"}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Da thay the</span>
+                    <input value={selectedIncident.replacement_driver_name || "-"} disabled />
+                  </label>
+                </div>
+
+                <label className="full-width">
+                  <span>Phan hoi / ghi chu</span>
+                  <textarea
+                    rows={4}
+                    value={incidentForm.resolution}
+                    onChange={(event) => setIncidentForm((prev) => ({ ...prev, resolution: event.target.value }))}
+                    placeholder="Nhap cach xu ly hoac ly do dieu chuyen"
+                  />
+                </label>
+
+                <div className="form-actions">
+                  <Button type="default" className="coordinator-secondary-btn" onClick={closeIncidentModal}>
+                    Dong
+                  </Button>
+                  <Button type="primary" className="coordinator-primary-btn" loading={incidentSaving} onClick={handleIncidentSubmit}>
+                    Luu xu ly
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+      </>
+    );
+  };
+
   const renderReceiptManagement = () => (
     <>
       <section className="hero hero-compact">
@@ -1288,17 +1565,27 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   const pageTitleMap = {
     orders: "Dieu phoi don hang",
+    incidents: "Xu ly su co",
     receipts: "Quan ly phieu thu",
   };
 
   const pageSubtitleMap = {
     orders: "Theo doi don hang, dieu phoi chuyen xe va tao moi trong cung mot luong lam viec.",
+    incidents: "Giam sat su co dang mo va dieu chuyen tai xe theo quy tac doanh thu cua chuyen.",
     receipts: "Xu ly yeu cau, xem phieu thu da tao va doi soat thong tin thu tien.",
   };
-  const activeSearchQuery = activeView === "receipts" ? receiptSearchQuery : orderSearchQuery;
+  const activeSearchQuery = activeView === "receipts"
+    ? receiptSearchQuery
+    : activeView === "incidents"
+      ? incidentSearchQuery
+      : orderSearchQuery;
   const handleSearchQueryChange = (value) => {
     if (activeView === "receipts") {
       setReceiptSearchQuery(value);
+      return;
+    }
+    if (activeView === "incidents") {
+      setIncidentSearchQuery(value);
       return;
     }
     setOrderSearchQuery(value);
@@ -1342,7 +1629,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                 onChange={(event) => handleSearchQueryChange(event.target.value)}
                 placeholder={activeView === "receipts"
                   ? "Tim theo don, tai xe, khach hang, trang thai"
-                  : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
+                  : activeView === "incidents"
+                    ? "Tim theo ma su co, chuyen, tai xe, mo ta"
+                    : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
               />
               <div className="topbar-actions">
                 {activeView === "orders" && (
@@ -1353,7 +1642,11 @@ export default function CoordinatorPage({ user, onLogout }) {
               </div>
             </header>
 
-            {activeView === "orders" ? renderOrdersPanel() : renderReceiptManagement()}
+            {activeView === "orders"
+              ? renderOrdersPanel()
+              : activeView === "incidents"
+                ? renderIncidentsPanel()
+                : renderReceiptManagement()}
           </div>
         </section>
 

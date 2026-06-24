@@ -88,10 +88,14 @@ const updateIncidentStatus = async (req, res) => {
         const coordinatorId = req.user.userId;
         if (!incidentId) return res.status(400).json({ error: 'ID không hợp lệ' });
 
-        const { status, resolution } = req.body;
+        const { status, resolution, replacementDriverId } = req.body;
         if (!status) return res.status(400).json({ error: 'status là bắt buộc' });
 
-        const incident = await incidentService.updateIncidentStatus(incidentId, coordinatorId, { status, resolution });
+        const incident = await incidentService.updateIncidentStatus(incidentId, coordinatorId, {
+            status,
+            resolution,
+            replacementDriverId,
+        });
         res.json({ incident });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404

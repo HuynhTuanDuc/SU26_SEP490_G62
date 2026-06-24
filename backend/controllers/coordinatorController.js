@@ -18,6 +18,18 @@ const listPartners = async (_req, res) => {
   }
 };
 
+const getIncidents = async (req, res) => {
+    try {
+        const incidents = await coordinatorService.getIncidents({
+            status: req.query.status || null,
+            search: req.query.search || '',
+        });
+        res.json({ incidents });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
@@ -86,6 +98,7 @@ const rejectReceiptRequest = async (req, res) => {
 module.exports = {
     listVehicleGroups,
     listPartners,
+    getIncidents,
     getReceiptRequests,
     getReceiptRequestDetail,
     approveReceiptRequest,

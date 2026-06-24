@@ -34,6 +34,7 @@ const MENU_CONFIG = {
   ],
   coordinator: [
     { key: 'orders', Icon: Truck, label: 'Don hang' },
+    { key: 'incidents', Icon: FileText, label: 'Su co' },
     { key: 'receipts', Icon: FileText, label: 'Phieu thu' },
   ],
   accountant: [

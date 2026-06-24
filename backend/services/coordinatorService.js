@@ -2,6 +2,7 @@ const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const expenseRepository = require('../repositories/expenseRepository');
+const incidentRepository = require('../repositories/incidentRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
@@ -202,6 +203,10 @@ const listPartners = async () => {
      ORDER BY company_name ASC`,
   );
   return result.rows;
+};
+
+const getIncidents = async ({ status = null, search = '' } = {}) => {
+  return incidentRepository.getCoordinatorIncidents({ status, search });
 };
 
 const importExcel = async (userId, fileBuffer) => {
@@ -1005,6 +1010,7 @@ module.exports = {
   importExcel,
   listVehicleGroups,
   listPartners,
+  getIncidents,
   getReceiptRequests,
   getReceiptRequestDetail,
   approveReceiptRequest,

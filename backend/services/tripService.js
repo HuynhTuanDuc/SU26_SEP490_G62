@@ -1,5 +1,6 @@
 const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
+const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
@@ -213,8 +214,9 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
         }, { displayMode: 'alert' }).catch(() => {});
     }
 
-    // Tự động tính lại KPI sau khi hoàn thành — fire-and-forget, không block response
-    kpiService.recalculateAfterCompletion(driverId, new Date());
+    // Tự động tính lại KPI cho mọi tài xế có phân bổ doanh thu của chuyến.
+    const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
+    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -333,8 +335,8 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
 
-    // Tự động tính lại KPI — fire-and-forget
-    kpiService.recalculateAfterCompletion(driverId, new Date());
+    const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
+    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };

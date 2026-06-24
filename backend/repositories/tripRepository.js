@@ -135,10 +135,34 @@ const getActiveTrip = async (driverId) => {
 
 const getTripById = async (tripId) => {
     const result = await pool.query(
-        `SELECT os.*, o.cargo_name, o.notes AS order_notes
+        `SELECT os.*, o.cargo_name, o.notes AS order_notes,
+                (SELECT ts.completed_at
+                 FROM trip_stops ts
+                 WHERE ts.shipment_id = os.id
+                   AND ts.stop_type = 'pickup'
+                 ORDER BY ts.stop_index ASC
+                 LIMIT 1) AS pickup_completed_at
          FROM order_shipments os
          JOIN orders o ON os.order_id = o.id
          WHERE os.id = $1`,
+        [tripId],
+    );
+    return result.rows[0] ?? null;
+};
+
+const getTripByIdForUpdate = async (client, tripId) => {
+    const result = await client.query(
+        `SELECT os.*, o.cargo_name, o.notes AS order_notes,
+                (SELECT ts.completed_at
+                 FROM trip_stops ts
+                 WHERE ts.shipment_id = os.id
+                   AND ts.stop_type = 'pickup'
+                 ORDER BY ts.stop_index ASC
+                 LIMIT 1) AS pickup_completed_at
+         FROM order_shipments os
+         JOIN orders o ON os.order_id = o.id
+         WHERE os.id = $1
+         FOR UPDATE`,
         [tripId],
     );
     return result.rows[0] ?? null;
@@ -544,6 +568,164 @@ const saveLoadingProof = async (shipmentId, driverId, fileUrl) => {
         [shipmentId, driverId, fileUrl],
     );
     return result.rows[0];
+};
+
+const reassignShipmentAfterIncident = async (
+    shipmentId,
+    {
+        incidentId,
+        fromDriverId,
+        toDriverId,
+        toVehicleId,
+        changedBy,
+        note,
+        client: existingClient = null,
+    },
+) => {
+    const client = existingClient ?? await pool.connect();
+    const shouldManageTransaction = !existingClient;
+    try {
+        if (shouldManageTransaction) {
+            await client.query('BEGIN');
+        }
+
+        const shipment = await getTripByIdForUpdate(client, shipmentId);
+        if (!shipment) {
+            throw new Error('Chuyến không tồn tại');
+        }
+
+        const validStatuses = [...ACTIVE_STATUSES, SHIPMENT_STATUS.FAILED];
+        if (!validStatuses.includes(shipment.status)) {
+            throw new Error('Chuyến không còn ở trạng thái cho phép điều chuyển');
+        }
+
+        if (Number(shipment.owner_driver_id) !== Number(fromDriverId)) {
+            throw new Error('Thông tin tài xế hiện tại không còn khớp');
+        }
+
+        const vehicleRes = await client.query(
+            `SELECT v.id, v.assigned_driver_id, v.status
+             FROM vehicles v
+             JOIN drivers d ON d.profile_id = $2 AND d.vehicle_id = v.id
+             WHERE v.id = $1
+             LIMIT 1`,
+            [toVehicleId, toDriverId],
+        );
+        const vehicle = vehicleRes.rows[0];
+        if (!vehicle || Number(vehicle.assigned_driver_id) !== Number(toDriverId)) {
+            throw new Error('Tài xế thay thế chưa được gán đúng xe');
+        }
+        if (vehicle.status !== 'active') {
+            throw new Error('Xe thay thế hiện không sẵn sàng vận hành');
+        }
+
+        const vehicleBusyRes = await client.query(
+            `SELECT id
+             FROM order_shipments
+             WHERE vehicle_id = $1
+               AND status = ANY($2::text[])
+               AND id <> $3
+             LIMIT 1`,
+            [toVehicleId, ACTIVE_STATUSES, shipmentId],
+        );
+        if (vehicleBusyRes.rows[0]) {
+            throw new Error('Xe thay thế đang có chuyến hoạt động khác');
+        }
+
+        const maintenanceVehicleRes = await client.query(
+            `SELECT id
+             FROM maintenance_records
+             WHERE vehicle_id = $1
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [toVehicleId],
+        );
+        if (maintenanceVehicleRes.rows[0]) {
+            throw new Error('Xe thay thế đang trong bảo trì');
+        }
+
+        const maintenanceDriverRes = await client.query(
+            `SELECT id
+             FROM maintenance_records
+             WHERE performed_by = $1
+               AND vehicle_id <> $2
+               AND status IN ('open', 'pending_verification')
+             LIMIT 1`,
+            [toDriverId, toVehicleId],
+        );
+        if (maintenanceDriverRes.rows[0]) {
+            throw new Error('Tài xế thay thế đang phụ trách bảo trì xe khác');
+        }
+
+        const activeTripRes = await client.query(
+            `SELECT id
+             FROM order_shipments
+             WHERE owner_driver_id = $1
+               AND status = ANY($2::text[])
+               AND id <> $3
+             LIMIT 1`,
+            [toDriverId, ACTIVE_STATUSES, shipmentId],
+        );
+        if (activeTripRes.rows[0]) {
+            throw new Error('Tài xế thay thế đang có chuyến hoạt động khác');
+        }
+
+        await client.query(
+            `UPDATE shipment_assignments
+             SET completed_at = NOW()
+             WHERE shipment_id = $1
+               AND driver_id = $2
+               AND completed_at IS NULL`,
+            [shipmentId, fromDriverId],
+        );
+
+        await client.query(
+            `UPDATE order_shipments
+             SET owner_driver_id = $1,
+                 vehicle_id = $2,
+                 updated_at = NOW()
+             WHERE id = $3`,
+            [toDriverId, toVehicleId, shipmentId],
+        );
+
+        await client.query(
+            `INSERT INTO shipment_assignments
+                (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at, accepted_at)
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+            [shipmentId, toDriverId, toVehicleId, ASSIGNMENT_TYPE.COORDINATOR_ASSIGN, changedBy],
+        );
+
+        await client.query(
+            `INSERT INTO shipment_assignment_history
+                (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
+                 changed_by, change_reason, incident_id, notes, changed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 'incident_reassign', $7, $8, NOW())`,
+            [
+                shipmentId,
+                fromDriverId,
+                shipment.vehicle_id,
+                toDriverId,
+                toVehicleId,
+                changedBy,
+                incidentId,
+                note ?? null,
+            ],
+        );
+
+        if (shouldManageTransaction) {
+            await client.query('COMMIT');
+        }
+        return shipment;
+    } catch (error) {
+        if (shouldManageTransaction) {
+            await client.query('ROLLBACK');
+        }
+        throw error;
+    } finally {
+        if (shouldManageTransaction) {
+            client.release();
+        }
+    }
 };
 
 const getDriverStats = async (driverId) => {
@@ -954,6 +1136,7 @@ module.exports = {
     getAllVehicleGroups,
     getActiveTrip,
     getTripById,
+    getTripByIdForUpdate,
     getFullTripById,
     getPendingReceiptOrder,
     saveShipmentActualKm,
@@ -965,6 +1148,7 @@ module.exports = {
     isFinalShipment,
     saveDeliveryProof,
     saveLoadingProof,
+    reassignShipmentAfterIncident,
     activateNextShipment,
     getDriverStats,
     getDriverOrderHistory,
