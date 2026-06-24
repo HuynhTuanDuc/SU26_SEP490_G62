@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
+const vehicleRepository = require('../repositories/vehicleManagementRepository');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 
@@ -148,7 +149,7 @@ const createOrder = async (userId, payload) => {
 
         const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
         
-        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+        const defaultVehicleGroupId = await vehicleRepository.getVehicleGroupId(dbClient);
 
         const shipmentsDataArray = [];
         const usedVehicleIds = new Set();
@@ -171,7 +172,7 @@ const createOrder = async (userId, payload) => {
                 throw new Error('Chưa có nhóm xe trong hệ thống');
             }
 
-            const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+            const vehicleGroup = await vehicleRepository.getVehicleGroupReferenceById(finalVehicleGroupId, dbClient);
             if (!vehicleGroup) {
                 throw new Error('Nhóm xe không tồn tại');
             }
@@ -300,7 +301,7 @@ const updateOrder = async (orderId, payload) => {
     const customer = await findOrCreateCustomer(dbClient, customer_name, customer_phone);
     try {
         
-        const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+        const defaultVehicleGroupId = await vehicleRepository.getVehicleGroupId(dbClient);
         const existingShipmentsRes = await dbClient.query(
             `SELECT id
              FROM order_shipments
@@ -322,7 +323,7 @@ const updateOrder = async (orderId, payload) => {
             }
 
             const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
-            const vehicleGroup = finalVehicleGroupId ? await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId) : null;
+            const vehicleGroup = finalVehicleGroupId ? await vehicle.getVehicleGroupReferenceById(finalVehicleGroupId, dbClient) : null;
             if (!vehicleGroup) {
                 throw new Error('Nhóm xe không tồn tại');
             }
@@ -445,7 +446,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             }
 
             const customer = await findOrCreateCustomer(dbClient, customerName, customerPhone);
-            const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+            const defaultVehicleGroupId = await vehicleRepository.getVehicleGroupId(dbClient);
             if (!defaultVehicleGroupId) {
                 throw new Error('Chưa có nhóm xe trong hệ thống');
             }
@@ -459,7 +460,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
             const finalDriverId = null;
             const finalVehicleId = vehicle.id;
             const finalVehicleGroupId = vehicle.vehicle_group_id ?? defaultVehicleGroupId;
-            const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+            const vehicleGroup = await vehicleRepository.getVehicleGroupReferenceById(finalVehicleGroupId, dbClient);
             estimatedPrice = distanceValue * Number(vehicleGroup?.price_per_km || 0);
             const shipmentStatus = SHIPMENT_STATUS.AVAILABLE;
 

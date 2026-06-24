@@ -211,13 +211,7 @@ const listOrders = async ({
     };
 };
 
-//Lấy Id nhóm xe
-const getDefaultVehicleGroupId = async (client) => {
-    const result = await client.query(
-        `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
-    );
-    return result.rows[0]?.id ?? null;
-};
+
 
 
 //Lấy xe theo BKS
@@ -333,18 +327,6 @@ const validateVehicleShipmentAssignment = async (
     return true;
 };
 
-//Lấy loại xe 
-const getVehicleGroupById = async (client, vehicleGroupId) => {
-    if (!vehicleGroupId) return null;
-    const result = await client.query(
-        `SELECT id, name, price_per_km
-         FROM vehicle_groups
-         WHERE id = $1
-         LIMIT 1`,
-        [vehicleGroupId],
-    );
-    return result.rows[0] ?? null;
-};
 
 //Chọn loại xe rồi hiển thị các phương tiện active, có tài xế, xe chưa chạy đơn, xe không bảo trì; tài xế chưa bận.
 const listCoordinatorVehicleGroups = async () => {
@@ -946,9 +928,7 @@ const importOrderWithShipment = async ({ client, userId, orderData, shipmentData
 module.exports = {
     listOrders,
     getVehicleByPlate,
-    getVehicleGroupById,
     listCoordinatorVehicleGroups,
-    getDefaultVehicleGroupId,
     findOrCreateCustomer,
     validateVehicleShipmentAssignment,
     createOrderWithShipment,

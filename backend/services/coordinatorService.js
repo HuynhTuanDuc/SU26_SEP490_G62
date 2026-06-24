@@ -1,6 +1,7 @@
 const XLSX = require('xlsx');
 const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
+const vehicleRepository = require('../repositories/vehicleManagementRepository');
 const expenseRepository = require('../repositories/expenseRepository');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
@@ -206,7 +207,7 @@ const importExcel = async (userId, fileBuffer) => {
     dbClient = await pool.connect();
     await dbClient.query('BEGIN');
 
-    const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
+    const defaultVehicleGroupId = await vehicleRepository.getVehicleGroupId(dbClient);
     if (!defaultVehicleGroupId) {
       throw new Error('Chưa có nhóm xe trong hệ thống');
     }
@@ -266,7 +267,7 @@ const importExcel = async (userId, fileBuffer) => {
       const finalDriverId = null;
       const finalVehicleId = vehicle?.id ?? null;
       const finalVehicleGroupId = vehicle?.vehicle_group_id ?? defaultVehicleGroupId;
-      const vehicleGroup = await orderRepository.getVehicleGroupById(dbClient, finalVehicleGroupId);
+      const vehicleGroup = await vehicleRepository.getVehicleGroupReferenceById(finalVehicleGroupId, dbClient);
       if (distanceValue !== null && vehicleGroup) {
         fare = distanceValue * Number(vehicleGroup.price_per_km || 0);
       }
