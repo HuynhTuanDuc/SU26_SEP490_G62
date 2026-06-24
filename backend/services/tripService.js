@@ -517,7 +517,7 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
     if (receipt.shipment_receipt_id) {
         await pool.query(
             `UPDATE shipment_receipts
-             SET driver_collection_type = $1, driver_confirmed_at = NOW()
+             SET driver_collection_type = $1, driver_confirmed_at = NOW(), payment_type = $1
              WHERE id = $2`,
             [collectionType, receipt.shipment_receipt_id],
         );
