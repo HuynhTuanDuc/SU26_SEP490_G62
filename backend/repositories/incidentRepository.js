@@ -84,6 +84,18 @@ const getCoordinatorIds = async () => {
     return result.rows.map((r) => r.id);
 };
 
+const getActiveDriverIds = async (excludeDriverId) => {
+    const result = await pool.query(
+        `SELECT p.id
+         FROM profiles p
+         JOIN roles r ON r.id = p.role_id
+         WHERE r.name = 'driver'
+           AND p.id != $1`,
+        [Number(excludeDriverId)],
+    );
+    return result.rows.map((r) => r.id);
+};
+
 // Lấy incidents của 1 shipment (để check duplicate type + list)
 const getIncidentsByShipment = async (shipmentId) => {
     const result = await pool.query(
@@ -155,5 +167,6 @@ module.exports = {
     getOpenIncidentsByDriverAndType,
     updateIncident,
     getCoordinatorIds,
+    getActiveDriverIds,
     updateIncidentStatus,
 };

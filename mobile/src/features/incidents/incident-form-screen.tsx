@@ -200,6 +200,7 @@ export function IncidentFormScreen() {
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
     const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
+    const isTrafficType    = incidentType === 'road_incident' || incidentType === 'traffic_jam';
 
     const { isSubmitting, error, submit, clearError } = useSubmitIncident(
         (incident) => {
@@ -224,6 +225,10 @@ export function IncidentFormScreen() {
         setDuplicateId(null);
         clearError();
         setFieldErrors({});
+        // Tự động lấy GPS cho loại sự cố đường xá/giao thông
+        if (t === 'road_incident' || t === 'traffic_jam') {
+            void handleGetLocation();
+        }
     };
 
     // ── GPS location ──
@@ -276,10 +281,12 @@ export function IncidentFormScreen() {
     // ── Validation ──
     const validate = (): boolean => {
         const errors: Record<string, string> = {};
-        if (!description.trim()) {
-            errors.description = 'Mô tả sự cố là bắt buộc';
-        } else if (description.trim().length < 10) {
-            errors.description = 'Mô tả phải có ít nhất 10 ký tự';
+        if (!isTrafficType) {
+            if (!description.trim()) {
+                errors.description = 'Mô tả sự cố là bắt buộc';
+            } else if (description.trim().length < 10) {
+                errors.description = 'Mô tả phải có ít nhất 10 ký tự';
+            }
         }
         setFieldErrors(errors);
         return Object.keys(errors).length === 0;
@@ -289,14 +296,15 @@ export function IncidentFormScreen() {
     const handleSubmit = async () => {
         if (!validate()) return;
         setDuplicateId(null);
+        const trimmed = description.trim();
         const fullDescription = selectedSub
-            ? `[${selectedSub}] ${description.trim()}`
-            : description.trim();
+            ? (trimmed ? `[${selectedSub}] ${trimmed}` : `[${selectedSub}]`)
+            : trimmed;
         await submit({
             shipmentId:    parsedShipmentId,
             incidentType,
             severityLevel: severity,
-            description:   fullDescription,
+            description:   fullDescription || undefined,
             location:      location.trim() || undefined,
             imageUris,
         });
@@ -466,15 +474,40 @@ export function IncidentFormScreen() {
                         </XStack>
                     </YStack>
 
+                    {/* ── Traffic alert info banner ── */}
+                    {isTrafficType ? (
+                        <YStack
+                            padding={12} borderRadius={12} gap={4}
+                            backgroundColor="#FFF7ED"
+                            borderWidth={1} borderColor="#FED7AA"
+                        >
+                            <XStack gap={8} alignItems="center">
+                                <Navigation size={16} color={appTheme.colors.warning} />
+                                <Text fontSize={13} fontWeight="900" color={appTheme.colors.warningText}>
+                                    Cảnh báo giao thông tức thời
+                                </Text>
+                            </XStack>
+                            <Text fontSize={12} color={appTheme.colors.warningText} lineHeight={18}>
+                                Vị trí GPS đã được tự động lấy. Sau khi gửi, tất cả tài xế khác sẽ nhận cảnh báo và được nhắc chọn đường khác.
+                            </Text>
+                        </YStack>
+                    ) : null}
+
                     {/* ── Description ── */}
                     <YStack gap={6}>
                         <XStack alignItems="center" gap={6}>
                             <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
                                 MÔ TẢ SỰ CỐ
                             </Text>
-                            <View style={s.requiredBadge}>
-                                <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
-                            </View>
+                            {isTrafficType ? (
+                                <View style={s.optionalBadge}>
+                                    <Text fontSize={9} fontWeight="700" color={appTheme.colors.textMuted}>TUỲ CHỌN</Text>
+                                </View>
+                            ) : (
+                                <View style={s.requiredBadge}>
+                                    <Text fontSize={9} fontWeight="900" color={appTheme.colors.danger}>BẮT BUỘC</Text>
+                                </View>
+                            )}
                         </XStack>
                         <TextInput
                             style={[
@@ -489,7 +522,11 @@ export function IncidentFormScreen() {
                                     setFieldErrors((e) => ({ ...e, description: '' }));
                                 }
                             }}
-                            placeholder="Mô tả chi tiết sự cố đã xảy ra (tối thiểu 10 ký tự)..."
+                            placeholder={
+                                isTrafficType
+                                    ? 'Thêm ghi chú nếu cần, ví dụ: tai nạn, tràn dầu,... (không bắt buộc)'
+                                    : 'Mô tả chi tiết sự cố đã xảy ra (tối thiểu 10 ký tự)...'
+                            }
                             placeholderTextColor={appTheme.colors.textMuted}
                             multiline
                             numberOfLines={4}
