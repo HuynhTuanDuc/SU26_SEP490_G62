@@ -16,7 +16,10 @@ initCronJobs();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true,
+}));
 
 // Health check endpoint
 app.get('/', (req, res) => {
