@@ -21,8 +21,14 @@ const listPartners = async (_req, res) => {
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
-        const { status } = req.query;
-        const rows = await coordinatorService.getReceiptRequests({ status: status || null });
+        const { status, kind, search, dateFrom, dateTo } = req.query;
+        const rows = await coordinatorService.getReceiptRequests({
+            status: status || null,
+            kind: kind || 'all',
+            search: search || '',
+            dateFrom: dateFrom || '',
+            dateTo: dateTo || '',
+        });
         res.json({ requests: rows });
     } catch (err) {
         res.status(500).json({ error: err.message });

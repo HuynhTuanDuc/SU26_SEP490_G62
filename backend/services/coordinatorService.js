@@ -598,15 +598,52 @@ const broadcastCoordinatorReceiptRequestChange = (action, requestId, orderId) =>
 };
 
 // GET danh sách yêu cầu phiếu thu (mặc định: pending + processing)
-const getReceiptRequests = async ({ status = null } = {}) => {
+const getReceiptRequests = async ({
+    status = null,
+    kind = 'all',
+    search = '',
+    dateFrom = '',
+    dateTo = '',
+} = {}) => {
     const conditions = [];
     const params = [];
 
-    if (status) {
-        params.push(status);
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+    const normalizedKind = String(kind || 'all').trim().toLowerCase();
+    const normalizedSearch = String(search || '').trim();
+
+    if (normalizedStatus && normalizedStatus !== 'all') {
+        params.push(normalizedStatus);
         conditions.push(`rr.status = $${params.length}`);
-    } else {
+    } else if (normalizedKind === 'requests') {
         conditions.push(`rr.status IN ('pending', 'processing')`);
+    } else if (normalizedKind === 'receipts') {
+        conditions.push(`rr.status = 'approved'`);
+    } else if (normalizedKind === 'rejected') {
+        conditions.push(`rr.status = 'rejected'`);
+    }
+
+    if (normalizedSearch) {
+        params.push(`%${normalizedSearch}%`);
+        conditions.push(`(
+            CAST(rr.id AS TEXT) ILIKE $${params.length}
+            OR CAST(rr.order_id AS TEXT) ILIKE $${params.length}
+            OR COALESCE(p.full_name, '') ILIKE $${params.length}
+            OR COALESCE(c.full_name, '') ILIKE $${params.length}
+            OR COALESCE(c.phone, '') ILIKE $${params.length}
+            OR COALESCE(primary_vehicle.plate_number, '') ILIKE $${params.length}
+            OR COALESCE(rr.status, '') ILIKE $${params.length}
+        )`);
+    }
+
+    if (dateFrom) {
+        params.push(dateFrom);
+        conditions.push(`DATE(COALESCE(sr.collected_at, rr.processed_at, rr.requested_at)) >= $${params.length}`);
+    }
+
+    if (dateTo) {
+        params.push(dateTo);
+        conditions.push(`DATE(COALESCE(sr.collected_at, rr.processed_at, rr.requested_at)) <= $${params.length}`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -621,11 +658,27 @@ const getReceiptRequests = async ({ status = null } = {}) => {
             rr.processed_at,
             rr.coordinator_notes,
             p.full_name          AS driver_name,
+            processor.full_name  AS processed_by_name,
             o.cargo_name,
             o.id                 AS order_id,
             c.full_name          AS customer_name,
             c.phone              AS customer_phone,
             c.company_name       AS customer_company,
+            CASE
+                WHEN rr.status = 'approved' THEN 'receipt'
+                ELSE 'request'
+            END AS record_kind,
+            COALESCE(sr.id, rr.id) AS receipt_id,
+            COALESCE(sr.amount, GREATEST(
+                COALESCE(revenue_summary.total_actual_price, 0) - COALESCE(o.prepaid_amount, 0),
+                0
+            )) AS receipt_amount,
+            COALESCE(sr.gross_amount, COALESCE(revenue_summary.total_actual_price, 0)) AS gross_amount,
+            COALESCE(sr.prepaid_amount, COALESCE(o.prepaid_amount, 0)) AS prepaid_amount,
+            COALESCE(sr.collected_at, rr.processed_at) AS receipt_created_at,
+            COALESCE(sr.notes, rr.coordinator_notes) AS receipt_notes,
+            sr.driver_collection_type,
+            sr.driver_confirmed_at,
             COALESCE(shipments.shipment_count, 0) AS shipment_count,
             primary_shipment.id  AS shipment_id,
             primary_shipment.shipment_index,
@@ -641,6 +694,8 @@ const getReceiptRequests = async ({ status = null } = {}) => {
          JOIN profiles p       ON p.id  = rr.driver_id
          JOIN orders o         ON o.id  = rr.order_id
          LEFT JOIN customers c  ON c.id  = o.customer_id
+         LEFT JOIN shipment_receipts sr ON sr.order_receipt_request_id = rr.id
+         LEFT JOIN profiles processor ON processor.id = rr.processed_by
          LEFT JOIN LATERAL (
             SELECT COUNT(*) AS shipment_count
             FROM order_shipments os_count

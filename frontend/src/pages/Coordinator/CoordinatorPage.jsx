@@ -2,9 +2,22 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import "../../styles/Coordinator.css";
-import { message as toast } from "antd";
-import ProfileModal from "../../components/profile/ProfileModal";
+import { Typography, message as toast } from "antd";
+import {
+  CloseOutlined,
+  EditOutlined,
+  EyeOutlined,
+  FileTextOutlined,
+  MinusOutlined,
+  PlusOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
+import AppHeader from "../../components/layout/AppHeader";
+import AppSidebar from "../../components/layout/AppSidebar";
 import { saveSession } from "../../services/storage";
+import { C } from "../../styles/theme";
+
+const { Title, Text } = Typography;
 
 //Đặt yêu cầu cho empty form 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
@@ -15,6 +28,7 @@ const emptyForm = () => ({
   customer_phone: "",
   cargo_name: "",
   cargo_weight_kg: "",
+  prepaid_amount: "",
   note: "",
   is_partner: false,
   partner_name: "",
@@ -46,6 +60,13 @@ const formatDateForInput = (dateStr) => {
 
 const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
 const formatCurrency = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
+const formatNotificationTime = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("vi-VN");
+};
+
 const expenseTypeOptions = [
   { value: "fuel", label: "Nhiên liệu" },
   { value: "toll", label: "Cầu đường" },
@@ -216,6 +237,7 @@ function buildTripFromOrder(order) {
     customerPhone: order.customer_phone || "",
     cargoName: order.cargo_name || "",
     cargoWeightKg: order.cargo_weight_kg || "",
+    prepaidAmount: order.prepaid_amount || "",
     pickupAddress,
     deliveryAddress,
     route: isMultiShipment
@@ -249,8 +271,6 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [form, setForm] = useState(emptyForm);
   const [formErrors, setFormErrors] = useState({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -264,10 +284,10 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [receiptRejectingId, setReceiptRejectingId] = useState(null);
   const [selectedReceiptDetail, setSelectedReceiptDetail] = useState(null);
   const [receiptForm, setReceiptForm] = useState(emptyReceiptForm);
-  const [notifications, setNotifications] = useState([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
-  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const [receiptKindFilter, setReceiptKindFilter] = useState("all");
+  const [receiptStatusFilter, setReceiptStatusFilter] = useState("all");
+  const [receiptDateFromFilter, setReceiptDateFromFilter] = useState("");
+  const [receiptDateToFilter, setReceiptDateToFilter] = useState("");
 
   const toggleRow = (orderId) => {
     setExpandedRows(prev => {
@@ -356,24 +376,18 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadPartners();
   }, []);
 
-  const loadNotifications = async () => {
-    setNotificationsLoading(true);
-    try {
-      const data = await apiRequest("/api/notifications?limit=10&page=1");
-      setNotifications(data.notifications || []);
-      setNotificationUnreadCount(Number(data.unreadCount || 0));
-    } catch (error) {
-      setMessage(error.message || "Khong the tai thong bao.");
-      setMessageType("error");
-    } finally {
-      setNotificationsLoading(false);
-    }
-  };
-
   const loadReceiptRequests = async () => {
     setReceiptRequestsLoading(true);
     try {
-      const data = await apiRequest("/api/coordinator/receipt-requests");
+      const params = new URLSearchParams();
+      if (receiptKindFilter !== "all") params.set("kind", receiptKindFilter);
+      if (receiptStatusFilter !== "all") params.set("status", receiptStatusFilter);
+      if (deferredSearchQuery.trim()) params.set("search", deferredSearchQuery.trim());
+      if (receiptDateFromFilter) params.set("dateFrom", receiptDateFromFilter);
+      if (receiptDateToFilter) params.set("dateTo", receiptDateToFilter);
+
+      const queryString = params.toString();
+      const data = await apiRequest(`/api/coordinator/receipt-requests${queryString ? `?${queryString}` : ""}`);
       setReceiptRequests(data.requests || []);
     } catch (error) {
       setMessage(error.message || "Không thể tải danh sách yêu cầu phiếu thu.");
@@ -384,25 +398,13 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   useEffect(() => {
+    if (activeView !== "receipts") return;
     loadReceiptRequests();
-  }, []);
-
-  useEffect(() => {
-    loadNotifications();
-  }, []);
+  }, [activeView, receiptKindFilter, receiptStatusFilter, receiptDateFromFilter, receiptDateToFilter, deferredSearchQuery]);
 
   useRoleRealtime(currentUser, {
     onMessage: (payload) => {
       if (!payload?.type) return;
-
-      if (payload.type === "notification.created") {
-        setNotificationUnreadCount((current) => current + 1);
-        loadNotifications();
-      }
-
-      if (payload.type === "notification.read" || payload.type === "notification.read_all") {
-        loadNotifications();
-      }
 
       if (
         payload.type === "coordinator.receipt_requests.changed" ||
@@ -441,29 +443,11 @@ export default function CoordinatorPage({ user, onLogout }) {
     saveSession({ user: mergedUser });
   };
 
-  const handleOpenNotifications = async () => {
-    const nextOpen = !notificationMenuOpen;
-    setNotificationMenuOpen(nextOpen);
-    if (!nextOpen) return;
-
-    await loadNotifications();
-    if (notificationUnreadCount > 0) {
-      try {
-        await apiRequest("/api/notifications/read-all", { method: "PATCH" });
-        setNotificationUnreadCount(0);
-        setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
-      } catch (error) {
-        setMessage(error.message || "Khong the danh dau da doc.");
-        setMessageType("error");
-      }
-    }
-  };
-
-  const formatNotificationTime = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleString("vi-VN");
+  const resetReceiptFilters = () => {
+    setReceiptKindFilter("all");
+    setReceiptStatusFilter("all");
+    setReceiptDateFromFilter("");
+    setReceiptDateToFilter("");
   };
 
   const closeReceiptModal = () => {
@@ -554,7 +538,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       setMessage(data.message || "Da tao phieu thu thanh cong.");
       setMessageType("success");
       closeReceiptModal();
-      await Promise.all([loadReceiptRequests(), loadOrders(pagination.page), loadNotifications()]);
+      await Promise.all([loadReceiptRequests(), loadOrders(pagination.page)]);
     } catch (error) {
       setMessage(error.message || "Khong the tao phieu thu.");
       setMessageType("error");
@@ -575,7 +559,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       });
       setMessage(data.message || "Da tu choi yeu cau phieu thu.");
       setMessageType("success");
-      await Promise.all([loadReceiptRequests(), loadNotifications()]);
+      await Promise.all([loadReceiptRequests()]);
     } catch (error) {
       setMessage(error.message || "Khong the tu choi yeu cau phieu thu.");
       setMessageType("error");
@@ -605,8 +589,348 @@ export default function CoordinatorPage({ user, onLogout }) {
     const delivery = shipment.delivery_address || shipment.stops?.find((stop) => stop.stop_type === "delivery")?.address || "-";
     return `${pickup} -> ${delivery}`;
   };
+  const selectedReceiptStatus = normalizeStatus(selectedReceiptDetail?.request?.status);
+  const isReceiptReadonly = ["approved", "rejected"].includes(selectedReceiptStatus);
+  const receiptSummary = useMemo(() => {
+    const approved = receiptRequests.filter((item) => normalizeStatus(item.status) === "approved").length;
+    const pending = receiptRequests.filter((item) => ["pending", "processing"].includes(normalizeStatus(item.status))).length;
+    return {
+      total: receiptRequests.length,
+      approved,
+      pending,
+    };
+  }, [receiptRequests]);
 
-    const renderOrdersPanel = () => (
+  const filteredTrips = trips;
+  const totalFare = useMemo(
+    () => form.trips.reduce((sum, trip) => sum + resolveFareValue(getTripFare(trip)), 0),
+    [form.trips, vehicleGroups],
+  );
+
+  function getAvailablePlates(vehicleGroupId) {
+    const group = vehicleGroups.find((item) => String(item.id) === String(vehicleGroupId));
+    return Array.isArray(group?.vehicles) ? group.vehicles : [];
+  }
+
+  function getTripFare(trip) {
+    const group = vehicleGroups.find((item) => String(item.id) === String(trip?.vehicle_group_id));
+    const distance = Number(normalizeDistanceText(trip?.distance));
+    if (!group || !Number.isFinite(distance) || distance <= 0) return 0;
+    return distance * Number(group.price_per_km || 0);
+  }
+
+  const updateField = (key, value) => {
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "is_partner" && !value) {
+        next.partner_name = "";
+      }
+      return next;
+    });
+    setFormErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const updateTripField = (tripIndex, key, value) => {
+    setForm((current) => ({
+      ...current,
+      trips: current.trips.map((trip, index) => {
+        if (index !== tripIndex) return trip;
+        const nextTrip = { ...trip, [key]: value };
+        if (key === "pickup_address") {
+          nextTrip.pickup_addresses = [value, ...(trip.pickup_addresses || []).slice(1)];
+        }
+        if (key === "delivery_address") {
+          nextTrip.delivery_addresses = [value, ...(trip.delivery_addresses || []).slice(1)];
+        }
+        return nextTrip;
+      }),
+    }));
+    setFormErrors((current) => {
+      const errorKey = `trip_${tripIndex}_${key}`;
+      if (!current[errorKey]) return current;
+      const next = { ...current };
+      delete next[errorKey];
+      return next;
+    });
+  };
+
+  const updateTripStopList = (tripIndex, key, stopIndex, value) => {
+    setForm((current) => ({
+      ...current,
+      trips: current.trips.map((trip, index) => {
+        if (index !== tripIndex) return trip;
+        const source = Array.isArray(trip[key]) && trip[key].length > 0 ? [...trip[key]] : [""];
+        source[stopIndex] = value;
+        return {
+          ...trip,
+          [key]: source,
+          ...(key === "pickup_addresses" && stopIndex === 0 ? { pickup_address: value } : {}),
+          ...(key === "delivery_addresses" && stopIndex === 0 ? { delivery_address: value } : {}),
+        };
+      }),
+    }));
+  };
+
+  const addTripStop = (tripIndex, key) => {
+    setForm((current) => ({
+      ...current,
+      trips: current.trips.map((trip, index) => {
+        if (index !== tripIndex) return trip;
+        const source = Array.isArray(trip[key]) ? trip[key] : [];
+        return { ...trip, [key]: [...source, ""] };
+      }),
+    }));
+  };
+
+  const removeTripStop = (tripIndex, key, stopIndex) => {
+    setForm((current) => ({
+      ...current,
+      trips: current.trips.map((trip, index) => {
+        if (index !== tripIndex) return trip;
+        const source = Array.isArray(trip[key]) ? trip[key] : [];
+        const nextStops = source.filter((_, currentStopIndex) => currentStopIndex !== stopIndex);
+        const normalizedStops = nextStops.length > 0 ? nextStops : [""];
+        return {
+          ...trip,
+          [key]: normalizedStops,
+          ...(key === "pickup_addresses" ? { pickup_address: normalizedStops[0] || "" } : {}),
+          ...(key === "delivery_addresses" ? { delivery_address: normalizedStops[0] || "" } : {}),
+        };
+      }),
+    }));
+  };
+
+  const addTrip = () => {
+    setForm((current) => ({
+      ...current,
+      trips: [
+        ...current.trips,
+        {
+          vehicle_group_id: "",
+          plate: "",
+          distance: "",
+          pickup_address: "",
+          delivery_address: "",
+          pickup_addresses: [""],
+          delivery_addresses: [""],
+        },
+      ],
+    }));
+  };
+
+  const removeTrip = (tripIndex) => {
+    setForm((current) => {
+      if (current.trips.length <= 1) return current;
+      return {
+        ...current,
+        trips: current.trips.filter((_, index) => index !== tripIndex),
+      };
+    });
+  };
+
+  const closeOrderModal = () => {
+    setCreateOpen(false);
+    setEditingTrip(null);
+    setForm(emptyForm());
+    setFormErrors({});
+  };
+
+  const openCreateModal = () => {
+    setEditingTrip(null);
+    setForm(emptyForm());
+    setFormErrors({});
+    setCreateOpen(true);
+  };
+
+  const openEditModal = (trip) => {
+    const mappedTrips = Array.isArray(trip?.trips) && trip.trips.length > 0
+      ? trip.trips.map((shipment) => {
+        const pickupAddresses = Array.isArray(shipment.pickup_addresses) && shipment.pickup_addresses.length > 0
+          ? shipment.pickup_addresses
+          : [shipment.pickup_address || ""];
+        const deliveryAddresses = Array.isArray(shipment.delivery_addresses) && shipment.delivery_addresses.length > 0
+          ? shipment.delivery_addresses
+          : [shipment.delivery_address || ""];
+        return {
+          vehicle_group_id: shipment.vehicle_group_id || trip.vehicleGroupId || "",
+          plate: shipment.plate || "",
+          distance: shipment.distance ?? "",
+          pickup_address: pickupAddresses[0] || shipment.pickup_address || "",
+          delivery_address: deliveryAddresses[0] || shipment.delivery_address || "",
+          pickup_addresses: pickupAddresses,
+          delivery_addresses: deliveryAddresses,
+        };
+      })
+      : [{
+        vehicle_group_id: trip.vehicleGroupId || "",
+        plate: trip.plate || "",
+        distance: trip.distance ?? "",
+        pickup_address: trip.pickupAddress || "",
+        delivery_address: trip.deliveryAddress || "",
+        pickup_addresses: [trip.pickupAddress || ""],
+        delivery_addresses: [trip.deliveryAddress || ""],
+      }];
+
+    setEditingTrip(trip);
+    setForm({
+      date: formatDateForInput(trip.dateInput || trip.date),
+      customer_name: trip.customerName || "",
+      customer_phone: trip.customerPhone || "",
+      cargo_name: trip.cargoName || "",
+      cargo_weight_kg: trip.cargoWeightKg || "",
+      prepaid_amount: trip.prepaidAmount || "",
+      note: trip.notes || "",
+      is_partner: !!trip.is_partner,
+      partner_name: trip.partner_name || "",
+      trips: mappedTrips,
+    });
+    setFormErrors({});
+    setCreateOpen(true);
+  };
+
+  const validateOrderForm = () => {
+    const nextErrors = {};
+    const trimmedPhone = String(form.customer_phone || "").replace(/\s+/g, "");
+    const normalizedWeight = normalizeNumericText(form.cargo_weight_kg);
+
+    requiredFields.forEach(({ key, label }) => {
+      if (!String(form[key] ?? "").trim()) {
+        nextErrors[key] = `${label} la bat buoc.`;
+      }
+    });
+
+    if (trimmedPhone && !/^\d{7,15}$/.test(trimmedPhone)) {
+      nextErrors.customer_phone = "So dien thoai khong hop le.";
+    }
+
+    if (normalizedWeight && (!isFiniteNumber(normalizedWeight) || Number(normalizedWeight) < 0)) {
+      nextErrors.cargo_weight_kg = "Khoi luong phai la so hop le.";
+    }
+
+    if (normalizeNumericText(form.prepaid_amount) && (!isFiniteNumber(normalizeNumericText(form.prepaid_amount)) || Number(normalizeNumericText(form.prepaid_amount)) < 0)) {
+      nextErrors.prepaid_amount = "So tien ung truoc phai la so khong am.";
+    }
+
+    if (form.is_partner && !String(form.partner_name || "").trim()) {
+      nextErrors.partner_name = "Vui long chon doi tac.";
+    }
+
+    form.trips.forEach((trip, index) => {
+      if (!String(trip.vehicle_group_id || "").trim()) {
+        nextErrors[`trip_${index}_vehicle_group_id`] = "Vui long chon nhom xe.";
+      }
+      if (!String(trip.plate || "").trim()) {
+        nextErrors[`trip_${index}_plate`] = "Vui long chon BKS.";
+      }
+
+      const normalizedDistance = normalizeDistanceText(trip.distance);
+      if (!normalizedDistance) {
+        nextErrors[`trip_${index}_distance`] = "Quang duong la bat buoc.";
+      } else if (!isFiniteNumber(normalizedDistance) || Number(normalizedDistance) <= 0) {
+        nextErrors[`trip_${index}_distance`] = "Quang duong phai lon hon 0.";
+      }
+
+      const pickupAddress = String(trip.pickup_address || trip.pickup_addresses?.[0] || "").trim();
+      const deliveryAddress = String(trip.delivery_address || trip.delivery_addresses?.[0] || "").trim();
+      if (!pickupAddress) {
+        nextErrors[`trip_${index}_pickup_address`] = "Diem lay hang la bat buoc.";
+      }
+      if (!deliveryAddress) {
+        nextErrors[`trip_${index}_delivery_address`] = "Diem giao hang la bat buoc.";
+      }
+    });
+
+    return nextErrors;
+  };
+
+  const buildOrderPayload = () => {
+    const normalizedTrips = form.trips.map((trip) => {
+      const pickupAddresses = (Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip.pickup_address])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+      const deliveryAddresses = (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip.delivery_address])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+
+      return {
+        vehicle_group_id: Number(trip.vehicle_group_id),
+        plate: String(trip.plate || "").trim(),
+        distance: Number(normalizeDistanceText(trip.distance)),
+        pickup_address: pickupAddresses[0] || "",
+        delivery_address: deliveryAddresses[0] || "",
+        pickup_addresses: pickupAddresses,
+        delivery_addresses: deliveryAddresses,
+      };
+    });
+
+    const firstTrip = normalizedTrips[0] || {};
+
+    return {
+      date: form.date,
+      customer_name: String(form.customer_name || "").trim(),
+      customer_phone: String(form.customer_phone || "").trim(),
+      cargo_name: String(form.cargo_name || "").trim(),
+      cargo_weight_kg: normalizeNumericText(form.cargo_weight_kg) ? Number(normalizeNumericText(form.cargo_weight_kg)) : "",
+      prepaid_amount: normalizeNumericText(form.prepaid_amount) ? Number(normalizeNumericText(form.prepaid_amount)) : 0,
+      notes: String(form.note || "").trim(),
+      is_partner: !!form.is_partner,
+      partner_name: form.is_partner ? String(form.partner_name || "").trim() : "",
+      pickup_address: firstTrip.pickup_address || "",
+      delivery_address: firstTrip.delivery_address || "",
+      trips: normalizedTrips,
+    };
+  };
+
+  const handleCreateOrder = async (event) => {
+    event.preventDefault();
+
+    const nextErrors = validateOrderForm();
+    setFormErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setCreating(true);
+    try {
+      const payload = buildOrderPayload();
+      const method = editingTrip ? "PATCH" : "POST";
+      const path = editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders";
+      const data = await apiRequest(path, { method, body: payload });
+      setMessage(data.message || (editingTrip ? "Cap nhat don hang thanh cong." : "Tao don hang thanh cong."));
+      setMessageType("success");
+      closeOrderModal();
+      await loadOrders(editingTrip ? pagination.page : 1);
+    } catch (error) {
+      setMessage(error.message || "Khong the luu don hang.");
+      setMessageType("error");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCancelOrder = async (trip) => {
+    if (!trip?.orderId) return;
+    const confirmed = window.confirm(`Ban co chac muon huy don #${trip.orderId}?`);
+    if (!confirmed) return;
+
+    try {
+      const data = await apiRequest(`/api/orders/${trip.orderId}`, {
+        method: "DELETE",
+        body: { reason: "Coordinator cancelled order" },
+      });
+      setMessage(data.message || "Huy don hang thanh cong.");
+      setMessageType("success");
+      await loadOrders(pagination.page);
+    } catch (error) {
+      setMessage(error.message || "Khong the huy don hang.");
+      setMessageType("error");
+    }
+  };
+
+  const renderOrdersPanel = () => (
     <>
       <section className="hero">
         <div>
@@ -718,7 +1042,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                             type="button"
                             title={expandedRows.has(trip.id) ? "Thu gon" : "Mo rong"}
                           >
-                            {expandedRows.has(trip.id) ? "-" : "+"}
+                            {expandedRows.has(trip.id) ? <MinusOutlined /> : <PlusOutlined />}
                           </button>
                         )}
                         <span className="trip-id">#{trip.orderId}</span>
@@ -739,7 +1063,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>
                         <div className="table-actions">
                           <button className="table-edit-btn" type="button" onClick={() => openEditModal(trip)}>
-                            E
+                            <EditOutlined />
                           </button>
                           <button
                             className="table-cancel-btn"
@@ -747,7 +1071,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                             disabled={!canCancelTrip(trip)}
                             onClick={() => handleCancelOrder(trip)}
                           >
-                            X
+                            <CloseOutlined />
                           </button>
                         </div>
                       </td>
@@ -788,19 +1112,61 @@ export default function CoordinatorPage({ user, onLogout }) {
       <section className="hero hero-compact">
         <div>
           <h1>Quan ly phieu thu</h1>
-          <p>Tap trung xu ly yeu cau phieu thu va theo doi thong tin moi tu tai xe.</p>
+          <p>Theo doi yeu cau, phiếu thu da tao va loc nhanh theo trang thai, ngay va khach hang.</p>
         </div>
         <div className="hero-metrics">
-          <div className="upload-hint">{receiptRequestsLoading ? "Dang tai..." : `${receiptRequests.length} yeu cau`}</div>
-          <div className="upload-hint">{notificationUnreadCount} thong bao moi</div>
+          <div className="upload-hint">{receiptRequestsLoading ? "Dang tai..." : `${receiptSummary.total} ban ghi`}</div>
+          <div className="upload-hint">{receiptSummary.approved} phieu thu da tao</div>
+          <div className="upload-hint">{receiptSummary.pending} yeu cau cho xu ly</div>
+        </div>
+        <div className="filters order-filters receipt-filters">
+          <label className="filter-field">
+            <span>Loai</span>
+            <select value={receiptKindFilter} onChange={(event) => setReceiptKindFilter(event.target.value)}>
+              <option value="all">Tat ca</option>
+              <option value="requests">Yeu cau cho xu ly</option>
+              <option value="receipts">Phieu thu da tao</option>
+              <option value="rejected">Da tu choi</option>
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Trang thai</span>
+            <select value={receiptStatusFilter} onChange={(event) => setReceiptStatusFilter(event.target.value)}>
+              <option value="all">Tat ca</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Tu ngay</span>
+            <input
+              type="date"
+              value={receiptDateFromFilter}
+              onChange={(event) => setReceiptDateFromFilter(event.target.value)}
+            />
+          </label>
+          <label className="filter-field">
+            <span>Den ngay</span>
+            <input
+              type="date"
+              value={receiptDateToFilter}
+              min={receiptDateFromFilter || undefined}
+              onChange={(event) => setReceiptDateToFilter(event.target.value)}
+            />
+          </label>
+          <button type="button" className="filter" onClick={resetReceiptFilters}>
+            Xoa loc
+          </button>
         </div>
       </section>
 
       <section className="orders-panel">
         <div className="panel-head">
           <div>
-            <h2>Receipt requests</h2>
-            <p>Tai xe gui yeu cau tao phieu thu, Coordinator kiem tra va publish tai day.</p>
+            <h2>Receipt requests & receipts</h2>
+            <p>Tai xe gui yeu cau, coordinator xu ly va xem lai cac phieu thu da tao ngay tai day.</p>
           </div>
         </div>
 
@@ -808,13 +1174,15 @@ export default function CoordinatorPage({ user, onLogout }) {
           <table className="orders-table">
             <thead>
               <tr>
+                <th>Loai</th>
                 <th>Request</th>
+                <th>Ngay</th>
                 <th>Don</th>
                 <th>Chuyen</th>
                 <th>Khach hang</th>
                 <th>Tai xe</th>
                 <th>KM thuc te</th>
-                <th>Cuoc</th>
+                <th>So tien</th>
                 <th>Trang thai</th>
                 <th>Thao tac</th>
               </tr>
@@ -822,22 +1190,28 @@ export default function CoordinatorPage({ user, onLogout }) {
             <tbody>
               {receiptRequestsLoading ? (
                 <tr>
-                  <td colSpan="9" className="empty-table-cell">Dang tai yeu cau phieu thu...</td>
+                  <td colSpan="11" className="empty-table-cell">Dang tai du lieu phieu thu...</td>
                 </tr>
               ) : receiptRequests.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="empty-table-cell">Chua co yeu cau phieu thu dang cho xu ly.</td>
+                  <td colSpan="11" className="empty-table-cell">Khong co ban ghi phu hop voi bo loc hien tai.</td>
                 </tr>
               ) : (
                 receiptRequests.map((request) => (
                   <tr key={request.id}>
+                    <td>
+                      <span className="receipt-table-kind">
+                        {request.record_kind === "receipt" ? "Phieu thu" : "Yeu cau"}
+                      </span>
+                    </td>
                     <td>#{request.id}</td>
+                    <td>{formatNotificationTime(request.receipt_created_at || request.requested_at)}</td>
                     <td>#{request.order_id}</td>
                     <td>{request.shipment_id ? `#${request.shipment_id}` : `${request.shipment_count || 0} chuyen`}</td>
                     <td>{request.customer_name || "-"}</td>
                     <td>{request.driver_name || "-"}</td>
                     <td>{Number(request.total_actual_distance_km || 0) > 0 ? `${request.total_actual_distance_km} km` : "-"}</td>
-                    <td>{formatCurrency(resolveFareValue(request.actual_price, request.estimated_price))}</td>
+                    <td>{formatCurrency(request.record_kind === "receipt" ? request.receipt_amount : resolveFareValue(request.actual_price, request.estimated_price))}</td>
                     <td>
                       <span className={`trip-status status-${normalizeStatus(request.status)}`}>
                         {request.status}
@@ -845,21 +1219,45 @@ export default function CoordinatorPage({ user, onLogout }) {
                     </td>
                     <td>
                       <div className="table-actions">
-                        <button
-                          className="assign-btn"
-                          type="button"
-                          onClick={() => openReceiptModal(request.id)}
-                        >
-                          Tao phieu thu
-                        </button>
-                        <button
-                          className="table-cancel-btn"
-                          type="button"
-                          disabled={receiptRejectingId === request.id}
-                          onClick={() => rejectReceiptRequest(request.id)}
-                        >
-                          {receiptRejectingId === request.id ? "..." : "X"}
-                        </button>
+                        {normalizeStatus(request.status) === "approved" ? (
+                          <button
+                            className="assign-btn"
+                            type="button"
+                            onClick={() => openReceiptModal(request.id)}
+                          >
+                            <EyeOutlined />
+                            Xem phieu thu
+                          </button>
+                        ) : normalizeStatus(request.status) === "rejected" ? (
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            onClick={() => openReceiptModal(request.id)}
+                            title="Xem chi tiet"
+                          >
+                            <EyeOutlined />
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              className="assign-btn"
+                              type="button"
+                              onClick={() => openReceiptModal(request.id)}
+                            >
+                              <FileTextOutlined />
+                              Tao phieu thu
+                            </button>
+                            <button
+                              className="table-cancel-btn"
+                              type="button"
+                              disabled={receiptRejectingId === request.id}
+                              onClick={() => rejectReceiptRequest(request.id)}
+                              title="Tu choi yeu cau"
+                            >
+                              {receiptRejectingId === request.id ? "..." : <CloseOutlined />}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -872,124 +1270,68 @@ export default function CoordinatorPage({ user, onLogout }) {
     </>
   );
 
+  const pageTitleMap = {
+    orders: "Dieu phoi don hang",
+    receipts: "Quan ly phieu thu",
+  };
+
+  const pageSubtitleMap = {
+    orders: "Theo doi don hang, dieu phoi chuyen xe va tao moi trong cung mot luong lam viec.",
+    receipts: "Xu ly yeu cau, xem phieu thu da tao va doi soat thong tin thu tien.",
+  };
+
   return (
-    <div className={`coordinator-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      <aside className="sidebar">
-        <div>
-          <div className="brand">
-            <div className="brand-mark">L</div>
-            {!sidebarCollapsed && (
-              <div>
-                <div className="brand-name">Logistics HQ</div>
-                <div className="brand-sub">Coordinator dashboard</div>
+    <div style={{ minHeight: "100vh", display: "flex", background: C.surface }}>
+      <AppSidebar
+        user={currentUser}
+        activeTab={activeView}
+        onTabChange={setActiveView}
+        collapsed={sidebarCollapsed}
+        onCollapse={setSidebarCollapsed}
+      />
+
+      <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <AppHeader
+          user={currentUser}
+          onLogout={handleLogout}
+          onProfileUpdated={handleProfileUpdated}
+        />
+
+        <section style={{ padding: 24, flex: 1, overflow: "auto" }}>
+          <div className="coordinator-shell coordinator-content-shell">
+            <div style={{ marginBottom: 20 }}>
+              <Title level={3} style={{ margin: 0, color: C.onSurface }}>
+                {pageTitleMap[activeView] || "Coordinator"}
+              </Title>
+              <Text style={{ color: C.onSurfaceVariant }}>
+                {pageSubtitleMap[activeView] || "Dieu huong va theo doi nghiep vu coordinator."}
+              </Text>
+            </div>
+
+            <header className="topbar">
+              <div className="search-box">
+                <span className="search-icon"><SearchOutlined /></span>
+                <input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={activeView === "receipts"
+                    ? "Tim theo don, tai xe, khach hang, trang thai"
+                    : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
+                />
               </div>
-            )}
-          </div>
-          <button
-            className="sidebar-toggle"
-            type="button"
-            onClick={() => setSidebarCollapsed((value) => !value)}
-            aria-label={sidebarCollapsed ? "Mo rong sidebar" : "Thu gon sidebar"}
-            title={sidebarCollapsed ? "Mo rong sidebar" : "Thu gon sidebar"}
-          >
-            {sidebarCollapsed ? ">" : "<"}
-          </button>
-          <nav className="nav">
-            <button className={`nav-item ${activeView === "orders" ? "active" : ""}`} type="button" onClick={() => setActiveView("orders")}>
-              <span className="nav-icon">O</span><span className="nav-label">Don hang</span>
-            </button>
-            <button className={`nav-item ${activeView === "receipts" ? "active" : ""}`} type="button" onClick={() => setActiveView("receipts")}>
-              <span className="nav-icon">R</span><span className="nav-label">Phieu thu</span>
-            </button>
-          </nav>
-        </div>
-        <button className="nav-item nav-footer" onClick={handleLogout}>
-          <span className="nav-icon">L</span><span className="nav-label">Dang xuat</span>
-        </button>
-      </aside>
+              <div className="topbar-actions">
+                {activeView === "orders" && (
+                  <button className="primary-btn" onClick={openCreateModal}>
+                    <PlusOutlined />
+                    Tao moi
+                  </button>
+                )}
+              </div>
+            </header>
 
-      <main className="content">
-        <header className="topbar">
-          <div className="search-box">
-            <span className="search-icon">?</span>
-            <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={activeView === "receipts"
-                ? "Tim theo don, tai xe, khach hang, trang thai"
-                : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
-            />
+            {activeView === "orders" ? renderOrdersPanel() : renderReceiptManagement()}
           </div>
-          <div className="topbar-actions">
-            {activeView === "orders" && (
-              <button className="primary-btn" onClick={openCreateModal}>
-                + Tao moi
-              </button>
-            )}
-            <div className="notification-wrap">
-              <button className="icon-btn notification-btn" type="button" onClick={handleOpenNotifications} title="Thong bao">
-                <span>Bell</span>
-                {notificationUnreadCount > 0 && <span className="notification-count">{notificationUnreadCount > 9 ? "9+" : notificationUnreadCount}</span>}
-              </button>
-              {notificationMenuOpen && (
-                <div className="notification-menu">
-                  <div className="notification-menu-head">
-                    <strong>Thong bao Coordinator</strong>
-                    <span>{notificationUnreadCount} moi</span>
-                  </div>
-                  <div className="notification-menu-list">
-                    {notificationsLoading ? (
-                      <div className="notification-empty">Dang tai thong bao...</div>
-                    ) : notifications.length === 0 ? (
-                      <div className="notification-empty">Chua co thong bao.</div>
-                    ) : (
-                      notifications.map((notification) => (
-                        <div key={notification.id} className={`notification-item ${notification.is_read ? "" : "unread"}`}>
-                          <strong>{notification.title}</strong>
-                          <p>{notification.message || "-"}</p>
-                          <span>{formatNotificationTime(notification.created_at)}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="top-profile">
-              <button
-                className="profile-trigger"
-                type="button"
-                onClick={() => setProfileMenuOpen((value) => !value)}
-                title={currentUser?.email}
-              >
-                <span
-                  className="avatar"
-                  style={currentUser?.avatar_url ? {
-                    backgroundImage: `url(${currentUser.avatar_url})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                  } : undefined}
-                >
-                  {currentUser?.avatar_url ? "" : (currentUser?.full_name?.[0] || "A")}
-                </span>
-                <span className="profile-trigger-copy">
-                  <span className="profile-trigger-name">{currentUser?.full_name || "Coordinator"}</span>
-                  <span className="profile-trigger-role">Coordinator</span>
-                </span>
-              </button>
-              {profileMenuOpen && (
-                <div className="profile-menu">
-                  <div className="profile-menu-name">{currentUser?.full_name || currentUser?.email || "Coordinator"}</div>
-                  <div className="profile-menu-email">{currentUser?.email}</div>
-                  <button type="button" onClick={() => { setProfileMenuOpen(false); setProfileModalOpen(true); }}>Ho so ca nhan</button>
-                  <button type="button" onClick={handleLogout}>Dang xuat</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
-        {activeView === "orders" ? renderOrdersPanel() : renderReceiptManagement()}
+        </section>
 
         {createOpen && (
           <section className="modal-backdrop" onClick={closeOrderModal}>
@@ -1000,7 +1342,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   <p>{editingTrip ? "Cập nhật thông tin đơn hàng để điều phối chính xác." : "Fill the form based on the Excel sheet structure."}</p>
                 </div>
                 <button className="ghost-btn" type="button" onClick={closeOrderModal}>
-                  x
+                  <CloseOutlined />
                 </button>
               </div>
 
@@ -1066,6 +1408,24 @@ export default function CoordinatorPage({ user, onLogout }) {
                     />
                     {formErrors.cargo_weight_kg && (
                       <div className="field-error">{formErrors.cargo_weight_kg}</div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="form-row form-row-1">
+                  <label>
+                    <span>Khach ung truoc</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.prepaid_amount}
+                      onChange={(event) => updateField("prepaid_amount", event.target.value)}
+                      placeholder="VD: 500000"
+                      className={formErrors.prepaid_amount ? "input-error" : ""}
+                    />
+                    {formErrors.prepaid_amount && (
+                      <div className="field-error">{formErrors.prepaid_amount}</div>
                     )}
                   </label>
                 </div>
@@ -1222,11 +1582,11 @@ export default function CoordinatorPage({ user, onLogout }) {
                               placeholder={stopIndex === 0 ? 'Điểm lấy hàng' : `Điểm lấy #${stopIndex + 1}`}
                               style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
                             />
-                            <button type="button" onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}>×</button>
+                            <button type="button" onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}><CloseOutlined /></button>
                           </div>
                         ))}
                         <button type="button" onClick={() => addTripStop(index, 'pickup_addresses')} style={{ alignSelf: 'start', border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
-                          + Thêm điểm lấy
+                          <PlusOutlined /> Thêm điểm lấy
                         </button>
                       </div>
 
@@ -1252,11 +1612,11 @@ export default function CoordinatorPage({ user, onLogout }) {
                               placeholder={stopIndex === 0 ? 'Điểm giao hàng' : `Điểm giao #${stopIndex + 1}`}
                               style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
                             />
-                            <button type="button" onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}>×</button>
+                            <button type="button" onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}><CloseOutlined /></button>
                           </div>
                         ))}
                         <button type="button" onClick={() => addTripStop(index, 'delivery_addresses')} style={{ alignSelf: 'start', border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
-                          + Thêm điểm giao
+                          <PlusOutlined /> Thêm điểm giao
                         </button>
                       </div>
                     </div>
@@ -1274,7 +1634,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                     onClick={addTrip}
                     style={{ border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 14, padding: '10px 20px', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
                   >
-                    + Thêm chuyến
+                    <PlusOutlined /> Thêm chuyến
                   </button>
                   {totalFare > 0 && (
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f1d70' }}>
@@ -1320,7 +1680,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             <div className="modal-card receipt-modal-card" onClick={(event) => event.stopPropagation()}>
               <div className="panel-head">
                 <div>
-                  <h2>Tạo phiếu thu</h2>
+                  <h2>{isReceiptReadonly ? "Chi tiet phieu thu" : "Tao phieu thu"}</h2>
                   <p>
                     {selectedReceiptDetail?.request
                       ? `Yêu cầu #${selectedReceiptDetail.request.id} · Đơn #${selectedReceiptDetail.order?.id}`
@@ -1328,7 +1688,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                   </p>
                 </div>
                 <button className="ghost-btn" type="button" onClick={closeReceiptModal}>
-                  x
+                  <CloseOutlined />
                 </button>
               </div>
 
@@ -1427,15 +1787,20 @@ export default function CoordinatorPage({ user, onLogout }) {
                     </div>
 
                     <div className="receipt-section">
-                      <div className="sheet-caption full">Publish</div>
+                      <div className="sheet-caption full">{isReceiptReadonly ? "Thong tin phieu thu" : "Publish"}</div>
                       <div className="receipt-expense-head">
                         <div>
                           <strong>Chi phí đơn hàng</strong>
-                          <p>Quản lý toàn bộ chi phí của đơn hàng và thêm khoản mới ngay bên dưới.</p>
+                          <p>{isReceiptReadonly
+                            ? "Xem lai chi phi da ghi nhan va tong hop phieu thu."
+                            : "Quan ly toan bo chi phi cua don hang va them khoan moi ngay ben duoi."}</p>
                         </div>
-                        <button type="button" className="assign-btn" onClick={addReceiptExpense}>
-                          + Thêm chi phí
-                        </button>
+                        {!isReceiptReadonly && (
+                          <button type="button" className="assign-btn" onClick={addReceiptExpense}>
+                            <PlusOutlined />
+                            Them chi phi
+                          </button>
+                        )}
                       </div>
                       <div className="receipt-expense-list">
                         {(selectedReceiptDetail.expenses || []).map((expense) => (
@@ -1451,7 +1816,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                           </div>
                         ))}
 
-                        {receiptForm.expenses.map((expense, index) => (
+                        {!isReceiptReadonly && receiptForm.expenses.map((expense, index) => (
                           <div key={`expense-${index}`} className="receipt-expense-editor">
                             <div className="receipt-expense-editor-grid">
                               <label>
@@ -1499,7 +1864,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                               </label>
                             </div>
                             <button type="button" className="table-cancel-btn" onClick={() => removeReceiptExpense(index)}>
-                              ×
+                              <CloseOutlined />
                             </button>
                           </div>
                         ))}
@@ -1511,12 +1876,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <span className="receipt-info-label">Ghi chú phiếu thu</span>
                             <strong>Thông tin nội bộ cho coordinator</strong>
                           </div>
-                          <span className="receipt-field-chip">Optional</span>
+                          <span className="receipt-field-chip">{isReceiptReadonly ? (selectedReceiptDetail?.request?.status || "-") : "Optional"}</span>
                         </div>
                         <textarea
                           className="receipt-notes-textarea"
-                          value={receiptForm.notes}
+                          value={isReceiptReadonly ? (selectedReceiptDetail?.request?.coordinator_notes || "") : receiptForm.notes}
                           onChange={(event) => updateReceiptField("notes", event.target.value)}
+                          readOnly={isReceiptReadonly}
                           placeholder="Ví dụ: đối soát theo km thực tế, thêm chi phí cầu đường..."
                         />
                       </div>
@@ -1537,22 +1903,17 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <button type="button" className="filter" onClick={closeReceiptModal}>
                       Đóng
                     </button>
+                    {!isReceiptReadonly && (
                     <button type="button" className="primary-btn" disabled={receiptPublishing} onClick={publishReceipt}>
                       {receiptPublishing ? "Đang publish..." : "Publish receipt"}
                     </button>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           </section>
         )}
-
-
-        <ProfileModal
-          open={profileModalOpen}
-          onClose={() => setProfileModalOpen(false)}
-          onProfileUpdated={handleProfileUpdated}
-        />
       </main>
     </div>
   );

@@ -17,6 +17,11 @@ const parsePositiveAmount = (value, fieldName) => {
     return parsed;
 };
 
+const buildMaintenanceVerificationMessage = (vehicle) => {
+    const vehicleLabel = vehicle?.plate_number ? `xe ${vehicle.plate_number}` : 'xe vua bao duong';
+    return `Tai xe da hoan tat bao duong ${vehicleLabel}. Vui long kiem tra hoa don va xac nhan.`;
+};
+
 const getAllDrivers = async () => driverRepository.getAllDrivers();
 
 const listMaintenanceForDriver = async (driverId) => {
@@ -98,25 +103,38 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
         cost,
     });
 
-    // Notify manager role via WS for real-time dashboard update
+    const vehicle = await vehicleManagementRepository.getVehicleById(parsedVehicleId);
+    const notificationMessage = buildMaintenanceVerificationMessage(vehicle);
+
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.vehicles.changed',
+        action: 'maintenance_completed',
+        vehicleId: parsedVehicleId,
+        maintenanceRecordId: record.id,
+        status: vehicle?.status ?? 'maintenance',
+    });
+
     notificationGateway.broadcastToRole('manager', {
         type: 'maintenance.completed',
         vehicleId: parsedVehicleId,
         maintenanceRecordId: record.id,
+        message: notificationMessage,
     });
 
-    // Persistent notification for the manager who created the record
-    if (record.created_by) {
-        try {
-            await notificationService.createForUser(record.created_by, {
-                title: 'Tài xế đã hoàn tất bảo dưỡng',
-                message: 'Tài xế đã bảo dưỡng xong và tải lên hóa đơn. Vui lòng kiểm tra và xác nhận.',
+    try {
+        const managerIds = await notificationService.getUserIdsByRole('manager');
+        if (managerIds.length > 0) {
+            await notificationService.createForUsers(managerIds, {
+                title: 'Tai xe da hoan tat bao duong',
+                message: notificationMessage,
                 type: 'MAINTENANCE_COMPLETED',
                 entityType: 'vehicle',
                 entityId: parsedVehicleId,
                 displayMode: 'alert',
             });
-        } catch { /* notification failure must not abort the main flow */ }
+        }
+    } catch {
+        // Notification failure must not abort the main flow.
     }
 
     return { maintenanceRecordId: record.id };

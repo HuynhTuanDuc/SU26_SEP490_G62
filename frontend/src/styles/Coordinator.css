@@ -8,6 +8,16 @@
   overflow-x: hidden;
 }
 
+.coordinator-content-shell {
+  min-height: auto;
+  display: block;
+  grid-template-columns: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  overflow: visible;
+}
+
 .coordinator-shell .sidebar {
   display: flex;
   flex-direction: column;
@@ -85,6 +95,17 @@
   border-radius: 18px;
   background: rgba(255,255,255,0.72);
 }
+.coordinator-shell .search-icon,
+.coordinator-shell .nav-icon,
+.coordinator-shell .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.coordinator-shell .search-icon {
+  color: #5d6780;
+  font-size: 16px;
+}
 .coordinator-shell .search-box input { border: 0; outline: 0; flex: 1; background: transparent; font-size: 15px; }
 .coordinator-shell .topbar-actions { display: flex; align-items: center; gap: 14px; }
 .coordinator-shell .icon-btn {
@@ -143,7 +164,8 @@
   margin-top: 22px;
 }
 
-.coordinator-shell .filter-field input {
+.coordinator-shell .filter-field input,
+.coordinator-shell .filter-field select {
   height: 45.6px;
   min-height: 45.6px;
   border: 1px solid rgba(20, 30, 70, 0.14);
@@ -179,9 +201,13 @@
 
 
 
-.coordinator-shell .filter-field input:focus {
+.coordinator-shell .filter-field input:focus,
+.coordinator-shell .filter-field select:focus {
   border-color: #18227f;
   box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
+}
+.coordinator-shell .receipt-filters {
+  justify-content: flex-end;
 }
 .coordinator-shell .notice {
   margin-bottom: 16px;
@@ -898,7 +924,7 @@
   display: inline-flex;
   width: 20px;
   justify-content: center;
-  font-weight: 800;
+  font-size: 16px;
 }
 
 .coordinator-shell.sidebar-collapsed .sidebar {
@@ -924,8 +950,22 @@
 
 .coordinator-shell .notification-btn {
   position: relative;
-  min-width: 88px;
+  min-width: 52px;
   font-weight: 700;
+}
+
+.coordinator-shell .receipt-table-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef1ff;
+  color: #314096;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .coordinator-shell .notification-count {
