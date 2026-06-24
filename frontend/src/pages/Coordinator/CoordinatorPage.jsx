@@ -2,14 +2,16 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import "../../styles/Coordinator.css";
-import { Typography, message as toast } from "antd";
+import { Button, Input, Segmented, Tooltip, Typography, message as toast } from "antd";
 import {
   CloseOutlined,
+  DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
   MinusOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import AppHeader from "../../components/layout/AppHeader";
@@ -95,6 +97,11 @@ const STATUS_QUERY = {
   new: "available",
   waiting: "claimed,picking,loaded,transit,arrived,returning",
 };
+const ORDER_STATUS_FILTERS = [
+  { label: "Tat ca", value: "all" },
+  { label: "Moi", value: "new" },
+  { label: "Dang xu ly", value: "waiting" },
+];
 const canCancelTrip = (trip) => {
   const statuses = Array.isArray(trip.trips) && trip.trips.length > 0
     ? trip.trips.map((item) => normalizeStatus(item.status))
@@ -258,7 +265,8 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(user);
   const [activeView, setActiveView] = useState("orders");
   const [activeTab, setActiveTab] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [orderSearchQuery, setOrderSearchQuery] = useState("");
+  const [receiptSearchQuery, setReceiptSearchQuery] = useState("");
   const [trips, setTrips] = useState([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingTrip, setEditingTrip] = useState(null);
@@ -298,7 +306,8 @@ export default function CoordinatorPage({ user, onLogout }) {
     });
   };
 
-  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const deferredOrderSearchQuery = useDeferredValue(orderSearchQuery);
+  const deferredReceiptSearchQuery = useDeferredValue(receiptSearchQuery);
 
 
 
@@ -328,7 +337,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         page: String(page),
         limit: String(pagination.limit),
       });
-      if (deferredSearchQuery.trim()) params.set("search", deferredSearchQuery.trim());
+      if (deferredReceiptSearchQuery.trim()) params.set("search", deferredReceiptSearchQuery.trim());
       if (STATUS_QUERY[activeTab]) params.set("status", STATUS_QUERY[activeTab]);
       if (dateFromFilter) params.set("dateFrom", dateFromFilter);
       if (dateToFilter) params.set("dateTo", dateToFilter);
@@ -345,8 +354,9 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   useEffect(() => {
+    if (activeView !== "orders") return;
     loadOrders(1);
-  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearchQuery]);
+  }, [activeView, activeTab, customerFilter, dateFromFilter, dateToFilter, deferredOrderSearchQuery]);
 
   useEffect(() => {
     const loadVehicleGroups = async () => {
@@ -382,7 +392,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       const params = new URLSearchParams();
       if (receiptKindFilter !== "all") params.set("kind", receiptKindFilter);
       if (receiptStatusFilter !== "all") params.set("status", receiptStatusFilter);
-      if (deferredSearchQuery.trim()) params.set("search", deferredSearchQuery.trim());
+      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim());
       if (receiptDateFromFilter) params.set("dateFrom", receiptDateFromFilter);
       if (receiptDateToFilter) params.set("dateTo", receiptDateToFilter);
 
@@ -400,23 +410,23 @@ export default function CoordinatorPage({ user, onLogout }) {
   useEffect(() => {
     if (activeView !== "receipts") return;
     loadReceiptRequests();
-  }, [activeView, receiptKindFilter, receiptStatusFilter, receiptDateFromFilter, receiptDateToFilter, deferredSearchQuery]);
+  }, [activeView, receiptKindFilter, receiptStatusFilter, receiptDateFromFilter, receiptDateToFilter, deferredReceiptSearchQuery]);
 
   useRoleRealtime(currentUser, {
     onMessage: (payload) => {
       if (!payload?.type) return;
 
       if (
-        payload.type === "coordinator.receipt_requests.changed" ||
-        payload.type === "notification.created"
+        activeView === "receipts" &&
+        (
+          payload.type === "coordinator.receipt_requests.changed" ||
+          payload.type === "notification.created"
+        )
       ) {
         loadReceiptRequests();
       }
 
-      if (
-        payload.type === "coordinator.orders.changed" ||
-        payload.type === "coordinator.receipt_requests.changed"
-      ) {
+      if (activeView === "orders" && payload.type === "coordinator.orders.changed") {
         loadOrders(pagination.page);
       }
     },
@@ -963,9 +973,11 @@ export default function CoordinatorPage({ user, onLogout }) {
               placeholder="Loc theo khach hang"
             />
           </label>
-          <button
-            type="button"
-            className="filter"
+          <Button
+            style={{ marginTop: 20 }}
+            type="default"
+            icon={<ReloadOutlined />}
+            className="coordinator-secondary-btn"
             onClick={() => {
               setDateFromFilter("");
               setDateToFilter("");
@@ -973,25 +985,14 @@ export default function CoordinatorPage({ user, onLogout }) {
             }}
           >
             Xoa loc
-          </button>
-          <button
-            className={activeTab === "all" ? "filter active" : "filter"}
-            onClick={() => setActiveTab("all")}
-          >
-            Tat ca
-          </button>
-          <button
-            className={activeTab === "new" ? "filter active" : "filter"}
-            onClick={() => setActiveTab("new")}
-          >
-            Moi
-          </button>
-          <button
-            className={activeTab === "waiting" ? "filter active" : "filter"}
-            onClick={() => setActiveTab("waiting")}
-          >
-            Dang xu ly
-          </button>
+          </Button>
+          <Segmented
+            style={{ minHeight: 35 }}
+            className="coordinator-status-segmented"
+            options={ORDER_STATUS_FILTERS}
+            value={activeTab}
+            onChange={setActiveTab}
+          />
         </div>
       </section>
 
@@ -1036,14 +1037,15 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <tr className={shouldHighlightNoCheckIn(trip) ? "row-no-checkin" : ""}>
                       <td>
                         {trip.trips && trip.trips.length > 1 && (
-                          <button
-                            onClick={() => toggleRow(trip.id)}
-                            className="expand-btn"
-                            type="button"
-                            title={expandedRows.has(trip.id) ? "Thu gon" : "Mo rong"}
-                          >
-                            {expandedRows.has(trip.id) ? <MinusOutlined /> : <PlusOutlined />}
-                          </button>
+                          <Tooltip title={expandedRows.has(trip.id) ? "Thu gon" : "Mo rong"}>
+                            <Button
+                              onClick={() => toggleRow(trip.id)}
+                              className="coordinator-table-icon-btn"
+                              type="text"
+                              size="small"
+                              icon={expandedRows.has(trip.id) ? <MinusOutlined /> : <PlusOutlined />}
+                            />
+                          </Tooltip>
                         )}
                         <span className="trip-id">#{trip.orderId}</span>
                       </td>
@@ -1062,17 +1064,24 @@ export default function CoordinatorPage({ user, onLogout }) {
                       </td>
                       <td>
                         <div className="table-actions">
-                          <button className="table-edit-btn" type="button" onClick={() => openEditModal(trip)}>
-                            <EditOutlined />
-                          </button>
-                          <button
-                            className="table-cancel-btn"
-                            type="button"
-                            disabled={!canCancelTrip(trip)}
-                            onClick={() => handleCancelOrder(trip)}
-                          >
-                            <CloseOutlined />
-                          </button>
+                          <Tooltip title="Chinh sua don">
+                            <Button
+                              className="coordinator-table-icon-btn"
+                              type="text"
+                              icon={<EditOutlined />}
+                              onClick={() => openEditModal(trip)}
+                            />
+                          </Tooltip>
+                          <Tooltip title="Huy don">
+                            <Button
+                              className="coordinator-table-icon-btn coordinator-table-icon-btn-danger"
+                              type="text"
+                              danger
+                              icon={<CloseOutlined />}
+                              disabled={!canCancelTrip(trip)}
+                              onClick={() => handleCancelOrder(trip)}
+                            />
+                          </Tooltip>
                         </div>
                       </td>
                     </tr>
@@ -1156,9 +1165,15 @@ export default function CoordinatorPage({ user, onLogout }) {
               onChange={(event) => setReceiptDateToFilter(event.target.value)}
             />
           </label>
-          <button type="button" className="filter" onClick={resetReceiptFilters}>
+          <Button
+            style={{ marginTop: 20 }}
+            type="default"
+            icon={<ReloadOutlined />}
+            className="coordinator-secondary-btn"
+            onClick={resetReceiptFilters}
+          >
             Xoa loc
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -1220,42 +1235,43 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <td>
                       <div className="table-actions">
                         {normalizeStatus(request.status) === "approved" ? (
-                          <button
-                            className="assign-btn"
-                            type="button"
+                          <Button
+                            className="coordinator-primary-btn"
+                            type="primary"
+                            icon={<EyeOutlined />}
                             onClick={() => openReceiptModal(request.id)}
                           >
-                            <EyeOutlined />
                             Xem phieu thu
-                          </button>
+                          </Button>
                         ) : normalizeStatus(request.status) === "rejected" ? (
-                          <button
-                            className="icon-btn"
-                            type="button"
-                            onClick={() => openReceiptModal(request.id)}
-                            title="Xem chi tiet"
-                          >
-                            <EyeOutlined />
-                          </button>
+                          <Tooltip title="Xem chi tiet">
+                            <Button
+                              className="coordinator-table-icon-btn"
+                              type="text"
+                              icon={<EyeOutlined />}
+                              onClick={() => openReceiptModal(request.id)}
+                            />
+                          </Tooltip>
                         ) : (
                           <>
-                            <button
-                              className="assign-btn"
-                              type="button"
+                            <Button
+                              className="coordinator-primary-btn"
+                              type="primary"
+                              icon={<FileTextOutlined />}
                               onClick={() => openReceiptModal(request.id)}
                             >
-                              <FileTextOutlined />
                               Tao phieu thu
-                            </button>
-                            <button
-                              className="table-cancel-btn"
-                              type="button"
-                              disabled={receiptRejectingId === request.id}
-                              onClick={() => rejectReceiptRequest(request.id)}
-                              title="Tu choi yeu cau"
-                            >
-                              {receiptRejectingId === request.id ? "..." : <CloseOutlined />}
-                            </button>
+                            </Button>
+                            <Tooltip title="Tu choi yeu cau">
+                              <Button
+                                className="coordinator-table-icon-btn coordinator-table-icon-btn-danger"
+                                type="text"
+                                danger
+                                loading={receiptRejectingId === request.id}
+                                icon={receiptRejectingId === request.id ? null : <CloseOutlined />}
+                                onClick={() => rejectReceiptRequest(request.id)}
+                              />
+                            </Tooltip>
                           </>
                         )}
                       </div>
@@ -1278,6 +1294,14 @@ export default function CoordinatorPage({ user, onLogout }) {
   const pageSubtitleMap = {
     orders: "Theo doi don hang, dieu phoi chuyen xe va tao moi trong cung mot luong lam viec.",
     receipts: "Xu ly yeu cau, xem phieu thu da tao va doi soat thong tin thu tien.",
+  };
+  const activeSearchQuery = activeView === "receipts" ? receiptSearchQuery : orderSearchQuery;
+  const handleSearchQueryChange = (value) => {
+    if (activeView === "receipts") {
+      setReceiptSearchQuery(value);
+      return;
+    }
+    setOrderSearchQuery(value);
   };
 
   return (
@@ -1309,22 +1333,22 @@ export default function CoordinatorPage({ user, onLogout }) {
             </div>
 
             <header className="topbar">
-              <div className="search-box">
-                <span className="search-icon"><SearchOutlined /></span>
-                <input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={activeView === "receipts"
-                    ? "Tim theo don, tai xe, khach hang, trang thai"
-                    : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
-                />
-              </div>
+              <Input
+                size="large"
+                allowClear
+                prefix={<SearchOutlined />}
+                className="coordinator-search-input"
+                value={activeSearchQuery}
+                onChange={(event) => handleSearchQueryChange(event.target.value)}
+                placeholder={activeView === "receipts"
+                  ? "Tim theo don, tai xe, khach hang, trang thai"
+                  : "Ten san pham, diem lay hang, giao hang, tai xe, trang thai"}
+              />
               <div className="topbar-actions">
                 {activeView === "orders" && (
-                  <button className="primary-btn" onClick={openCreateModal}>
-                    <PlusOutlined />
+                  <Button className="coordinator-primary-btn" type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
                     Tao moi
-                  </button>
+                  </Button>
                 )}
               </div>
             </header>
@@ -1336,14 +1360,17 @@ export default function CoordinatorPage({ user, onLogout }) {
         {createOpen && (
           <section className="modal-backdrop" onClick={closeOrderModal}>
             <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-              <div className="panel-head">
+              <div className="panel-head" style={{ padding: "16px 24px", borderBottom: "1px solid #e0e6ed", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <h2>{editingTrip ? `Chỉnh sửa đơn #${editingTrip.orderId}` : "Tạo đơn"}</h2>
                   <p>{editingTrip ? "Cập nhật thông tin đơn hàng để điều phối chính xác." : "Fill the form based on the Excel sheet structure."}</p>
                 </div>
-                <button className="ghost-btn" type="button" onClick={closeOrderModal}>
-                  <CloseOutlined />
-                </button>
+                <Button
+                  className="coordinator-modal-close-btn"
+                  type="text"
+                  icon={<CloseOutlined />}
+                  onClick={closeOrderModal}
+                />
               </div>
 
               <form className="create-form" onSubmit={handleCreateOrder}>
@@ -1414,7 +1441,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
                 <div className="form-row form-row-1">
                   <label>
-                    <span>Khach ung truoc</span>
+                    <span>Khách trả trước</span>
                     <input
                       type="number"
                       min="0"
@@ -1431,23 +1458,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                 </div>
 
                 <div className="form-row full" style={{ marginTop: 12, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button
-                    type="button"
+                  <Button
+                    type={form.is_partner ? "primary" : "default"}
+                    className={form.is_partner ? "coordinator-primary-btn" : "coordinator-secondary-btn"}
                     onClick={() => updateField("is_partner", !form.is_partner)}
-                    style={{
-                      border: '1px solid #cfd6e6',
-                      background: form.is_partner ? '#18227f' : '#fff',
-                      color: form.is_partner ? '#fff' : '#2a3144',
-                      borderRadius: 14,
-                      padding: '11px 14px',
-                      cursor: 'pointer',
-                      font: 'inherit',
-                      fontWeight: 700,
-                      whiteSpace: 'nowrap',
-                    }}
                   >
                     Đơn từ đối tác liên kết
-                  </button>
+                  </Button>
                 </div>
 
                 {form.is_partner && (
@@ -1485,13 +1502,15 @@ export default function CoordinatorPage({ user, onLogout }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <strong style={{ color: '#18227f', fontSize: 13 }}>Chuyến {index + 1}</strong>
                       {form.trips.length > 1 && (
-                        <button
-                          type="button"
+                        <Button
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          className="coordinator-danger-text-btn"
                           onClick={() => removeTrip(index)}
-                          style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}
                         >
                           Xóa
-                        </button>
+                        </Button>
                       )}
                     </div>
 
@@ -1574,7 +1593,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <div className="field-error">{formErrors[`trip_${index}_pickup_address`]}</div>
                           )}
                         </label>
-                        {(trip.pickup_addresses || [trip.pickup_address]).map((address, stopIndex) => (
+                        {(trip.pickup_addresses || [trip.pickup_address]).slice(1).map((address, extraIndex) => {
+                          const stopIndex = extraIndex + 1;
+                          return (
                           <div key={`pickup-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
                             <input
                               value={address || ""}
@@ -1582,12 +1603,19 @@ export default function CoordinatorPage({ user, onLogout }) {
                               placeholder={stopIndex === 0 ? 'Điểm lấy hàng' : `Điểm lấy #${stopIndex + 1}`}
                               style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
                             />
-                            <button type="button" onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}><CloseOutlined /></button>
+                            <Button
+                              type="text"
+                              danger
+                              icon={<CloseOutlined />}
+                              className="coordinator-stop-remove-btn"
+                              onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)}
+                            />
                           </div>
-                        ))}
-                        <button type="button" onClick={() => addTripStop(index, 'pickup_addresses')} style={{ alignSelf: 'start', border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+                          );
+                        })}
+                        <Button type="dashed" className="coordinator-dashed-btn" onClick={() => addTripStop(index, 'pickup_addresses')}>
                           <PlusOutlined /> Thêm điểm lấy
-                        </button>
+                        </Button>
                       </div>
 
                       <div style={{ display: 'grid', gap: 8 }}>
@@ -1604,7 +1632,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                             <div className="field-error">{formErrors[`trip_${index}_delivery_address`]}</div>
                           )}
                         </label>
-                        {(trip.delivery_addresses || [trip.delivery_address]).map((address, stopIndex) => (
+                        {(trip.delivery_addresses || [trip.delivery_address]).slice(1).map((address, extraIndex) => {
+                          const stopIndex = extraIndex + 1;
+                          return (
                           <div key={`delivery-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
                             <input
                               value={address || ""}
@@ -1612,30 +1642,35 @@ export default function CoordinatorPage({ user, onLogout }) {
                               placeholder={stopIndex === 0 ? 'Điểm giao hàng' : `Điểm giao #${stopIndex + 1}`}
                               style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
                             />
-                            <button type="button" onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)} style={{ border: 'none', background: '#fee2e2', color: '#b91c1c', borderRadius: 10, padding: '0 12px', cursor: 'pointer' }}><CloseOutlined /></button>
+                            <Button
+                              type="text"
+                              danger
+                              icon={<CloseOutlined />}
+                              className="coordinator-stop-remove-btn"
+                              onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)}
+                            />
                           </div>
-                        ))}
-                        <button type="button" onClick={() => addTripStop(index, 'delivery_addresses')} style={{ alignSelf: 'start', border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+                          );
+                        })}
+                        <Button type="dashed" className="coordinator-dashed-btn" onClick={() => addTripStop(index, 'delivery_addresses')}>
                           <PlusOutlined /> Thêm điểm giao
-                        </button>
+                        </Button>
                       </div>
                     </div>
-                    {getTripFare(trip) && (
-                      <div style={{ fontSize: 13, color: '#18227f', fontWeight: 600 }}>
-                        Cước: {Number(getTripFare(trip)).toLocaleString('vi-VN')} đ
-                      </div>
-                    )}
+                    <div style={{ fontSize: 13, color: '#18227f', fontWeight: 600 }}>
+                      Cước xe: {Number(getTripFare(trip) || 0).toLocaleString('vi-VN')} đ
+                    </div>
                   </div>
                 ))}
 
                 <div className="full" style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
-                  <button
-                    type="button"
+                  <Button
+                    type="dashed"
+                    className="coordinator-dashed-btn"
                     onClick={addTrip}
-                    style={{ border: '1px dashed #18227f', background: '#eef1ff', color: '#18227f', borderRadius: 14, padding: '10px 20px', cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
                   >
                     <PlusOutlined /> Thêm chuyến
-                  </button>
+                  </Button>
                   {totalFare > 0 && (
                     <div style={{ fontWeight: 700, fontSize: 15, color: '#0f1d70' }}>
                       Tổng cước: {totalFare.toLocaleString('vi-VN')} đ
@@ -1663,12 +1698,12 @@ export default function CoordinatorPage({ user, onLogout }) {
                 )}
 
                 <div className="form-actions full">
-                  <button type="button" className="filter" onClick={closeOrderModal}>
+                  <Button type="default" className="coordinator-secondary-btn" onClick={closeOrderModal}>
                     Cancel
-                  </button>
-                  <button type="submit" className="primary-btn" disabled={creating}>
+                  </Button>
+                  <Button type="primary" className="coordinator-primary-btn" htmlType="submit" loading={creating}>
                     {creating ? (editingTrip ? "Updating..." : "Creating...") : (editingTrip ? "Update" : "Create")}
-                  </button>
+                  </Button>
                 </div>
               </form>
             </div>
@@ -1687,9 +1722,12 @@ export default function CoordinatorPage({ user, onLogout }) {
                       : "Đang tải thông tin yêu cầu phiếu thu"}
                   </p>
                 </div>
-                <button className="ghost-btn" type="button" onClick={closeReceiptModal}>
-                  <CloseOutlined />
-                </button>
+                <Button
+                  className="coordinator-modal-close-btn"
+                  type="text"
+                  icon={<CloseOutlined />}
+                  onClick={closeReceiptModal}
+                />
               </div>
 
               {receiptDetailLoading || !selectedReceiptDetail ? (
@@ -1796,10 +1834,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                             : "Quan ly toan bo chi phi cua don hang va them khoan moi ngay ben duoi."}</p>
                         </div>
                         {!isReceiptReadonly && (
-                          <button type="button" className="assign-btn" onClick={addReceiptExpense}>
-                            <PlusOutlined />
+                          <Button type="primary" className="coordinator-primary-btn" icon={<PlusOutlined />} onClick={addReceiptExpense}>
                             Them chi phi
-                          </button>
+                          </Button>
                         )}
                       </div>
                       <div className="receipt-expense-list">
@@ -1863,9 +1900,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                                 />
                               </label>
                             </div>
-                            <button type="button" className="table-cancel-btn" onClick={() => removeReceiptExpense(index)}>
-                              <CloseOutlined />
-                            </button>
+                            <Button
+                              type="text"
+                              danger
+                              icon={<CloseOutlined />}
+                              className="coordinator-table-icon-btn coordinator-table-icon-btn-danger"
+                              onClick={() => removeReceiptExpense(index)}
+                            />
                           </div>
                         ))}
                       </div>
@@ -1900,13 +1941,13 @@ export default function CoordinatorPage({ user, onLogout }) {
                     </div>
                   </div>
                   <div className="form-actions full">
-                    <button type="button" className="filter" onClick={closeReceiptModal}>
+                    <Button type="default" className="coordinator-secondary-btn" onClick={closeReceiptModal}>
                       Đóng
-                    </button>
+                    </Button>
                     {!isReceiptReadonly && (
-                    <button type="button" className="primary-btn" disabled={receiptPublishing} onClick={publishReceipt}>
-                      {receiptPublishing ? "Đang publish..." : "Publish receipt"}
-                    </button>
+                      <Button type="primary" className="coordinator-primary-btn" loading={receiptPublishing} onClick={publishReceipt}>
+                        {receiptPublishing ? "Đang publish..." : "Publish receipt"}
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1919,3 +1960,4 @@ export default function CoordinatorPage({ user, onLogout }) {
   );
 
 }
+

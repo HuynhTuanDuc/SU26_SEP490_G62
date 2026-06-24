@@ -33,7 +33,6 @@ const MENU_CONFIG = {
     { key: 'settings', Icon: Settings, label: 'Cai dat', disabled: true },
   ],
   coordinator: [
-    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tong quan', disabled: true },
     { key: 'orders', Icon: Truck, label: 'Don hang' },
     { key: 'receipts', Icon: FileText, label: 'Phieu thu' },
   ],
