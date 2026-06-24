@@ -91,3 +91,6 @@ scratch/
 
 # Personal accountant notes (not for team)
 docs/accountant-business-notes.md
+
+# SPEC documents (personal)
+docs/SPEC-accountant.md

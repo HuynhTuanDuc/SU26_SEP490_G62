@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const orderRepository = require('../repositories/orderRepository');
 const vehicleRepository = require('../repositories/vehicleManagementRepository');
 const expenseRepository = require('../repositories/expenseRepository');
+const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 
 const COLUMN_ALIASES = {
@@ -194,6 +195,15 @@ const parseRoute = (routeStr) => {
 };
 
 const listVehicleGroups = async () => orderRepository.listCoordinatorVehicleGroups();
+
+const listPartners = async () => {
+  const result = await pool.query(
+    `SELECT id, company_name, contact_person, phone
+     FROM partners
+     ORDER BY company_name ASC`,
+  );
+  return result.rows;
+};
 
 const importExcel = async (userId, fileBuffer) => {
   if (!fileBuffer) throw new Error('Thiếu file Excel');
@@ -572,6 +582,15 @@ const computeReceiptAmount = (pricingSnapshot) => {
     };
 };
 
+const broadcastCoordinatorReceiptRequestChange = (action, requestId, orderId) => {
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.receipt_requests.changed',
+        action,
+        requestId,
+        orderId,
+    });
+};
+
 // GET danh sách yêu cầu phiếu thu (mặc định: pending + processing)
 const getReceiptRequests = async ({ status = null } = {}) => {
     const conditions = [];
@@ -869,6 +888,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             entityId: req.order_id,
         }, { displayMode: 'alert' }).catch(() => {});
 
+        broadcastCoordinatorReceiptRequestChange('approved', requestId, req.order_id);
         const detail = await getReceiptRequestDetail(requestId);
         return {
             total_actual_price: detail.summary.total_actual_price,
@@ -910,14 +930,16 @@ const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) =>
         entityId: req.order_id,
     }, { displayMode: 'alert' }).catch(() => {});
 
+    broadcastCoordinatorReceiptRequestChange('rejected', requestId, req.order_id);
     return { success: true };
 };
 
 module.exports = {
-    importExcel,
-    listVehicleGroups,
-    getReceiptRequests,
-    getReceiptRequestDetail,
-    approveReceiptRequest,
+  importExcel,
+  listVehicleGroups,
+  listPartners,
+  getReceiptRequests,
+  getReceiptRequestDetail,
+  approveReceiptRequest,
     rejectReceiptRequest,
 };

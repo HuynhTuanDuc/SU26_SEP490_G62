@@ -42,6 +42,13 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     const nextBillPics = [...currentBillPics, billUrl];
     await vehicleManagementRepository.updateMaintenanceBillPics(record.id, nextBillPics);
 
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.vehicles.changed',
+        action: 'maintenance_bill_uploaded',
+        vehicleId: parsedVehicleId,
+        maintenanceRecordId: record.id,
+    });
+
     return { maintenanceRecordId: record.id, bill_pics: nextBillPics };
 };
 

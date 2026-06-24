@@ -122,6 +122,16 @@ const driverHasUnverifiedMaintenance = (driver) => Number(driver?.unverified_mai
 
 const driverHasActiveShipments = (driver) => Number(driver?.active_shipment_count || 0) > 0;
 
+const broadcastManagerVehicleChange = (action, vehicle, extra = {}) => {
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.vehicles.changed',
+        action,
+        vehicleId: vehicle?.id ?? null,
+        status: vehicle?.status ?? null,
+        ...extra,
+    });
+};
+
 const normalizeVehiclePayload = async (payload = {}, { vehicleId = null, existingVehicle = null } = {}) => {
     const plateNumber = String(payload.plate_number || '').trim();
     if (!plateNumber) throw createError('plate_number is required', 400);
@@ -337,7 +347,9 @@ const createVehicle = async (payload) => {
         ...normalizedPayload,
         status: 'active',
     });
-    return getVehicleDetail(vehicleId);
+    const vehicle = await getVehicleDetail(vehicleId);
+    broadcastManagerVehicleChange('created', vehicle);
+    return vehicle;
 };
 
 const updateVehicle = async (vehicleId, payload) => {
@@ -366,7 +378,9 @@ const updateVehicle = async (vehicleId, payload) => {
     }
 
     await vehicleManagementRepository.updateVehicle(id, normalizedPayload);
-    return getVehicleDetail(id);
+    const vehicle = await getVehicleDetail(id);
+    broadcastManagerVehicleChange('updated', vehicle);
+    return vehicle;
 };
 
 const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
@@ -444,7 +458,11 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         } catch { /* notification failure must not abort the main flow */ }
     }
 
-    return getVehicleDetail(vehicle.id);
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange('sent_to_maintenance', updatedVehicle, {
+        maintenanceRecordId: maintenanceResult?.maintenanceId ?? null,
+    });
+    return updatedVehicle;
 };
 
 const completeMaintenance = async (vehicleId, managerId, payload = {}) => {
@@ -465,7 +483,9 @@ const completeMaintenance = async (vehicleId, managerId, payload = {}) => {
         performedBy,
     });
 
-    return getVehicleDetail(vehicle.id);
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange('maintenance_completed', updatedVehicle);
+    return updatedVehicle;
 };
 
 const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
@@ -500,7 +520,9 @@ const verifyMaintenance = async (vehicleId, managerId, payload = {}) => {
         throw err;
     }
 
-    return getVehicleDetail(vehicle.id);
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange('maintenance_verified', updatedVehicle);
+    return updatedVehicle;
 };
 
 const markVehicleAsBroken = async (vehicleId, managerId, payload = {}) => {
@@ -532,7 +554,9 @@ const markVehicleAsBroken = async (vehicleId, managerId, payload = {}) => {
         note: normalizeString(payload.note) || description,
     });
 
-    return getVehicleDetail(vehicle.id);
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange('marked_broken', updatedVehicle);
+    return updatedVehicle;
 };
 
 const restoreVehicle = async (vehicleId, managerId, payload = {}) => {
@@ -546,7 +570,9 @@ const restoreVehicle = async (vehicleId, managerId, payload = {}) => {
         resolutionNote: normalizeString(payload.resolution_note) || normalizeString(payload.note),
     });
 
-    return getVehicleDetail(vehicle.id);
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange('restored', updatedVehicle);
+    return updatedVehicle;
 };
 
 const retireVehicle = async (vehicleId, managerId, payload = {}) => {
@@ -567,7 +593,9 @@ const retireVehicle = async (vehicleId, managerId, payload = {}) => {
         note: normalizeString(payload.note),
     });
 
-    return getVehicleDetail(vehicle.id);
+    const updatedVehicle = await getVehicleDetail(vehicle.id);
+    broadcastManagerVehicleChange('retired', updatedVehicle);
+    return updatedVehicle;
 };
 
 const changeVehicleStatus = async (vehicleId, managerId, payload = {}) => {
@@ -640,7 +668,9 @@ const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
         assigned_driver_id: nextAssignedDriverId,
     });
 
-    return getVehicleDetail(id);
+    const vehicle = await getVehicleDetail(id);
+    broadcastManagerVehicleChange('driver_assignment_changed', vehicle);
+    return vehicle;
 };
 
 const softDeleteVehicle = async (vehicleId, managerId) => retireVehicle(vehicleId, managerId, {});

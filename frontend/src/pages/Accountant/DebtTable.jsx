@@ -114,8 +114,16 @@ export default function DebtTable({ apiBase, token }) {
       if (personType === "driver" && driverId) {
         url = `${apiBase}/accountant/debts/person/driver/${driverId}`;
       } else if (customerIds && customerIds.length > 0) {
-        url = `${apiBase}/accountant/debts/person/customer?customer_ids=${customerIds.join(",")}`;
+        // Lấy personId đầu tiên từ customerIds để match route :personId
+        const primaryId = customerIds.find(id => id != null);
+        if (primaryId) {
+          url = `${apiBase}/accountant/debts/person/customer/${primaryId}?customer_ids=${customerIds.join(",")}`;
+        } else {
+          setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: false }));
+          return;
+        }
       } else {
+        setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: false }));
         return;
       }
       const res = await fetch(url, {
@@ -489,12 +497,11 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
             debt.debt_type === "driver"
               ? debt.driver_name || "—"
               : debt.customer_name || "—";
-          const personContact =
+          const personPhone =
             debt.debt_type === "driver"
-              ? ""
-              : debt.customer_phone
-                ? `📞 ${debt.customer_phone}`
-                : "";
+              ? debt.driver_phone || ""
+              : debt.customer_phone || "";
+          const personContact = personPhone ? `📞 ${personPhone}` : "";
 
           const totalRemaining = Number(debt.total_remaining || 0);
 
@@ -522,14 +529,17 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
                 {/* Person info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
-                    <span>{personName}</span>
+                  <div style={{ fontWeight: 600, color: "#0f172a", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 14 }}>{personName}</span>
                     <span style={{ color: "#64748b", fontWeight: 400, fontSize: 12 }}>
                       ({debt.debt_count} chuyến)
                     </span>
                   </div>
-                  {personContact && (
-                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{personContact}</div>
+                  {personPhone && (
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                      <span>📞</span>
+                      <span style={{ fontFamily: "monospace" }}>{personPhone}</span>
+                    </div>
                   )}
                 </div>
 
@@ -558,7 +568,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                         <thead>
                           <tr style={{ background: "#f8fafc" }}>
-                            {["Đơn", "Chuyến", "Tên hàng", "Tổng nợ", "Đã trả", "Còn nợ", "Hạn", "Trạng thái", "Ghi chú"].map((h) => (
+                            {["Khách hàng", "SĐT", "Đơn", "Chuyến", "Hàng hóa", "Tổng nợ", "Đã trả", "Còn nợ", "Trạng thái", "Ghi chú"].map((h) => (
                               <th key={h} style={{ ...thStyle, fontSize: 11, padding: "8px 10px" }}>{h}</th>
                             ))}
                           </tr>
@@ -570,19 +580,27 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                             const dRemaining = Number(d.remaining || 0);
                             const dStatus = d.computed_status || "unpaid";
                             const dStatusCfg = STATUS_CFG[dStatus] || STATUS_CFG.unpaid;
-                            const dueDate = d.due_date ? new Date(d.due_date).toLocaleDateString("vi-VN") : "—";
 
                             return (
                               <tr key={d.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                                <td style={{ ...tdStyle, fontWeight: 600, color: "#0f172a" }}>
+                                  {d.customer_name || d.driver_name || "—"}
+                                </td>
+                                <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 11 }}>
+                                  {d.customer_phone || d.driver_phone || "—"}
+                                </td>
                                 <td style={{ ...tdStyle, fontFamily: "monospace" }}>#{d.order_id}</td>
                                 <td style={{ ...tdStyle, fontFamily: "monospace" }}>#{d.shipment_id}</td>
-                                <td style={{ ...tdStyle, maxWidth: 150 }}>{d.order_cargo_name || "—"}</td>
+                                <td style={{ ...tdStyle, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.order_cargo_name}>
+                                  {d.order_cargo_name || "—"}
+                                </td>
                                 <td style={{ ...tdStyle, fontWeight: 600, textAlign: "right" }}>{fmt(dTotal)}đ</td>
                                 <td style={{ ...tdStyle, color: "#16a34a", textAlign: "right" }}>{fmt(dPaid)}đ</td>
-                                <td style={{ ...tdStyle, fontWeight: dRemaining > 0 ? 700 : 500, color: dRemaining > 0 ? "#dc2626" : "#16a34a", textAlign: "right" }}>{fmt(dRemaining)}đ</td>
-                                <td style={{ ...tdStyle, color: "#64748b" }}>{dueDate}</td>
+                                <td style={{ ...tdStyle, fontWeight: dRemaining > 0 ? 700 : 500, color: dRemaining > 0 ? "#dc2626" : "#16a34a", textAlign: "right" }}>{fmt(Math.max(dRemaining, 0))}đ</td>
                                 <td style={tdStyle}>{renderBadge(dStatusCfg.label, dStatusCfg.color, dStatusCfg.bg, dStatusCfg.border)}</td>
-                                <td style={{ ...tdStyle, color: "#64748b", maxWidth: 150 }}>{d.notes || "—"}</td>
+                                <td style={{ ...tdStyle, color: "#64748b", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.notes}>
+                                  {d.notes || "—"}
+                                </td>
                               </tr>
                             );
                           })}

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Button, Input, message, Modal, Space, Table, Tag, Typography } from 'antd';
 import { EditOutlined, LockOutlined, PlusOutlined, SearchOutlined, UnlockOutlined } from '@ant-design/icons';
 import UserModal from './UserModal';
+import { apiRequest } from '../../services/apiClient';
+import { useRoleRealtime } from '../../hooks/useRoleRealtime';
 import '../../styles/admin/UserModal.css';
 import '../../styles/admin/Toast.css';
 import '../../styles/admin/Admin.css';
@@ -22,7 +24,7 @@ const formatDate = (value) => {
   return date.toLocaleDateString('vi-VN');
 };
 
-export default function UserList() {
+export default function UserList({ user }) {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -35,15 +37,18 @@ export default function UserList() {
     fetchUsers();
   }, []);
 
+  useRoleRealtime(user, {
+    onMessage: (payload) => {
+      if (payload?.type === 'manager.users.changed') {
+        fetchUsers();
+      }
+    },
+  });
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${apiBase}/api/admin/users`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Khong the tai danh sach.');
+      const data = await apiRequest('/api/admin/users');
       setAllUsers(data.users || []);
     } catch (error) {
       message.error(`Loi: ${error.message}`);
@@ -76,29 +81,18 @@ export default function UserList() {
 
   const handleSaveUser = async (formData) => {
     try {
-      const token = localStorage.getItem('token');
-      const url = editingUser
-        ? `${apiBase}/api/admin/users/${editingUser.id}`
-        : `${apiBase}/api/admin/users`;
-      const method = editingUser ? 'PUT' : 'POST';
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+      const data = await apiRequest(
+        editingUser ? `/api/admin/users/${editingUser.id}` : '/api/admin/users',
+        {
+          method: editingUser ? 'PUT' : 'POST',
+          body: formData,
         },
-        body: JSON.stringify(formData),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        message.error(data.error || 'Da co loi xay ra.');
-        return;
-      }
+      );
       message.success(data.message);
       setIsModalOpen(false);
       fetchUsers();
-    } catch {
-      message.error('Loi ket noi.');
+    } catch (error) {
+      message.error(error.message || 'Da co loi xay ra.');
     }
   };
 
@@ -112,24 +106,14 @@ export default function UserList() {
       cancelText: 'Huy',
       onOk: async () => {
         try {
-          const token = localStorage.getItem('token');
-          const response = await fetch(`${apiBase}/api/admin/users/${user.id}/status`, {
+          const data = await apiRequest(`/api/admin/users/${user.id}/status`, {
             method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ is_active: !user.is_active }),
+            body: { is_active: !user.is_active },
           });
-          const data = await response.json();
-          if (!response.ok) {
-            message.error(data.error || 'Da co loi.');
-            return;
-          }
           message.success(data.message);
           fetchUsers();
-        } catch {
-          message.error('Loi ket noi.');
+        } catch (error) {
+          message.error(error.message || 'Da co loi.');
         }
       },
     });

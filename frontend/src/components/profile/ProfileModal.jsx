@@ -22,15 +22,13 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  const token = localStorage.getItem('token');
-
   useEffect(() => {
     if (!open) return;
 
     const loadProfile = async () => {
       try {
         setLoading(true);
-        const data = await apiRequest('/api/profile/me', { token });
+        const data = await apiRequest('/api/profile/me');
         const nextProfile = data.profile;
         setProfile(nextProfile);
         form.setFieldsValue({
@@ -52,7 +50,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
     };
 
     loadProfile();
-  }, [form, open, token]);
+  }, [form, open]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return undefined;
@@ -78,7 +76,6 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
       const data = await apiRequest('/api/profile/me/avatar', {
         method: 'POST',
-        token,
         body: formData,
       });
 
@@ -109,7 +106,6 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       setSaving(true);
       const data = await apiRequest('/api/profile/me', {
         method: 'PATCH',
-        token,
         body: {
           full_name: values.full_name,
           phone: values.phone || null,
@@ -144,7 +140,6 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       setSendingCode(true);
       const data = await apiRequest('/api/profile/me/email/send-code', {
         method: 'POST',
-        token,
       });
       setResendCooldown(Number(data.retry_after_seconds || 60));
       message.success(data.message || 'Da gui ma xac nhan.');
@@ -169,7 +164,6 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       setVerifyingCode(true);
       const data = await apiRequest('/api/profile/me/email/verify', {
         method: 'POST',
-        token,
         body: {
           code: String(values.verification_code || '').trim().toUpperCase(),
           newEmail: values.new_email,
