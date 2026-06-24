@@ -9,7 +9,6 @@ export const emptyForm = () => ({
   note: "",
   is_partner: false,
   partner_name: "",
-  partner_fee: "",
   trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
 });
 

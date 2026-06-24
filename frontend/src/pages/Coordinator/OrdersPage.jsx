@@ -5,6 +5,7 @@ import AppSidebar from "../../components/layout/AppSidebar";
 import AppHeader from "../../components/layout/AppHeader";
 import { message as toast } from "antd";
 import IncidentPage from "./IncidentPage";
+import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import {
   getTodayStr,
   canCancelTrip,
@@ -16,7 +17,7 @@ import {
   resolveFareValue
 } from "../../features/coordinator/coordinatorValidates";
 import ProfileModal from "../../components/profile/ProfileModal";
-import { getStoredToken, saveSession } from "../../services/storage";
+import { saveSession } from "../../services/storage";
 
 import {
   emptyForm,
@@ -69,7 +70,7 @@ export default function OrdersPage({ user, onLogout }) {
   const [receiptPublishing, setReceiptPublishing] = useState(false);
   const [selectedReceiptDetail, setSelectedReceiptDetail] = useState(null);
   const [receiptForm, setReceiptForm] = useState(emptyReceiptForm);
-
+  const [partners, setPartners] = useState([]);
   const toggleRow = (orderId) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -106,7 +107,7 @@ export default function OrdersPage({ user, onLogout }) {
 
   const loadOrders = async (page = pagination.page) => {
     try {
-      const token = localStorage.getItem("token");
+    
       const params = new URLSearchParams({
         page: String(page),
         limit: String(pagination.limit),
@@ -117,7 +118,7 @@ export default function OrdersPage({ user, onLogout }) {
       if (dateToFilter) params.set("dateTo", dateToFilter);
       if (customerFilter.trim()) params.set("customer", customerFilter.trim());
 
-      const data = await apiRequest(`/api/orders?${params.toString()}`, { token });
+       const data = await apiRequest(`/api/orders?${params.toString()}`);
       const dbTrips = (data.orders || []).map(buildTripFromOrder);
       setTrips(dbTrips);
       setPagination(data.pagination || { page, limit: pagination.limit, total: dbTrips.length, totalPages: 1 });
@@ -134,8 +135,7 @@ export default function OrdersPage({ user, onLogout }) {
   useEffect(() => {
     const loadVehicleGroups = async () => {
       try {
-        const token = localStorage.getItem("token");
-        const data = await apiRequest("/api/coordinator/vehicle-groups", { token });
+        const data = await apiRequest("/api/coordinator/vehicle-groups");
         setVehicleGroups(data.vehicleGroups || []);
       } catch (error) {
         setMessage("Không thể tải danh sách nhóm xe/BKS.");
@@ -146,11 +146,24 @@ export default function OrdersPage({ user, onLogout }) {
     loadVehicleGroups();
   }, []);
 
+  useEffect(() => {
+    const loadPartners = async () => {
+      try {
+        const data = await apiRequest("/api/coordinator/partners");
+        setPartners(data.partners || []);
+      } catch (error) {
+        setMessage("Không thể tải danh sách đối tác.");
+        setMessageType("error");
+      }
+    };
+
+    loadPartners();
+  }, []);
+
   const loadReceiptRequests = async () => {
     setReceiptRequestsLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const data = await apiRequest("/api/coordinator/receipt-requests", { token });
+      const data = await apiRequest("/api/coordinator/receipt-requests");
       setReceiptRequests(data.requests || []);
     } catch (error) {
       setMessage(error.message || "Không thể tải danh sách yêu cầu phiếu thu.");
@@ -159,7 +172,25 @@ export default function OrdersPage({ user, onLogout }) {
       setReceiptRequestsLoading(false);
     }
   };
+  useRoleRealtime(currentUser, {
+    onMessage: (payload) => {
+      if (!payload?.type) return;
 
+      if (
+        payload.type === "coordinator.receipt_requests.changed" ||
+        payload.type === "notification.created"
+      ) {
+        loadReceiptRequests();
+      }
+
+      if (
+        payload.type === "coordinator.orders.changed" ||
+        payload.type === "coordinator.receipt_requests.changed"
+      ) {
+        loadOrders(pagination.page);
+      }
+    },
+  });
   useEffect(() => {
     loadReceiptRequests();
   }, []);
@@ -176,20 +207,13 @@ export default function OrdersPage({ user, onLogout }) {
   }, [message]);
 
   const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-      return;
-    }
-
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    window.location.reload();
-  };
+    onLogout?.();
+  }
 
   const handleProfileUpdated = (nextProfile) => {
     const mergedUser = { ...currentUser, ...nextProfile };
     setCurrentUser(mergedUser);
-    saveSession({ token: getStoredToken(), user: mergedUser });
+    saveSession({ user: mergedUser })
   };
 
   const filteredTrips = useMemo(() => {
@@ -364,10 +388,8 @@ export default function OrdersPage({ user, onLogout }) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const token = localStorage.getItem("token");
       const data = await apiRequest("/api/coordinator/import-excel", {
         method: "POST",
-        token,
         body: formData,
       });
 
@@ -408,7 +430,7 @@ export default function OrdersPage({ user, onLogout }) {
       trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
         ...t,
         pickup_address: t.pickup_address || trip.pickupAddress || routeAddresses.pickup || "",
-        delivery_address: t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || "",
+        delivery_address: firstStop(t, "delivery_addresses", "delivery_address") || trip.deliveryAddress || routeAddresses.delivery || "",
       })) : [{
         vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
         plate: trip.plate || "",
@@ -441,8 +463,7 @@ export default function OrdersPage({ user, onLogout }) {
     setSelectedReceiptDetail(null);
 
     try {
-      const token = localStorage.getItem("token");
-      const detail = await apiRequest(`/api/coordinator/receipt-requests/${requestId}`, { token });
+      const detail = await apiRequest(`/api/coordinator/receipt-requests/${requestId}`);
       setSelectedReceiptDetail(detail);
 
       setReceiptForm({
@@ -499,7 +520,7 @@ export default function OrdersPage({ user, onLogout }) {
 
     setReceiptPublishing(true);
     try {
-      const token = localStorage.getItem("token");
+      
       const payload = {
         notes: receiptForm.notes,
         expenses: receiptForm.expenses
@@ -514,7 +535,6 @@ export default function OrdersPage({ user, onLogout }) {
 
       const data = await apiRequest(`/api/coordinator/receipt-requests/${selectedReceiptDetail.request.id}/approve`, {
         method: "POST",
-        token,
         body: payload,
       });
 
@@ -559,10 +579,8 @@ export default function OrdersPage({ user, onLogout }) {
     if (!confirmed) return;
 
     try {
-      const token = localStorage.getItem("token");
       const data = await apiRequest(`/api/orders/${trip.orderId}`, {
         method: "DELETE",
-        token,
         body: { reason: "Coordinator cancelled order" },
       });
       const cancelledTrip = buildTripFromOrder(data.order);
@@ -592,6 +610,7 @@ export default function OrdersPage({ user, onLogout }) {
     setCreating(true);
 
     try {
+      
       const token = localStorage.getItem("token");
       const payload = {
         date: form.date,
@@ -605,13 +624,18 @@ export default function OrdersPage({ user, onLogout }) {
         notes: form.note,
         is_partner: form.is_partner,
         partner_name: form.is_partner ? form.partner_name : null,
-        partner_fee: form.is_partner ? form.partner_fee : null,
-        trips: form.trips,
+        trips: form.trips.map((trip) => ({
+          ...trip,
+          pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses.filter(Boolean) : [trip.pickup_address].filter(Boolean),
+          delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses.filter(Boolean) : [trip.delivery_address].filter(Boolean),
+          pickup_address: firstStop(trip, "pickup_addresses", "pickup_address"),
+          
+          delivery_address: firstStop(trip, "delivery_addresses", "delivery_address"),
+        })),
       };
 
       const data = await apiRequest(editingTrip ? `/api/orders/${editingTrip.orderId}` : "/api/orders", {
         method: editingTrip ? "PATCH" : "POST",
-        token,
         body: payload,
       });
 

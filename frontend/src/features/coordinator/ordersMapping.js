@@ -66,8 +66,8 @@ export function buildTripFromOrder(order) {
   }];
 
   const firstTrip = trips[0] || {};
-  const pickupAddress = firstTrip.pickup_address || order.pickup_address || "";
-  const deliveryAddress = firstTrip.delivery_address || order.delivery_address || "";
+  const pickupAddress = firstStop(firstTrip, "pickup_addresses", "pickup_address") || order.pickup_address || "";
+  const deliveryAddress = firstStop(firstTrip, "delivery_addresses", "delivery_address") || order.delivery_address || "";
   const arrivedAt = firstTrip.arrived_at || order.arrived_at;
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
@@ -105,7 +105,6 @@ export function buildTripFromOrder(order) {
     notes: order.notes,
     is_partner: !!order.partner_name,
     partner_name: order.partner_name || "",
-    partner_fee: order.total_actual_price || "",
     trips,
   };
 }
