@@ -882,6 +882,8 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             p_coord.full_name            AS coordinator_name,
             sr.driver_collection_type,
             sr.driver_confirmed_at,
+            sr.driver_collected_amount,
+            sr.driver_proof_url,
             EXISTS(SELECT 1 FROM debts d
                    WHERE d.shipment_id = orr.requesting_shipment_id
                      AND d.debt_type = 'driver') AS has_driver_debt,
