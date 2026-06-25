@@ -338,6 +338,8 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     coordinator_name: string | null;
     driver_collection_type: PaymentType | null;
     driver_confirmed_at: string | null;
+    driver_collected_amount: string | null;
+    driver_proof_url: string | null;
     has_driver_debt: boolean;
     has_customer_debt: boolean;
     pickup_address: string | null;

@@ -140,13 +140,12 @@ export default function LoginPage({ onLoginSuccess }) {
         body: { credential },
       });
 
-      const { token, user } = data;
-      if (!token || !user) {
+      const { user } = data;
+      if (!user) {
         throw new Error("Unexpected login response from server.");
       }
 
       onLoginSuccess?.({
-        token,
         user,
         rememberEmail: remember ? user.email || "" : "",
       });
@@ -233,13 +232,12 @@ export default function LoginPage({ onLoginSuccess }) {
         body: { email, password },
       });
 
-      const { token, user } = data;
-      if (!token || !user) {
+      const { user } = data;
+      if (!user) {
         throw new Error("Unexpected login response from server.");
       }
 
       onLoginSuccess?.({
-        token,
         user,
         rememberEmail: remember ? email : "",
       });

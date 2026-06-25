@@ -1,6 +1,7 @@
 const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
 const notificationService = require('./notificationService');
+const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
 const pool = require('../config/database');
 
@@ -314,6 +315,12 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
             `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
             [trip.order_id],
         );
+        notificationGateway.broadcastToRole('coordinator', {
+            type: 'coordinator.receipt_requests.changed',
+            action: 'created',
+            orderId,
+            requestId: request?.id ?? null,
+        });
     }
 
     notificationService.createForUser(driverId, {
@@ -459,7 +466,7 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
 
 // Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
 // 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
-const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
+const recordReceiptCollection = async (receiptId, driverId, collectionType, { collectedAmount = null, proofUrl = null } = {}) => {
     const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
     if (!ALLOWED.includes(collectionType)) {
         throw new Error('Hình thức thanh toán không hợp lệ');
@@ -510,9 +517,10 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
     if (receipt.shipment_receipt_id) {
         await pool.query(
             `UPDATE shipment_receipts
-             SET driver_collection_type = $1, driver_confirmed_at = NOW()
+             SET driver_collection_type = $1, driver_confirmed_at = NOW(), payment_type = $1,
+                 driver_collected_amount = $3, driver_proof_url = $4
              WHERE id = $2`,
-            [collectionType, receipt.shipment_receipt_id],
+            [collectionType, receipt.shipment_receipt_id, collectedAmount, proofUrl],
         );
     }
 

@@ -11,6 +11,8 @@ const {
 
 const ACTIVE_STATUSES = ['claimed', 'picking', 'transit', 'arrived', 'failed', 'returning'];
 
+const TRAFFIC_TYPES = new Set(['road_incident', 'traffic_jam']);
+
 const TYPE_LABEL = {
     vehicle_breakdown: 'Sự cố xe',
     cargo_damage:      'Hàng hóa bị hỏng',
@@ -79,12 +81,18 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         throw new Error('Loại sự cố không hợp lệ');
     }
 
-    if (!description || !description.trim()) {
-        throw new Error('Mô tả sự cố là bắt buộc');
+    const isTrafficType = TRAFFIC_TYPES.has(incidentType);
+
+    if (!isTrafficType) {
+        if (!description || !description.trim()) {
+            throw new Error('Mô tả sự cố là bắt buộc');
+        }
+        if (description.trim().length < 10) {
+            throw new Error('Mô tả sự cố phải có ít nhất 10 ký tự');
+        }
     }
-    if (description.trim().length < 10) {
-        throw new Error('Mô tả sự cố phải có ít nhất 10 ký tự');
-    }
+
+    const finalDescription = description?.trim() || (isTrafficType ? `${TYPE_LABEL[incidentType]} — báo cáo tự động` : '');
 
     const severity = severityLevel && ALLOWED_SEVERITIES.includes(severityLevel)
         ? severityLevel
@@ -125,7 +133,7 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         reportedBy: driverId,
         incidentType,
         severityLevel: severity,
-        description: description.trim(),
+        description: finalDescription,
         location: location?.trim() || null,
     });
 
@@ -139,7 +147,7 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
     const coordinatorIds = await incidentRepository.getCoordinatorIds();
     notificationService.createForUsers(coordinatorIds, {
         title: `Sự cố mới: ${TYPE_LABEL[incidentType]}`,
-        message: `Tài xế báo cáo sự cố ${contextMsg}: ${description.trim().slice(0, 80)}`,
+        message: `Tài xế báo cáo sự cố ${contextMsg}: ${finalDescription.slice(0, 80)}`,
         type: 'INCIDENT_REPORTED',
         entityType: 'incidents',
         entityId: incident.id,
@@ -153,6 +161,19 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         entityType: 'incidents',
         entityId: incident.id,
     }, { displayMode: 'silent' }).catch(() => {});
+
+    // Broadcast cảnh báo giao thông đến TẤT CẢ tài xế còn lại
+    if (isTrafficType) {
+        const locationText = location?.trim() || 'khu vực không xác định';
+        const otherDriverIds = await incidentRepository.getActiveDriverIds(driverId);
+        notificationService.createForUsers(otherDriverIds, {
+            title: `Cảnh báo: ${TYPE_LABEL[incidentType]}`,
+            message: `Vị trí: ${locationText}. Đề nghị tránh khu vực này và chọn đường khác để tối ưu thời gian giao hàng.`,
+            type: 'TRAFFIC_ALERT',
+            entityType: 'incidents',
+            entityId: incident.id,
+        }, { displayMode: 'traffic_alert' }).catch(() => {});
+    }
 
     return incidentRepository.getIncidentById(incident.id);
 };

@@ -8,6 +8,7 @@ const coordinatorController = require('../controllers/coordinatorController');
 router.use(verifyToken, requireRole('coordinator'));
 
 router.get('/vehicle-groups', coordinatorController.listVehicleGroups);
+router.get('/partners', coordinatorController.listPartners);
 
 router.post('/import-excel', uploadExcel.single('file'), coordinatorController.importExcel);
 

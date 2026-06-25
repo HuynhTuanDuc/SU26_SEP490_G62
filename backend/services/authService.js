@@ -7,11 +7,19 @@ const emailService = require('./emailService');
 const pool = require('../config/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'MY_SECRET_KEY';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
 const GOOGLE_CLIENT_ID = process.env.GG_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 const PASSWORD_RESET_CODE_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
 const passwordResetStore = new Map();
+const AUTH_COOKIE_NAME = 'auth_token';
+const REFRESH_COOKIE_NAME = 'refresh_token';
+const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS || (7 * 24 * 60 * 60 * 1000));
+
+let refreshTokenTableReadyPromise = null;
 
 class AuthError extends Error {
     constructor(message, status = 400) {
@@ -43,59 +51,148 @@ const normalizeEmail = (email) => {
     return normalizedEmail;
 };
 
-// Login user - return token and user info
+const ensureRefreshTokenTable = async () => {
+    if (!refreshTokenTableReadyPromise) {
+        refreshTokenTableReadyPromise = pool.query(
+            `CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+                token_id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL,
+                expires_at TIMESTAMPTZ NOT NULL,
+                revoked_at TIMESTAMPTZ NULL,
+                replaced_by_token_id TEXT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+        ).catch((error) => {
+            refreshTokenTableReadyPromise = null;
+            throw error;
+        });
+    }
+
+    await refreshTokenTableReadyPromise;
+};
+
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+const getRefreshTokenExpiryDate = () => new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+
+const buildUserPayload = (account, profile) => ({
+    id: account.id,
+    email: account.email,
+    full_name: profile?.full_name ?? null,
+    phone: profile?.phone ?? null,
+    avatar_url: profile?.avatar_url ?? null,
+    role_id: profile?.role_id ?? account.role_id ?? null,
+    role: account.role,
+});
+
+const signAccessToken = (account) => jwt.sign(
+    {
+        userId: account.id,
+        email: account.email,
+        role: account.role,
+        tokenType: 'access',
+    },
+    JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_EXPIRES_IN },
+);
+
+const verifyRefreshToken = (token) => {
+    try {
+        const decoded = jwt.verify(token, JWT_REFRESH_SECRET);
+        if (decoded?.tokenType !== 'refresh') {
+            throw new Error('Invalid refresh token');
+        }
+        return decoded;
+    } catch {
+        throw new AuthError('Invalid refresh token', 401);
+    }
+};
+
+const createRefreshTokenRecord = async (account) => {
+    await ensureRefreshTokenTable();
+
+    const tokenId = crypto.randomUUID();
+    const refreshToken = jwt.sign(
+        {
+            userId: account.id,
+            email: account.email,
+            role: account.role,
+            tokenType: 'refresh',
+            tokenId,
+        },
+        JWT_REFRESH_SECRET,
+        { expiresIn: REFRESH_TOKEN_EXPIRES_IN },
+    );
+    const expiresAt = getRefreshTokenExpiryDate();
+
+    await pool.query(
+        `INSERT INTO auth_refresh_tokens (token_id, user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [tokenId, account.id, hashToken(refreshToken), expiresAt],
+    );
+
+    return { refreshToken, tokenId, expiresAt };
+};
+
+const revokeStoredRefreshToken = async (tokenId, replacedByTokenId = null) => {
+    if (!tokenId) return;
+
+    await ensureRefreshTokenTable();
+    await pool.query(
+        `UPDATE auth_refresh_tokens
+         SET revoked_at = COALESCE(revoked_at, NOW()),
+             replaced_by_token_id = COALESCE($2, replaced_by_token_id)
+         WHERE token_id = $1`,
+        [tokenId, replacedByTokenId],
+    );
+};
+
+const issueSession = async (account) => {
+    const profile = await profileRepository.getProfileByAccountId(account.id);
+    const accessToken = signAccessToken(account);
+    const { refreshToken } = await createRefreshTokenRecord(account);
+
+    return {
+        accessToken,
+        refreshToken,
+        user: buildUserPayload(account, profile),
+    };
+};
+
+const validateActiveAccount = async (account) => {
+    if (!account) {
+        throw new AuthError('Email khong ton tai.', 404);
+    }
+    if (!account.role) {
+        throw new AuthError('Tai khoan chua duoc gan vai tro.', 403);
+    }
+    if (account.is_active === false) {
+        throw new AuthError('Tai khoan cua ban da bi khoa.', 403);
+    }
+};
+
 const login = async (email, password) => {
     if (!email || !password) {
-        throw new AuthError('Email và mật khẩu là bắt buộc.', 400);
+        throw new AuthError('Email va mat khau la bat buoc.', 400);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-
-    // Find account by normalized email
     const account = await profileRepository.getAccountByEmail(normalizedEmail);
-    if (!account) {
-        throw new AuthError('Email không tồn tại.', 404);
-    }
+    await validateActiveAccount(account);
 
-    // Compare passwords
     const validPassword = await bcrypt.compare(password, account.password_hash);
     if (!validPassword) {
-        throw new AuthError('Mật khẩu không đúng.', 401);
+        throw new AuthError('Mat khau khong dung.', 401);
     }
 
-    const profile = await profileRepository.getProfileByAccountId(account.id);
-    const role = account.role;
-
-    if (!role) {
-        throw new AuthError('Tài khoản chưa được gán vai trò.', 403);
-    }
-
-    
-    if (account.is_active === false) {
-        throw new AuthError('Tài khoản của bạn đã bị khoá.', 403);
-    }
-
- 
     await profileRepository.updateLastLogin(account.id);
-
-    // Generate JWT token
-    const token = jwt.sign(
-        { userId: account.id, email: account.email, role },
-        JWT_SECRET,
-        { expiresIn: '1h' }
-    );
+    const session = await issueSession(account);
 
     return {
-        token,
-        user: {
-            id: account.id,
-            email: account.email,
-            full_name: profile?.full_name ?? null,
-            phone: profile?.phone ?? null,
-            avatar_url: profile?.avatar_url ?? null,
-            role_id: profile?.role_id ?? account.role_id ?? null,
-            role,
-        }
+        token: session.accessToken,
+        refreshToken: session.refreshToken,
+        user: session.user,
     };
 };
 
@@ -140,10 +237,7 @@ const loginWithGoogle = async (credential) => {
         throw new AuthError('This Google account is not provisioned for internal access.', 403);
     }
 
-    const profile = await profileRepository.getProfileByAccountId(account.id);
-    const role = account.role;
-
-    if (!role) {
+    if (!account.role) {
         throw new AuthError('Account role is not assigned.', 403);
     }
 
@@ -152,24 +246,12 @@ const loginWithGoogle = async (credential) => {
     }
 
     await profileRepository.updateLastLogin(account.id);
-
-    const token = jwt.sign(
-        { userId: account.id, email: account.email, role },
-        JWT_SECRET,
-        { expiresIn: '1h' }
-    );
+    const session = await issueSession(account);
 
     return {
-        token,
-        user: {
-            id: account.id,
-            email: account.email,
-            full_name: profile?.full_name ?? null,
-            phone: profile?.phone ?? null,
-            avatar_url: profile?.avatar_url ?? null,
-            role_id: profile?.role_id ?? account.role_id ?? null,
-            role,
-        }
+        token: session.accessToken,
+        refreshToken: session.refreshToken,
+        user: session.user,
     };
 };
 
@@ -282,7 +364,6 @@ const resetPassword = async (email, code, newPassword, confirmPassword) => {
     return { message: 'Dat lai mat khau thanh cong.' };
 };
 
-// Get user from token
 const getUserFromToken = async (userId) => {
     const profile = await profileRepository.getProfileWithRole(userId);
     if (!profile) {
@@ -291,12 +372,78 @@ const getUserFromToken = async (userId) => {
     return profile;
 };
 
-// Verify JWT token
+const refreshSession = async (refreshToken) => {
+    if (!refreshToken) {
+        throw new AuthError('Refresh token is required', 401);
+    }
+
+    await ensureRefreshTokenTable();
+    const decoded = verifyRefreshToken(refreshToken);
+
+    const storedTokenResult = await pool.query(
+        `SELECT token_id, user_id, token_hash, expires_at, revoked_at
+         FROM auth_refresh_tokens
+         WHERE token_id = $1`,
+        [decoded.tokenId],
+    );
+    const storedToken = storedTokenResult.rows[0] ?? null;
+
+    if (!storedToken || Number(storedToken.user_id) !== Number(decoded.userId)) {
+        throw new AuthError('Refresh token is invalid', 401);
+    }
+    if (storedToken.revoked_at) {
+        throw new AuthError('Refresh token has been revoked', 401);
+    }
+    if (new Date(storedToken.expires_at).getTime() <= Date.now()) {
+        await revokeStoredRefreshToken(decoded.tokenId);
+        throw new AuthError('Refresh token has expired', 401);
+    }
+    if (storedToken.token_hash !== hashToken(refreshToken)) {
+        await revokeStoredRefreshToken(decoded.tokenId);
+        throw new AuthError('Refresh token mismatch', 401);
+    }
+
+    const account = await profileRepository.getAccountById(decoded.userId);
+    if (!account) {
+        await revokeStoredRefreshToken(decoded.tokenId);
+        throw new AuthError('User not found', 401);
+    }
+    if (account.is_active === false) {
+        await revokeStoredRefreshToken(decoded.tokenId);
+        throw new AuthError('Tai khoan cua ban da bi khoa.', 403);
+    }
+
+    const session = await issueSession(account);
+    const nextRefreshPayload = verifyRefreshToken(session.refreshToken);
+    await revokeStoredRefreshToken(decoded.tokenId, nextRefreshPayload.tokenId);
+
+    return {
+        token: session.accessToken,
+        accessToken: session.accessToken,
+        refreshToken: session.refreshToken,
+        user: session.user,
+    };
+};
+
+const revokeRefreshToken = async (refreshToken) => {
+    if (!refreshToken) return;
+
+    try {
+        const decoded = verifyRefreshToken(refreshToken);
+        await revokeStoredRefreshToken(decoded.tokenId);
+    } catch {
+        // Ignore invalid refresh token during logout.
+    }
+};
+
 const verifyToken = (token) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded?.tokenType && decoded.tokenType !== 'access') {
+            throw new Error('Invalid token');
+        }
         return decoded;
-    } catch (err) {
+    } catch {
         throw new Error('Invalid token');
     }
 };
@@ -309,5 +456,11 @@ module.exports = {
     resetPassword,
     getUserFromToken,
     verifyToken,
+    refreshSession,
+    revokeRefreshToken,
+    ACCESS_TOKEN_EXPIRES_IN,
+    REFRESH_TOKEN_EXPIRES_IN,
     AuthError,
+    AUTH_COOKIE_NAME,
+    REFRESH_COOKIE_NAME,
 };

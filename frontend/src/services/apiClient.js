@@ -1,6 +1,7 @@
 const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
 
 export const apiBaseUrl = DEFAULT_API_BASE_URL;
+let refreshPromise = null;
 
 function buildUrl(path) {
   if (/^https?:\/\//i.test(path)) {
@@ -30,9 +31,39 @@ async function parseResponse(response) {
   return payload;
 }
 
+async function refreshAuthSession() {
+  if (!refreshPromise) {
+    refreshPromise = fetch(buildUrl("/auth/refresh"), {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type") || "";
+          const payload = contentType.includes("application/json")
+            ? await response.json()
+            : await response.text();
+          const message =
+            (payload && typeof payload === "object" && (payload.error || payload.message)) ||
+            (typeof payload === "string" && payload.trim()) ||
+            "Unable to refresh session";
+          throw new Error(message);
+        }
+        return response;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return refreshPromise;
+}
+
 export async function apiRequest(path, options = {}) {
   const { method = "GET", body, token, headers = {}, signal } = options;
   const requestHeaders = new Headers(headers);
+  const retryOnAuthFailure = options.retryOnAuthFailure !== false;
+  const skipAuthRefresh = options.skipAuthRefresh === true;
 
   if (token) {
     requestHeaders.set("Authorization", `Bearer ${token}`);
@@ -49,7 +80,16 @@ export async function apiRequest(path, options = {}) {
     headers: requestHeaders,
     body: requestBody,
     signal,
+    credentials: "include",
   });
+
+  if (response.status === 401 && retryOnAuthFailure && !skipAuthRefresh && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/google") {
+    await refreshAuthSession();
+    return apiRequest(path, {
+      ...options,
+      retryOnAuthFailure: false,
+    });
+  }
 
   return parseResponse(response);
 }

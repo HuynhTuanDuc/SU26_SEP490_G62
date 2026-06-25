@@ -9,7 +9,7 @@ const {
 // Địa chỉ pickup/delivery lưu trong trip_stops — dùng subquery để kéo ra
 const PICKUP_SUBQ  = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'   ORDER BY ts.stop_index ASC  LIMIT 1)`;
 const DELIVERY_SUBQ = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery' ORDER BY ts.stop_index DESC LIMIT 1)`;
-const RECEIPT_PAYMENT_TYPE_SQL = `sr.payment_type`;
+const RECEIPT_PAYMENT_TYPE_SQL = `COALESCE(sr.driver_collection_type, sr.payment_type, o.payment_type)`;
 
 const getDriverVehicleGroupId = async (driverId) => {
     const result = await pool.query(
@@ -882,6 +882,8 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             p_coord.full_name            AS coordinator_name,
             sr.driver_collection_type,
             sr.driver_confirmed_at,
+            sr.driver_collected_amount,
+            sr.driver_proof_url,
             EXISTS(SELECT 1 FROM debts d
                    WHERE d.shipment_id = orr.requesting_shipment_id
                      AND d.debt_type = 'driver') AS has_driver_debt,
