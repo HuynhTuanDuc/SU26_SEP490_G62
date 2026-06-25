@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
-const { uploadProof, uploadPaymentReceipt, uploadTripComplete } = require('../middleware/uploadMiddleware');
+const { uploadProof, uploadPaymentReceipt, uploadTripComplete, uploadReceiptCollectionProof } = require('../middleware/uploadMiddleware');
 const tripController    = require('../controllers/tripController');
 const paymentController = require('../controllers/paymentController');
 
@@ -106,7 +106,7 @@ router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder
 // Phiếu thu (coordinator đã tạo) — driver xem + show cho khách
 router.get('/receipts',                                   driverOnly, tripController.getDriverReceipts);
 router.get('/receipts/:receiptId',                        driverOnly, tripController.getDriverReceiptDetail);
-router.post('/receipts/:receiptId/record-collection',     driverOnly, tripController.recordReceiptCollection);
+router.post('/receipts/:receiptId/record-collection',     driverOnly, handleUpload(uploadReceiptCollectionProof.single('proof')), tripController.recordReceiptCollection);
 
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)

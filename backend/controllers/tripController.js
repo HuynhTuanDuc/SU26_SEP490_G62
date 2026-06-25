@@ -373,14 +373,18 @@ const getDriverReceiptDetail = async (req, res) => {
 };
 
 // POST /api/trips/receipts/:receiptId/record-collection — driver xác nhận hình thức thu tiền
-// Body: { collection_type: 'cash_collected' | 'bank_transfer' | 'client_credit' }
+// Multipart: collection_type, collected_amount, proof (file ảnh bằng chứng)
 const recordReceiptCollection = async (req, res) => {
     try {
         const receiptId = Number(req.params.receiptId);
         if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
-        const { collection_type } = req.body;
+        const { collection_type, collected_amount } = req.body;
         if (!collection_type) return res.status(400).json({ error: 'Thiếu collection_type' });
-        const result = await tripService.recordReceiptCollection(receiptId, req.user.userId, collection_type);
+        const proofUrl        = req.file?.path ?? null;
+        const collectedAmount = collected_amount ? Number(collected_amount) : null;
+        const result = await tripService.recordReceiptCollection(
+            receiptId, req.user.userId, collection_type, { collectedAmount, proofUrl },
+        );
         res.status(201).json(result);
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
-    Image, ScrollView, StyleSheet, View, Pressable, ActivityIndicator,
+    Image, ScrollView, StyleSheet, View, Pressable, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Receipt, MapPin, Truck, User, Ruler, Buildings, CurrencyCircleDollar, Clock } from 'phosphor-react-native';
+import { Receipt, MapPin, Truck, User, Ruler, Buildings, CurrencyCircleDollar, Clock, Camera } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { ScreenHeader }          from '@/components/screen-header';
 import { AppText }               from '@/components/app-text';
 import { ReceiptDetailSkeleton } from '@/components/skeleton';
+import { CameraModal }           from '@/features/trips/components/camera-modal';
 import { appTheme }              from '@/theme/app-theme';
 import { tripService }  from '@/services/trip-service';
 import { useToast }     from '@/providers/ui-provider';
@@ -74,41 +75,56 @@ function Row({ label, value, bold }: { label: string; value: string | null | und
 
 type CollectionType = 'cash_collected' | 'bank_transfer' | 'client_credit' | 'qr_transfer';
 
+const COLLECTION_CFG: Record<CollectionType, { label: string; sublabel: string; color: string; bg: string; border: string; activeBg: string }> = {
+    cash_collected: {
+        label: 'Tài đã thu tiền mặt',
+        sublabel: 'Bạn cầm tiền mặt — hệ thống ghi nợ tài',
+        color: appTheme.colors.success,
+        bg: '#F0FBF4',
+        activeBg: appTheme.colors.successSoft,
+        border: appTheme.colors.successBorder,
+    },
+    bank_transfer: {
+        label: 'Khách trả về công ty',
+        sublabel: 'Chuyển khoản / QR — công ty đã nhận',
+        color: appTheme.colors.statusTransit,
+        bg: '#EBF5FF',
+        activeBg: '#D9ECFF',
+        border: '#BFD9F7',
+    },
+    qr_transfer: {
+        label: 'Khách trả QR / ví điện tử',
+        sublabel: 'Thanh toán qua ví — công ty đã nhận',
+        color: appTheme.colors.primary,
+        bg: appTheme.colors.primarySoft,
+        activeBg: appTheme.colors.primaryMuted,
+        border: appTheme.colors.primaryMuted,
+    },
+    client_credit: {
+        label: 'Khách chưa thanh toán',
+        sublabel: 'Ghi công nợ — kế toán theo dõi thu hồi',
+        color: appTheme.colors.warning,
+        bg: '#FFFBEB',
+        activeBg: appTheme.colors.warningSoft,
+        border: appTheme.colors.warningBorder,
+    },
+};
+
 function CollectionStatusBadge({ type }: { type: CollectionType }) {
-    const configs: Record<CollectionType, { label: string; color: string; bg: string; border: string }> = {
-        cash_collected: {
-            label: 'Tài đã thu tiền mặt — nợ công ty',
-            color: appTheme.colors.success,
-            bg: appTheme.colors.successSoft,
-            border: appTheme.colors.successBorder,
-        },
-        bank_transfer: {
-            label: 'Khách đã trả về công ty (chuyển khoản)',
-            color: appTheme.colors.statusTransit,
-            bg: '#EBF5FF',
-            border: '#BFD9F7',
-        },
-        qr_transfer: {
-            label: 'Khách đã trả về công ty (QR / ví)',
-            color: appTheme.colors.primary,
-            bg: appTheme.colors.primarySoft,
-            border: appTheme.colors.primaryMuted,
-        },
-        client_credit: {
-            label: 'Đã ghi nhận công nợ khách',
-            color: appTheme.colors.warning,
-            bg: appTheme.colors.warningSoft,
-            border: appTheme.colors.warningBorder,
-        },
+    const labels: Record<CollectionType, string> = {
+        cash_collected: 'Tài đã thu tiền mặt — nợ công ty',
+        bank_transfer:  'Khách đã trả về công ty (chuyển khoản)',
+        qr_transfer:    'Khách đã trả về công ty (QR / ví)',
+        client_credit:  'Đã ghi nhận công nợ khách',
     };
-    const cfg = configs[type] ?? configs.bank_transfer;
+    const cfg = COLLECTION_CFG[type] ?? COLLECTION_CFG.bank_transfer;
     return (
         <XStack
             padding={12} borderRadius={12} gap={8} alignItems="center"
-            backgroundColor={cfg.bg} borderWidth={1} borderColor={cfg.border}
+            backgroundColor={cfg.activeBg} borderWidth={1} borderColor={cfg.border}
         >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: cfg.color }} />
-            <Text fontSize={13} fontWeight="700" color={cfg.color} flex={1}>{cfg.label}</Text>
+            <Text fontSize={13} fontWeight="700" color={cfg.color} flex={1}>{labels[type]}</Text>
         </XStack>
     );
 }
@@ -121,132 +137,220 @@ function PaymentCollectionSection({
     onRecorded: () => void;
 }) {
     const { showToast } = useToast();
-    const [isLoading, setIsLoading] = useState<CollectionType | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [selectedType, setSelectedType] = useState<CollectionType | null>(null);
+    const [amountText,   setAmountText]   = useState('');
+    const [proofUri,     setProofUri]     = useState<string | null>(null);
+    const [showCamera,   setShowCamera]   = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error,        setError]        = useState<string | null>(null);
 
-    // driver_collection_type là authoritative (persistent trong DB cho cả bank_transfer/qr_transfer)
     const collectionDone = (receipt.driver_collection_type as CollectionType | null) ?? null;
 
+    // ── Đã xác nhận: hiện kết quả ───────────────────────────────────────────
     if (collectionDone) {
+        const confirmedAmount = receipt.driver_collected_amount
+            ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' })
+                  .format(Number(receipt.driver_collected_amount))
+            : null;
         return (
-            <YStack gap={8}>
+            <YStack gap={10}>
                 <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted} letterSpacing={0.5}>
                     HÌNH THỨC THU TIỀN
                 </Text>
                 <CollectionStatusBadge type={collectionDone} />
+                {confirmedAmount ? (
+                    <XStack justifyContent="space-between" alignItems="center"
+                        padding={10} borderRadius={10}
+                        backgroundColor={appTheme.colors.surfaceSoft}
+                        borderWidth={1} borderColor={appTheme.colors.border}
+                    >
+                        <Text fontSize={12} color={appTheme.colors.textMuted}>Số tiền khách trả</Text>
+                        <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>{confirmedAmount}</Text>
+                    </XStack>
+                ) : null}
+                {receipt.driver_proof_url ? (
+                    <YStack gap={6}>
+                        <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>Ảnh bằng chứng</Text>
+                        <Image
+                            source={{ uri: receipt.driver_proof_url }}
+                            style={{ width: '100%', height: 180, borderRadius: 12 }}
+                            resizeMode="cover"
+                        />
+                    </YStack>
+                ) : null}
             </YStack>
         );
     }
 
-    const handleRecord = async (type: CollectionType) => {
-        setIsLoading(type);
+    // ── Chưa xác nhận: chọn hình thức + nhập thông tin ─────────────────────
+    const handleSelectType = (type: CollectionType) => {
+        setSelectedType(prev => (prev === type ? null : type));
+        setAmountText('');
+        setProofUri(null);
+        setError(null);
+    };
+
+    const amountNum   = amountText.trim() ? Number(amountText.replace(/\./g, '').replace(',', '.')) : null;
+    const amountValid = amountNum !== null && !isNaN(amountNum) && amountNum >= 0;
+    const canSubmit   = selectedType !== null && amountValid && proofUri !== null && !isSubmitting;
+
+    const handleSubmit = async () => {
+        if (!selectedType) return;
+        if (!amountValid || amountNum === null) { setError('Vui lòng nhập số tiền hợp lệ'); return; }
+        if (!proofUri) { setError('Vui lòng chụp ảnh bằng chứng'); return; }
+
+        setIsSubmitting(true);
         setError(null);
         try {
-            await tripService.recordReceiptCollection(receipt.receipt_id, type);
+            const formData = new FormData();
+            formData.append('collection_type',   selectedType);
+            formData.append('collected_amount',  String(amountNum));
+            const filename = proofUri.split('/').pop() ?? 'proof.jpg';
+            const ext      = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
+            const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+            formData.append('proof', { uri: proofUri, name: filename, type: mimeMap[ext] ?? 'image/jpeg' } as unknown as Blob);
+
+            await tripService.recordReceiptCollection(receipt.receipt_id, formData);
             showToast({
                 type: 'success',
                 message:
-                    type === 'cash_collected' ? 'Đã ghi nhận — bạn đang giữ tiền, nhớ nộp về công ty' :
-                    type === 'bank_transfer'  ? 'Đã xác nhận khách trả về công ty' :
-                    type === 'qr_transfer'    ? 'Đã xác nhận khách thanh toán QR' :
-                                                'Đã ghi nhận công nợ khách hàng',
+                    selectedType === 'cash_collected' ? 'Đã ghi nhận — bạn đang giữ tiền, nhớ nộp về công ty' :
+                    selectedType === 'bank_transfer'  ? 'Đã xác nhận khách trả về công ty' :
+                    selectedType === 'qr_transfer'    ? 'Đã xác nhận khách thanh toán QR' :
+                                                        'Đã ghi nhận công nợ khách hàng',
             });
-            onRecorded(); // reload để lấy driver_collection_type mới từ DB
+            onRecorded();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Không thể ghi nhận');
         } finally {
-            setIsLoading(null);
+            setIsSubmitting(false);
         }
     };
 
+    const OPTION_TYPES: CollectionType[] = ['bank_transfer', 'cash_collected', 'client_credit'];
+
     return (
-        <YStack gap={10}>
-            <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted} letterSpacing={0.5}>
-                XÁC NHẬN THU TIỀN
-            </Text>
-            <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={18}>
-                Khách thanh toán theo hình thức nào?
-            </Text>
+        <>
+            <YStack gap={10}>
+                <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted} letterSpacing={0.5}>
+                    XÁC NHẬN THU TIỀN
+                </Text>
+                <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={18}>
+                    Chọn hình thức thanh toán, nhập số tiền và chụp ảnh bằng chứng.
+                </Text>
 
-            {/* Option 1: Company received (bank/QR) */}
-            <Pressable
-                style={({ pressed }) => [
-                    styles.collectionBtn,
-                    { borderColor: '#BFD9F7', backgroundColor: pressed ? '#D9ECFF' : '#EBF5FF' },
-                ]}
-                onPress={() => void handleRecord('bank_transfer')}
-                disabled={isLoading !== null}
-            >
-                <Buildings size={20} color={appTheme.colors.statusTransit} weight="fill" />
-                <YStack flex={1} gap={2}>
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.statusTransit}>
-                        Khách trả về công ty
-                    </Text>
-                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                        Chuyển khoản / QR — công ty đã nhận
-                    </Text>
-                </YStack>
-                {isLoading === 'bank_transfer' && (
-                    <ActivityIndicator size="small" color={appTheme.colors.statusTransit} />
-                )}
-            </Pressable>
+                {OPTION_TYPES.map((type) => {
+                    const cfg      = COLLECTION_CFG[type];
+                    const isActive = selectedType === type;
+                    return (
+                        <Pressable
+                            key={type}
+                            style={[
+                                styles.collectionBtn,
+                                {
+                                    borderColor:     isActive ? cfg.color : cfg.border,
+                                    backgroundColor: isActive ? cfg.activeBg : cfg.bg,
+                                    borderWidth:     isActive ? 2 : 1.5,
+                                    opacity:         selectedType !== null && !isActive ? 0.55 : 1,
+                                },
+                            ]}
+                            onPress={() => handleSelectType(type)}
+                            disabled={isSubmitting}
+                        >
+                            {type === 'bank_transfer'  && <Buildings size={20} color={cfg.color} weight="fill" />}
+                            {type === 'cash_collected' && <CurrencyCircleDollar size={20} color={cfg.color} weight="fill" />}
+                            {type === 'client_credit'  && <Clock size={20} color={cfg.color} weight="fill" />}
+                            <YStack flex={1} gap={2}>
+                                <Text fontSize={13} fontWeight="700" color={cfg.color}>{cfg.label}</Text>
+                                <Text fontSize={11} color={appTheme.colors.textMuted}>{cfg.sublabel}</Text>
+                            </YStack>
+                            {isActive && (
+                                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: cfg.color, alignItems: 'center', justifyContent: 'center' }}>
+                                    <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#fff' }} />
+                                </View>
+                            )}
+                        </Pressable>
+                    );
+                })}
 
-            {/* Option 2: Driver received cash → driver debt */}
-            <Pressable
-                style={({ pressed }) => [
-                    styles.collectionBtn,
-                    {
-                        borderColor: appTheme.colors.successBorder,
-                        backgroundColor: pressed ? appTheme.colors.successSoft : '#F0FBF4',
-                    },
-                ]}
-                onPress={() => void handleRecord('cash_collected')}
-                disabled={isLoading !== null}
-            >
-                <CurrencyCircleDollar size={20} color={appTheme.colors.success} weight="fill" />
-                <YStack flex={1} gap={2}>
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.success}>
-                        Tài đã thu tiền mặt
-                    </Text>
-                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                        Bạn cầm tiền mặt — hệ thống ghi nợ tài
-                    </Text>
-                </YStack>
-                {isLoading === 'cash_collected' && (
-                    <ActivityIndicator size="small" color={appTheme.colors.success} />
-                )}
-            </Pressable>
+                {selectedType ? (
+                    <YStack gap={10} padding={14} borderRadius={14}
+                        backgroundColor={appTheme.colors.surfaceSoft}
+                        borderWidth={1} borderColor={appTheme.colors.border}
+                    >
+                        <YStack gap={6}>
+                            <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>
+                                SỐ TIỀN KHÁCH TRẢ (₫)
+                            </Text>
+                            <TextInput
+                                value={amountText}
+                                onChangeText={(t) => { setAmountText(t); setError(null); }}
+                                keyboardType="numeric"
+                                placeholder="Nhập số tiền..."
+                                placeholderTextColor={appTheme.colors.textMuted}
+                                style={styles.amountInput}
+                                editable={!isSubmitting}
+                            />
+                            {selectedType === 'client_credit' ? (
+                                <Text fontSize={11} color={appTheme.colors.warning}>
+                                    Nhập 0 nếu khách chưa trả đồng nào.
+                                </Text>
+                            ) : null}
+                        </YStack>
 
-            {/* Option 3: Customer hasn't paid → customer debt */}
-            <Pressable
-                style={({ pressed }) => [
-                    styles.collectionBtn,
-                    {
-                        borderColor: appTheme.colors.warningBorder,
-                        backgroundColor: pressed ? appTheme.colors.warningSoft : '#FFFBEB',
-                    },
-                ]}
-                onPress={() => void handleRecord('client_credit')}
-                disabled={isLoading !== null}
-            >
-                <Clock size={20} color={appTheme.colors.warning} weight="fill" />
-                <YStack flex={1} gap={2}>
-                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.warning}>
-                        Khách chưa thanh toán
-                    </Text>
-                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                        Ghi công nợ — kế toán theo dõi thu hồi
-                    </Text>
-                </YStack>
-                {isLoading === 'client_credit' && (
-                    <ActivityIndicator size="small" color={appTheme.colors.warning} />
-                )}
-            </Pressable>
+                        <YStack gap={6}>
+                            <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>
+                                ẢNH BẰNG CHỨNG (BẮT BUỘC)
+                            </Text>
+                            {proofUri ? (
+                                <Pressable onPress={() => setShowCamera(true)} disabled={isSubmitting}>
+                                    <View style={styles.proofPreviewWrap}>
+                                        <Image source={{ uri: proofUri }} style={styles.proofPreview} resizeMode="cover" />
+                                        <View style={styles.proofOverlay}>
+                                            <Camera size={16} color="#fff" />
+                                            <Text fontSize={11} color="#fff" fontWeight="700">Chụp lại</Text>
+                                        </View>
+                                    </View>
+                                </Pressable>
+                            ) : (
+                                <Pressable
+                                    style={styles.cameraBtn}
+                                    onPress={() => setShowCamera(true)}
+                                    disabled={isSubmitting}
+                                >
+                                    <Camera size={20} color={appTheme.colors.primary} />
+                                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary}>
+                                        Chụp ảnh bằng chứng
+                                    </Text>
+                                </Pressable>
+                            )}
+                        </YStack>
 
-            {error ? (
-                <Text fontSize={12} color={appTheme.colors.danger} textAlign="center">{error}</Text>
-            ) : null}
-        </YStack>
+                        {error ? (
+                            <Text fontSize={12} color={appTheme.colors.danger}>{error}</Text>
+                        ) : null}
+
+                        <Pressable
+                            style={[styles.submitBtn, { backgroundColor: canSubmit ? COLLECTION_CFG[selectedType].color : appTheme.colors.border }]}
+                            onPress={handleSubmit}
+                            disabled={!canSubmit}
+                        >
+                            {isSubmitting
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text fontSize={14} fontWeight="900" color="#fff">Xác nhận</Text>
+                            }
+                        </Pressable>
+                    </YStack>
+                ) : null}
+            </YStack>
+
+            <CameraModal
+                visible={showCamera}
+                label="Ảnh bằng chứng thu tiền"
+                onCapture={(uri) => { setProofUri(uri); setShowCamera(false); }}
+                onClose={() => setShowCamera(false)}
+            />
+        </>
     );
 }
 
@@ -545,6 +649,58 @@ const styles = StyleSheet.create({
         padding: 14,
         borderRadius: 14,
         borderWidth: 1.5,
+    },
+    amountInput: {
+        borderWidth: 1,
+        borderColor: appTheme.colors.border,
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        fontSize: 16,
+        fontWeight: '700',
+        color: appTheme.colors.text,
+        backgroundColor: '#fff',
+    },
+    cameraBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        padding: 14,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderStyle: 'dashed',
+        borderColor: appTheme.colors.primary,
+        backgroundColor: appTheme.colors.primarySoft,
+    },
+    proofPreviewWrap: {
+        borderRadius: 12,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    proofPreview: {
+        width: '100%',
+        height: 180,
+        borderRadius: 12,
+    },
+    proofOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 10,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    submitBtn: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 14,
+        borderRadius: 12,
+        marginTop: 4,
     },
 });
 
