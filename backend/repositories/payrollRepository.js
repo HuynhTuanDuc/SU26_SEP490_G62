@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const revenueAllocationRepository = require('./revenueAllocationRepository');
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,8 @@ const PHONE_ALLOWANCE        = 200_000;
 const MAX_ADVANCE_AMOUNT     = 5_000_000;
 
 const getPayrollEstimate = async (driverId, { month, year }) => {
+    await revenueAllocationRepository.ensureRevenueAllocationTable();
+
     // 1. Thông tin driver
     const driverRes = await pool.query(
         `SELECT d.hire_date, d.revenue_share_percent

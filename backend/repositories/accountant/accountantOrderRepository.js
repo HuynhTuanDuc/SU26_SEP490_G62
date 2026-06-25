@@ -230,10 +230,10 @@ const createOrderWithShipments = async (orderData) => {
         `INSERT INTO orders (
             customer_id, created_by, updated_by,
             cargo_name, payment_type,
-            total_estimated_price, total_actual_price,
+            total_estimated_price, total_actual_price, prepaid_amount,
             derived_status, notes, created_at, updated_at
         )
-         VALUES ($1, $2, $2, $3, $4, $5, $5, 'completed', $6, NOW(), NOW())
+         VALUES ($1, $2, $2, $3, $4, $5, $5, $6, 'completed', $7, NOW(), NOW())
          RETURNING *`,
         [
             customerId,
@@ -241,6 +241,7 @@ const createOrderWithShipments = async (orderData) => {
             orderData.customer_name || null,
             orderData.payment_type || null,
             totalActualPrice,
+            Number(orderData.prepaid_amount || 0),
             orderNotes,
         ]
     );
@@ -292,7 +293,7 @@ const createOrderWithShipments = async (orderData) => {
 
         const result = await pool.query(
             `SELECT
-                o.id, o.cargo_name, o.payment_type,
+                o.id, o.cargo_name, o.payment_type, o.prepaid_amount,
                 o.total_estimated_price, o.derived_status, o.notes,
                 o.created_at,
                 c.full_name AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone,

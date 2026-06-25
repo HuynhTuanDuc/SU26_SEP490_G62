@@ -1,0 +1,329 @@
+const pool = require('../config/database');
+
+const getOverviewMetrics = async () => {
+    const [workforceResult, fleetResult, workflowResult] = await Promise.all([
+        pool.query(
+            `SELECT
+                COUNT(*)::int AS total_users,
+                COUNT(*) FILTER (WHERE a.is_active)::int AS active_users,
+                COUNT(*) FILTER (WHERE NOT a.is_active)::int AS inactive_users,
+                COUNT(*) FILTER (WHERE r.name = 'manager')::int AS manager_count,
+                COUNT(*) FILTER (WHERE r.name = 'coordinator')::int AS coordinator_count,
+                COUNT(*) FILTER (WHERE r.name = 'accountant')::int AS accountant_count,
+                COUNT(*) FILTER (WHERE r.name = 'driver')::int AS driver_count,
+                COUNT(*) FILTER (WHERE a.is_active AND r.name <> 'driver')::int AS active_staff
+             FROM accounts a
+             JOIN roles r ON r.id = a.role_id`,
+        ),
+        pool.query(
+            `SELECT
+                COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+                COUNT(*) FILTER (WHERE status = 'maintenance')::int AS maintenance,
+                COUNT(*) FILTER (WHERE status = 'broken')::int AS broken,
+                COUNT(*) FILTER (WHERE status = 'retired')::int AS retired
+             FROM vehicles`,
+        ),
+        pool.query(
+            `SELECT
+                (SELECT COUNT(*)::int FROM salary_advances WHERE status = 'pending') AS pending_advances,
+                COALESCE((SELECT SUM(amount) FROM salary_advances WHERE status = 'pending'), 0)::text AS pending_advances_amount,
+                (SELECT COUNT(*)::int FROM debt_payments WHERE status = 'pending') AS pending_repayments,
+                COALESCE((SELECT SUM(amount) FROM debt_payments WHERE status = 'pending'), 0)::text AS pending_repayments_amount,
+                (SELECT COUNT(*)::int FROM order_receipt_requests WHERE status = 'pending') AS pending_receipts,
+                (SELECT COUNT(*)::int FROM order_receipt_requests WHERE status = 'processing') AS processing_receipts`,
+        ),
+    ]);
+
+    return {
+        workforce: workforceResult.rows[0],
+        fleet: fleetResult.rows[0],
+        workflow: workflowResult.rows[0],
+    };
+};
+
+const getSalaryAdvances = async ({ status = 'pending', limit = 20 } = {}) => {
+    const params = [];
+    const clauses = [];
+    const normalizedStatus = String(status || '').trim().toLowerCase();
+
+    if (normalizedStatus && normalizedStatus !== 'all') {
+        params.push(normalizedStatus);
+        clauses.push(`sa.status = $${params.length}`);
+    }
+
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+    params.push(safeLimit);
+
+    const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    const result = await pool.query(
+        `SELECT
+            sa.id,
+            sa.driver_id,
+            sa.amount::text,
+            sa.reason,
+            sa.request_month,
+            sa.request_year,
+            sa.status,
+            sa.reject_reason,
+            sa.created_at,
+            sa.reviewed_at,
+            sa.approved_at,
+            p.full_name AS driver_name,
+            p.phone AS driver_phone,
+            a.email AS driver_email
+         FROM salary_advances sa
+         JOIN profiles p ON p.id = sa.driver_id
+         JOIN accounts a ON a.id = sa.driver_id
+         ${whereClause}
+         ORDER BY
+            CASE sa.status
+                WHEN 'pending' THEN 0
+                WHEN 'approved' THEN 1
+                WHEN 'paid' THEN 2
+                ELSE 3
+            END,
+            sa.created_at DESC
+         LIMIT $${params.length}`,
+        params,
+    );
+
+    return result.rows;
+};
+
+const getSalaryAdvanceById = async (advanceId) => {
+    const result = await pool.query(
+        `SELECT
+            sa.*,
+            p.full_name AS driver_name,
+            a.email AS driver_email
+         FROM salary_advances sa
+         JOIN profiles p ON p.id = sa.driver_id
+         JOIN accounts a ON a.id = sa.driver_id
+         WHERE sa.id = $1`,
+        [advanceId],
+    );
+
+    return result.rows[0] ?? null;
+};
+
+const approveSalaryAdvance = async (advanceId, managerId) => {
+    const result = await pool.query(
+        `UPDATE salary_advances
+         SET
+            status = 'approved',
+            reviewed_by = $2,
+            reviewed_at = NOW(),
+            approved_by = $2,
+            approved_at = NOW(),
+            reject_reason = NULL,
+            updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, driver_id, amount::text, request_month, request_year, status, approved_at`,
+        [advanceId, managerId],
+    );
+
+    return result.rows[0] ?? null;
+};
+
+const rejectSalaryAdvance = async (advanceId, managerId, reason = null) => {
+    const result = await pool.query(
+        `UPDATE salary_advances
+         SET
+            status = 'rejected',
+            reviewed_by = $2,
+            reviewed_at = NOW(),
+            approved_by = NULL,
+            approved_at = NULL,
+            reject_reason = $3,
+            updated_at = NOW()
+         WHERE id = $1
+         RETURNING id, driver_id, amount::text, request_month, request_year, status, reject_reason, reviewed_at`,
+        [advanceId, managerId, reason],
+    );
+
+    return result.rows[0] ?? null;
+};
+
+const getPartnerSummary = async () => {
+    const result = await pool.query(
+        `SELECT
+            COUNT(*)::int AS total_partners,
+            COUNT(*) FILTER (
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM debts d
+                    WHERE d.partner_id = p.id
+                      AND d.debt_type = 'partner'
+                      AND COALESCE(d.total_amount, 0) > COALESCE(d.paid_amount, 0)
+                )
+            )::int AS partners_with_debt,
+            COALESCE((
+                SELECT SUM(d.total_amount - d.paid_amount)
+                FROM debts d
+                WHERE d.debt_type = 'partner'
+            ), 0)::text AS total_remaining
+         FROM partners p`,
+    );
+
+    return result.rows[0];
+};
+
+const listPartners = async ({ search = '' } = {}) => {
+    const params = [];
+    const conditions = [];
+    const normalizedSearch = String(search || '').trim();
+
+    if (normalizedSearch) {
+        params.push(`%${normalizedSearch}%`);
+        conditions.push(`(
+            p.company_name ILIKE $${params.length}
+            OR COALESCE(p.short_name, '') ILIKE $${params.length}
+            OR COALESCE(p.contact_person, '') ILIKE $${params.length}
+            OR COALESCE(p.phone, '') ILIKE $${params.length}
+            OR COALESCE(p.email, '') ILIKE $${params.length}
+            OR COALESCE(p.tax_code, '') ILIKE $${params.length}
+        )`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await pool.query(
+        `SELECT
+            p.id,
+            p.company_name,
+            p.short_name,
+            p.contact_person,
+            p.phone,
+            p.email,
+            p.address,
+            p.tax_code,
+            p.business_registration_number,
+            p.payment_term_days,
+            p.bank_name,
+            p.bank_account_number,
+            p.bank_account_name,
+            p.notes,
+            p.created_at,
+            COUNT(d.id)::int AS debt_count,
+            COALESCE(SUM(d.total_amount), 0)::text AS total_amount,
+            COALESCE(SUM(d.paid_amount), 0)::text AS total_paid,
+            COALESCE(SUM(d.total_amount - d.paid_amount), 0)::text AS total_remaining,
+            MIN(d.due_date) AS earliest_due_date,
+            MAX(d.created_at) AS latest_debt_at
+         FROM partners p
+         LEFT JOIN debts d
+            ON d.partner_id = p.id
+           AND d.debt_type = 'partner'
+         ${whereClause}
+         GROUP BY p.id
+         ORDER BY
+            COALESCE(SUM(d.total_amount - d.paid_amount), 0) DESC,
+            p.company_name ASC`,
+        params,
+    );
+
+    return result.rows;
+};
+
+const getPartnerById = async (partnerId) => {
+    const result = await pool.query(
+        `SELECT
+            id,
+            company_name,
+            short_name,
+            contact_person,
+            phone,
+            email,
+            address,
+            tax_code,
+            business_registration_number,
+            payment_term_days,
+            bank_name,
+            bank_account_number,
+            bank_account_name,
+            notes,
+            created_at
+         FROM partners
+         WHERE id = $1`,
+        [partnerId],
+    );
+
+    return result.rows[0] ?? null;
+};
+
+const createPartner = async ({ companyName, shortName, contactPerson, phone, email, address, taxCode, businessRegistrationNumber, paymentTermDays, bankName, bankAccountNumber, bankAccountName, notes }) => {
+    const result = await pool.query(
+        `INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         RETURNING id, company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes, created_at`,
+        [companyName, shortName, contactPerson, phone, email, address, taxCode, businessRegistrationNumber, paymentTermDays, bankName, bankAccountNumber, bankAccountName, notes],
+    );
+
+    return result.rows[0];
+};
+
+const updatePartner = async (partnerId, { companyName, shortName, contactPerson, phone, email, address, taxCode, businessRegistrationNumber, paymentTermDays, bankName, bankAccountNumber, bankAccountName, notes }) => {
+    const result = await pool.query(
+        `UPDATE partners
+         SET
+            company_name = $2,
+            short_name = $3,
+            contact_person = $4,
+            phone = $5,
+            email = $6,
+            address = $7,
+            tax_code = $8,
+            business_registration_number = $9,
+            payment_term_days = $10,
+            bank_name = $11,
+            bank_account_number = $12,
+            bank_account_name = $13,
+            notes = $14
+         WHERE id = $1
+         RETURNING id, company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes, created_at`,
+        [partnerId, companyName, shortName, contactPerson, phone, email, address, taxCode, businessRegistrationNumber, paymentTermDays, bankName, bankAccountNumber, bankAccountName, notes],
+    );
+
+    return result.rows[0] ?? null;
+};
+
+const getPartnerDebtDetails = async (partnerId) => {
+    const result = await pool.query(
+        `SELECT
+            d.id,
+            d.order_id,
+            d.shipment_id,
+            d.total_amount::text,
+            d.paid_amount::text,
+            (COALESCE(d.total_amount, 0) - COALESCE(d.paid_amount, 0))::text AS remaining,
+            d.status,
+            d.due_date,
+            d.notes,
+            d.created_at,
+            o.cargo_name,
+            c.full_name AS customer_name,
+            c.company_name AS customer_company
+         FROM debts d
+         LEFT JOIN orders o ON o.id = d.order_id
+         LEFT JOIN customers c ON c.id = d.customer_id
+         WHERE d.partner_id = $1
+           AND d.debt_type = 'partner'
+         ORDER BY d.created_at DESC`,
+        [partnerId],
+    );
+
+    return result.rows;
+};
+
+module.exports = {
+    getOverviewMetrics,
+    getSalaryAdvances,
+    getSalaryAdvanceById,
+    approveSalaryAdvance,
+    rejectSalaryAdvance,
+    getPartnerSummary,
+    listPartners,
+    getPartnerById,
+    createPartner,
+    updatePartner,
+    getPartnerDebtDetails,
+};

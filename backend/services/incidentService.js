@@ -1,5 +1,8 @@
 const incidentRepository = require('../repositories/incidentRepository');
 const tripRepository = require('../repositories/tripRepository');
+const driverRepository = require('../repositories/driverRepository');
+const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
+const pool = require('../config/database');
 const notificationService = require('./notificationService');
 const {
     ALLOWED_INCIDENT_TYPES,
@@ -217,8 +220,29 @@ const getIncidentDetail = async (incidentId, driverId) => {
     return incident;
 };
 
+const buildRevenueAllocationPlan = ({ originalDriverId, replacementDriverId, pickupCompleted }) => {
+    if (!pickupCompleted) {
+        return {
+            allocationReason: 'incident_full_transfer',
+            allocations: [
+                { driverId: replacementDriverId, sharePercent: 100 },
+            ],
+            modeLabel: 'full_transfer',
+        };
+    }
+
+    return {
+        allocationReason: 'incident_split',
+        allocations: [
+            { driverId: originalDriverId, sharePercent: 50 },
+            { driverId: replacementDriverId, sharePercent: 50 },
+        ],
+        modeLabel: 'split_50_50',
+    };
+};
+
 // Coordinator cập nhật trạng thái sự cố → notify driver
-const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolution }) => {
+const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolution, replacementDriverId = null }) => {
     if (!status || !ALLOWED_INCIDENT_STATUSES.includes(status)) {
         throw new Error('Trạng thái sự cố không hợp lệ');
     }
@@ -226,7 +250,111 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     const incident = await incidentRepository.getIncidentById(incidentId);
     if (!incident) throw new Error('Sự cố không tồn tại');
 
-    const updated = await incidentRepository.updateIncidentStatus(incidentId, { status, resolution });
+    let replacementDriver = null;
+    let replacementVehicleId = null;
+    let revenueMode = null;
+
+    const parsedReplacementDriverId = replacementDriverId ? Number(replacementDriverId) : null;
+    if (parsedReplacementDriverId) {
+        if (!incident.shipment_id) {
+            throw new Error('Chỉ có thể điều chuyển tài xế cho sự cố gắn với chuyến');
+        }
+
+        replacementDriver = (await driverRepository.getAllDrivers())
+            .find((driver) => Number(driver.id) === parsedReplacementDriverId) ?? null;
+        if (!replacementDriver) {
+            throw new Error('Tài xế thay thế không tồn tại');
+        }
+        if (!replacementDriver.vehicle_id) {
+            throw new Error('Tài xế thay thế chưa được gán xe');
+        }
+
+        replacementVehicleId = Number(replacementDriver.vehicle_id);
+    }
+
+    const updated = parsedReplacementDriverId
+        ? await (async () => {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+
+                const currentShipment = await tripRepository.getTripById(incident.shipment_id);
+                if (!currentShipment) {
+                    throw new Error('Chuyến gắn với sự cố không tồn tại');
+                }
+                if (Number(currentShipment.owner_driver_id) === parsedReplacementDriverId) {
+                    throw new Error('Tài xế thay thế phải khác tài xế đang giữ chuyến');
+                }
+
+                const originalDriverId = Number(currentShipment.owner_driver_id);
+                const reassignedShipment = await tripRepository.reassignShipmentAfterIncident(incident.shipment_id, {
+                    incidentId,
+                    fromDriverId: originalDriverId,
+                    toDriverId: parsedReplacementDriverId,
+                    toVehicleId: replacementVehicleId,
+                    changedBy: coordinatorId,
+                    note: Boolean(currentShipment.pickup_completed_at)
+                        ? 'Dieu chuyen sau khi da lay hang, doanh thu chia doi'
+                        : 'Dieu chuyen truoc khi lay hang, doanh thu chuyen toan bo',
+                    client,
+                });
+
+                const allocationPlan = buildRevenueAllocationPlan({
+                    originalDriverId,
+                    replacementDriverId: parsedReplacementDriverId,
+                    pickupCompleted: Boolean(reassignedShipment.pickup_completed_at),
+                });
+                revenueMode = allocationPlan.modeLabel;
+
+                await revenueAllocationRepository.replaceShipmentAllocations(
+                    client,
+                    incident.shipment_id,
+                    allocationPlan.allocations,
+                    {
+                        allocationReason: allocationPlan.allocationReason,
+                        incidentId,
+                        createdBy: coordinatorId,
+                    },
+                );
+
+                const updatedIncident = await incidentRepository.updateIncidentResolution(client, incidentId, {
+                    status,
+                    resolution,
+                    resolvedBy: coordinatorId,
+                    replacementDriverId: parsedReplacementDriverId,
+                    replacementVehicleId,
+                });
+                if (!updatedIncident) throw new Error('Không thể cập nhật sự cố');
+
+                await client.query('COMMIT');
+                return updatedIncident;
+            } catch (error) {
+                await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
+        })()
+        : await (async () => {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                const updatedIncident = await incidentRepository.updateIncidentResolution(client, incidentId, {
+                    status,
+                    resolution,
+                    resolvedBy: coordinatorId,
+                    replacementDriverId: incident.replacement_driver_id ?? null,
+                    replacementVehicleId: incident.replacement_vehicle_id ?? null,
+                });
+                await client.query('COMMIT');
+                return updatedIncident;
+            } catch (error) {
+                await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
+        })();
     if (!updated) throw new Error('Không thể cập nhật sự cố');
 
     // Notify driver về phản hồi từ coordinator
@@ -244,7 +372,19 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
         entityId: incidentId,
     }, { displayMode: status === 'resolved' || status === 'closed' ? 'toast' : 'silent' }).catch(() => {});
 
-    return updated;
+    if (replacementDriver) {
+        notificationService.createForUser(replacementDriver.id, {
+            title: 'Bạn được điều chuyển thay chuyến',
+            message: revenueMode === 'split_50_50'
+                ? `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến sẽ chia 50/50.`
+                : `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến thuộc về bạn.`,
+            type: 'TRIP_ASSIGNED',
+            entityType: 'shipments',
+            entityId: incident.shipment_id,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
+
+    return incidentRepository.getIncidentById(incidentId);
 };
 
 module.exports = {

@@ -11,6 +11,7 @@ const selectOrderProjection = `
         o.cargo_name,
         o.cargo_weight_kg,
         o.payment_type,
+        o.prepaid_amount,
         o.total_estimated_price,
         o.total_estimated_price AS estimated_price,
         o.partner_name,
@@ -633,8 +634,8 @@ const createOrderWithShipment = async ({
     //Ghi vào order
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()))
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
          RETURNING *`,
         [
             orderData.customer_id,
@@ -645,6 +646,7 @@ const createOrderWithShipment = async ({
             orderData.vehicle_group_id || null,
             orderData.estimated_price || 0,
             orderData.notes,
+            orderData.prepaid_amount || 0,
             orderData.created_at || null,
         ],
     );
@@ -722,8 +724,8 @@ const createOrderWithMultipleShipments = async ({
     //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, created_at, partner_name, total_actual_price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at, partner_name, total_actual_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11, $12)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -734,6 +736,7 @@ const createOrderWithMultipleShipments = async ({
             orderData.vehicle_group_id || null,
             totalEstimatedPrice,
             orderData.notes,
+            orderData.prepaid_amount || 0,
             orderData.created_at || null,
             orderData.partner_name || null,
             orderData.total_actual_price || 0,
@@ -858,6 +861,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         date,
         partner_name,
         total_actual_price,
+        prepaid_amount,
     } = payload;
 
     const client = await pool.connect();
@@ -880,6 +884,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  notes = $5,
                  partner_name = COALESCE($7, partner_name),
                  total_actual_price = COALESCE($8, total_actual_price),
+                 prepaid_amount = COALESCE($9, prepaid_amount),
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -892,6 +897,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 customer?.id ?? null,
                 partner_name !== undefined ? partner_name : null,
                 total_actual_price !== undefined ? total_actual_price : 0,
+                prepaid_amount,
             ],
         );
 

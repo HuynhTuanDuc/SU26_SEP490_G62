@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const revenueAllocationRepository = require('./revenueAllocationRepository');
 
 // ─── Driver: KPI cá nhân + bonus eligibility ──────────────────────────────────
 // Trả thêm:
@@ -208,6 +209,8 @@ const getDriverKPIById = async (driverId, { month = null, year = null } = {}) =>
 // Doanh thu KPI chỉ tính actual_price (BR-026) — không fallback estimated_price
 
 const recalculateDriverKPI = async (driverId, month, year) => {
+    await revenueAllocationRepository.ensureRevenueAllocationTable();
+
     const vgRes = await pool.query(
         `SELECT v.vehicle_group_id
          FROM drivers d
@@ -224,13 +227,39 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     // Hiện tại actual_price luôn NULL → KPI dùng estimated_price, hoàn toàn đúng.
     const shipRes = await pool.query(
         `SELECT
-            COUNT(*)                                                        AS completed_shipments,
-            COALESCE(SUM(COALESCE(actual_price, estimated_price, 0)), 0)   AS total_revenue
-         FROM order_shipments
-         WHERE owner_driver_id = $1
-           AND status = 'completed'
-           AND EXTRACT(MONTH FROM completed_at) = $2
-           AND EXTRACT(YEAR  FROM completed_at) = $3`,
+            COUNT(*) FILTER (
+                WHERE os.owner_driver_id = $1
+            )                                                           AS completed_shipments,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN alloc.allocation_count > 0 THEN
+                            COALESCE(os.actual_price, os.estimated_price, 0) * (alloc.driver_share_percent / 100.0)
+                        WHEN os.owner_driver_id = $1 THEN
+                            COALESCE(os.actual_price, os.estimated_price, 0)
+                        ELSE 0
+                    END
+                ),
+                0
+            )                                                           AS total_revenue
+         FROM order_shipments os
+         LEFT JOIN LATERAL (
+            SELECT
+                COUNT(*)::int AS allocation_count,
+                COALESCE(
+                    SUM(share_percent) FILTER (WHERE driver_id = $1),
+                    0
+                )::numeric AS driver_share_percent
+            FROM shipment_revenue_allocations sra
+            WHERE sra.shipment_id = os.id
+         ) alloc ON TRUE
+         WHERE os.status = 'completed'
+           AND EXTRACT(MONTH FROM os.completed_at) = $2
+           AND EXTRACT(YEAR  FROM os.completed_at) = $3
+           AND (
+                os.owner_driver_id = $1
+                OR alloc.driver_share_percent > 0
+           )`,
         [driverId, month, year],
     );
     const { completed_shipments, total_revenue } = shipRes.rows[0];

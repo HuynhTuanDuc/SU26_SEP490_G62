@@ -4,6 +4,8 @@ import AppHeader from "../../components/layout/AppHeader";
 import AppSidebar from "../../components/layout/AppSidebar";
 import UserList from "../../features/admin/UserList";
 import VehicleList from "../../features/admin/VehicleList";
+import ManagerDashboard from "../../features/manager/ManagerDashboard";
+import PartnerManagement from "../../features/manager/PartnerManagement";
 import { C } from "../../styles/theme";
 import "../../styles/admin/Admin.css";
 import { saveSession } from "../../services/storage";
@@ -11,7 +13,7 @@ import { saveSession } from "../../services/storage";
 const { Title, Text } = Typography;
 
 export default function AdminPage({ user, onLogout }) {
-  const [activeTab, setActiveTab] = useState("users");
+  const [activeTab, setActiveTab] = useState("partners");
   const [collapsed, setCollapsed] = useState(false);
   const [currentUser, setCurrentUser] = useState(user);
 
@@ -26,11 +28,15 @@ export default function AdminPage({ user, onLogout }) {
   };
 
   const pageTitleMap = {
+    partners: "Quan ly doi tac",
+    dashboard: "Tong quan manager",
     users: "Quan ly nguoi dung",
     vehicles: "Quan ly xe",
   };
 
   const pageSubtitleMap = {
+    partners: "Quan ly thong tin doi tac va theo doi cong no neu doi tac dang ton dong thanh toan.",
+    dashboard: "Theo doi phe duyet, cong no, phieu thu va thong tin cong ty tren cung mot luong van hanh.",
     users: "Quan ly tai khoan, vai tro va trang thai truy cap.",
     vehicles: "Theo doi phuong tien, tai xe duoc gan va trang thai bao tri.",
   };
@@ -58,6 +64,8 @@ export default function AdminPage({ user, onLogout }) {
             </Text>
           </div>
 
+          {activeTab === "partners" && <PartnerManagement user={currentUser} />}
+          {activeTab === "dashboard" && <ManagerDashboard user={currentUser} />}
           {activeTab === "users" && <UserList user={currentUser} />}
           {activeTab === "vehicles" && <VehicleList user={currentUser} />}
         </section>
