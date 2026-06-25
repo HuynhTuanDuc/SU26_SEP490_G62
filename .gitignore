@@ -1,3 +1,9 @@
+# Git account switch scripts (local only)
+switch-tien.ps1
+switch-hoang.ps1
+switch-tien.sh
+switch-hoang.sh
+
 # Environment variables
 .env
 .env.local
