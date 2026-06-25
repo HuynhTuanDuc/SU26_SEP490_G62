@@ -154,7 +154,7 @@ const getCoordinatorIncidents = async ({ status = null, search = '' } = {}) => {
             i.created_at DESC`,
         params,
     );
-    return result.rows;
+    return result.rows};
     const getActiveDriverIds = async (excludeDriverId) => {
         const result = await pool.query(
             `SELECT p.id
@@ -280,4 +280,4 @@ const getCoordinatorIncidents = async ({ status = null, search = '' } = {}) => {
         getActiveDriverIds,
         updateIncidentStatus,
         updateIncidentResolution,
-    };
+    }
