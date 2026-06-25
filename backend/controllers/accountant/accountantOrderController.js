@@ -185,11 +185,12 @@ const updateOrder = async (req, res) => {
         if (Number.isNaN(orderId)) {
             return res.status(400).json({ error: "Invalid order id" });
         }
-        const { customer_name, customer_phone, customer_company, notes } = req.body;
+        const { customer_name, customer_phone, customer_company, cargo_name, notes } = req.body;
         const updatedOrder = await accountantOrderService.updateOrder(orderId, {
             customer_name,
             customer_phone,
             customer_company,
+            cargo_name,
             notes,
         });
         res.json({ message: "Order updated successfully", order: updatedOrder });

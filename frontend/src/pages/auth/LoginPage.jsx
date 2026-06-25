@@ -489,7 +489,7 @@ export default function LoginPage({ onLoginSuccess }) {
         open={forgotOpen}
         onCancel={resetForgotFlow}
         footer={null}
-        destroyOnClose={false}
+        destroyOnHidden={false}
       >
         {forgotStep === 1 && (
           <Space direction="vertical" size={12} style={{ width: "100%" }}>

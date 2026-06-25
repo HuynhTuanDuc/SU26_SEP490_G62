@@ -205,7 +205,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       open={open}
       onCancel={onClose}
       footer={null}
-      destroyOnClose={false}
+      destroyOnHidden={false}
       width={680}
     >
       <Form form={form} layout="vertical" disabled={loading}>

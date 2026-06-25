@@ -967,4 +967,13 @@
   box-shadow: 0 4px 8px rgba(30, 43, 136, 0.15);
 }
 
+/* Table grid lines for RevenueTable */
+.accountant-dashboard .order-row {
+  transition: background 0.15s ease;
+}
+
+.accountant-dashboard .order-row:hover {
+  background: #f8fafc;
+}
+
 

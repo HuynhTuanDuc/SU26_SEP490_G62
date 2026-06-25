@@ -73,3 +73,12 @@ export const getGroupedDebts = async (params = {}) => {
     token: getToken(),
   });
 };
+
+/**
+ * Lấy lịch sử thanh toán của 1 người (customer/driver)
+ */
+export const getPaymentHistoryByPerson = async (personType, personId) => {
+  return apiRequest(`/accountant/debts/payment/history/${personType}/${personId}`, {
+    token: getToken(),
+  });
+};

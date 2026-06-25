@@ -58,7 +58,7 @@ const allocatePayment = async (req, res) => {
             amount: Number(amount),
             paymentMethod: paymentMethod || 'cash',
             notes: notes || '',
-            createdBy: req.user?.id || 1, // Fallback to 1 if no user
+            createdBy: req.user?.userId || 1,
         });
 
         res.json(result);
@@ -92,7 +92,7 @@ const paymentByShipment = async (req, res) => {
             amount: Number(amount),
             paymentMethod: paymentMethod || 'cash',
             notes: notes || '',
-            createdBy: req.user?.id || 1,
+            createdBy: req.user?.userId || 1,
         });
 
         res.json(result);
@@ -127,7 +127,7 @@ const paymentByDebt = async (req, res) => {
             amount: Number(amount),
             paymentMethod: paymentMethod || 'cash',
             notes: notes || '',
-            createdBy: req.user?.id || 1,
+            createdBy: req.user?.userId || 1,
         });
 
         res.json(result);

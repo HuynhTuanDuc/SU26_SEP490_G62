@@ -22,6 +22,8 @@ const getFinanceStats = async () => {
                 os.order_id,
                 os.actual_price  AS actual_price
             FROM order_shipments os
+            JOIN orders o ON o.id = os.order_id
+            WHERE o.derived_status = 'completed'
         ),
         revenue_per_order AS (
             SELECT
@@ -42,7 +44,9 @@ const getFinanceStats = async () => {
                 FROM debts d
                 JOIN debt_payments dp
                     ON dp.debt_id = d.id AND dp.status = 'confirmed'
+                JOIN orders o ON o.id = d.order_id
                 WHERE d.order_id IS NOT NULL
+                  AND o.derived_status = 'completed'
                 GROUP BY d.order_id
             ) paid ON paid.order_id = rpo.order_id
         )
@@ -51,7 +55,10 @@ const getFinanceStats = async () => {
             COALESCE((
                 SELECT SUM(dp.amount)
                 FROM debt_payments dp
+                JOIN debts d ON d.id = dp.debt_id
+                JOIN orders o ON o.id = d.order_id
                 WHERE dp.status = 'confirmed'
+                  AND o.derived_status = 'completed'
             ), 0) AS total_collected,
             COALESCE((SELECT SUM(remaining) FROM order_remaining), 0) AS total_receivables,
             (

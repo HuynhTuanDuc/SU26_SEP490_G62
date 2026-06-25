@@ -54,7 +54,7 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
       onCancel={onClose}
       okText="Luu lai"
       cancelText="Huy"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" name="userForm">
         <Form.Item
