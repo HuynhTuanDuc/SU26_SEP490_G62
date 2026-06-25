@@ -14,7 +14,7 @@ const DEBT_TYPE_CFG = {
   driver:   { label: "Tài xế nợ",   color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
 };
 
-export default function DebtTable({ apiBase, token }) {
+export default function DebtTable({ apiBase, token, onDebtPayment }) {
   const [debts, setDebts] = useState([]);
   const [groupedDebts, setGroupedDebts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +36,12 @@ export default function DebtTable({ apiBase, token }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
+  const [itemPayment, setItemPayment] = useState(null);
+  const [itemPaymentAmount, setItemPaymentAmount] = useState("");
+  const [itemPaymentMethod, setItemPaymentMethod] = useState("cash");
+  const [itemPaymentNotes, setItemPaymentNotes] = useState("");
+  const [itemPaymentError, setItemPaymentError] = useState("");
+  const [itemPaymentLoading, setItemPaymentLoading] = useState(false);
 
   const fetchDebts = async (page = 1) => {
     setLoading(true);
@@ -178,6 +184,97 @@ export default function DebtTable({ apiBase, token }) {
         fetchGroupedDebts(1);
       }
     }, 0);
+  };
+
+  const refreshCurrentView = () => {
+    if (viewMode === "detail") {
+      fetchDebts(pagination.currentPage || 1);
+    } else {
+      fetchGroupedDebts(pagination.currentPage || 1);
+    }
+    fetchStats();
+  };
+
+  const openItemPayment = (debt, context = {}) => {
+    const remaining = Number(debt.remaining || 0);
+    setItemPayment({
+      ...debt,
+      remaining,
+      personKey: context.personKey || null,
+      personType: context.personType || debt.debt_type,
+      customerIds: context.customerIds || null,
+      driverId: context.driverId || null,
+    });
+    setItemPaymentAmount("");
+    setItemPaymentMethod("cash");
+    setItemPaymentNotes("");
+    setItemPaymentError("");
+  };
+
+  const closeItemPayment = () => {
+    if (itemPaymentLoading) return;
+    setItemPayment(null);
+    setItemPaymentAmount("");
+    setItemPaymentNotes("");
+    setItemPaymentError("");
+  };
+
+  const submitItemPayment = async () => {
+    const amount = Number(itemPaymentAmount);
+    const remaining = Number(itemPayment?.remaining || 0);
+
+    if (!itemPayment) return;
+    if (!amount || amount <= 0) {
+      setItemPaymentError("Vui lòng nhập số tiền thu lớn hơn 0.");
+      return;
+    }
+    if (amount > remaining + 0.01) {
+      setItemPaymentError(`Số tiền thu không được lớn hơn số còn nợ (${fmt(remaining)}đ).`);
+      return;
+    }
+
+    try {
+      setItemPaymentLoading(true);
+      setItemPaymentError("");
+      const response = await fetch(`${apiBase}/accountant/debts/payment/by-debt`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          debtId: itemPayment.id,
+          amount,
+          paymentMethod: itemPaymentMethod,
+          notes: itemPaymentNotes.trim() || `Thu tiền khoản nợ #${itemPayment.id}`,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.details || result.message || result.error || "Ghi nhận thu tiền thất bại.");
+      }
+
+      const reloadDetails = itemPayment.personKey
+        ? fetchPersonDebts(
+            itemPayment.personType,
+            itemPayment.personKey,
+            itemPayment.customerIds,
+            itemPayment.driverId
+          )
+        : Promise.resolve();
+
+      refreshCurrentView();
+      await reloadDetails;
+      setItemPayment(null);
+      setItemPaymentAmount("");
+      setItemPaymentNotes("");
+      setItemPaymentError("");
+    } catch (err) {
+      setItemPaymentError(err.message || "Ghi nhận thu tiền thất bại.");
+    } finally {
+      setItemPaymentLoading(false);
+    }
   };
 
   const toggleExpand = (debt, key) => {
@@ -342,14 +439,34 @@ export default function DebtTable({ apiBase, token }) {
           toggleExpand={toggleExpand}
           pagination={pagination}
           handlePageChange={handlePageChange}
+          onDebtPayment={onDebtPayment}
+          onDebtItemPayment={openItemPayment}
         />
       ) : (
         <DetailDebtView
           debts={debts}
           pagination={pagination}
           handlePageChange={handlePageChange}
+          onDebtItemPayment={openItemPayment}
         />
       )}
+
+      <DebtItemPaymentModal
+        debt={itemPayment}
+        amount={itemPaymentAmount}
+        paymentMethod={itemPaymentMethod}
+        notes={itemPaymentNotes}
+        error={itemPaymentError}
+        loading={itemPaymentLoading}
+        onAmountChange={(value) => {
+          setItemPaymentAmount(value);
+          setItemPaymentError("");
+        }}
+        onPaymentMethodChange={setItemPaymentMethod}
+        onNotesChange={setItemPaymentNotes}
+        onClose={closeItemPayment}
+        onSubmit={submitItemPayment}
+      />
     </div>
   );
 }
@@ -382,7 +499,7 @@ function DebtStatCard({ label, amount, count, color }) {
 }
 
 // Component view chi tiết từng khoản nợ (giữ nguyên bảng cũ)
-function DetailDebtView({ debts, pagination, handlePageChange }) {
+function DetailDebtView({ debts, pagination, handlePageChange, onDebtItemPayment }) {
   if (debts.length === 0) {
     return (
       <div style={{ padding: 60, textAlign: "center" }}>
@@ -411,6 +528,7 @@ function DetailDebtView({ debts, pagination, handlePageChange }) {
                 "Hạn",
                 "Trạng thái",
                 "Ghi chú",
+                "Thao tác",
               ].map((h) => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
@@ -459,6 +577,19 @@ function DetailDebtView({ debts, pagination, handlePageChange }) {
                   <td style={{ ...tdStyle, color: "#475569", fontSize: 12 }}>{dueDate}</td>
                   <td style={tdStyle}>{renderBadge(statusCfg.label, statusCfg.color, statusCfg.bg, statusCfg.border)}</td>
                   <td style={{ ...tdStyle, color: "#64748b", fontSize: 12, maxWidth: 180 }}>{debt.notes || "—"}</td>
+                  <td style={{ ...tdStyle, textAlign: "center" }}>
+                    {remaining > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => onDebtItemPayment?.(debt)}
+                        style={itemPayBtnStyle}
+                      >
+                        Thu
+                      </button>
+                    ) : (
+                      <span style={{ color: "#94a3b8", fontSize: 12 }}>—</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -471,7 +602,7 @@ function DetailDebtView({ debts, pagination, handlePageChange }) {
 }
 
 // Component view nhóm theo người
-function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts, toggleExpand, pagination, handlePageChange }) {
+function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts, toggleExpand, pagination, handlePageChange, onDebtPayment, onDebtItemPayment }) {
   if (debts.length === 0) {
     return (
       <div style={{ padding: 60, textAlign: "center" }}>
@@ -556,6 +687,35 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
                 {/* Status */}
                 {renderBadge(statusCfg.label, statusCfg.color, statusCfg.bg, statusCfg.border)}
+
+                {/* Action: Thu tiền */}
+                {totalRemaining > 0 && onDebtPayment && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDebtPayment({
+                        type: debt.debt_type,
+                        id: debt.debt_type === 'driver' ? debt.driver_id : (debt.customer_ids?.[0]),
+                        name: personName,
+                        phone: personPhone,
+                        remaining: totalRemaining,
+                      });
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#16a34a',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Thu tiền
+                  </button>
+                )}
               </div>
 
               {/* Expanded detail */}
@@ -568,7 +728,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                         <thead>
                           <tr style={{ background: "#f8fafc" }}>
-                            {["Khách hàng", "SĐT", "Đơn", "Chuyến", "Hàng hóa", "Tổng nợ", "Đã trả", "Còn nợ", "Trạng thái", "Ghi chú"].map((h) => (
+                            {["Khách hàng", "SĐT", "Đơn", "Chuyến", "Hàng hóa", "Tổng nợ", "Đã trả", "Còn nợ", "Trạng thái", "Ghi chú", "Thao tác"].map((h) => (
                               <th key={h} style={{ ...thStyle, fontSize: 11, padding: "8px 10px" }}>{h}</th>
                             ))}
                           </tr>
@@ -600,6 +760,24 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                                 <td style={tdStyle}>{renderBadge(dStatusCfg.label, dStatusCfg.color, dStatusCfg.bg, dStatusCfg.border)}</td>
                                 <td style={{ ...tdStyle, color: "#64748b", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.notes}>
                                   {d.notes || "—"}
+                                </td>
+                                <td style={{ ...tdStyle, textAlign: "center" }}>
+                                  {dRemaining > 0 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => onDebtItemPayment?.(d, {
+                                        personKey: key,
+                                        personType: debt.debt_type,
+                                        customerIds: debt.customer_ids,
+                                        driverId: debt.driver_id,
+                                      })}
+                                      style={itemPayBtnStyle}
+                                    >
+                                      Thu
+                                    </button>
+                                  ) : (
+                                    <span style={{ color: "#94a3b8", fontSize: 12 }}>—</span>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -668,6 +846,117 @@ function PaginationControls({ pagination, handlePageChange, itemLabel }) {
         >
           Sau →
         </button>
+      </div>
+    </div>
+  );
+}
+
+function DebtItemPaymentModal({
+  debt,
+  amount,
+  paymentMethod,
+  notes,
+  error,
+  loading,
+  onAmountChange,
+  onPaymentMethodChange,
+  onNotesChange,
+  onClose,
+  onSubmit,
+}) {
+  if (!debt) return null;
+
+  const remaining = Number(debt.remaining || 0);
+  const debtorName = debt.debt_type === "driver"
+    ? debt.driver_name || "Tài xế"
+    : debt.customer_name || "Khách hàng";
+
+  return (
+    <div
+      style={modalOverlayStyle}
+      onClick={onClose}
+    >
+      <div
+        style={modalCardStyle}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={modalHeaderStyle}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>Thu tiền chuyến</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+              Debt #{debt.id} · Chuyến #{debt.shipment_id || "—"} · {debtorName}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={loading} style={modalCloseBtnStyle}>×</button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          <div style={modalDebtSummaryStyle}>
+            <div>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Tổng nợ</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>{fmt(debt.total_amount)}đ</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Đã trả</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#16a34a" }}>{fmt(debt.paid_amount)}đ</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase" }}>Còn nợ</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#dc2626" }}>{fmt(remaining)}đ</div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 12, marginTop: 16 }}>
+            <div>
+              <label style={modalLabelStyle}>Số tiền thu</label>
+              <input
+                type="number"
+                min="1"
+                max={remaining}
+                value={amount}
+                onChange={(e) => onAmountChange(e.target.value)}
+                placeholder={`Tối đa ${fmt(remaining)}đ`}
+                style={modalInputStyle}
+              />
+            </div>
+            <div>
+              <label style={modalLabelStyle}>Hình thức</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => onPaymentMethodChange(e.target.value)}
+                style={modalInputStyle}
+              >
+                <option value="cash">Tiền mặt</option>
+                <option value="bank_transfer">Chuyển khoản</option>
+                <option value="offset">Bù trừ</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label style={modalLabelStyle}>Ghi chú</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              placeholder="Ghi chú cho lần thu này..."
+              style={modalInputStyle}
+            />
+          </div>
+
+          {error && (
+            <div style={modalErrorStyle}>{error}</div>
+          )}
+        </div>
+
+        <div style={modalFooterStyle}>
+          <button type="button" onClick={onClose} disabled={loading} style={modalSecondaryBtnStyle}>
+            Hủy
+          </button>
+          <button type="button" onClick={onSubmit} disabled={loading || !amount} style={modalPrimaryBtnStyle}>
+            {loading ? "Đang xử lý..." : "Xác nhận thu"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -760,7 +1049,129 @@ const viewModeBtnStyle = {
   transition: "all 0.15s",
 };
 
+const itemPayBtnStyle = {
+  padding: "5px 10px",
+  background: "#16a34a",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  fontSize: 11,
+  fontWeight: 800,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const modalOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1000,
+  background: "rgba(15, 23, 42, 0.42)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+};
+
+const modalCardStyle = {
+  width: "min(560px, 100%)",
+  background: "#fff",
+  borderRadius: 12,
+  boxShadow: "0 24px 80px rgba(15, 23, 42, 0.28)",
+  overflow: "hidden",
+};
+
+const modalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "14px 16px",
+  borderBottom: "1px solid #e2e8f0",
+  background: "#f8fafc",
+};
+
+const modalCloseBtnStyle = {
+  width: 32,
+  height: 32,
+  border: "none",
+  borderRadius: 8,
+  background: "transparent",
+  color: "#64748b",
+  cursor: "pointer",
+  fontSize: 24,
+  lineHeight: "28px",
+};
+
+const modalDebtSummaryStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 10,
+  padding: 12,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: 10,
+};
+
+const modalLabelStyle = {
+  display: "block",
+  marginBottom: 6,
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#475569",
+};
+
+const modalInputStyle = {
+  width: "100%",
+  height: 38,
+  boxSizing: "border-box",
+  border: "1.5px solid #cbd5e1",
+  borderRadius: 8,
+  padding: "0 10px",
+  fontSize: 14,
+  color: "#0f172a",
+  outline: "none",
+  background: "#fff",
+};
+
+const modalErrorStyle = {
+  marginTop: 12,
+  padding: "9px 10px",
+  borderRadius: 8,
+  background: "#fef2f2",
+  color: "#dc2626",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const modalFooterStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 8,
+  padding: "12px 16px",
+  borderTop: "1px solid #e2e8f0",
+};
+
+const modalSecondaryBtnStyle = {
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#475569",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const modalPrimaryBtnStyle = {
+  padding: "8px 16px",
+  borderRadius: 8,
+  border: "none",
+  background: "#16a34a",
+  color: "#fff",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
 DebtTable.propTypes = {
   apiBase: PropTypes.string,
   token: PropTypes.string,
+  onDebtPayment: PropTypes.func,
 };

@@ -21,6 +21,7 @@ const getVehicleDriverLookup = async () => {
                 d.profile_id AS id,
                 p.full_name,
                 d.vehicle_id,
+                v.vehicle_group_id,
                 v.plate_number,
                 v.status AS vehicle_status,
                 vg.name AS vehicle_group_name
