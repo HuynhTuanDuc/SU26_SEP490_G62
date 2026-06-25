@@ -67,11 +67,14 @@ const getDriverKPIById = async (driverId, { month, year } = {}) => {
 };
 
 // Trigger tự động sau khi trip hoàn thành — gọi fire-and-forget (không await)
-const recalculateAfterCompletion = (driverId, completedAt = new Date()) => {
+const recalculateAfterCompletion = (driverIds, completedAt = new Date()) => {
     const month = completedAt.getMonth() + 1;
     const year  = completedAt.getFullYear();
-    kpiRepository.recalculateDriverKPI(driverId, month, year).catch((err) => {
-        console.error(`[KPI] Recalculate failed for driver ${driverId} ${month}/${year}:`, err.message);
+    const ids = Array.isArray(driverIds) ? driverIds : [driverIds];
+    [...new Set(ids.map(Number).filter(Boolean))].forEach((driverId) => {
+        kpiRepository.recalculateDriverKPI(driverId, month, year).catch((err) => {
+            console.error(`[KPI] Recalculate failed for driver ${driverId} ${month}/${year}:`, err.message);
+        });
     });
 };
 

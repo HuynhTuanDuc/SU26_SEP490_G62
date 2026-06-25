@@ -13,8 +13,27 @@ const getAllUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
     try {
-        const { email, full_name, phone, role, gender, dob, city } = req.body;
-        const newId = await adminService.createUser(email, full_name, phone, role, gender, dob, city);
+        const {
+            email,
+            full_name,
+            phone,
+            role,
+            gender,
+            dob,
+            city,
+            address,
+            country,
+            national_id,
+            tax_code,
+            emergency_contact_name,
+            emergency_contact_phone,
+            notes,
+        } = req.body;
+        const newId = await adminService.createUser(
+            email, full_name, phone, role, gender, dob, city,
+            address, country, national_id, tax_code,
+            emergency_contact_name, emergency_contact_phone, notes,
+        );
         res.status(201).json({ message: 'Tao nguoi dung thanh cong.', id: newId });
     } catch (err) {
         console.error('Error creating user:', err);
@@ -27,8 +46,26 @@ const createUser = async (req, res) => {
 const updateUser = async (req, res) => {
     try {
         const userId = req.params.id;
-        const { full_name, phone, role, gender, dob, city } = req.body;
-        await adminService.updateUser(userId, full_name, phone, role, gender, dob, city);
+        const {
+            full_name,
+            phone,
+            role,
+            gender,
+            dob,
+            city,
+            address,
+            country,
+            national_id,
+            tax_code,
+            emergency_contact_name,
+            emergency_contact_phone,
+            notes,
+        } = req.body;
+        await adminService.updateUser(
+            userId, full_name, phone, role, gender, dob, city,
+            address, country, national_id, tax_code,
+            emergency_contact_name, emergency_contact_phone, notes,
+        );
         res.json({ message: 'Cap nhat thanh cong.' });
     } catch (err) {
         console.error('Error updating user:', err);

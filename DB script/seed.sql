@@ -22,6 +22,20 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS gender TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS address TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS city TEXT;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT 'VN';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS national_id TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS tax_code TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE profiles DROP COLUMN IF EXISTS employee_code;
+
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS short_name TEXT;
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS tax_code TEXT;
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS business_registration_number TEXT;
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS payment_term_days SMALLINT;
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS bank_name TEXT;
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS bank_account_number TEXT;
+ALTER TABLE partners ADD COLUMN IF NOT EXISTS bank_account_name TEXT;
 
 DO $$
 BEGIN
@@ -85,24 +99,29 @@ WITH account_data AS (
         'driver1@example.com', 'driver2@example.com', 'driver3@example.com', 'driver4@example.com'
     )
 )
-INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, address, city, country)
+INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, tax_code, address, city, country, emergency_contact_name, emergency_contact_phone, notes)
 VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'),       'Manager',            '0901234560', (SELECT id FROM roles WHERE name = 'manager'),     DATE '1988-05-12', 'male',   '12 Nguyen Hue, District 1',        'Ho Chi Minh', 'VN'),
-    ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'),       'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator'), DATE '1992-09-21', 'female', '88 Le Loi, Hai Chau',               'Da Nang',     'VN'),
-    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'),  'Tran Accountant',    '0901234562', (SELECT id FROM roles WHERE name = 'accountant'),  DATE '1991-03-14', 'female', '25 Vo Thi Sau, Ninh Kieu',          'Can Tho',     'VN'),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'),     'Le Driver 1',        '0901234563', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1995-07-08', 'male',   '101 Tran Hung Dao, Thu Duc',        'Ho Chi Minh', 'VN'),
-    ((SELECT id FROM account_data WHERE email = 'driver2@example.com'),     'Pham Driver 2',      '0901234564', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1994-11-02', 'male',   '55 Hung Vuong, Thanh Khe',          'Da Nang',     'VN'),
-    ((SELECT id FROM account_data WHERE email = 'driver3@example.com'),     'Do Driver 3',        '0901234565', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1997-01-18', 'other',  '7 Nguyen Van Cu, Ninh Kieu',        'Can Tho',     'VN'),
-    ((SELECT id FROM account_data WHERE email = 'driver4@example.com'),     'Vo Driver 4',        '0901234566', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1990-12-27', 'male',   '240 Le Duan, Hai Chau',             'Da Nang',     'VN')
+    ((SELECT id FROM account_data WHERE email = 'admin@example.com'),       'Manager',            '0901234560', (SELECT id FROM roles WHERE name = 'manager'),     DATE '1988-05-12', 'male',   '079188001111', '0101234567', '12 Nguyen Hue, District 1',        'Ho Chi Minh', 'VN', 'Tran Thi Huong', '0908888001', 'Tai khoan quan ly he thong'),
+    ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'),       'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator'), DATE '1992-09-21', 'female', '079192002222', NULL,         '88 Le Loi, Hai Chau',               'Da Nang',     'VN', 'Nguyen Van Phuc', '0908888002', 'Phu trach dieu phoi mien Trung'),
+    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'),  'Tran Accountant',    '0901234562', (SELECT id FROM roles WHERE name = 'accountant'),  DATE '1991-03-14', 'female', '079191003333', '0312233445', '25 Vo Thi Sau, Ninh Kieu',          'Can Tho',     'VN', 'Tran Minh Chau', '0908888003', 'Theo doi doi soat va cong no'),
+    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'),     'Le Driver 1',        '0901234563', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1995-07-08', 'male',   '079195004444', NULL,         '101 Tran Hung Dao, Thu Duc',        'Ho Chi Minh', 'VN', 'Le Thi Lan', '0908888004', 'Tai xe tuyen noi thanh'),
+    ((SELECT id FROM account_data WHERE email = 'driver2@example.com'),     'Pham Driver 2',      '0901234564', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1994-11-02', 'male',   '079194005555', NULL,         '55 Hung Vuong, Thanh Khe',          'Da Nang',     'VN', 'Pham Thi Hanh', '0908888005', 'Tai xe tuyen lien tinh'),
+    ((SELECT id FROM account_data WHERE email = 'driver3@example.com'),     'Do Driver 3',        '0901234565', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1997-01-18', 'other',  '079197006666', NULL,         '7 Nguyen Van Cu, Ninh Kieu',        'Can Tho',     'VN', 'Do Quoc Minh', '0908888006', 'Tai xe du phong'),
+    ((SELECT id FROM account_data WHERE email = 'driver4@example.com'),     'Vo Driver 4',        '0901234566', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1990-12-27', 'male',   '079190007777', NULL,         '240 Le Duan, Hai Chau',             'Da Nang',     'VN', 'Vo Thi Mai', '0908888007', 'Tai xe xe tai nhe')
 ON CONFLICT (id) DO UPDATE
     SET full_name = EXCLUDED.full_name,
         phone = EXCLUDED.phone,
         role_id = EXCLUDED.role_id,
         dob = EXCLUDED.dob,
         gender = EXCLUDED.gender,
+        national_id = EXCLUDED.national_id,
+        tax_code = EXCLUDED.tax_code,
         address = EXCLUDED.address,
         city = EXCLUDED.city,
-        country = EXCLUDED.country;
+        country = EXCLUDED.country,
+        emergency_contact_name = EXCLUDED.emergency_contact_name,
+        emergency_contact_phone = EXCLUDED.emergency_contact_phone,
+        notes = EXCLUDED.notes;
 
 -- =============================================================================
 -- SECTION 4: DRIVERS
@@ -199,17 +218,59 @@ WHERE d.profile_id = p.id AND d.vehicle_id IS DISTINCT FROM v.id;
 -- =============================================================================
 -- SECTION 9: PARTNERS
 -- =============================================================================
-INSERT INTO partners (company_name, contact_person, phone, email, address)
-SELECT 'Tech Express Logistics', 'Mr. Tuan', '0912345678', 'tuan@techexpress.vn', '100 Pasteur, HCMC'
+INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
+SELECT 'Tech Express Logistics', 'Tech Express', 'Mr. Tuan', '0912345678', 'tuan@techexpress.vn', '100 Pasteur, HCMC', '0314567890', '0314567890-001', 30, 'Vietcombank', '0011008899001', 'TECH EXPRESS LOGISTICS', 'Doi tac giao nhan cong nghe'
 WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'Tech Express Logistics');
+UPDATE partners
+SET short_name = 'Tech Express',
+    contact_person = 'Mr. Tuan',
+    phone = '0912345678',
+    email = 'tuan@techexpress.vn',
+    address = '100 Pasteur, HCMC',
+    tax_code = '0314567890',
+    business_registration_number = '0314567890-001',
+    payment_term_days = 30,
+    bank_name = 'Vietcombank',
+    bank_account_number = '0011008899001',
+    bank_account_name = 'TECH EXPRESS LOGISTICS',
+    notes = 'Doi tac giao nhan cong nghe'
+WHERE company_name = 'Tech Express Logistics';
 
-INSERT INTO partners (company_name, contact_person, phone, email, address)
-SELECT 'Green Delivery Co.', 'Ms. Hoa', '0912345679', 'hoa@greendelivery.vn', '200 Nguyen Trai, HCMC'
+INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
+SELECT 'Green Delivery Co.', 'Green Delivery', 'Ms. Hoa', '0912345679', 'hoa@greendelivery.vn', '200 Nguyen Trai, HCMC', '0314567891', '0314567891-002', 15, 'ACB', '220055667788', 'GREEN DELIVERY CO.', 'Doi tac giao hang thuong xuyen'
 WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'Green Delivery Co.');
+UPDATE partners
+SET short_name = 'Green Delivery',
+    contact_person = 'Ms. Hoa',
+    phone = '0912345679',
+    email = 'hoa@greendelivery.vn',
+    address = '200 Nguyen Trai, HCMC',
+    tax_code = '0314567891',
+    business_registration_number = '0314567891-002',
+    payment_term_days = 15,
+    bank_name = 'ACB',
+    bank_account_number = '220055667788',
+    bank_account_name = 'GREEN DELIVERY CO.',
+    notes = 'Doi tac giao hang thuong xuyen'
+WHERE company_name = 'Green Delivery Co.';
 
-INSERT INTO partners (company_name, contact_person, phone, email, address)
-SELECT 'FastFreight Vietnam', 'Mr. Long', '0912345680', 'long@fastfreight.vn', '300 Landmark 81, HCMC'
+INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
+SELECT 'FastFreight Vietnam', 'FastFreight', 'Mr. Long', '0912345680', 'long@fastfreight.vn', '300 Landmark 81, HCMC', '0314567892', '0314567892-003', 45, 'BIDV', '991122334455', 'FASTFREIGHT VIETNAM', 'Doi tac van tai duong dai'
 WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietnam');
+UPDATE partners
+SET short_name = 'FastFreight',
+    contact_person = 'Mr. Long',
+    phone = '0912345680',
+    email = 'long@fastfreight.vn',
+    address = '300 Landmark 81, HCMC',
+    tax_code = '0314567892',
+    business_registration_number = '0314567892-003',
+    payment_term_days = 45,
+    bank_name = 'BIDV',
+    bank_account_number = '991122334455',
+    bank_account_name = 'FASTFREIGHT VIETNAM',
+    notes = 'Doi tac van tai duong dai'
+WHERE company_name = 'FastFreight Vietnam';
 
 -- Ensure order columns required by the current backend exist even if an old volume/schema is reused.
 ALTER TABLE orders

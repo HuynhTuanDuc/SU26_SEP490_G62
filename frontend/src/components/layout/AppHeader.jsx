@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Avatar, Badge, Button, Dropdown, Space, Typography } from 'antd';
 import { Bell, ChevronDown, Grid, HelpCircle, LogOut, Settings2, User } from 'lucide-react';
+import { apiRequest } from '../../services/apiClient';
+import { useRoleRealtime } from '../../hooks/useRoleRealtime';
 import { C } from '../../styles/theme';
 import ProfileModal from '../profile/ProfileModal';
 
 const { Text } = Typography;
 const SW = 1.75;
+const NOTIFICATION_ENABLED_ROLES = new Set(['manager', 'coordinator']);
 
 function roleLabel(role) {
   const labels = {
@@ -17,8 +20,141 @@ function roleLabel(role) {
   return labels[role] || 'User';
 }
 
-export default function AppHeader({ user, onLogout, onProfileUpdated }) {
+function formatNotificationTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('vi-VN');
+}
+
+export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilityActions = true }) {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
+  const notificationSupported = NOTIFICATION_ENABLED_ROLES.has(String(user?.role || '').toLowerCase());
+
+  const loadNotifications = async () => {
+    if (!notificationSupported) return;
+
+    setNotificationsLoading(true);
+    try {
+      const data = await apiRequest('/api/notifications?limit=10&page=1');
+      setNotifications(data.notifications || []);
+      setNotificationUnreadCount(Number(data.unreadCount || 0));
+    } catch {
+      setNotifications([]);
+      setNotificationUnreadCount(0);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!notificationSupported) {
+      setNotifications([]);
+      setNotificationUnreadCount(0);
+      setNotificationMenuOpen(false);
+      return;
+    }
+
+    loadNotifications();
+  }, [notificationSupported, user?.id, user?.role]);
+
+  useRoleRealtime(user, {
+    onMessage: (payload) => {
+      if (!notificationSupported || !payload?.type) return;
+
+      if (payload.type === 'notification.created') {
+        setNotificationUnreadCount((current) => current + 1);
+        loadNotifications();
+      }
+
+      if (payload.type === 'notification.read' || payload.type === 'notification.read_all') {
+        loadNotifications();
+      }
+    },
+  });
+
+  const handleOpenNotifications = async (nextOpen) => {
+    if (!notificationSupported) return;
+    setNotificationMenuOpen(nextOpen);
+    if (!nextOpen) return;
+
+    await loadNotifications();
+    if (notificationUnreadCount > 0) {
+      try {
+        await apiRequest('/api/notifications/read-all', { method: 'PATCH' });
+        setNotificationUnreadCount(0);
+        setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+      } catch {
+        // Ignore notification mark-as-read failures in header UI.
+      }
+    }
+  };
+
+  const notificationDropdown = {
+    items: [
+      {
+        key: 'notifications-panel',
+        disabled: true,
+        label: (
+          <div style={{ width: 340, padding: 6 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '8px 8px 12px',
+                borderBottom: `1px solid ${C.outlineVariant}45`,
+                marginBottom: 8,
+              }}
+            >
+              <div>
+                <Text strong style={{ color: C.onSurface }}>
+                  {user?.role === 'manager' ? 'Thong bao Manager' : 'Thong bao Coordinator'}
+                </Text>
+              </div>
+              <Text style={{ color: C.onSurfaceVariant, fontSize: 12 }}>
+                {notificationUnreadCount} moi
+              </Text>
+            </div>
+
+            <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8, paddingRight: 4 }}>
+              {notificationsLoading ? (
+                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Dang tai thong bao...</div>
+              ) : notifications.length === 0 ? (
+                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Chua co thong bao.</div>
+              ) : (
+                notifications.map((notification) => (
+                  <div
+                    key={notification.id || `${notification.title}-${notification.created_at}`}
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      background: notification.is_read ? '#fff' : C.primarySoft,
+                      border: `1px solid ${notification.is_read ? `${C.outlineVariant}40` : `${C.primary}25`}`,
+                    }}
+                  >
+                    <Text strong style={{ display: 'block', color: C.onSurface, marginBottom: 4 }}>
+                      {notification.title}
+                    </Text>
+                    <Text style={{ display: 'block', color: C.onSurfaceVariant, fontSize: 12, marginBottom: 6 }}>
+                      {notification.message || '-'}
+                    </Text>
+                    <Text style={{ color: C.onSurfaceVariant, fontSize: 11 }}>
+                      {formatNotificationTime(notification.created_at)}
+                    </Text>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ),
+      },
+    ],
+  };
 
   const userDropdown = {
     items: [
@@ -195,25 +331,40 @@ export default function AppHeader({ user, onLogout, onProfileUpdated }) {
         <div style={{ flex: 1 }} />
 
         <Space size={6} style={{ marginLeft: 16 }}>
-          <Badge count={3} size="small" color="#BA1A1A">
-            <Button
-              type="text"
-              icon={<Bell size={18} strokeWidth={SW} />}
-              style={{ color: C.onSurfaceVariant, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            />
-          </Badge>
+          {showUtilityActions && (
+            <>
+              {notificationSupported ? (
+                <Dropdown
+                  menu={notificationDropdown}
+                  placement="bottomRight"
+                  trigger={['click']}
+                  open={notificationMenuOpen}
+                  onOpenChange={handleOpenNotifications}
+                  overlayStyle={{ paddingTop: 10 }}
+                >
+                  <Badge count={notificationUnreadCount > 0 ? notificationUnreadCount : 0} size="small" color="#BA1A1A">
+                    <Button
+                      type="text"
+                      icon={<Bell size={18} strokeWidth={SW} />}
+                      style={{ color: C.onSurfaceVariant, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    />
+                  </Badge>
+                </Dropdown>
+              ) : null}
 
-          <Button
-            type="text"
-            icon={<HelpCircle size={18} strokeWidth={SW} />}
-            style={{ color: C.onSurfaceVariant, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          />
+              <Button
+                type="text"
+                icon={<HelpCircle size={18} strokeWidth={SW} />}
+                style={{ color: C.onSurfaceVariant, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              />
 
-          <Button
-            type="text"
-            icon={<Grid size={18} strokeWidth={SW} />}
-            style={{ color: C.onSurfaceVariant, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          />
+              <Button
+                type="text"
+                icon={<Grid size={18} strokeWidth={SW} />}
+                style={{ color: C.onSurfaceVariant, borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              />
+            </>
+          )}
 
           <Dropdown
             menu={userDropdown}

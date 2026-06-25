@@ -100,7 +100,7 @@ const getUserIdsByRole = async (role) => {
     const result = await pool.query(
         `SELECT p.id FROM profiles p
          JOIN roles r ON r.id = p.role_id
-         WHERE r.role_name = $1`,
+         WHERE r.name = $1`,
         [role],
     );
     return result.rows.map((r) => r.id);

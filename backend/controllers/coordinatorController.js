@@ -18,24 +18,29 @@ const listPartners = async (_req, res) => {
   }
 };
 
-const importExcel = async (req, res) => {
-  try {
-    if (!req.file?.buffer) {
-      return res.status(400).json({ error: 'Vui lòng upload file Excel' });
+const getIncidents = async (req, res) => {
+    try {
+        const incidents = await coordinatorService.getIncidents({
+            status: req.query.status || null,
+            search: req.query.search || '',
+        });
+        res.json({ incidents });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-
-    const result = await coordinatorService.importExcel(req.user.userId, req.file.buffer);
-    res.json({ message: 'Import Excel thành công', ...result });
-  } catch (err) {
-    res.status(422).json({ error: err.message });
-  }
 };
 
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
-        const { status } = req.query;
-        const rows = await coordinatorService.getReceiptRequests({ status: status || null });
+        const { status, kind, search, dateFrom, dateTo } = req.query;
+        const rows = await coordinatorService.getReceiptRequests({
+            status: status || null,
+            kind: kind || 'all',
+            search: search || '',
+            dateFrom: dateFrom || '',
+            dateTo: dateTo || '',
+        });
         res.json({ requests: rows });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -91,9 +96,9 @@ const rejectReceiptRequest = async (req, res) => {
 };
 
 module.exports = {
-    importExcel,
     listVehicleGroups,
     listPartners,
+    getIncidents,
     getReceiptRequests,
     getReceiptRequestDetail,
     approveReceiptRequest,

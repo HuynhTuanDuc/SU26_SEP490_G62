@@ -8,6 +8,16 @@
   overflow-x: hidden;
 }
 
+.coordinator-content-shell {
+  min-height: auto;
+  display: block;
+  grid-template-columns: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  overflow: visible;
+}
+
 .coordinator-shell .sidebar {
   display: flex;
   flex-direction: column;
@@ -85,8 +95,54 @@
   border-radius: 18px;
   background: rgba(255,255,255,0.72);
 }
+.coordinator-shell .search-icon,
+.coordinator-shell .nav-icon,
+.coordinator-shell .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.coordinator-shell .search-icon {
+  color: #5d6780;
+  font-size: 16px;
+}
 .coordinator-shell .search-box input { border: 0; outline: 0; flex: 1; background: transparent; font-size: 15px; }
 .coordinator-shell .topbar-actions { display: flex; align-items: center; gap: 14px; }
+.coordinator-shell .coordinator-search-input {
+  flex: 1;
+  max-width: 560px;
+}
+.coordinator-shell .coordinator-search-input.ant-input-affix-wrapper,
+.coordinator-shell .coordinator-search-input .ant-input-affix-wrapper {
+  min-height: 54px;
+  border-radius: 18px;
+  border-color: rgba(20, 30, 70, 0.14);
+  background: rgba(255,255,255,0.84);
+  box-shadow: 0 10px 28px rgba(19, 30, 68, 0.06);
+  padding-inline: 16px;
+}
+.coordinator-shell .coordinator-search-input.ant-input-affix-wrapper-focused,
+.coordinator-shell .coordinator-search-input.ant-input-affix-wrapper:focus-within,
+.coordinator-shell .coordinator-search-input .ant-input-affix-wrapper:focus,
+.coordinator-shell .coordinator-search-input .ant-input-affix-wrapper-focused {
+  border-color: #18227f;
+  box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.1);
+}
+.coordinator-shell .coordinator-search-input .ant-input {
+  font-size: 15px;
+}
+.coordinator-shell .coordinator-search-input .ant-input-prefix {
+  color: #5d6780;
+  margin-inline-end: 10px;
+}
+.coordinator-shell .icon-btn {
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  background: #fff;
+  color: #18227f;
+  border-radius: 16px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
 .coordinator-shell .import-btn,
 .coordinator-shell .primary-btn,
 .coordinator-shell .assign-btn,
@@ -112,13 +168,158 @@
   transition: none;
 }
 .coordinator-shell .primary-btn { background: #0f1d70; }
+.coordinator-shell .coordinator-primary-btn,
+.coordinator-primary-btn {
+  min-height: 42px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1a2a98 0%, #0f1d70 100%);
+  box-shadow: 0 12px 24px rgba(26, 42, 152, 0.2);
+  font-weight: 700;
+}
+.coordinator-shell .coordinator-primary-btn:hover,
+.coordinator-primary-btn:hover {
+  background: linear-gradient(135deg, #2234b2 0%, #15268b 100%) !important;
+  box-shadow: 0 16px 28px rgba(26, 42, 152, 0.24);
+}
+.coordinator-shell .coordinator-primary-btn:disabled,
+.coordinator-primary-btn:disabled {
+  box-shadow: none;
+}
+.coordinator-shell .coordinator-secondary-btn,
+.coordinator-secondary-btn {
+  min-height: 42px;
+  border-radius: 14px;
+  border-color: rgba(20, 30, 70, 0.14);
+  background: rgba(255,255,255,0.95);
+  color: #23304a;
+  font-weight: 700;
+}
+.coordinator-shell .coordinator-secondary-btn:hover,
+.coordinator-secondary-btn:hover {
+  border-color: rgba(24, 34, 127, 0.3) !important;
+  color: #18227f !important;
+  background: #f7f9ff !important;
+}
+.coordinator-shell .coordinator-dashed-btn,
+.coordinator-dashed-btn {
+  align-self: flex-start;
+  min-height: 40px;
+  border-radius: 12px;
+  border-color: #b9c5ef;
+  color: #18227f;
+  background: #eef1ff;
+  font-weight: 700;
+}
+.coordinator-shell .coordinator-dashed-btn:hover,
+.coordinator-dashed-btn:hover {
+  border-color: #18227f !important;
+  color: #18227f !important;
+  background: #e4e9ff !important;
+}
+.coordinator-shell .coordinator-danger-text-btn,
+.coordinator-danger-text-btn {
+  border-radius: 10px;
+  padding-inline: 10px;
+  background: #fff1f1;
+}
+.coordinator-shell .coordinator-danger-text-btn:hover,
+.coordinator-danger-text-btn:hover {
+  background: #ffe1e1 !important;
+}
+.coordinator-shell .coordinator-modal-close-btn,
+.coordinator-modal-close-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  color: #45516c;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  margin-left: 12px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.coordinator-shell .coordinator-modal-close-btn:hover,
+.coordinator-modal-close-btn:hover {
+  color: #18227f !important;
+  background: #f7f9ff !important;
+  border-color: rgba(24, 34, 127, 0.22) !important;
+}
+.coordinator-shell .coordinator-modal-close-btn .anticon,
+.coordinator-modal-close-btn .anticon {
+  font-size: 16px;
+}
+.coordinator-shell .coordinator-table-icon-btn,
+.coordinator-table-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  background: #fff;
+  color: #18227f;
+}
+.coordinator-shell .coordinator-table-icon-btn:hover,
+.coordinator-table-icon-btn:hover {
+  color: #18227f !important;
+  background: #eef1ff !important;
+  border-color: rgba(24, 34, 127, 0.22) !important;
+}
+.coordinator-shell .coordinator-table-icon-btn-danger,
+.coordinator-table-icon-btn-danger {
+  border-color: rgba(185, 28, 28, 0.18);
+  background: #fff4f4;
+}
+.coordinator-shell .coordinator-table-icon-btn-danger:hover,
+.coordinator-table-icon-btn-danger:hover {
+  background: #ffe7e7 !important;
+}
+.coordinator-shell .coordinator-stop-remove-btn,
+.coordinator-stop-remove-btn {
+  min-width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #fff1f1;
+}
+.coordinator-shell .coordinator-stop-remove-btn:hover,
+.coordinator-stop-remove-btn:hover {
+  background: #ffe0e0 !important;
+}
+.coordinator-shell .coordinator-status-segmented {
+  margin-top: 22px;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(233, 238, 255, 0.86);
+}
+.coordinator-shell .coordinator-status-segmented .ant-segmented-item {
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+  color: #50586a;
+}
+.coordinator-shell .coordinator-status-segmented .ant-segmented-item-selected {
+  color: #18227f;
+  box-shadow: 0 8px 18px rgba(24, 34, 127, 0.12);
+}
 .coordinator-shell .avatar {
   width: 44px; height: 44px; border-radius: 50%;
   background: #1a2a98; color: #fff; display: grid; place-items: center; font-weight: 800;
 }
 .coordinator-shell .hero { justify-content: space-between; margin: 24px 0 18px; gap: 16px; }
+.coordinator-shell .hero-compact {
+  align-items: flex-start;
+}
 .coordinator-shell .hero h1 { margin: 0; font-size: 28px; }
 .coordinator-shell .hero p { margin: 6px 0 0; color: #50586a; }
+.coordinator-shell .hero-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 .coordinator-shell .filters { gap: 12px; flex-wrap: wrap; }
 .coordinator-shell .filter {
   background: #fff;
@@ -127,7 +328,8 @@
   margin-top: 22px;
 }
 
-.coordinator-shell .filter-field input {
+.coordinator-shell .filter-field input,
+.coordinator-shell .filter-field select {
   height: 45.6px;
   min-height: 45.6px;
   border: 1px solid rgba(20, 30, 70, 0.14);
@@ -163,9 +365,13 @@
 
 
 
-.coordinator-shell .filter-field input:focus {
+.coordinator-shell .filter-field input:focus,
+.coordinator-shell .filter-field select:focus {
   border-color: #18227f;
   box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
+}
+.coordinator-shell .receipt-filters {
+  justify-content: flex-end;
 }
 .coordinator-shell .notice {
   margin-bottom: 16px;
@@ -352,19 +558,22 @@
   color: #18227f;
 }
 
-.coordinator-shell .modal-backdrop {
+.coordinator-shell .modal-backdrop,
+.modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(18, 24, 48, 0.5);
   display: grid;
   place-items: center;
   padding: 20px;
-  z-index: 30;
+  z-index: 80;
 }
 
-.coordinator-shell .modal-card {
+.coordinator-shell .modal-card,
+.modal-card {
   display: block;
   flex-direction: initial;
+  position: relative;
   width: min(800px, calc(100vw - 32px));
   max-width: none;
   background: #fff;
@@ -377,14 +586,16 @@
   animation: none;
 }
 
-.coordinator-shell .create-form {
+.coordinator-shell .create-form,
+.create-form {
   display: grid;
   gap: 16px;
   margin-top: 8px;
   max-width: 100%;
 }
 
-.coordinator-shell .sheet-caption {
+.coordinator-shell .sheet-caption,
+.sheet-caption {
   grid-column: 1 / -1;
   padding: 10px 12px;
   border-radius: 12px;
@@ -394,7 +605,8 @@
   font-weight: 700;
 }
 
-.coordinator-shell .create-form label {
+.coordinator-shell .create-form label,
+.create-form label {
   display: grid;
   gap: 8px;
   font-size: 14px;
@@ -402,33 +614,40 @@
   min-width: 0;
 }
 
-.coordinator-shell .form-row {
+.coordinator-shell .form-row,
+.form-row {
   grid-column: 1 / -1;
   display: grid;
   gap: 12px;
 }
 
-.coordinator-shell .form-row-3 {
+.coordinator-shell .form-row-3,
+.form-row-3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.coordinator-shell .form-row-2 {
+.coordinator-shell .form-row-2,
+.form-row-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.coordinator-shell .form-row-1 {
+.coordinator-shell .form-row-1,
+.form-row-1 {
   grid-template-columns: 1fr;
   max-width: 260px;
 }
 
-.coordinator-shell .form-row-address {
+.coordinator-shell .form-row-address,
+.form-row-address {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.coordinator-shell .form-row-note {
+.coordinator-shell .form-row-note,
+.form-row-note {
   grid-template-columns: 1fr;
 }
-.coordinator-shell .paid-toggle {
+.coordinator-shell .paid-toggle,
+.paid-toggle {
   min-height: 46px;
   border-radius: 14px;
   border: 1px solid #cfd6e6;
@@ -440,7 +659,8 @@
   text-align: left;
 }
 
-.coordinator-shell .paid-toggle-on {
+.coordinator-shell .paid-toggle-on,
+.paid-toggle-on {
   background: #18227f;
   color: #fff;
   border-color: #18227f;
@@ -448,7 +668,10 @@
 
 .coordinator-shell .create-form input,
 .coordinator-shell .create-form select,
-.coordinator-shell .create-form textarea {
+.coordinator-shell .create-form textarea,
+.create-form input,
+.create-form select,
+.create-form textarea {
   width: 100%;
   border: 1px solid #cfd6e6;
   border-radius: 14px;
@@ -463,40 +686,49 @@
 
 .coordinator-shell .create-form input:focus,
 .coordinator-shell .create-form select:focus,
-.coordinator-shell .create-form textarea:focus {
+.coordinator-shell .create-form textarea:focus,
+.create-form input:focus,
+.create-form select:focus,
+.create-form textarea:focus {
   border-color: #18227f;
   box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
 }
 
-.coordinator-shell .input-error {
+.coordinator-shell .input-error,
+.input-error {
   border-color: #d14343 !important;
   background: #fff7f7;
 }
 
-.coordinator-shell .create-form textarea {
+.coordinator-shell .create-form textarea,
+.create-form textarea {
   min-height: 96px;
   resize: vertical;
 }
 
-.coordinator-shell .create-form .full {
+.coordinator-shell .create-form .full,
+.create-form .full {
   grid-column: 1 / -1;
 }
 
-.coordinator-shell .form-actions {
+.coordinator-shell .form-actions,
+.form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 6px;
 }
 
-.coordinator-shell .field-error {
+.coordinator-shell .field-error,
+.field-error {
   color: #d14343;
   font-size: 12px;
   line-height: 1.35;
 }
 
 
-.coordinator-shell .readonly-fare {
+.coordinator-shell .readonly-fare,
+.readonly-fare {
   min-height: 46px;
   border: 1px solid rgba(20, 30, 70, 0.14);
   border-radius: 14px;
@@ -506,24 +738,28 @@
   font-weight: 700;
 }
 
-.coordinator-shell .field-error-box {
+.coordinator-shell .field-error-box,
+.field-error-box {
   padding: 12px 14px;
   border-radius: 14px;
   background: #fff7f7;
   border: 1px solid #f1c0c0;
 }
 
-.coordinator-shell .modal-card .panel-head {
+.coordinator-shell .modal-card .panel-head,
+.modal-card .panel-head {
   margin-bottom: 10px;
   align-items: flex-start;
 }
 
-.coordinator-shell .modal-card .panel-head h2 {
+.coordinator-shell .modal-card .panel-head h2,
+.modal-card .panel-head h2 {
   font-size: 24px;
   line-height: 1.2;
 }
 
-.coordinator-shell .modal-card .ghost-btn {
+.coordinator-shell .modal-card .ghost-btn,
+.modal-card .ghost-btn {
   width: 48px;
   height: 48px;
   border-radius: 14px;
@@ -532,46 +768,55 @@
 }
 
 .coordinator-shell .modal-card .primary-btn,
-.coordinator-shell .modal-card .filter {
+.coordinator-shell .modal-card .filter,
+.modal-card .primary-btn,
+.modal-card .filter {
   min-width: 110px;
   padding-inline: 18px;
 }
 
-.coordinator-shell .receipt-modal-card {
+.coordinator-shell .receipt-modal-card,
+.receipt-modal-card {
   width: min(960px, calc(100vw - 32px));
 }
 
-.coordinator-shell .receipt-loading {
+.coordinator-shell .receipt-loading,
+.receipt-loading {
   padding: 32px 0;
   text-align: center;
   color: #586074;
   font-weight: 600;
 }
 
-.coordinator-shell .receipt-layout {
+.coordinator-shell .receipt-layout,
+.receipt-layout {
   display: grid;
   gap: 18px;
 }
 
-.coordinator-shell .receipt-overview-grid {
+.coordinator-shell .receipt-overview-grid,
+.receipt-overview-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 14px;
   align-items: start;
 }
 
-.coordinator-shell .receipt-section {
+.coordinator-shell .receipt-section,
+.receipt-section {
   display: grid;
   gap: 14px;
   align-content: start;
 }
 
-.coordinator-shell .receipt-shipments-stack {
+.coordinator-shell .receipt-shipments-stack,
+.receipt-shipments-stack {
   display: grid;
   gap: 12px;
 }
 
-.coordinator-shell .receipt-shipment-card {
+.coordinator-shell .receipt-shipment-card,
+.receipt-shipment-card {
   display: grid;
   gap: 12px;
   border: 1px solid #dde2f3;
@@ -580,21 +825,25 @@
   background: #ffffff;
 }
 
-.coordinator-shell .receipt-shipment-head {
+.coordinator-shell .receipt-shipment-head,
+.receipt-shipment-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.coordinator-shell .receipt-info-grid {
+.coordinator-shell .receipt-info-grid,
+.receipt-info-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
 .coordinator-shell .receipt-info-grid > div,
-.coordinator-shell .receipt-summary-card {
+.coordinator-shell .receipt-summary-card,
+.receipt-info-grid > div,
+.receipt-summary-card {
   border: 1px solid #dde2f3;
   border-radius: 16px;
   padding: 14px 16px;
@@ -604,7 +853,9 @@
 }
 
 .coordinator-shell .receipt-info-label,
-.coordinator-shell .receipt-summary-card span {
+.coordinator-shell .receipt-summary-card span,
+.receipt-info-label,
+.receipt-summary-card span {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -612,7 +863,8 @@
   font-weight: 700;
 }
 
-.coordinator-shell .receipt-expense-head {
+.coordinator-shell .receipt-expense-head,
+.receipt-expense-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -620,19 +872,23 @@
   margin-top: 8px;
 }
 
-.coordinator-shell .receipt-expense-head p {
+.coordinator-shell .receipt-expense-head p,
+.receipt-expense-head p {
   margin: 4px 0 0;
   color: #586074;
   font-size: 13px;
 }
 
-.coordinator-shell .receipt-expense-list {
+.coordinator-shell .receipt-expense-list,
+.receipt-expense-list {
   display: grid;
   gap: 10px;
 }
 
 .coordinator-shell .receipt-expense-item,
-.coordinator-shell .receipt-expense-editor {
+.coordinator-shell .receipt-expense-editor,
+.receipt-expense-item,
+.receipt-expense-editor {
   display: grid;
   gap: 10px;
   border: 1px solid #dde2f3;
@@ -641,42 +897,50 @@
   background: #fff;
 }
 
-.coordinator-shell .receipt-expense-item {
+.coordinator-shell .receipt-expense-item,
+.receipt-expense-item {
   grid-template-columns: 1fr auto;
 }
 
-.coordinator-shell .receipt-expense-item span {
+.coordinator-shell .receipt-expense-item span,
+.receipt-expense-item span {
   display: block;
   margin-top: 4px;
   color: #697388;
   font-size: 13px;
 }
 
-.coordinator-shell .receipt-expense-item.readonly {
+.coordinator-shell .receipt-expense-item.readonly,
+.receipt-expense-item.readonly {
   background: #f8f9ff;
 }
 
-.coordinator-shell .receipt-expense-editor {
+.coordinator-shell .receipt-expense-editor,
+.receipt-expense-editor {
   grid-template-columns: 1fr auto;
   align-items: start;
   gap: 12px;
   background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
 }
 
-.coordinator-shell .receipt-expense-editor-grid {
+.coordinator-shell .receipt-expense-editor-grid,
+.receipt-expense-editor-grid {
   display: grid;
   grid-template-columns: 1.1fr 1fr 0.8fr;
   gap: 12px;
 }
 
-.coordinator-shell .receipt-expense-editor label {
+.coordinator-shell .receipt-expense-editor label,
+.receipt-expense-editor label {
   display: grid;
   gap: 8px;
   min-width: 0;
 }
 
 .coordinator-shell .receipt-expense-editor select,
-.coordinator-shell .receipt-expense-editor input {
+.coordinator-shell .receipt-expense-editor input,
+.receipt-expense-editor select,
+.receipt-expense-editor input {
   width: 100%;
   min-height: 46px;
   border: 1px solid #cfd6e6;
@@ -689,21 +953,26 @@
 }
 
 .coordinator-shell .receipt-expense-editor select:focus,
-.coordinator-shell .receipt-expense-editor input:focus {
+.coordinator-shell .receipt-expense-editor input:focus,
+.receipt-expense-editor select:focus,
+.receipt-expense-editor input:focus {
   outline: none;
   border-color: #18227f;
   box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
 }
 
-.coordinator-shell .receipt-expense-note-field {
+.coordinator-shell .receipt-expense-note-field,
+.receipt-expense-note-field {
   grid-column: 1 / -1;
 }
 
-.coordinator-shell .receipt-payment-row {
+.coordinator-shell .receipt-payment-row,
+.receipt-payment-row {
   max-width: 360px;
 }
 
-.coordinator-shell .receipt-notes-card {
+.coordinator-shell .receipt-notes-card,
+.receipt-notes-card {
   display: grid;
   gap: 14px;
   border: 1px solid #dde2f3;
@@ -712,21 +981,24 @@
   background: linear-gradient(180deg, #fcfcff 0%, #f6f8ff 100%);
 }
 
-.coordinator-shell .receipt-field-head {
+.coordinator-shell .receipt-field-head,
+.receipt-field-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.coordinator-shell .receipt-field-head strong {
+.coordinator-shell .receipt-field-head strong,
+.receipt-field-head strong {
   display: block;
   margin-top: 4px;
   color: #1f2430;
   font-size: 15px;
 }
 
-.coordinator-shell .receipt-field-chip {
+.coordinator-shell .receipt-field-chip,
+.receipt-field-chip {
   display: inline-flex;
   align-items: center;
   padding: 6px 10px;
@@ -739,7 +1011,8 @@
   letter-spacing: 0.04em;
 }
 
-.coordinator-shell .receipt-notes-textarea {
+.coordinator-shell .receipt-notes-textarea,
+.receipt-notes-textarea {
   width: 100%;
   min-height: 128px;
   border: 1px solid #cfd6e6;
@@ -754,30 +1027,36 @@
   box-sizing: border-box;
 }
 
-.coordinator-shell .receipt-notes-textarea:focus {
+.coordinator-shell .receipt-notes-textarea:focus,
+.receipt-notes-textarea:focus {
   border-color: #18227f;
   box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
 }
 
-.coordinator-shell .receipt-expense-editor .table-cancel-btn {
+.coordinator-shell .receipt-expense-editor .table-cancel-btn,
+.receipt-expense-editor .table-cancel-btn {
   min-width: 44px;
   height: 44px;
 }
 
-.coordinator-shell .receipt-summary-card.emphasis {
+.coordinator-shell .receipt-summary-card.emphasis,
+.receipt-summary-card.emphasis {
   background: #eef5ff;
   border-color: #cddcff;
 }
 
-.coordinator-shell .receipt-summary-card.negative strong {
+.coordinator-shell .receipt-summary-card.negative strong,
+.receipt-summary-card.negative strong {
   color: #b42318;
 }
 
-.coordinator-shell .receipt-summary-card strong {
+.coordinator-shell .receipt-summary-card strong,
+.receipt-summary-card strong {
   font-size: 16px;
 }
 
-.coordinator-shell .receipt-summary-card > div {
+.coordinator-shell .receipt-summary-card > div,
+.receipt-summary-card > div {
   display: grid;
   gap: 6px;
 }
@@ -882,7 +1161,7 @@
   display: inline-flex;
   width: 20px;
   justify-content: center;
-  font-weight: 800;
+  font-size: 16px;
 }
 
 .coordinator-shell.sidebar-collapsed .sidebar {
@@ -900,6 +1179,108 @@
 
 .coordinator-shell .top-profile {
   position: relative;
+}
+
+.coordinator-shell .notification-wrap {
+  position: relative;
+}
+
+.coordinator-shell .notification-btn {
+  position: relative;
+  min-width: 52px;
+  font-weight: 700;
+}
+
+.coordinator-shell .receipt-table-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef1ff;
+  color: #314096;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.coordinator-shell .notification-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #b91c1c;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 0 6px;
+}
+
+.coordinator-shell .notification-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(360px, calc(100vw - 32px));
+  background: #fff;
+  border: 1px solid rgba(20, 30, 70, 0.14);
+  border-radius: 20px;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+  z-index: 30;
+}
+
+.coordinator-shell .notification-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  background: #f7f9ff;
+  border-bottom: 1px solid rgba(20, 30, 70, 0.08);
+}
+
+.coordinator-shell .notification-menu-head span {
+  color: #6a7182;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.coordinator-shell .notification-menu-list {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.coordinator-shell .notification-item,
+.coordinator-shell .notification-empty {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(20, 30, 70, 0.08);
+}
+
+.coordinator-shell .notification-item.unread {
+  background: #eef4ff;
+}
+
+.coordinator-shell .notification-item strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #1f2430;
+}
+
+.coordinator-shell .notification-item p {
+  margin: 0 0 6px;
+  color: #50586a;
+  line-height: 1.4;
+}
+
+.coordinator-shell .notification-item span,
+.coordinator-shell .notification-empty {
+  color: #6a7182;
+  font-size: 12px;
 }
 
 .coordinator-shell .profile-trigger {

@@ -1,5 +1,6 @@
 const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
+const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
@@ -213,8 +214,9 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
         }, { displayMode: 'alert' }).catch(() => {});
     }
 
-    // Tự động tính lại KPI sau khi hoàn thành — fire-and-forget, không block response
-    kpiService.recalculateAfterCompletion(driverId, new Date());
+    // Tự động tính lại KPI cho mọi tài xế có phân bổ doanh thu của chuyến.
+    const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
+    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -333,8 +335,8 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
 
-    // Tự động tính lại KPI — fire-and-forget
-    kpiService.recalculateAfterCompletion(driverId, new Date());
+    const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
+    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -418,13 +420,15 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
         throw err;
     }
 
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.receipt_requests.changed',
+        action: 'created',
+        requestId: request.id,
+        orderId,
+    });
+
     // Thông báo cho coordinator
-    const coordResult = await pool.query(
-        `SELECT a.id FROM accounts a
-         JOIN roles r ON r.id = a.role_id
-         WHERE r.name IN ('coordinator', 'admin') AND a.is_active = TRUE`,
-    );
-    const coordIds = coordResult.rows.map(r => r.id);
+    const coordIds = await notificationService.getUserIdsByRole('coordinator');
     if (coordIds.length > 0) {
         notificationService.createForUsers(coordIds, {
             title: 'Yêu cầu tạo phiếu thu',
