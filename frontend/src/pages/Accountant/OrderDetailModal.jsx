@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import { apiRequest } from "../../services/apiClient";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN");
 
@@ -163,8 +164,6 @@ export default function OrderDetailModal({
   isOpen,
   onClose,
   order,
-  apiBase,
-  token,
   onOpenPayment,
   onRefresh,
 }) {
@@ -196,30 +195,21 @@ export default function OrderDetailModal({
       notes: order.notes || "",
     });
 
-    fetch(`${apiBase}/accountant/orders/${order.id}/shipments`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    apiRequest(`/accountant/orders/${order.id}/shipments`)
       .then((data) => setShipments(Array.isArray(data) ? data : []))
       .catch(() => setShipments([]))
       .finally(() => setLoading(false));
-  }, [isOpen, order, apiBase, token]);
+  }, [isOpen, order]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${apiBase}/accountant/orders/${order.id}`, {
+      await apiRequest(`/accountant/orders/${order.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
+        body: formData,
       });
-      if (res.ok) {
-        setIsEditing(false);
-        onRefresh?.();
-      }
+      setIsEditing(false);
+      onRefresh?.();
     } catch {
       // silent
     } finally {
@@ -230,30 +220,17 @@ export default function OrderDetailModal({
   const handleConfirmDriver = async (amount, method) => {
     if (!confirmDriver) return;
     try {
-      const res = await fetch(
-        `${apiBase}/accountant/orders/${order.id}/shipments/${confirmDriver.id}/driver-payment`,
+      await apiRequest(
+        `/accountant/orders/${order.id}/shipments/${confirmDriver.id}/driver-payment`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            driver_payment_state: "settled",
-            amount,
-            payment_method: method,
-          }),
+          body: { driver_payment_state: "settled", amount, payment_method: method },
         }
       );
-      if (res.ok) {
-        setConfirmDriver(null);
-        const r = await fetch(`${apiBase}/accountant/orders/${order.id}/shipments`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await r.json();
-        setShipments(Array.isArray(data) ? data : []);
-        onRefresh?.();
-      }
+      setConfirmDriver(null);
+      const data = await apiRequest(`/accountant/orders/${order.id}/shipments`);
+      setShipments(Array.isArray(data) ? data : []);
+      onRefresh?.();
     } catch {
       // silent
     }
@@ -528,8 +505,7 @@ OrderDetailModal.propTypes = {
   isOpen: PropTypes.bool,
   onClose: PropTypes.func,
   order: PropTypes.object,
-  apiBase: PropTypes.string,
-  token: PropTypes.string,
+
   onOpenPayment: PropTypes.func,
   onRefresh: PropTypes.func,
 };

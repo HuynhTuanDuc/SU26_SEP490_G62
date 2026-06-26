@@ -196,7 +196,7 @@ const insertDebtForShipment = async (client, {
     // Tài xế giữ tiền chỉ áp dụng khi khách đã thanh toán tiền mặt/chuyển khoản.
     if (
         driverPaymentState === 'driver_holding'
-        && ['cash', 'bank_transfer'].includes(normalizedPaymentType)
+        && ['cash', 'bank_transfer', 'qr_transfer'].includes(normalizedPaymentType)
     ) {
         if (!driverId) {
             throw new Error('Không thể tạo công nợ tài xế khi chuyến chưa có tài xế.');
@@ -370,10 +370,6 @@ const createOrderWithShipments = async (orderData) => {
 };
 
 const getAllOrders = async (filters = {}, page = null, limit = null) => {
-    let baseQuery = `
-        FROM orders o
-        LEFT JOIN customers c ON o.customer_id = c.id
-    `;
     const params = [];
     const conditions = [`o.derived_status = 'completed'`];
 
@@ -389,103 +385,97 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         )`);
     }
 
-    const whereClause = ` WHERE ${conditions.join(' AND ')}`;
+    if (filters.debt_status) {
+        params.push(filters.debt_status);
+        conditions.push(`d_agg.debt_status = $${params.length}`);
+    }
 
-    const countQuery = `SELECT COUNT(DISTINCT o.id) ${baseQuery}${whereClause}`;
-    const countResult = await pool.query(countQuery, params);
-    const totalItems = Number.parseInt(countResult.rows[0].count, 10);
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
-    let query = `
-        SELECT
-            o.id,
-            o.cargo_name,
-            o.payment_type,
-            COALESCE(est.estimated_price, 0) AS estimated_price,
-            COALESCE(act.actual_price, 0)    AS actual_price,
-            o.derived_status AS status,
-            o.notes,
-            o.created_at,
-            c.full_name AS customer_name,
-            c.company_name AS customer_company,
-            c.phone AS customer_phone,
-            COALESCE(d_agg.debt_total, 0) AS debt_total,
-            COALESCE(d_agg.debt_paid, 0) AS debt_paid,
-            -- debt_remaining: chỉ tính khi đơn có customer debt
-            -- Nếu không có customer debt (cash / bank_transfer), remaining = 0
-            CASE
-                WHEN COALESCE(d_agg.debt_total, 0) > 0
-                THEN GREATEST(COALESCE(d_agg.debt_total, 0) - COALESCE(d_agg.debt_paid, 0), 0)
-                ELSE 0
-            END AS debt_remaining,
-            d_agg.debt_status AS debt_status,
-            COALESCE(os_agg.shipment_count, 0) AS shipment_count,
-            -- Driver debt remaining
-            COALESCE(dd_agg.driver_debt_remaining, 0) AS driver_debt_remaining,
-            -- Company received = actual_price - driver_remaining - customer_remaining
-            GREATEST(
-                COALESCE(act.actual_price, 0)
-                - COALESCE(dd_agg.driver_debt_remaining, 0)
-                - CASE WHEN COALESCE(d_agg.debt_total, 0) > 0
-                    THEN GREATEST(COALESCE(d_agg.debt_total, 0) - COALESCE(d_agg.debt_paid, 0), 0)
-                    ELSE 0
-                  END,
-                0
-            ) AS company_received
-        ${baseQuery}
+    // Lateral joins — each returns exactly 1 row per order, no GROUP BY needed
+    const lateralJoins = `
         LEFT JOIN LATERAL (
             SELECT
-                SUM(total_amount) AS debt_total,
-                SUM(paid_amount) AS debt_paid,
                 CASE
+                    WHEN COUNT(*) = 0 THEN 'paid'
                     WHEN SUM(paid_amount) >= SUM(total_amount) - 0.01 THEN 'paid'
                     WHEN SUM(paid_amount) > 0 THEN 'partial'
                     ELSE 'unpaid'
-                END AS debt_status
+                END AS debt_status,
+                COALESCE(SUM(total_amount), 0) AS debt_total,
+                COALESCE(SUM(paid_amount), 0)  AS debt_paid
             FROM debts
             WHERE order_id = o.id AND debt_type = 'customer'
         ) d_agg ON TRUE
         LEFT JOIN LATERAL (
-            SELECT
-                COALESCE(SUM(total_amount), 0) AS driver_debt_total,
-                COALESCE(SUM(paid_amount), 0) AS driver_debt_paid,
-                GREATEST(COALESCE(SUM(total_amount - paid_amount), 0), 0) AS driver_debt_remaining
+            SELECT GREATEST(COALESCE(SUM(total_amount - paid_amount), 0), 0) AS driver_debt_remaining
             FROM debts
             WHERE order_id = o.id AND debt_type = 'driver'
         ) dd_agg ON TRUE
         LEFT JOIN LATERAL (
             SELECT
-                SUM(estimated_price) AS estimated_price,
-                SUM(COALESCE(actual_price, 0)) AS actual_price,
-                COUNT(*) AS shipment_count
+                COALESCE(SUM(estimated_price), 0) AS estimated_price,
+                COALESCE(SUM(actual_price), 0)    AS actual_price,
+                COUNT(*)                           AS shipment_count
             FROM order_shipments
             WHERE order_id = o.id
-        ) est ON TRUE
+        ) ship_agg ON TRUE
         LEFT JOIN LATERAL (
-            SELECT SUM(COALESCE(actual_price, 0)) AS actual_price
-            FROM order_shipments
-            WHERE order_id = o.id
-        ) act ON TRUE
-        LEFT JOIN LATERAL (
-            SELECT COUNT(*) AS shipment_count
-            FROM order_shipments
-            WHERE order_id = o.id
-        ) os_agg ON TRUE
+            SELECT COALESCE(SUM(e.amount), 0) AS total_expenses
+            FROM expenses e
+            JOIN order_shipments os ON os.id = e.shipment_id
+            WHERE os.order_id = o.id
+        ) exp_agg ON TRUE
+    `;
+
+    const baseFrom = `
+        FROM orders o
+        LEFT JOIN customers c ON o.customer_id = c.id
+        ${lateralJoins}
+    `;
+
+    const countQuery = `SELECT COUNT(DISTINCT o.id) ${baseFrom} ${whereClause}`;
+    const countResult = await pool.query(countQuery, params);
+    const totalItems = Number.parseInt(countResult.rows[0].count, 10);
+
+    let selectQuery = `
+        SELECT
+            o.id,
+            o.cargo_name,
+            o.payment_type,
+            ship_agg.estimated_price,
+            ship_agg.actual_price,
+            o.derived_status AS status,
+            o.notes,
+            o.created_at,
+            c.full_name      AS customer_name,
+            c.company_name   AS customer_company,
+            c.phone          AS customer_phone,
+            d_agg.debt_total,
+            d_agg.debt_paid,
+            GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) AS debt_remaining,
+            d_agg.debt_status,
+            ship_agg.shipment_count,
+            dd_agg.driver_debt_remaining,
+            exp_agg.total_expenses,
+            GREATEST(
+                ship_agg.actual_price
+                - dd_agg.driver_debt_remaining
+                - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0),
+                0
+            ) AS company_received
+        ${baseFrom}
         ${whereClause}
-        GROUP BY o.id, c.full_name, c.company_name, c.phone,
-                 d_agg.debt_total, d_agg.debt_paid, d_agg.debt_status,
-                 dd_agg.driver_debt_remaining,
-                 est.estimated_price, act.actual_price,
-                 os_agg.shipment_count
         ORDER BY o.created_at DESC
     `;
 
     const queryParams = [...params];
     if (page !== null && limit !== null) {
         queryParams.push(limit, (page - 1) * limit);
-        query += ` LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`;
+        selectQuery += ` LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}`;
     }
 
-    const result = await pool.query(query, queryParams);
+    const result = await pool.query(selectQuery, queryParams);
     return {
         orders: result.rows,
         totalItems,
@@ -512,7 +502,13 @@ const getOrderShipments = async (orderId) => {
             os.created_at,
             v.plate_number AS vehicle_plate,
             p.full_name AS driver_name,
-            COALESCE(e_agg.total_expenses, 0) AS total_expenses
+            COALESCE(e_agg.total_expenses, 0) AS total_expenses,
+            COALESCE(e_detail.fuel, 0)         AS fuel,
+            COALESCE(e_detail.toll, 0)         AS toll,
+            COALESCE(e_detail.parking, 0)      AS parking,
+            COALESCE(e_detail.repair, 0)       AS repair,
+            COALESCE(e_detail.maintenance, 0)  AS maintenance,
+            COALESCE(e_detail.other, 0)        AS other
         FROM order_shipments os
         LEFT JOIN vehicles v ON v.id = os.vehicle_id
         LEFT JOIN profiles p ON p.id = os.owner_driver_id
@@ -523,12 +519,12 @@ const getOrderShipments = async (orderId) => {
         ) e_agg ON TRUE
         LEFT JOIN LATERAL (
             SELECT
-                COALESCE(SUM(CASE WHEN expense_type = 'fuel' THEN amount ELSE 0 END), 0) AS fuel,
-                COALESCE(SUM(CASE WHEN expense_type = 'toll' THEN amount ELSE 0 END), 0) AS toll,
-                COALESCE(SUM(CASE WHEN expense_type = 'parking' THEN amount ELSE 0 END), 0) AS parking,
-                COALESCE(SUM(CASE WHEN expense_type = 'repair' THEN amount ELSE 0 END), 0) AS repair,
+                COALESCE(SUM(CASE WHEN expense_type = 'fuel' THEN amount ELSE 0 END), 0)        AS fuel,
+                COALESCE(SUM(CASE WHEN expense_type = 'toll' THEN amount ELSE 0 END), 0)        AS toll,
+                COALESCE(SUM(CASE WHEN expense_type = 'parking' THEN amount ELSE 0 END), 0)     AS parking,
+                COALESCE(SUM(CASE WHEN expense_type = 'repair' THEN amount ELSE 0 END), 0)      AS repair,
                 COALESCE(SUM(CASE WHEN expense_type = 'maintenance' THEN amount ELSE 0 END), 0) AS maintenance,
-                COALESCE(SUM(CASE WHEN expense_type = 'other' THEN amount ELSE 0 END), 0) AS other
+                COALESCE(SUM(CASE WHEN expense_type = 'other' THEN amount ELSE 0 END), 0)       AS other
             FROM expenses
             WHERE shipment_id = os.id
         ) e_detail ON TRUE

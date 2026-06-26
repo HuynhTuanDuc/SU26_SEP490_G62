@@ -33,13 +33,13 @@ const CANCELLABLE_STATUSES = Object.freeze([
 
 // Strict forward-only transitions via PATCH /status endpoint
 // PICKING → TRANSIT goes through POST /start-transit (with mandatory loading proof, BR-013/014)
-// ARRIVED → COMPLETED goes through POST /complete (with 2 mandatory photos)
+// ARRIVED → COMPLETED goes through POST /complete (with mandatory delivery proof, BR-015/016/017)
+// RETURNING → COMPLETED goes through POST /return-complete (with notifications + KPI)
 const ALLOWED_TRANSITIONS = Object.freeze({
     [SHIPMENT_STATUS.CLAIMED]:   [SHIPMENT_STATUS.PICKING],
     [SHIPMENT_STATUS.TRANSIT]:   [SHIPMENT_STATUS.ARRIVED],
     [SHIPMENT_STATUS.ARRIVED]:   [SHIPMENT_STATUS.FAILED],
     [SHIPMENT_STATUS.FAILED]:    [SHIPMENT_STATUS.RETURNING],
-    [SHIPMENT_STATUS.RETURNING]: [SHIPMENT_STATUS.COMPLETED],
 });
 
 const RELEASABLE_STATUSES = Object.freeze([

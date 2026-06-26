@@ -250,8 +250,8 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
-    if (!['completed', 'arrived'].includes(trip.status)) {
-        throw new Error('Chỉ có thể báo nợ khi chuyến ở trạng thái "arrived" hoặc "completed"');
+    if (trip.status !== 'completed') {
+        throw new Error('Chỉ có thể báo nợ khi chuyến đã hoàn thành (completed)');
     }
 
     const amt = Number(amount);
@@ -318,10 +318,9 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
             [trip.order_id],
         );
         notificationGateway.broadcastToRole('coordinator', {
-            type: 'coordinator.receipt_requests.changed',
-            action: 'created',
-            orderId,
-            requestId: request?.id ?? null,
+            type: 'coordinator.order.completed',
+            action: 'completed',
+            orderId: trip.order_id,
         });
     }
 

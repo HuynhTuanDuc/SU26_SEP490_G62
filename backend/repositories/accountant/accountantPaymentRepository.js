@@ -45,7 +45,7 @@ const getOrderDebtInfo = async (client, orderId) => {
 
 const createDebtIfNotExists = async (client, orderId, createdBy) => {
     const orderRes = await client.query(
-        `SELECT customer_id, total_estimated_price
+        `SELECT customer_id, total_actual_price, total_estimated_price
          FROM orders WHERE id = $1`,
         [orderId]
     );
@@ -66,6 +66,7 @@ const createDebtIfNotExists = async (client, orderId, createdBy) => {
         return existingDebtRes.rows[0].id;
     }
 
+    const totalAmount = Number(order.total_actual_price || order.total_estimated_price) || 0;
     const insertRes = await client.query(
         `INSERT INTO debts (
             debt_type, customer_id, order_id, total_amount,
@@ -81,7 +82,7 @@ const createDebtIfNotExists = async (client, orderId, createdBy) => {
         [
             order.customer_id,
             orderId,
-            Number(order.total_estimated_price) || 0,
+            totalAmount,
             `Tu dong tao cong no cho don #${orderId}`,
             createdBy,
         ]
@@ -182,14 +183,14 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
         await client.query('BEGIN');
 
         const debtRes = await client.query(
-            `SELECT id, total_amount FROM debts WHERE shipment_id = $1 AND debt_type = 'driver' LIMIT 1`,
+            `SELECT id, total_amount, paid_amount FROM debts WHERE shipment_id = $1 AND debt_type = 'driver' LIMIT 1`,
             [shipmentId]
         );
 
         if (debtRes.rows.length === 0) {
-            // Tạo debt driver nếu chưa có
+            // Tạo debt driver nếu chưa có — total_amount = giá trị shipment, không phải amount nộp
             const shipmentRes = await client.query(
-                `SELECT os.estimated_price, os.owner_driver_id, o.customer_id, o.id AS order_id
+                `SELECT os.actual_price, os.estimated_price, os.owner_driver_id, o.id AS order_id
                  FROM order_shipments os
                  JOIN orders o ON o.id = os.order_id
                  WHERE os.id = $1`,
@@ -197,17 +198,27 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
             );
             if (shipmentRes.rows.length === 0) throw new Error('Shipment not found');
             const s = shipmentRes.rows[0];
+            const shipmentPrice = Number(s.actual_price || s.estimated_price) || 0;
+            const paidNow = Number(amount) || 0;
+            const initialStatus = paidNow >= shipmentPrice - 0.01 ? 'paid'
+                                : paidNow > 0 ? 'partial'
+                                : 'unpaid';
             await client.query(
                 `INSERT INTO debts (debt_type, driver_id, customer_id, partner_id, order_id, shipment_id, total_amount, paid_amount, status, updated_by, created_at, updated_at)
-                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0, 'unpaid', $5, NOW(), NOW())`,
-                [s.owner_driver_id, s.order_id, shipmentId, amount, confirmedBy]
+                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+                [s.owner_driver_id, s.order_id, shipmentId, shipmentPrice, paidNow, initialStatus, confirmedBy]
             );
         } else {
-            // Cập nhật status debt
-            const newDebtStatus = driverPaymentState === 'settled' ? 'paid' : 'unpaid';
+            // Cập nhật paid_amount + status dựa trên số tiền thực tế
+            const existing = debtRes.rows[0];
+            const newPaidAmount = Number(existing.paid_amount) + Number(amount || 0);
+            const totalAmount = Number(existing.total_amount);
+            const newStatus = newPaidAmount >= totalAmount - 0.01 ? 'paid'
+                            : newPaidAmount > 0 ? 'partial'
+                            : 'unpaid';
             await client.query(
-                `UPDATE debts SET status = $1, updated_by = $2, updated_at = NOW() WHERE id = $3`,
-                [newDebtStatus, confirmedBy, debtRes.rows[0].id]
+                `UPDATE debts SET paid_amount = $1, status = $2, updated_by = $3, updated_at = NOW() WHERE id = $4`,
+                [newPaidAmount, newStatus, confirmedBy, existing.id]
             );
         }
 
