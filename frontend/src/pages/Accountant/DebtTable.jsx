@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import { apiRequest } from "../../services/apiClient";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN");
 
@@ -14,7 +15,7 @@ const DEBT_TYPE_CFG = {
   driver:   { label: "Tài xế nợ",   color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
 };
 
-export default function DebtTable({ apiBase, token, onDebtPayment }) {
+export default function DebtTable({ onDebtPayment }) {
   const [debts, setDebts] = useState([]);
   const [groupedDebts, setGroupedDebts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,18 +53,13 @@ export default function DebtTable({ apiBase, token, onDebtPayment }) {
       if (customerSearch.trim()) params.set("customer", customerSearch.trim());
       if (driverSearch.trim()) params.set("driver", driverSearch.trim());
 
-      const res = await fetch(`${apiBase}/accountant/debts?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = await apiRequest(`/accountant/debts?${params}`);
+      setDebts(data.debts || []);
+      setPagination({
+        currentPage: data.currentPage,
+        totalPages: data.totalPages,
+        totalItems: data.totalItems,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setDebts(data.debts || []);
-        setPagination({
-          currentPage: data.currentPage,
-          totalPages: data.totalPages,
-          totalItems: data.totalItems,
-        });
-      }
     } catch (err) {
       console.error("Không tải được công nợ:", err);
     } finally {
@@ -80,18 +76,13 @@ export default function DebtTable({ apiBase, token, onDebtPayment }) {
       if (customerSearch.trim()) params.set("customer", customerSearch.trim());
       if (driverSearch.trim()) params.set("driver", driverSearch.trim());
 
-      const res = await fetch(`${apiBase}/accountant/debts/grouped?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const data = await apiRequest(`/accountant/debts/grouped?${params}`);
+      setGroupedDebts(data.debts || []);
+      setPagination({
+        currentPage: data.currentPage,
+        totalPages: data.totalPages,
+        totalItems: data.totalPersons,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setGroupedDebts(data.debts || []);
-        setPagination({
-          currentPage: data.currentPage,
-          totalPages: data.totalPages,
-          totalItems: data.totalPersons,
-        });
-      }
     } catch (err) {
       console.error("Không tải được công nợ nhóm:", err);
     } finally {
@@ -101,13 +92,8 @@ export default function DebtTable({ apiBase, token, onDebtPayment }) {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${apiBase}/accountant/debts/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
+      const data = await apiRequest("/accountant/debts/stats");
+      setStats(data);
     } catch (err) {
       console.error("Không tải được thống kê công nợ:", err);
     }
@@ -116,14 +102,13 @@ export default function DebtTable({ apiBase, token, onDebtPayment }) {
   const fetchPersonDebts = async (personType, personKey, customerIds, driverId) => {
     setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: true }));
     try {
-      let url;
+      let path;
       if (personType === "driver" && driverId) {
-        url = `${apiBase}/accountant/debts/person/driver/${driverId}`;
+        path = `/accountant/debts/person/driver/${driverId}`;
       } else if (customerIds && customerIds.length > 0) {
-        // Lấy personId đầu tiên từ customerIds để match route :personId
         const primaryId = customerIds.find(id => id != null);
         if (primaryId) {
-          url = `${apiBase}/accountant/debts/person/customer/${primaryId}?customer_ids=${customerIds.join(",")}`;
+          path = `/accountant/debts/person/customer/${primaryId}?customer_ids=${customerIds.join(",")}`;
         } else {
           setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: false }));
           return;
@@ -132,13 +117,8 @@ export default function DebtTable({ apiBase, token, onDebtPayment }) {
         setLoadingPersonDebts((prev) => ({ ...prev, [personKey]: false }));
         return;
       }
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPersonDebts((prev) => ({ ...prev, [personKey]: data.debts || [] }));
-      }
+      const data = await apiRequest(path);
+      setPersonDebts((prev) => ({ ...prev, [personKey]: data.debts || [] }));
     } catch (err) {
       console.error("Không tải chi tiết công nợ:", err);
     } finally {
@@ -236,24 +216,15 @@ export default function DebtTable({ apiBase, token, onDebtPayment }) {
     try {
       setItemPaymentLoading(true);
       setItemPaymentError("");
-      const response = await fetch(`${apiBase}/accountant/debts/payment/by-debt`, {
+      await apiRequest("/accountant/debts/payment/by-debt", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
+        body: {
           debtId: itemPayment.id,
           amount,
           paymentMethod: itemPaymentMethod,
           notes: itemPaymentNotes.trim() || `Thu tiền khoản nợ #${itemPayment.id}`,
-        }),
+        },
       });
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(result.details || result.message || result.error || "Ghi nhận thu tiền thất bại.");
-      }
 
       const reloadDetails = itemPayment.personKey
         ? fetchPersonDebts(
@@ -1171,7 +1142,5 @@ const modalPrimaryBtnStyle = {
 };
 
 DebtTable.propTypes = {
-  apiBase: PropTypes.string,
-  token: PropTypes.string,
   onDebtPayment: PropTypes.func,
 };

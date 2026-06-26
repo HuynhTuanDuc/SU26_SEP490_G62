@@ -7,12 +7,11 @@ import DebtTable from "./DebtTable";
 import OrderDetailModal from "./OrderDetailModal";
 import "../../styles/Orders.css";
 import ProfileModal from "../../components/profile/ProfileModal";
-import { getStoredToken, saveSession } from "../../services/storage";
+import { saveSession } from "../../services/storage";
+import { apiRequest } from "../../services/apiClient";
 
 
 export default function Accountant({ user, onLogout }) {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
-  const token = localStorage.getItem("token");
   const [currentUser, setCurrentUser] = useState(user);
 
   // ── Active sidebar view ──────────────────────────────────────
@@ -51,13 +50,8 @@ export default function Accountant({ user, onLogout }) {
   // ── Fetch finance stats ────────────────────────────────────────
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_BASE}/accountant/finance/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const data = await apiRequest("/accountant/finance/stats");
+      setStats(data);
     } catch (err) {
       console.error("Không thể tải số liệu thống kê tài chính:", err);
     }
@@ -70,13 +64,7 @@ export default function Accountant({ user, onLogout }) {
       const params = new URLSearchParams({ page, limit: 20, status: "completed" });
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
 
-      const response = await fetch(`${API_BASE}/accountant/orders?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!response.ok) throw new Error("Không thể tải danh sách đơn hàng.");
-
-      const data = await response.json();
+      const data = await apiRequest(`/accountant/orders?${params}`);
 
       if (data?.orders) {
         setOrders(data.orders);
@@ -123,7 +111,7 @@ export default function Accountant({ user, onLogout }) {
   const handleProfileUpdated = (nextProfile) => {
     const mergedUser = { ...currentUser, ...nextProfile };
     setCurrentUser(mergedUser);
-    saveSession({ token: getStoredToken(), user: mergedUser });
+    saveSession({ user: mergedUser });
   };
 
   // ── Handlers ──────────────────────────────────────────────────
@@ -346,8 +334,6 @@ export default function Accountant({ user, onLogout }) {
                 orders={filteredOrders}
                 loading={loadingOrders}
                 pagination={pagination}
-                apiBase={API_BASE}
-                token={token}
                 onPageChange={handlePageChange}
                 onOpenPayment={handleOpenPayment}
                 onOpenDetail={(order) => {
@@ -370,8 +356,6 @@ export default function Accountant({ user, onLogout }) {
 
               {/* Debt Table */}
               <DebtTable
-                apiBase={API_BASE}
-                token={token}
                 onDebtPayment={handleOpenDebtPayment}
               />
             </>
@@ -414,8 +398,6 @@ export default function Accountant({ user, onLogout }) {
           setSelectedOrderForDetail(null);
         }}
         order={selectedOrderForDetail}
-        apiBase={API_BASE}
-        token={token}
         onOpenPayment={handleOpenPayment}
         onRefresh={refreshData}
       />

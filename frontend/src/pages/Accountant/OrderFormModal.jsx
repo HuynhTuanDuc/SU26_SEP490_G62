@@ -29,6 +29,7 @@ import {
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import "../../styles/OrderFormModal.css";
+import { apiRequest } from "../../services/apiClient";
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -760,9 +761,6 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     setFormError("");
   };
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
-  const token = localStorage.getItem("token");
-
   const lookupMaps = useMemo(() => buildLookupMaps(vehicles, drivers), [vehicles, drivers]);
 
   useEffect(() => {
@@ -770,11 +768,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
 
     const fetchLookup = async () => {
       try {
-        const response = await fetch(`${API_BASE}/accountant/orders/lookup`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || data.details || "Không tải được danh sách xe/tài xế");
+        const data = await apiRequest("/accountant/orders/lookup");
         setVehicles(data.vehicles || []);
         setDrivers(data.drivers || []);
         setVehicleGroups(data.vehicle_groups || []);
@@ -792,7 +786,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
     setOrderNotes("");
     setFormError("");
     setFieldErrors({ customerName: false, customerPhone: false, orderDate: false });
-  }, [API_BASE, isOpen, token]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -976,16 +970,10 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE}/accountant/orders`, {
+      const data = await apiRequest("/accountant/orders", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
+        body: payload,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.details || "Không thể tạo đơn hàng.");
       message.success(`Đã lưu đơn với ${shipments.length} chuyến.`);
       setShipments([newShipment()]);
       setCustomerName("");

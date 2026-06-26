@@ -4,7 +4,7 @@ import viVN from "antd/locale/vi_VN";
 import LoadingScreen from "../components/LoadingScreen";
 import { useAuthSession } from "../hooks/useAuthSession";
 import AdminPage from "../pages/Admin/AdminPage";
-import AccountantPage from "../pages/Accountant/accountant";
+import AccountantPage from "../pages/Accountant/AccountantPage";
 import CoordinatorPage from "../pages/Coordinator/CoordinatorPage";
 import LoginPage from "../pages/auth/LoginPage";
 import { appTheme } from "../styles/theme";
