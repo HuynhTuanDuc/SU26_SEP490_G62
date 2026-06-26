@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { HeroUIProvider } from "@heroui/react";
-import "./accountant.css";
+import "../../styles/accountant.css";
 
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
