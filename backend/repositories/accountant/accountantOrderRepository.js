@@ -44,7 +44,6 @@ const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
     const cleanName = trimToNull(name);
     const cleanCompanyName = trimToNull(companyName);
 
-    // Nếu SĐT đã tồn tại → luôn giữ nguyên tên gốc trong DB, KHÔNG cập nhật
     const lookup = await client.query(
         `SELECT id, full_name, company_name
          FROM customers
@@ -134,7 +133,6 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     );
     const shipmentId = shipmentResult.rows[0].id;
 
-    // Batch INSERT all stops (pickups + delivery) in one round-trip
     const stopAddresses = [...pickupAddresses, deliveryAddress];
     const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
     const stopIndices   = stopAddresses.map((_, i) => i + 1);
@@ -145,7 +143,6 @@ const insertShipmentWithStopsAndExpenses = async (client, {
         [shipmentId, contactName, contactPhone, shipmentNotes, stopIndices, stopTypes, stopAddresses]
     );
 
-    // Batch INSERT all expenses in one round-trip
     const expList = expenses || [];
     if (expList.length > 0) {
         await client.query(
@@ -181,7 +178,6 @@ const insertDebtForShipment = async (client, {
     const normalizedPaymentType = normalizeCustomerDebtPaymentType(paymentType);
     if (Number(actualPrice || 0) <= 0) return;
 
-    // Tài xế giữ tiền chỉ áp dụng khi khách đã thanh toán tiền mặt/chuyển khoản.
     if (
         driverPaymentState === 'driver_holding'
         && ['cash', 'bank_transfer'].includes(normalizedPaymentType)
@@ -203,7 +199,7 @@ const insertDebtForShipment = async (client, {
             [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     } else if (normalizedPaymentType === 'client_credit') {
-        // Khách nợ → tạo công nợ khách (chỉ set customer_id, các FK khác = NULL)
+
         const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
@@ -223,7 +219,7 @@ const insertDebtForShipment = async (client, {
             [actualPrice, customerId]
         );
     } else if (partnerId && normalizedPaymentType === 'partner') {
-        // Đối tác nợ (chưa dùng — để cấu trúc sẵn cho sau)
+
         const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
@@ -237,7 +233,7 @@ const insertDebtForShipment = async (client, {
             [partnerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     }
-    // Nếu đã thu đủ (cash/bank_transfer + company_received) → không tạo công nợ, không ghi payment
+
 };
 
 const createOrderWithShipments = async (orderData) => {
@@ -245,7 +241,6 @@ const createOrderWithShipments = async (orderData) => {
     try {
         await client.query('BEGIN');
 
-        // Nếu đã có customer_id (chọn từ danh sách) → dùng trực tiếp, không tìm theo SĐT
     const customerId = orderData.customer_id
         ? Number(orderData.customer_id)
         : await findOrCreateCustomer(client, {
@@ -380,7 +375,6 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
-    // Lateral joins — each returns exactly 1 row per order, no GROUP BY needed
     const lateralJoins = `
         LEFT JOIN LATERAL (
             SELECT
@@ -473,7 +467,6 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     };
 };
 
-// Single CTE query replaces the original N+1 pattern (1 + 3N queries → 1 query)
 const getOrderShipments = async (orderId) => {
     const { rows } = await pool.query(
         `WITH
@@ -583,7 +576,6 @@ const updateOrder = async (orderId, orderData) => {
     try {
         await client.query('BEGIN');
 
-        // Update customers table
         if (orderData.customer_phone) {
             const customerResult = await client.query(
                 `SELECT id FROM customers WHERE phone = $1 LIMIT 1`,
@@ -605,7 +597,6 @@ const updateOrder = async (orderId, orderData) => {
             }
         }
 
-        // Update orders table
         const orderNotes = [
             orderData.order_date ? `Ngày đơn: ${orderData.order_date}` : null,
             orderData.notes,

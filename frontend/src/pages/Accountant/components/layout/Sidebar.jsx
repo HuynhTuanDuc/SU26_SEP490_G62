@@ -92,7 +92,7 @@ export function Sidebar({ activeView, onViewChange, user, onLogout, onProfile, c
       className={`flex flex-col min-h-screen bg-white border-r border-gray-200 flex-shrink-0
                   transition-all duration-200 ${collapsed ? "w-[60px]" : "w-[220px]"}`}
     >
-      {/* Brand + Toggle */}
+      {}
       <div className={`flex items-center h-16 border-b border-gray-100
                        ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}>
         {!collapsed && (
@@ -119,7 +119,7 @@ export function Sidebar({ activeView, onViewChange, user, onLogout, onProfile, c
         </button>
       </div>
 
-      {/* Nav */}
+      {}
       <nav className={`flex-1 py-4 flex flex-col gap-5 overflow-y-auto overflow-x-hidden
                        ${collapsed ? "px-1" : "px-3"}`}>
         {NAV_GROUPS.map(({ label, items }) => (
@@ -148,7 +148,7 @@ export function Sidebar({ activeView, onViewChange, user, onLogout, onProfile, c
         ))}
       </nav>
 
-      {/* Footer */}
+      {}
       <div className={`pb-4 flex flex-col gap-1 border-t border-gray-100 pt-3
                        ${collapsed ? "px-1 items-center" : "px-3"}`}>
         {collapsed ? (

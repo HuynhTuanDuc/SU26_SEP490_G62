@@ -1,7 +1,6 @@
 const accountantFinanceService = require('../../services/accountant/accountantFinanceService');
 const { sendError } = require('./_validate');
 
-// ── GET /accountant/finance/stats ─────────────────────────────────────────────
 const getFinanceStats = async (_req, res) => {
     try {
         const stats = await accountantFinanceService.getFinanceStats();

@@ -18,7 +18,7 @@ export function useNotifications() {
       setNotifications(data.notifications ?? []);
       setUnreadCount(Number(data.unreadCount ?? 0));
     } catch {
-      // ignore — bell just shows no notifications
+
     } finally {
       setLoading(false);
     }
@@ -32,16 +32,14 @@ export function useNotifications() {
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     } catch {
-      // ignore
+
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     fetch();
   }, [fetch]);
 
-  // WebSocket realtime — independent of useRoleRealtime (which excludes accountant)
   useEffect(() => {
     let socket = null;
     let reconnectTimer = null;

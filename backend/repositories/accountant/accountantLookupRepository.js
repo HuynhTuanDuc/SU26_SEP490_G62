@@ -1,7 +1,6 @@
 const pool = require('../../config/database');
 
-// Simple in-memory TTL cache — lookup data changes infrequently
-const CACHE_TTL_MS = 30_000; // 30 seconds
+const CACHE_TTL_MS = 30_000;
 let _cache       = null;
 let _cacheExpiry = 0;
 

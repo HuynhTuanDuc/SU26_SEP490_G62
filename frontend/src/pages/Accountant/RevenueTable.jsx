@@ -14,7 +14,6 @@ const COLLECTION_STATUS = {
   unpaid:  { label: "Chưa thu",   color: "#dc2626", bg: "#fef2f2", border: "#fecaca", Icon: RiCircleLine },
 };
 
-// Format date
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   const date = new Date(dateStr);
@@ -25,13 +24,12 @@ function formatDate(dateStr) {
   });
 }
 
-// Determine collection status from order data
 function getCollectionStatus(order) {
-  // If there is explicit debt_status from API, use it
+
   if (order.debt_status && COLLECTION_STATUS[order.debt_status]) {
     return order.debt_status;
   }
-  // Fallback: if driver or customer debt remaining > 0 => not fully collected
+
   const driverDebt = Number(order.driver_debt_remaining || 0);
   const customerDebt = Number(order.debt_remaining || 0);
   if (driverDebt <= 0 && customerDebt <= 0) return "paid";
@@ -41,10 +39,8 @@ function getCollectionStatus(order) {
   return "unpaid";
 }
 
-// Grid column template — 11 columns
 const GRID_COLS = "68px 78px 1fr 130px 88px 46px 100px 100px 100px 100px 64px";
 
-// Money cell with colored amount
 function MoneyCell({ amount, color, emptyColor = "#cbd5e1" }) {
   const hasValue = Number(amount || 0) > 0;
   return (
@@ -97,7 +93,7 @@ function OrderRow({ order, onOpenDetail }) {
         }}
         onClick={() => onOpenDetail?.(order)}
       >
-        {/* ID */}
+        {}
         <div style={{
           fontWeight: 700,
           color: "#1E2B88",
@@ -107,12 +103,12 @@ function OrderRow({ order, onOpenDetail }) {
           #{order.id}
         </div>
 
-        {/* Ngày */}
+        {}
         <div style={{ fontSize: 11, color: "#64748b", fontVariantNumeric: "tabular-nums" }}>
           {formatDate(order.created_at)}
         </div>
 
-        {/* Khách hàng */}
+        {}
         <div style={{ overflow: "hidden", paddingRight: 8 }}>
           <div style={{
             fontWeight: 600,
@@ -137,7 +133,7 @@ function OrderRow({ order, onOpenDetail }) {
           )}
         </div>
 
-        {/* Hàng hóa */}
+        {}
         <div style={{
           overflow: "hidden",
           paddingRight: 6,
@@ -154,7 +150,7 @@ function OrderRow({ order, onOpenDetail }) {
           </div>
         </div>
 
-        {/* Thu đủ? — Badge */}
+        {}
         <div style={{ textAlign: "center" }}>
           <span style={{
             display: "inline-flex",
@@ -175,7 +171,7 @@ function OrderRow({ order, onOpenDetail }) {
           </span>
         </div>
 
-        {/* Chuyến */}
+        {}
         <div style={{ textAlign: "center" }}>
           <span style={{
             display: "inline-flex",
@@ -193,7 +189,7 @@ function OrderRow({ order, onOpenDetail }) {
           </span>
         </div>
 
-        {/* Doanh thu */}
+        {}
         <div style={{
           textAlign: "right",
           paddingRight: 10,
@@ -209,16 +205,16 @@ function OrderRow({ order, onOpenDetail }) {
           </div>
         </div>
 
-        {/* Đã thu về */}
+        {}
         <MoneyCell amount={companyReceived} color="#16a34a" />
 
-        {/* Tài xế nợ */}
+        {}
         <MoneyCell amount={driverDebt} color="#d97706" />
 
-        {/* Khách Nợ */}
+        {}
         <MoneyCell amount={customerDebt} color="#dc2626" />
 
-        {/* Hành động */}
+        {}
         <div style={{ textAlign: "center" }}>
           <button
             onClick={(e) => {
@@ -309,7 +305,6 @@ export default function RevenueTable({
     );
   }
 
-  // Calculate totals for summary
   const totals = orders.reduce((acc, o) => {
     acc.revenue += Number(o.actual_price || 0);
     acc.company += Number(o.company_received || 0);
@@ -320,14 +315,14 @@ export default function RevenueTable({
 
   return (
     <>
-      {/* Summary Cards */}
+      {}
       <div style={{
         display: "grid",
         gridTemplateColumns: "repeat(4, 1fr)",
         gap: 16,
         marginBottom: 20,
       }}>
-        {/* Tổng doanh thu */}
+        {}
         <div style={{
           background: "linear-gradient(135deg, #ffffff 0%, #eef1ff 100%)",
           borderRadius: 14,
@@ -351,7 +346,7 @@ export default function RevenueTable({
           <div style={{ fontSize: 20, fontWeight: 800, color: "#1E2B88" }}>{fmt(totals.revenue)}đ</div>
         </div>
 
-        {/* Đã thu về */}
+        {}
         <div style={{
           background: "linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)",
           borderRadius: 14,
@@ -375,7 +370,7 @@ export default function RevenueTable({
           <div style={{ fontSize: 20, fontWeight: 800, color: "#16a34a" }}>{fmt(totals.company)}đ</div>
         </div>
 
-        {/* Tài xế nợ */}
+        {}
         <div style={{
           background: "linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)",
           borderRadius: 14,
@@ -399,7 +394,7 @@ export default function RevenueTable({
           <div style={{ fontSize: 20, fontWeight: 800, color: "#d97706" }}>{fmt(totals.driver)}đ</div>
         </div>
 
-        {/* Khách Nợ */}
+        {}
         <div style={{
           background: "linear-gradient(135deg, #ffffff 0%, #fef2f2 100%)",
           borderRadius: 14,
@@ -424,7 +419,7 @@ export default function RevenueTable({
         </div>
       </div>
 
-      {/* Table */}
+      {}
       <div style={{
         borderRadius: 14,
         border: "1px solid #e2e8f0",
@@ -432,7 +427,7 @@ export default function RevenueTable({
         background: "#fff",
         boxShadow: "0 4px 16px rgba(15, 23, 42, 0.03)",
       }}>
-        {/* Table Header */}
+        {}
         <div
           style={{
             display: "grid",
@@ -461,7 +456,7 @@ export default function RevenueTable({
           <span></span>
         </div>
 
-        {/* Order rows */}
+        {}
         {orders.map((order) => (
           <OrderRow
             key={order.id}
@@ -470,7 +465,7 @@ export default function RevenueTable({
           />
         ))}
 
-        {/* Table footer — totals */}
+        {}
         <div style={{
           display: "grid",
           gridTemplateColumns: GRID_COLS,
@@ -511,7 +506,7 @@ export default function RevenueTable({
         </div>
       </div>
 
-      {/* Pagination */}
+      {}
       {pagination && pagination.totalPages > 1 && (
         <div
           style={{

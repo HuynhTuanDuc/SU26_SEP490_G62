@@ -17,8 +17,6 @@ const DRIVER_STATE_LABELS = {
   pending: { label: "Chưa xác nhận", color: "#64748b", bg: "#f8fafc" },
 };
 
-
-// Driver confirmation modal
 function ConfirmDriverModal({ shipment, onConfirm, onClose }) {
   const [amount, setAmount] = useState(String(shipment?.cargo_fee || 0));
   const [method, setMethod] = useState("cash");
@@ -147,7 +145,6 @@ function ConfirmDriverModal({ shipment, onConfirm, onClose }) {
   );
 }
 
-// Main component
 export default function OrderDetailModal({
   isOpen,
   onClose,
@@ -168,7 +165,6 @@ export default function OrderDetailModal({
   });
   const [confirmDriver, setConfirmDriver] = useState(null);
 
-  // Calculate totals
   const totalRevenue = shipments.reduce((sum, s) => sum + Number(s.cargo_fee || s.actual_price || 0), 0);
 
   useEffect(() => {
@@ -199,7 +195,7 @@ export default function OrderDetailModal({
       setIsEditing(false);
       onRefresh?.();
     } catch {
-      // silent
+
     } finally {
       setSaving(false);
     }
@@ -220,7 +216,7 @@ export default function OrderDetailModal({
       setShipments(Array.isArray(data) ? data : []);
       onRefresh?.();
     } catch {
-      // silent
+
     }
   };
 
@@ -268,7 +264,7 @@ export default function OrderDetailModal({
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
+          {}
           <div style={{
             padding: "16px 20px",
             borderBottom: "1px solid #e2e8f0",
@@ -299,9 +295,9 @@ export default function OrderDetailModal({
             </button>
           </div>
 
-          {/* Body */}
+          {}
           <div style={{ flex: 1, overflow: "auto", padding: 20 }}>
-            {/* Customer info */}
+            {}
             <div style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
@@ -342,7 +338,7 @@ export default function OrderDetailModal({
               </div>
             </div>
 
-            {/* Shipments */}
+            {}
             <div>
               <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
                 DANH SÁCH CHUYẾN ({shipments.length})
@@ -372,7 +368,7 @@ export default function OrderDetailModal({
                         overflow: "hidden",
                         background: "#fff",
                       }}>
-                        {/* Header */}
+                        {}
                         <div style={{
                           display: "flex",
                           justifyContent: "space-between",
@@ -427,9 +423,9 @@ export default function OrderDetailModal({
                           </div>
                         </div>
 
-                        {/* Body */}
+                        {}
                         <div style={{ padding: 12 }}>
-                          {/* Route */}
+                          {}
                           <div style={{ marginBottom: 10 }}>
                             <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textTransform: "uppercase", marginBottom: 4 }}>
                               Hành trình
@@ -444,7 +440,7 @@ export default function OrderDetailModal({
                             </div>
                           </div>
 
-                          {/* Actions */}
+                          {}
                           {(driverState === "holding" || driverState === "pending") && (
                             <button
                               onClick={() => setConfirmDriver(s)}

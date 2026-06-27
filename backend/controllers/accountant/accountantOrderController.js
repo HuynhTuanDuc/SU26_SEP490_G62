@@ -5,7 +5,6 @@ const PAYMENT_TYPES   = ['cash', 'bank_transfer', 'client_credit'];
 const DRIVER_STATES   = ['driver_holding', 'settled', 'pending'];
 const PAYMENT_METHODS = ['cash', 'bank_transfer'];
 
-// ── GET /accountant/orders ───────────────────────────────────────────────────
 const getOrders = async (req, res) => {
     try {
         const { page, limit } = pageParams(req.query);
@@ -21,7 +20,6 @@ const getOrders = async (req, res) => {
     }
 };
 
-// ── GET /accountant/orders/lookup ────────────────────────────────────────────
 const getVehicleDriverLookup = async (_req, res) => {
     try {
         const lookup = await accountantOrderService.getVehicleDriverLookup();
@@ -31,7 +29,6 @@ const getVehicleDriverLookup = async (_req, res) => {
     }
 };
 
-// ── POST /accountant/orders ──────────────────────────────────────────────────
 const createOrder = async (req, res) => {
     try {
         const {
@@ -40,7 +37,6 @@ const createOrder = async (req, res) => {
             shipments,
         } = req.body;
 
-        // Customer
         if (!customer_id) {
             if (!customer_name?.trim())
                 throw err400('Tên khách hàng là bắt buộc.');
@@ -52,7 +48,6 @@ const createOrder = async (req, res) => {
 
         nonNegAmount(prepaid_amount ?? 0, 'Số tiền đặt cọc');
 
-        // Shipments
         if (!Array.isArray(shipments) || shipments.length === 0)
             throw err400('Đơn hàng phải có ít nhất 1 chuyến xe.');
         if (shipments.length > 50)
@@ -97,7 +92,6 @@ const createOrder = async (req, res) => {
     }
 };
 
-// ── POST /accountant/orders/import ──────────────────────────────────────────
 const importOrders = async (req, res) => {
     try {
         const { orders } = req.body;
@@ -127,7 +121,6 @@ const importOrders = async (req, res) => {
     }
 };
 
-// ── GET /accountant/orders/:id/shipments ────────────────────────────────────
 const getShipments = async (req, res) => {
     try {
         const orderId = posInt(req.params.id, 'Mã đơn hàng');
@@ -138,7 +131,6 @@ const getShipments = async (req, res) => {
     }
 };
 
-// ── PUT /accountant/orders/:id ───────────────────────────────────────────────
 const updateOrder = async (req, res) => {
     try {
         const orderId = posInt(req.params.id, 'Mã đơn hàng');
@@ -162,7 +154,6 @@ const updateOrder = async (req, res) => {
     }
 };
 
-// ── GET /accountant/orders/:id/payments ─────────────────────────────────────
 const getPayments = async (req, res) => {
     try {
         const orderId = posInt(req.params.id, 'Mã đơn hàng');
@@ -173,7 +164,6 @@ const getPayments = async (req, res) => {
     }
 };
 
-// ── POST /accountant/orders/:id/payments ────────────────────────────────────
 const createPayment = async (req, res) => {
     try {
         const orderId = posInt(req.params.id, 'Mã đơn hàng');
@@ -200,7 +190,6 @@ const createPayment = async (req, res) => {
     }
 };
 
-// ── POST /accountant/orders/:id/shipments/:shipmentId/driver-payment ─────────
 const confirmDriverPayment = async (req, res) => {
     try {
         const orderId     = posInt(req.params.id,         'Mã đơn hàng');
@@ -215,7 +204,7 @@ const confirmDriverPayment = async (req, res) => {
         const amt = posAmount(amount, 'Số tiền tài xế thu');
         enumVal(payment_method, PAYMENT_METHODS, 'Hình thức thanh toán');
 
-        void orderId; // orderId validated, used implicitly via shipmentId FK
+        void orderId;
         await accountantOrderService.confirmDriverPayment(
             shipmentId, driver_payment_state, amt, payment_method, req.user.userId,
         );

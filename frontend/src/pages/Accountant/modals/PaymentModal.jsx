@@ -121,7 +121,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
         </ModalHeader>
 
         <ModalBody className="gap-4">
-          {/* Summary strip */}
+          {}
           {order && (
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -139,7 +139,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
 
           <Divider />
 
-          {/* Form */}
+          {}
           <div className="flex flex-col gap-3">
             {error && (
               <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
@@ -178,7 +178,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
             />
           </div>
 
-          {/* History */}
+          {}
           <Divider />
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1.5 mb-1">

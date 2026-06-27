@@ -8,9 +8,6 @@ import { useFinanceStats } from "../hooks/useFinanceStats";
 import { useOrders } from "../hooks/useOrders";
 import { useShipments } from "../hooks/useShipments";
 
-/**
- * @param {{ refreshKey: number, search: string }} props
- */
 export function RevenueView({ refreshKey = 0, search = "" }) {
   const { stats, loading: statsLoading, refetch: refetchStats } = useFinanceStats();
   const {
@@ -25,10 +22,9 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
 
   const { shipmentCache, isLoadingShipments, fetchShipments } = useShipments();
 
-  // Sync external search → hook's search state
   useEffect(() => {
     onSearchChange(search);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [search]);
 
   useEffect(() => {
@@ -36,7 +32,7 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
       refetchOrders();
       refetchStats();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [refreshKey]);
 
   const [paymentOrder, setPaymentOrder] = useState(null);

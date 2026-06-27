@@ -27,7 +27,6 @@ const PAYMENT_METHOD_OPTIONS = [
   { key: "offset",        label: "Bù trừ"      },
 ];
 
-// Shared table header/cell class
 const TH = "px-3.5 py-3 text-left text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap";
 const TD = "px-3.5 py-3 text-sm";
 
@@ -187,16 +186,16 @@ export default function DebtTable({ onDebtPayment }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Stat cards */}
+      {}
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Tổng nợ khách"    amount={customerStats?.total_remaining || 0} count={customerStats?.count || 0} color="text-violet-600" />
         <StatCard label="Tổng nợ tài xế"   amount={driverStats?.total_remaining   || 0} count={driverStats?.count   || 0} color="text-orange-500" />
         <StatCard label="Tổng còn phải thu" amount={stats.totalRemaining || 0} count={(customerStats?.count || 0) + (driverStats?.count || 0)} color="text-red-500" />
       </div>
 
-      {/* Filter bar */}
+      {}
       <div className="flex flex-wrap gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl items-end">
-        {/* View toggle */}
+        {}
         <div className="flex flex-col gap-1">
           <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Chế độ xem</span>
           <div className="flex gap-1">
@@ -265,7 +264,7 @@ export default function DebtTable({ onDebtPayment }) {
         <Button size="sm" variant="bordered" onPress={handleClearFilters}>Xóa lọc</Button>
       </div>
 
-      {/* Content */}
+      {}
       {loading ? (
         <div className="flex justify-center py-10">
           <Spinner color="primary" label="Đang tải công nợ..." />
@@ -284,7 +283,7 @@ export default function DebtTable({ onDebtPayment }) {
         />
       )}
 
-      {/* Per-debt payment modal */}
+      {}
       <Modal isOpen={!!itemPayment} onClose={closeItemPayment} size="md">
         <ModalContent>
           {(onClose) => {
@@ -302,7 +301,7 @@ export default function DebtTable({ onDebtPayment }) {
                 </ModalHeader>
 
                 <ModalBody>
-                  {/* Summary */}
+                  {}
                   <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
                     {[["Tổng nợ", itemPayment?.total_amount, "text-gray-800"], ["Đã trả", itemPayment?.paid_amount, "text-green-600"], ["Còn nợ", remaining, "text-red-500"]].map(([lbl, val, cls]) => (
                       <div key={lbl} className="text-center">
@@ -356,7 +355,6 @@ export default function DebtTable({ onDebtPayment }) {
   );
 }
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ label, amount, count, color }) {
   return (
     <div className="border border-gray-200 rounded-2xl p-4 bg-gray-50">
@@ -367,7 +365,6 @@ function StatCard({ label, amount, count, color }) {
   );
 }
 
-// ─── Detail View ──────────────────────────────────────────────────────────────
 function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) {
   if (debts.length === 0) {
     return <EmptyState text="Không có khoản công nợ nào phù hợp." />;
@@ -443,7 +440,6 @@ function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) 
   );
 }
 
-// ─── Grouped View ─────────────────────────────────────────────────────────────
 function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts, toggleExpand, pagination, onPageChange, onDebtPayment, onDebtItemPayment }) {
   if (debts.length === 0) {
     return <EmptyState text="Không có công nợ nào phù hợp." />;
@@ -462,7 +458,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
 
           return (
             <div key={key} className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-              {/* Summary row */}
+              {}
               <div
                 className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50" : "hover:bg-gray-50/60"}`}
                 onClick={() => toggleExpand(debt, key)}
@@ -504,7 +500,7 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                 )}
               </div>
 
-              {/* Expanded detail */}
+              {}
               {isExpanded && (
                 <div className="border-t border-gray-200">
                   {loadingPersonDebts[key] ? (

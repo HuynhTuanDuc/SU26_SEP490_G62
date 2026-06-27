@@ -1,9 +1,5 @@
 const pool = require('../../config/database');
 
-/**
- * Tổng quan báo cáo tài chính cho kế toán.
- * Gồm: doanh thu theo tháng, top khách hàng, nợ quá hạn, tóm tắt lương.
- */
 const getReportOverview = async ({ months = 6 } = {}) => {
     const [
         revenueChart,
@@ -28,7 +24,6 @@ const getReportOverview = async ({ months = 6 } = {}) => {
     };
 };
 
-// ─── Doanh thu theo tháng (N tháng gần nhất) ─────────────────────────────────
 const _getMonthlyRevenue = async (months) => {
     const { rows } = await pool.query(`
         WITH month_series AS (
@@ -54,7 +49,6 @@ const _getMonthlyRevenue = async (months) => {
     return rows;
 };
 
-// ─── Top 10 khách hàng theo doanh thu ────────────────────────────────────────
 const _getTopCustomers = async () => {
     const { rows } = await pool.query(`
         SELECT
@@ -79,7 +73,6 @@ const _getTopCustomers = async () => {
     return rows;
 };
 
-// ─── Nợ quá hạn theo nhóm ngày (aging) ───────────────────────────────────────
 const _getDebtAging = async () => {
     const { rows } = await pool.query(`
         SELECT
@@ -104,7 +97,6 @@ const _getDebtAging = async () => {
     return rows[0];
 };
 
-// ─── Tóm tắt lương tháng hiện tại ────────────────────────────────────────────
 const _getPayrollSummary = async () => {
     const now = new Date();
     const month = now.getMonth() + 1;
@@ -128,7 +120,6 @@ const _getPayrollSummary = async () => {
     return summary;
 };
 
-// ─── Doanh thu theo hình thức thanh toán (N tháng gần nhất) ──────────────────
 const _getRevenueByPaymentType = async (months) => {
     const { rows } = await pool.query(`
         SELECT

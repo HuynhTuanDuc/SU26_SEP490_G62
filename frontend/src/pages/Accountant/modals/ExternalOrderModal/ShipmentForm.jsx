@@ -35,7 +35,6 @@ function SectionLabel({ icon: Icon, children }) {
 export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove }) {
   const isCash = ["cash", "bank_transfer"].includes(shipment.payment_type);
 
-  // ── Pickup helpers ────────────────────────────────────────────────────
   const handleAddPickup = () =>
     onChange("pickup_addresses", [...(shipment.pickup_addresses ?? [""]), ""]);
 
@@ -50,7 +49,6 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
     onChange("pickup_addresses", next.length ? next : [""]);
   };
 
-  // ── Expense helpers ───────────────────────────────────────────────────
   const expenses = shipment.expenses ?? [];
 
   const handleAddExpense = () =>
@@ -68,7 +66,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
 
   return (
     <div className="flex flex-col gap-4 p-4 border border-gray-200 rounded-2xl bg-gray-50/40">
-      {/* Header */}
+      {}
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-gray-700">Chuyến {index + 1}</span>
         {canRemove && (
@@ -78,7 +76,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
         )}
       </div>
 
-      {/* ── Tuyến đường ─────────────────────────────────────────────── */}
+      {}
       <div className="flex flex-col gap-2">
         <SectionLabel icon={RiMapPin2Line}>Tuyến đường</SectionLabel>
 
@@ -123,7 +121,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
 
       <Divider className="my-0" />
 
-      {/* ── Hàng hóa & Cước ─────────────────────────────────────────── */}
+      {}
       <div className="flex flex-col gap-2">
         <SectionLabel icon={RiTruckLine}>Hàng hóa & Cước</SectionLabel>
         <div className="grid grid-cols-3 gap-2">
@@ -159,7 +157,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
 
       <Divider className="my-0" />
 
-      {/* ── Thanh toán ──────────────────────────────────────────────── */}
+      {}
       <div className="flex flex-col gap-2">
         <SectionLabel icon={RiMoneyDollarCircleLine}>Thanh toán</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
@@ -193,7 +191,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
 
       <Divider className="my-0" />
 
-      {/* ── Tài xế / Xe ─────────────────────────────────────────────── */}
+      {}
       <div className="flex flex-col gap-2">
         <SectionLabel icon={RiTruckLine}>Tài xế / Xe</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
@@ -218,7 +216,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
 
       <Divider className="my-0" />
 
-      {/* ── Chi phí phát sinh ────────────────────────────────────────── */}
+      {}
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <SectionLabel icon={RiReceiptLine}>Chi phí phát sinh</SectionLabel>
@@ -283,7 +281,7 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
         </Button>
       </div>
 
-      {/* ── Ghi chú chuyến ───────────────────────────────────────────── */}
+      {}
       <Input
         label="Ghi chú chuyến (tuỳ chọn)"
         placeholder="Thông tin thêm về chuyến này..."

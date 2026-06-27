@@ -9,10 +9,10 @@ function ShipmentRow({ shipment }) {
 
   return (
     <tr className="bg-blue-50/30 border-b border-blue-100/40 last:border-0">
-      {/* Empty expand col — must match header col 1 */}
+      {}
       <td className="py-3 pl-4" />
 
-      {/* Badge + Route — col 2 (order/customer column) */}
+      {}
       <td className="py-3 pr-4">
         <div className="flex items-center gap-2 min-w-0">
           <span className="inline-flex items-center justify-center w-5 h-5 flex-shrink-0
@@ -29,10 +29,10 @@ function ShipmentRow({ shipment }) {
         </div>
       </td>
 
-      {/* Date spacer — col 3 */}
+      {}
       <td className="py-3 pr-4" />
 
-      {/* Driver / Vehicle — col 4 */}
+      {}
       <td className="py-3 pr-4">
         <div className="flex items-center gap-1.5">
           <RiTruckLine size={12} className="text-gray-400 flex-shrink-0" />
@@ -47,7 +47,7 @@ function ShipmentRow({ shipment }) {
         </div>
       </td>
 
-      {/* Cước — col 5 */}
+      {}
       <td className="py-3 pr-4">
         <MoneyText
           amount={shipment.actual_price || shipment.cargo_fee}
@@ -55,7 +55,7 @@ function ShipmentRow({ shipment }) {
         />
       </td>
 
-      {/* Driver state — col 6 */}
+      {}
       <td className="py-3 pr-4">
         {shipment.driver_total ? (
           <div className="flex items-center gap-1">
@@ -75,7 +75,7 @@ function ShipmentRow({ shipment }) {
         )}
       </td>
 
-      {/* Empty actions col — col 7 */}
+      {}
       <td className="py-3 pr-4" />
     </tr>
   );

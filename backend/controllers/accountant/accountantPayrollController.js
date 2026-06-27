@@ -9,7 +9,6 @@ const currentPeriod = () => {
     return { month: now.getMonth() + 1, year: now.getFullYear() };
 };
 
-// ── GET /accountant/payroll ──────────────────────────────────────────────────
 const getPayrolls = async (req, res) => {
     try {
         const { status, search } = req.query;
@@ -34,7 +33,6 @@ const getPayrolls = async (req, res) => {
     }
 };
 
-// ── POST /accountant/payroll/generate ────────────────────────────────────────
 const generatePayrolls = async (req, res) => {
     try {
         const cp    = currentPeriod();
@@ -55,7 +53,6 @@ const generatePayrolls = async (req, res) => {
     }
 };
 
-// ── PATCH /accountant/payroll/:id/confirm ────────────────────────────────────
 const confirmPayroll = async (req, res) => {
     try {
         const payrollId = posInt(req.params.id, 'Mã bảng lương');
@@ -67,7 +64,6 @@ const confirmPayroll = async (req, res) => {
     }
 };
 
-// ── PATCH /accountant/payroll/:id/pay ────────────────────────────────────────
 const markPayrollPaid = async (req, res) => {
     try {
         const payrollId = posInt(req.params.id, 'Mã bảng lương');
@@ -79,7 +75,6 @@ const markPayrollPaid = async (req, res) => {
     }
 };
 
-// ── GET /accountant/payroll/advances ─────────────────────────────────────────
 const getSalaryAdvances = async (req, res) => {
     try {
         const { status, search } = req.query;
@@ -104,7 +99,6 @@ const getSalaryAdvances = async (req, res) => {
     }
 };
 
-// ── PATCH /accountant/payroll/advances/:id/disburse ──────────────────────────
 const disburseAdvance = async (req, res) => {
     try {
         const advanceId = posInt(req.params.id, 'Mã ứng lương');

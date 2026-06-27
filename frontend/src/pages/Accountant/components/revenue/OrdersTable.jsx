@@ -30,7 +30,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
                    ${isExpanded ? "bg-blue-50/40" : "hover:bg-gray-50/60"}`}
         onClick={onToggle}
       >
-        {/* Expand */}
+        {}
         <td className="py-3.5 pl-4">
           <span className="text-gray-400">
             {isExpanded
@@ -40,7 +40,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
           </span>
         </td>
 
-        {/* Order + Customer */}
+        {}
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1.5">
@@ -56,12 +56,12 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
           </div>
         </td>
 
-        {/* Date */}
+        {}
         <td className="py-3.5 pr-4">
           <span className="text-xs text-gray-500">{date}</span>
         </td>
 
-        {/* Trips */}
+        {}
         <td className="py-3.5 pr-4">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
             <RiShipLine size={12} className="text-gray-400" />
@@ -69,7 +69,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
           </span>
         </td>
 
-        {/* Revenue */}
+        {}
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <MoneyText
@@ -82,7 +82,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
           </div>
         </td>
 
-        {/* Debt status */}
+        {}
         <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex flex-col gap-1">
             {debtChip && (
@@ -98,7 +98,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
           </div>
         </td>
 
-        {/* Actions */}
+        {}
         <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-1.5">
             <Button

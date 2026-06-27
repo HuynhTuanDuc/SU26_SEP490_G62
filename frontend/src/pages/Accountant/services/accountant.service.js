@@ -3,11 +3,10 @@ import { apiRequest } from "../../../services/apiClient";
 const BASE = "/accountant";
 
 export const accountantService = {
-  // ── Finance ──────────────────────────────────────────────────────────
+
   getFinanceStats: () =>
     apiRequest(`${BASE}/finance/stats`),
 
-  // ── Orders ───────────────────────────────────────────────────────────
   getOrders: (params) =>
     apiRequest(`${BASE}/orders?${new URLSearchParams(params)}`),
 
@@ -26,7 +25,6 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
-  // ── Payments ─────────────────────────────────────────────────────────
   getPayments: (orderId) =>
     apiRequest(`${BASE}/orders/${orderId}/payments`),
 
@@ -42,7 +40,6 @@ export const accountantService = {
       { method: "POST", body: data }
     ),
 
-  // ── Debts ────────────────────────────────────────────────────────────
   getDebts: (params) =>
     apiRequest(`${BASE}/debts?${new URLSearchParams(params)}`),
 
@@ -70,11 +67,9 @@ export const accountantService = {
   paymentByDebt: (data) =>
     apiRequest(`${BASE}/debts/payment/by-debt`, { method: "POST", body: data }),
 
-  // ── Reports ──────────────────────────────────────────────────────────
   getReportOverview: (months = 6) =>
     apiRequest(`${BASE}/reports/overview?months=${months}`),
 
-  // ── Payroll ──────────────────────────────────────────────────────────
   getPayrolls: (params) =>
     apiRequest(`${BASE}/payroll?${new URLSearchParams(params)}`),
 
@@ -87,7 +82,6 @@ export const accountantService = {
   markPayrollPaid: (id) =>
     apiRequest(`${BASE}/payroll/${id}/pay`, { method: "PATCH" }),
 
-  // ── Salary Advances ──────────────────────────────────────────────────
   getSalaryAdvances: (params) =>
     apiRequest(`${BASE}/payroll/advances?${new URLSearchParams(params)}`),
 

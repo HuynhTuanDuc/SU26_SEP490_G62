@@ -1,17 +1,11 @@
 const pool = require('../../config/database');
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
-
 const _debtStatus = (paid, total) => {
     if (paid >= total - 0.01) return 'paid';
     if (paid > 0)             return 'partial';
     return 'unpaid';
 };
 
-/**
- * Validate, INSERT debt_payment, UPDATE debt, UPDATE customer.current_debt.
- * Caller is responsible for the surrounding transaction.
- */
 const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, notes }) => {
     const numericAmount = Number(amount);
     const currentPaid   = Number(debt.paid_amount);
@@ -49,10 +43,6 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
     return { payment, newPaidAmount, newStatus };
 };
 
-/**
- * Đảm bảo tồn tại 1 khoản công nợ customer cho đơn hàng — tạo nếu chưa có.
- * Trả về debt id.
- */
 const _ensureCustomerDebt = async (client, orderId, createdBy) => {
     const { rows: [existing] } = await client.query(
         `SELECT id FROM debts WHERE order_id = $1 AND debt_type = 'customer' LIMIT 1`,
@@ -76,8 +66,6 @@ const _ensureCustomerDebt = async (client, orderId, createdBy) => {
     return created.id;
 };
 
-// ─── Read-only queries ────────────────────────────────────────────────────────
-
 const getPaymentsByOrderId = async (orderId) => {
     const { rows } = await pool.query(
         `SELECT
@@ -96,7 +84,6 @@ const getPaymentsByOrderId = async (orderId) => {
     return rows;
 };
 
-/** Preview phân bổ trước khi thực hiện (không ghi DB) */
 const previewAllocation = async (personType, personId, amount) => {
     const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
     const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
@@ -154,9 +141,6 @@ const previewAllocation = async (personType, personId, amount) => {
     };
 };
 
-// ─── Write operations ─────────────────────────────────────────────────────────
-
-/** Ghi thu theo đơn hàng (tạo debt tự động nếu chưa có) */
 const recordPayment = async (orderId, paymentData) => {
     const client = await pool.connect();
     try {
@@ -187,7 +171,6 @@ const recordPayment = async (orderId, paymentData) => {
     }
 };
 
-/** Ghi thu theo khoản công nợ cụ thể (debt ID) */
 const recordPaymentByDebt = async (debtId, paymentData) => {
     const client = await pool.connect();
     try {
@@ -217,7 +200,6 @@ const recordPaymentByDebt = async (debtId, paymentData) => {
     }
 };
 
-/** Ghi thu theo chuyến xe cụ thể (shipment ID) — tạo debt nếu chưa có */
 const recordPaymentByShipment = async (shipmentId, paymentData) => {
     const client = await pool.connect();
     try {
@@ -264,10 +246,6 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
     }
 };
 
-/**
- * Phân bổ thanh toán hàng loạt.
- * Tối ưu: 2N queries (sequential INSERT+UPDATE per debt) → 2 queries (bulk INSERT + bulk UPDATE)
- */
 const allocatePayment = async (personType, personId, paymentData) => {
     const client = await pool.connect();
     try {
@@ -300,7 +278,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
             );
         }
 
-        // Build allocation plan in memory (no queries)
         let remaining   = requestedAmount;
         const debtIds   = [];
         const allocAmts = [];
@@ -338,7 +315,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
             return { success: true, totalAllocated: 0, overpayment: remaining, allocations: [], payments: [] };
         }
 
-        // Bulk INSERT all debt_payments in one statement
         const { rows: payments } = await client.query(
             `INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
              SELECT unnest($1::int[]), unnest($2::numeric[]), $3, 'confirmed', NOW(), NOW(), $4, $4, $5
@@ -351,7 +327,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
             ]
         );
 
-        // Bulk UPDATE all debts in one statement
         await client.query(
             `UPDATE debts AS d
              SET paid_amount = v.new_paid,
@@ -380,7 +355,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
     }
 };
 
-/** Kế toán xác nhận tài xế đã nộp tiền mặt cho 1 chuyến */
 const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paymentMethod, confirmedBy) => {
     const client = await pool.connect();
     try {
@@ -434,7 +408,6 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
     }
 };
 
-/** Lịch sử thanh toán của 1 người (customer hoặc driver) */
 const getPaymentHistoryByPerson = async (personType, personId) => {
     const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
     const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
@@ -471,7 +444,6 @@ const getPaymentHistoryByPerson = async (personType, personId) => {
         [personId, debtType]
     );
 
-    // Deduplicate: group payments that happened at same time by same user
     const seen = new Set();
     const unique = [];
     for (const row of rows) {
