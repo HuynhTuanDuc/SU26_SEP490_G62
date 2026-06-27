@@ -3,8 +3,8 @@ const accountantOrderService = require('../../services/accountant/accountantOrde
 const getOrders = async (req, res) => {
     try {
         const filters = {
-            status: req.query.status,
             search: req.query.search,
+            debt_status: req.query.debt_status,
         };
         const page = req.query.page ? Number(req.query.page) : null;
         const limit = req.query.limit ? Number(req.query.limit) : null;
@@ -186,11 +186,12 @@ const updateOrder = async (req, res) => {
         if (Number.isNaN(orderId)) {
             return res.status(400).json({ error: "Invalid order id" });
         }
-        const { customer_name, customer_phone, customer_company, notes } = req.body;
+        const { customer_name, customer_phone, customer_company, cargo_name, notes } = req.body;
         const updatedOrder = await accountantOrderService.updateOrder(orderId, {
             customer_name,
             customer_phone,
             customer_company,
+            cargo_name,
             notes,
         });
         res.json({ message: "Order updated successfully", order: updatedOrder });

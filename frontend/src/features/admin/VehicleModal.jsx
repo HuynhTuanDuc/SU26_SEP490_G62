@@ -59,7 +59,7 @@ export default function VehicleModal({ open, onClose, onSubmit, editingVehicle, 
       onOk={handleOk}
       okText="Save"
       cancelText="Cancel"
-      destroyOnClose
+      destroyOnHidden
       width={720}
     >
       <Form form={form} layout="vertical">

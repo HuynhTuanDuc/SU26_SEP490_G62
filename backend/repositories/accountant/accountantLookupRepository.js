@@ -21,6 +21,7 @@ const getVehicleDriverLookup = async () => {
                 d.profile_id AS id,
                 p.full_name,
                 d.vehicle_id,
+                v.vehicle_group_id,
                 v.plate_number,
                 v.status AS vehicle_status,
                 vg.name AS vehicle_group_name
@@ -30,13 +31,11 @@ const getVehicleDriverLookup = async () => {
              LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
              ORDER BY p.full_name ASC`
         ),
-        // Individual customers
         pool.query(
-            `SELECT id, full_name, phone, company_name
+            `SELECT id, full_name, phone, company_name, customer_type
              FROM customers
-             WHERE customer_type = 'individual'
              ORDER BY full_name ASC
-             LIMIT 200`
+             LIMIT 300`
         ),
         // Vehicle groups (cho dropdown chọn nhóm xe trên form)
         pool.query(

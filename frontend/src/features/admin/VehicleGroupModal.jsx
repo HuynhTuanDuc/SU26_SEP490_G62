@@ -33,7 +33,7 @@ export default function VehicleGroupModal({ open, onClose, onSubmit, editingGrou
       onOk={handleOk}
       okText="Save"
       cancelText="Cancel"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical">
         <Form.Item

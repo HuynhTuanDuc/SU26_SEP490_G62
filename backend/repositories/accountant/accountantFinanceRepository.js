@@ -15,50 +15,32 @@ const pool = require('../../config/database');
  * dùng estimated_price. estimated_price chỉ để tham khảo.
  */
 const getFinanceStats = async () => {
+    // total_receivables = tổng công nợ chưa thu (customer + driver) của đơn đã hoàn thành
+    // total_collected   = total_revenue - total_receivables (tránh double-count)
+    // pending_count     = số đơn còn có ít nhất 1 khoản nợ chưa thu đủ
     const query = `
-        WITH shipment_revenue AS (
-            SELECT
-                os.id            AS shipment_id,
-                os.order_id,
-                os.actual_price  AS actual_price
+        WITH completed_revenue AS (
+            SELECT COALESCE(SUM(os.actual_price), 0) AS total_revenue
             FROM order_shipments os
+            JOIN orders o ON o.id = os.order_id
+            WHERE o.derived_status = 'completed'
         ),
-        revenue_per_order AS (
+        outstanding_debts AS (
             SELECT
-                order_id,
-                COALESCE(SUM(actual_price), 0) AS order_actual
-            FROM shipment_revenue
-            GROUP BY order_id
-        ),
-        order_remaining AS (
-            SELECT
-                rpo.order_id,
-                GREATEST(rpo.order_actual - COALESCE(paid.amt, 0), 0) AS remaining
-            FROM revenue_per_order rpo
-            LEFT JOIN (
-                SELECT
-                    d.order_id,
-                    SUM(dp.amount) AS amt
-                FROM debts d
-                JOIN debt_payments dp
-                    ON dp.debt_id = d.id AND dp.status = 'confirmed'
-                WHERE d.order_id IS NOT NULL
-                GROUP BY d.order_id
-            ) paid ON paid.order_id = rpo.order_id
+                COALESCE(SUM(GREATEST(d.total_amount - d.paid_amount, 0)), 0) AS total_receivables,
+                COUNT(DISTINCT d.order_id)
+                    FILTER (WHERE (d.total_amount - d.paid_amount) > 0.01) AS pending_count
+            FROM debts d
+            JOIN orders o ON o.id = d.order_id
+            WHERE o.derived_status = 'completed'
+              AND d.status != 'paid'
         )
         SELECT
-            COALESCE((SELECT SUM(actual_price) FROM shipment_revenue), 0) AS total_revenue,
-            COALESCE((
-                SELECT SUM(dp.amount)
-                FROM debt_payments dp
-                WHERE dp.status = 'confirmed'
-            ), 0) AS total_collected,
-            COALESCE((SELECT SUM(remaining) FROM order_remaining), 0) AS total_receivables,
-            (
-                SELECT COUNT(*)
-                FROM order_remaining
-                WHERE remaining > 0
-            ) AS pending_payments_count
+            cr.total_revenue,
+            GREATEST(cr.total_revenue - od.total_receivables, 0) AS total_collected,
+            od.total_receivables,
+            od.pending_count::int AS pending_payments_count
+        FROM completed_revenue cr, outstanding_debts od
     `;
     const result = await pool.query(query);
     return result.rows[0];

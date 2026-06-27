@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import "../../styles/PaymentModal.css";
+import { apiRequest } from "../../services/apiClient";
 
 export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const [amount, setAmount] = useState("");
@@ -10,9 +11,6 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
-  const token = localStorage.getItem("token");
 
   const orderTotal = order ? Number(order.debt_total || order.estimated_price || 0) : 0;
   const orderPaid = order ? Number(order.debt_paid || 0) : 0;
@@ -32,15 +30,8 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
     if (!order) return;
     setLoadingPayments(true);
     try {
-      const response = await fetch(`${API_BASE}/accountant/orders/${order.id}/payments`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPaymentsList(data);
-      }
+      const data = await apiRequest(`/accountant/orders/${order.id}/payments`);
+      setPaymentsList(data);
     } catch (err) {
       console.error("Không thể tải lịch sử thanh toán:", err);
     } finally {
@@ -67,23 +58,10 @@ export default function PaymentModal({ isOpen, onClose, order, onPaymentRecorded
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${API_BASE}/accountant/orders/${order.id}/payments`, {
+      await apiRequest(`/accountant/orders/${order.id}/payments`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount: numericAmount,
-          paymentMethod,
-          notes,
-        }),
+        body: { amount: numericAmount, paymentMethod, notes },
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Ghi nhận thanh toán thất bại.");
-      }
 
       if (onPaymentRecorded) {
         onPaymentRecorded();

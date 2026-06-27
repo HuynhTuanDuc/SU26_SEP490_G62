@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from "react";
 import OrderFormModal from "./OrderFormModal";
 import PaymentModal from "./PaymentModal";
+import DebtPaymentModal from "./DebtPaymentModal";
 import RevenueTable from "./RevenueTable";
 import DebtTable from "./DebtTable";
 import OrderDetailModal from "./OrderDetailModal";
 import "../../styles/Orders.css";
 import ProfileModal from "../../components/profile/ProfileModal";
-import { getStoredToken, saveSession } from "../../services/storage";
+import { saveSession } from "../../services/storage";
+import { apiRequest } from "../../services/apiClient";
+
 
 export default function Accountant({ user, onLogout }) {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:9999";
-  const token = localStorage.getItem("token");
   const [currentUser, setCurrentUser] = useState(user);
 
   // ── Active sidebar view ──────────────────────────────────────
@@ -34,6 +35,10 @@ export default function Accountant({ user, onLogout }) {
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
+  // ── Debt Payment Modal ────────────────────────────────────────
+  const [isDebtPaymentOpen, setIsDebtPaymentOpen] = useState(false);
+  const [selectedPerson, setSelectedPerson] = useState(null);
+
   // ── Stats ─────────────────────────────────────────────────────
   const [stats, setStats] = useState({
     total_revenue: 0,
@@ -45,13 +50,8 @@ export default function Accountant({ user, onLogout }) {
   // ── Fetch finance stats ────────────────────────────────────────
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_BASE}/accountant/finance/stats`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const data = await apiRequest("/accountant/finance/stats");
+      setStats(data);
     } catch (err) {
       console.error("Không thể tải số liệu thống kê tài chính:", err);
     }
@@ -61,16 +61,10 @@ export default function Accountant({ user, onLogout }) {
   const fetchOrders = async (page = 1) => {
     setLoadingOrders(true);
     try {
-      const params = new URLSearchParams({ page, limit: 20 });
+      const params = new URLSearchParams({ page, limit: 20, status: "completed" });
       if (searchTerm.trim()) params.set("search", searchTerm.trim());
 
-      const response = await fetch(`${API_BASE}/accountant/orders?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!response.ok) throw new Error("Không thể tải danh sách đơn hàng.");
-
-      const data = await response.json();
+      const data = await apiRequest(`/accountant/orders?${params}`);
 
       if (data?.orders) {
         setOrders(data.orders);
@@ -117,7 +111,7 @@ export default function Accountant({ user, onLogout }) {
   const handleProfileUpdated = (nextProfile) => {
     const mergedUser = { ...currentUser, ...nextProfile };
     setCurrentUser(mergedUser);
-    saveSession({ token: getStoredToken(), user: mergedUser });
+    saveSession({ user: mergedUser });
   };
 
   // ── Handlers ──────────────────────────────────────────────────
@@ -129,6 +123,12 @@ export default function Accountant({ user, onLogout }) {
   const handleOpenPayment = (order) => {
     setSelectedOrderForPayment(order);
     setIsPaymentModalOpen(true);
+  };
+
+  // Mở modal thu tiền cho customer hoặc driver
+  const handleOpenDebtPayment = (person) => {
+    setSelectedPerson(person);
+    setIsDebtPaymentOpen(true);
   };
 
   // ── Pagination meta ────────────────────────────────────────────
@@ -157,7 +157,7 @@ export default function Accountant({ user, onLogout }) {
             onClick={() => setActiveView("revenue")}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
             <span>Quản lý doanh thu</span>
           </button>
@@ -167,11 +167,11 @@ export default function Accountant({ user, onLogout }) {
             onClick={() => setActiveView("debt")}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
             </svg>
             <span>Quản lý công nợ</span>
           </button>
@@ -195,7 +195,7 @@ export default function Accountant({ user, onLogout }) {
               <span className="profile-role">Kế toán (Thu)</span>
             </div>
             <svg className="logout-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
             </svg>
           </button>
           <button className="profile-btn" onClick={onLogout} title="Đăng xuất" style={{ marginTop: 8 }}>
@@ -263,7 +263,7 @@ export default function Accountant({ user, onLogout }) {
                 <div className="finance-stat-card glass-blue">
                   <div className="stat-card-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                      <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                     </svg>
                   </div>
                   <div className="stat-card-info">
@@ -275,7 +275,7 @@ export default function Accountant({ user, onLogout }) {
                 <div className="finance-stat-card glass-green">
                   <div className="stat-card-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
                     </svg>
                   </div>
                   <div className="stat-card-info">
@@ -287,7 +287,7 @@ export default function Accountant({ user, onLogout }) {
                 <div className="finance-stat-card glass-red">
                   <div className="stat-card-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                     </svg>
                   </div>
                   <div className="stat-card-info">
@@ -299,7 +299,7 @@ export default function Accountant({ user, onLogout }) {
                 <div className="finance-stat-card glass-gold">
                   <div className="stat-card-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
                     </svg>
                   </div>
                   <div className="stat-card-info">
@@ -334,8 +334,6 @@ export default function Accountant({ user, onLogout }) {
                 orders={filteredOrders}
                 loading={loadingOrders}
                 pagination={pagination}
-                apiBase={API_BASE}
-                token={token}
                 onPageChange={handlePageChange}
                 onOpenPayment={handleOpenPayment}
                 onOpenDetail={(order) => {
@@ -357,7 +355,9 @@ export default function Accountant({ user, onLogout }) {
               </div>
 
               {/* Debt Table */}
-              <DebtTable apiBase={API_BASE} token={token} />
+              <DebtTable
+                onDebtPayment={handleOpenDebtPayment}
+              />
             </>
           )}
         </div>
@@ -398,10 +398,18 @@ export default function Accountant({ user, onLogout }) {
           setSelectedOrderForDetail(null);
         }}
         order={selectedOrderForDetail}
-        apiBase={API_BASE}
-        token={token}
         onOpenPayment={handleOpenPayment}
         onRefresh={refreshData}
+      />
+
+      <DebtPaymentModal
+        isOpen={isDebtPaymentOpen}
+        onClose={() => {
+          setIsDebtPaymentOpen(false);
+          setSelectedPerson(null);
+        }}
+        person={selectedPerson}
+        onPaymentRecorded={refreshData}
       />
 
       <ProfileModal
