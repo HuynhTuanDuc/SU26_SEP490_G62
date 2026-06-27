@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   Spinner, Chip, Button,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -12,6 +12,7 @@ import {
   RiFileList3Line,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
+import { PaginationBar } from "../components/shared/PaginationBar";
 import { useDebts } from "../hooks/useDebts";
 import { accountantService } from "../services/accountant.service";
 
@@ -30,7 +31,6 @@ const STATUS_CHIP = {
   paid:    { label: "Đã thu đủ",    color: "success" },
 };
 
-// Lấy tên/SĐT/personId từ grouped row
 function getPersonInfo(person) {
   if (person.debt_type === "driver") {
     return {
@@ -114,7 +114,6 @@ function PayDebtModal({ person, onClose, onDone }) {
         </ModalHeader>
 
         <ModalBody className="gap-3">
-          {/* Summary */}
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-0.5 bg-red-50 rounded-xl p-3">
               <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wide">Tổng nợ</span>
@@ -178,59 +177,71 @@ function DebtDetailRow({ d }) {
 
   return (
     <tr className="bg-orange-50/20 border-b border-orange-100/30">
-      <td className="pl-10 py-2.5 w-10">
-        <span className="text-[10px] text-orange-400 font-bold">#{d.id}</span>
-      </td>
-      <td className="py-2.5 pr-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-medium text-gray-700">
-            {d.order_id ? `Đơn #${d.order_id}` : "—"}
-            {d.order_cargo_name ? ` · ${d.order_cargo_name}` : ""}
-          </span>
-          {d.notes && (
-            <span className="text-[10px] text-gray-400 italic">{d.notes}</span>
-          )}
+      {/* col 1: indent (w-10) */}
+      <td className="py-2.5 pl-4" />
+
+      {/* col 2: name column — show order info here */}
+      <td className="py-2.5 pr-4 overflow-hidden">
+        <div className="flex items-start gap-2">
+          <span className="text-[10px] text-orange-400 font-bold shrink-0 mt-0.5">#{d.id}</span>
+          <div className="flex flex-col gap-0.5 overflow-hidden">
+            <span className="text-xs font-medium text-gray-700 truncate">
+              {d.order_id ? `Đơn #${d.order_id}` : "—"}
+              {d.order_cargo_name ? ` · ${d.order_cargo_name}` : ""}
+            </span>
+            {d.notes && (
+              <span className="text-[10px] text-gray-400 italic truncate">{d.notes}</span>
+            )}
+          </div>
         </div>
       </td>
-      <td className="py-2.5 pr-4 w-28">
-        <div className="flex flex-col gap-0.5">
+
+      {/* col 3: debt count column — show date */}
+      <td className="py-2.5 pr-4 text-center">
+        <div className="flex flex-col gap-0.5 items-center">
           <span className="text-[10px] text-gray-400">
             {d.created_at ? new Date(d.created_at).toLocaleDateString("vi-VN") : "—"}
           </span>
           {d.due_date && (
             <span className={`text-[10px] font-medium ${overdue ? "text-red-500" : "text-gray-400"}`}>
               Hạn: {new Date(d.due_date).toLocaleDateString("vi-VN")}
-              {overdue && " ⚠"}
+              {overdue && <RiAlertLine size={10} className="inline text-red-500 ml-0.5 align-middle" />}
             </span>
           )}
         </div>
       </td>
+
+      {/* col 4: amount */}
       <td className="py-2.5 pr-4">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-bold text-red-500">{VND(d.remaining)}</span>
           <span className="text-[10px] text-gray-400">/ {VND(d.total_amount)}</span>
         </div>
       </td>
-      <td className="py-2.5 pr-4 w-28">
+
+      {/* col 5: status */}
+      <td className="py-2.5 pr-4">
         {STATUS_CHIP[status] && (
           <Chip size="sm" color={STATUS_CHIP[status].color} variant="flat" className="text-[10px] h-5">
             {STATUS_CHIP[status].label}
           </Chip>
         )}
       </td>
-      <td className="py-2.5 w-10" />
+
+      {/* col 6: actions placeholder */}
+      <td className="py-2.5" />
     </tr>
   );
 }
 
 // ─── Person row (expandable) ─────────────────────────────────────────────────
-function PersonRow({ person, onPay, statusFilter, searchText }) {
-  // ALL hooks must be declared before any conditional return (Rules of Hooks)
+function PersonRow({ person, onPay }) {
   const [expanded, setExpanded] = useState(false);
   const [debts, setDebts]       = useState(null);
   const [loading, setLoading]   = useState(false);
 
   const { name, phone, person_id } = getPersonInfo(person);
+  const chipProps = STATUS_CHIP[person.computed_status];
 
   const toggle = useCallback(async () => {
     const next = !expanded;
@@ -239,7 +250,6 @@ function PersonRow({ person, onPay, statusFilter, searchText }) {
       setLoading(true);
       try {
         const data = await accountantService.getDebtsByPerson(person.debt_type, person_id);
-        // BE returns { debts: [...] }
         setDebts(Array.isArray(data?.debts) ? data.debts : []);
       } catch {
         setDebts([]);
@@ -249,16 +259,6 @@ function PersonRow({ person, onPay, statusFilter, searchText }) {
     }
   }, [expanded, debts, person, person_id]);
 
-  const chipProps = STATUS_CHIP[person.computed_status];
-
-  // Filter checks AFTER all hooks
-  const hiddenBySearch = searchText && (
-    !name.toLowerCase().includes(searchText.toLowerCase()) &&
-    !(phone ?? "").includes(searchText)
-  );
-  const hiddenByStatus = statusFilter !== "all" && person.computed_status !== statusFilter;
-  if (hiddenBySearch || hiddenByStatus) return null;
-
   return (
     <>
       <tr
@@ -266,40 +266,53 @@ function PersonRow({ person, onPay, statusFilter, searchText }) {
                    ${expanded ? "bg-orange-50/40" : "hover:bg-gray-50/60"}`}
         onClick={toggle}
       >
-        <td className="py-3.5 pl-4 w-10">
+        {/* col 1: expand icon */}
+        <td className="py-3.5 pl-4">
           <span className="text-gray-400">
             {expanded ? <RiArrowDownSLine size={17} /> : <RiArrowRightSLine size={17} />}
           </span>
         </td>
-        <td className="py-3.5 pr-4">
+
+        {/* col 2: name / contact */}
+        <td className="py-3.5 pr-4 overflow-hidden">
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-semibold text-gray-800">{name}</span>
+            <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
             {phone && <span className="text-xs text-gray-400 font-mono">{phone}</span>}
             {person.debt_type === "customer" && person.customer_company && (
-              <span className="text-[11px] text-gray-400">{person.customer_company}</span>
+              <span className="text-[11px] text-gray-400 truncate">{person.customer_company}</span>
             )}
           </div>
         </td>
-        <td className="py-3.5 pr-4 w-20 text-center">
+
+        {/* col 3: debt count */}
+        <td className="py-3.5 pr-4 text-center">
           <span className="text-xs text-gray-500">{person.debt_count ?? 0} khoản</span>
         </td>
+
+        {/* col 4: amount */}
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-bold text-red-600">{VND(person.total_remaining)}</span>
             <span className="text-[10px] text-gray-400">/ {VND(person.total_amount)}</span>
           </div>
         </td>
-        <td className="py-3.5 pr-4 w-28">
+
+        {/* col 5: status */}
+        <td className="py-3.5 pr-4">
           {chipProps && (
             <Chip size="sm" color={chipProps.color} variant="flat" className="text-[10px] h-5">
               {chipProps.label}
             </Chip>
           )}
           {isOverdue(person.earliest_due_date) && person.computed_status !== "paid" && (
-            <p className="text-[10px] text-red-500 mt-0.5 font-medium">⚠ Quá hạn</p>
+            <p className="text-[10px] text-red-500 mt-0.5 font-medium flex items-center gap-0.5">
+              <RiAlertLine size={10} />Quá hạn
+            </p>
           )}
         </td>
-        <td className="py-3.5 pr-4 w-10" onClick={(e) => e.stopPropagation()}>
+
+        {/* col 6: actions */}
+        <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           {person.computed_status !== "paid" && (
             <Button
               size="sm" color="danger" variant="flat" isIconOnly
@@ -347,9 +360,34 @@ export function DebtView({ search = "" }) {
   const [payPerson, setPayPerson]       = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
 
+  // Pagination state
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const list = debtType === "customer" ? customerDebts : driverDebts;
 
-  // Count by status for tab badges
+  // Filter at view level (not inside row)
+  const filteredList = useMemo(() => list.filter((person) => {
+    const { name, phone } = getPersonInfo(person);
+    if (search && (
+      !name.toLowerCase().includes(search.toLowerCase()) &&
+      !(phone ?? "").includes(search)
+    )) return false;
+    if (statusFilter !== "all" && person.computed_status !== statusFilter) return false;
+    return true;
+  }), [list, search, statusFilter]);
+
+  // Reset page on filter/tab change
+  useEffect(() => { setPage(1); }, [debtType, statusFilter, search]);
+
+  const totalItems = filteredList.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage   = Math.min(page, totalPages);
+  const pagedList  = filteredList.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const handlePageSizeChange = (size) => { setPageSize(size); setPage(1); };
+
+  // Count by status (on full filtered-by-type list, not paginated)
   const unpaidCount  = list.filter((d) => d.computed_status === "unpaid").length;
   const partialCount = list.filter((d) => d.computed_status === "partial").length;
 
@@ -442,7 +480,7 @@ export function DebtView({ search = "" }) {
           <div className="flex items-center justify-center py-20">
             <Spinner color="primary" label="Đang tải..." size="lg" />
           </div>
-        ) : list.length === 0 ? (
+        ) : filteredList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center">
               <RiCheckboxCircleLine size={22} className="text-green-400" />
@@ -450,16 +488,24 @@ export function DebtView({ search = "" }) {
             <p className="text-gray-500 text-sm">Không có công nợ nào.</p>
           </div>
         ) : (
-          <table className="w-full">
+          <table className="w-full" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 40 }} />
+              <col />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 152 }} />
+              <col style={{ width: 112 }} />
+              <col style={{ width: 44 }} />
+            </colgroup>
             <thead>
               <tr className="bg-gray-50/80 border-b border-gray-200">
                 {[
-                  { label: "",              cls: "w-10 pl-4" },
+                  { label: "",              cls: "pl-4" },
                   { label: "Tên / Liên hệ" },
-                  { label: "Số khoản",      cls: "w-20 text-center" },
+                  { label: "Số khoản",      cls: "text-center" },
                   { label: "Còn lại / Tổng" },
-                  { label: "Trạng thái",    cls: "w-28" },
-                  { label: "",              cls: "w-10" },
+                  { label: "Trạng thái" },
+                  { label: "" },
                 ].map(({ label, cls }, i) => (
                   <th
                     key={i}
@@ -472,19 +518,29 @@ export function DebtView({ search = "" }) {
               </tr>
             </thead>
             <tbody>
-              {list.map((p, i) => (
+              {pagedList.map((p, i) => (
                 <PersonRow
                   key={`${p.debt_type}-${p.driver_id ?? p.customer_ids?.[0]}-${i}`}
                   person={p}
                   onPay={setPayPerson}
-                  statusFilter={statusFilter}
-                  searchText={search}
                 />
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* Pagination */}
+      {!groupedLoading && filteredList.length > 0 && (
+        <PaginationBar
+          page={safePage}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          onPageSizeChange={handlePageSizeChange}
+        />
+      )}
 
       {payPerson && (
         <PayDebtModal

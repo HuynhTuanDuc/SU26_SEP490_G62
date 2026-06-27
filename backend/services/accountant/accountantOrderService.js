@@ -11,7 +11,9 @@ const getOrderShipments = async (orderId) => {
 };
 
 const createOrder = async (orderData) => {
-    return accountantOrderRepository.createOrderWithShipments(orderData);
+    const result = await accountantOrderRepository.createOrderWithShipments(orderData);
+    accountantLookupRepository.invalidateLookupCache();
+    return result;
 };
 
 const importOrders = async (orders, createdByUserId) => {
@@ -23,6 +25,7 @@ const importOrders = async (orders, createdByUserId) => {
         });
         results.push(result);
     }
+    accountantLookupRepository.invalidateLookupCache();
     return results;
 };
 

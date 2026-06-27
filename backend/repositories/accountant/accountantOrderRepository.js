@@ -134,41 +134,29 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     );
     const shipmentId = shipmentResult.rows[0].id;
 
-    for (let i = 0; i < pickupAddresses.length; i += 1) {
-        await client.query(
-            `INSERT INTO trip_stops (
-                shipment_id, stop_index, stop_type,
-                address, contact_name, contact_phone, notes, completed_at, created_at
-            )
-             VALUES ($1, $2, 'pickup', $3, $4, $5, $6, NOW(), NOW())`,
-            [shipmentId, i + 1, pickupAddresses[i], contactName, contactPhone, shipmentNotes]
-        );
-    }
-
+    // Batch INSERT all stops (pickups + delivery) in one round-trip
+    const stopAddresses = [...pickupAddresses, deliveryAddress];
+    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
+    const stopIndices   = stopAddresses.map((_, i) => i + 1);
     await client.query(
-        `INSERT INTO trip_stops (
-            shipment_id, stop_index, stop_type,
-            address, contact_name, contact_phone, notes, completed_at, created_at
-        )
-         VALUES ($1, $2, 'delivery', $3, $4, $5, $6, NOW(), NOW())`,
-        [shipmentId, pickupAddresses.length + 1, deliveryAddress, contactName, contactPhone, shipmentNotes]
+        `INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes, completed_at, created_at)
+         SELECT $1, idx, typ, addr, $2, $3, $4, NOW(), NOW()
+         FROM UNNEST($5::int[], $6::text[], $7::text[]) AS u(idx, typ, addr)`,
+        [shipmentId, contactName, contactPhone, shipmentNotes, stopIndices, stopTypes, stopAddresses]
     );
 
-    for (const expense of (expenses || [])) {
+    // Batch INSERT all expenses in one round-trip
+    const expList = expenses || [];
+    if (expList.length > 0) {
         await client.query(
-            `INSERT INTO expenses (
-                shipment_id, vehicle_id, created_by, updated_by,
-                expense_type, amount, description, expense_date,
-                created_at, updated_at
-            )
-             VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, NOW(), NOW())`,
+            `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, created_at, updated_at)
+             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, NOW(), NOW()
+             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)`,
             [
-                shipmentId,
-                vehicleId,
-                createdByUserId,
-                expense.expense_type,
-                expense.amount,
-                expense.description || null,
+                shipmentId, vehicleId, createdByUserId,
+                expList.map((e) => e.expense_type),
+                expList.map((e) => Number(e.amount)),
+                expList.map((e) => e.description || null),
             ]
         );
     }
@@ -485,123 +473,109 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     };
 };
 
+// Single CTE query replaces the original N+1 pattern (1 + 3N queries → 1 query)
 const getOrderShipments = async (orderId) => {
-    const shipmentResult = await pool.query(
-        `SELECT
-            os.id,
-            os.shipment_index,
-            os.vehicle_id,
-            os.owner_driver_id,
-            os.estimated_price,
-            os.actual_price,
-            os.cargo_name,
-            os.cargo_weight_kg,
-            os.status,
-            os.notes,
-            os.completed_at,
-            os.created_at,
-            v.plate_number AS vehicle_plate,
-            p.full_name AS driver_name,
-            COALESCE(e_agg.total_expenses, 0) AS total_expenses,
-            COALESCE(e_detail.fuel, 0)         AS fuel,
-            COALESCE(e_detail.toll, 0)         AS toll,
-            COALESCE(e_detail.parking, 0)      AS parking,
-            COALESCE(e_detail.repair, 0)       AS repair,
-            COALESCE(e_detail.maintenance, 0)  AS maintenance,
-            COALESCE(e_detail.other, 0)        AS other
-        FROM order_shipments os
-        LEFT JOIN vehicles v ON v.id = os.vehicle_id
-        LEFT JOIN profiles p ON p.id = os.owner_driver_id
-        LEFT JOIN LATERAL (
-            SELECT SUM(amount) AS total_expenses
-            FROM expenses
-            WHERE shipment_id = os.id
-        ) e_agg ON TRUE
-        LEFT JOIN LATERAL (
+    const { rows } = await pool.query(
+        `WITH
+        exp_agg AS (
             SELECT
-                COALESCE(SUM(CASE WHEN expense_type = 'fuel' THEN amount ELSE 0 END), 0)        AS fuel,
-                COALESCE(SUM(CASE WHEN expense_type = 'toll' THEN amount ELSE 0 END), 0)        AS toll,
-                COALESCE(SUM(CASE WHEN expense_type = 'parking' THEN amount ELSE 0 END), 0)     AS parking,
-                COALESCE(SUM(CASE WHEN expense_type = 'repair' THEN amount ELSE 0 END), 0)      AS repair,
-                COALESCE(SUM(CASE WHEN expense_type = 'maintenance' THEN amount ELSE 0 END), 0) AS maintenance,
-                COALESCE(SUM(CASE WHEN expense_type = 'other' THEN amount ELSE 0 END), 0)       AS other
-            FROM expenses
-            WHERE shipment_id = os.id
-        ) e_detail ON TRUE
+                e.shipment_id,
+                COALESCE(SUM(e.amount), 0)                                                            AS total_expenses,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'fuel'        THEN e.amount END), 0)          AS fuel,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'toll'        THEN e.amount END), 0)          AS toll,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'parking'     THEN e.amount END), 0)          AS parking,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'repair'      THEN e.amount END), 0)          AS repair,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'maintenance' THEN e.amount END), 0)          AS maintenance,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'other'       THEN e.amount END), 0)          AS other
+            FROM expenses e
+            WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+            GROUP BY e.shipment_id
+        ),
+        stop_agg AS (
+            SELECT
+                ts.shipment_id,
+                JSON_AGG(
+                    JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
+                    ORDER BY ts.stop_index
+                ) FILTER (WHERE ts.stop_type = 'pickup')                                              AS pickups,
+                MAX(ts.address) FILTER (WHERE ts.stop_type = 'delivery')                              AS delivery_address
+            FROM trip_stops ts
+            WHERE ts.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+            GROUP BY ts.shipment_id
+        ),
+        debt_agg AS (
+            SELECT d.shipment_id, d.status AS driver_payment_state, d.total_amount, d.paid_amount
+            FROM debts d
+            WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+              AND d.debt_type = 'driver'
+        ),
+        pay_agg AS (
+            SELECT DISTINCT ON (d.shipment_id)
+                d.shipment_id, dp.payment_method AS payment_type
+            FROM debt_payments dp
+            JOIN debts d ON d.id = dp.debt_id
+            WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+            ORDER BY d.shipment_id, dp.paid_at DESC
+        )
+        SELECT
+            os.id, os.shipment_index, os.vehicle_id, os.owner_driver_id,
+            os.estimated_price, os.actual_price, os.cargo_name, os.cargo_weight_kg,
+            os.status, os.notes, os.completed_at, os.created_at,
+            v.plate_number                         AS vehicle_plate,
+            p.full_name                            AS driver_name,
+            COALESCE(ea.total_expenses, 0)         AS total_expenses,
+            COALESCE(ea.fuel, 0)                   AS fuel,
+            COALESCE(ea.toll, 0)                   AS toll,
+            COALESCE(ea.parking, 0)                AS parking,
+            COALESCE(ea.repair, 0)                 AS repair,
+            COALESCE(ea.maintenance, 0)            AS maintenance,
+            COALESCE(ea.other, 0)                  AS other,
+            sa.pickups,
+            sa.delivery_address,
+            da.driver_payment_state,
+            da.total_amount                        AS driver_total,
+            da.paid_amount                         AS driver_paid,
+            pa.payment_type
+        FROM order_shipments os
+        LEFT JOIN vehicles  v  ON v.id  = os.vehicle_id
+        LEFT JOIN profiles  p  ON p.id  = os.owner_driver_id
+        LEFT JOIN exp_agg   ea ON ea.shipment_id = os.id
+        LEFT JOIN stop_agg  sa ON sa.shipment_id = os.id
+        LEFT JOIN debt_agg  da ON da.shipment_id = os.id
+        LEFT JOIN pay_agg   pa ON pa.shipment_id = os.id
         WHERE os.order_id = $1
         ORDER BY os.shipment_index ASC`,
         [orderId]
     );
 
-    const shipments = [];
-    for (const row of shipmentResult.rows) {
-        const stopsResult = await pool.query(
-            `SELECT stop_type, address, contact_name, contact_phone
-             FROM trip_stops
-             WHERE shipment_id = $1
-             ORDER BY stop_index ASC`,
-            [row.id]
-        );
-
-        const pickup_addresses = stopsResult.rows
-            .filter((s) => s.stop_type === 'pickup')
-            .map((s) => ({
-                address: s.address,
-                contact_name: s.contact_name,
-                contact_phone: s.contact_phone,
-            }));
-
-        const deliveryRow = stopsResult.rows.find((s) => s.stop_type === 'delivery');
-        const debtResult = await pool.query(
-            `SELECT status AS driver_payment_state, total_amount, paid_amount
-             FROM debts
-             WHERE shipment_id = $1 AND debt_type = 'driver'
-             LIMIT 1`,
-            [row.id]
-        );
-        const debtRow = debtResult.rows[0] || {};
-        const paymentResult = await pool.query(
-            `SELECT dp.payment_method AS payment_type, dp.amount
-             FROM debt_payments dp
-             JOIN debts d ON d.id = dp.debt_id
-             WHERE d.shipment_id = $1
-             ORDER BY dp.paid_at DESC
-             LIMIT 1`,
-            [row.id]
-        );
-        const paymentRow = paymentResult.rows[0] || {};
-
-        shipments.push({
-            id: row.id,
-            shipment_index: row.shipment_index,
-            order_id: orderId,
-            vehicle_plate: row.vehicle_plate || row.notes?.match(/BKS:\s*([^\s|]+)/)?.[1] || null,
-            driver_name: row.driver_name || row.notes?.match(/Tài xế:\s*([^\s|]+)/)?.[1] || null,
-            cargo_name: row.cargo_name,
-            cargo_weight: row.cargo_weight_kg,
-            cargo_fee: row.estimated_price,
-            actual_price: Number(row.actual_price) || 0,
-            total_expenses: Number(row.total_expenses) || 0,
-            expenses: {
-                fuel: Number(row.fuel) || 0,
-                toll: Number(row.toll) || 0,
-                parking: Number(row.parking) || 0,
-                repair: Number(row.repair) || 0,
-                maintenance: Number(row.maintenance) || 0,
-                other: Number(row.other) || 0,
-            },
-            status: row.status,
-            notes: row.notes,
-            pickup_addresses,
-            delivery_address: deliveryRow?.address || null,
-            payment_type: paymentRow.payment_type || null,
-            driver_payment_state: debtRow.driver_payment_state || null,
-            driver_total: debtRow.total_amount ? Number(debtRow.total_amount) : null,
-            driver_paid: debtRow.paid_amount ? Number(debtRow.paid_amount) : 0,
-        });
-    }
-
-    return shipments;
+    return rows.map((row) => ({
+        id: row.id,
+        shipment_index: row.shipment_index,
+        order_id: orderId,
+        vehicle_plate: row.vehicle_plate || null,
+        driver_name: row.driver_name || null,
+        cargo_name: row.cargo_name,
+        cargo_weight: row.cargo_weight_kg,
+        cargo_fee: row.estimated_price,
+        actual_price: Number(row.actual_price) || 0,
+        total_expenses: Number(row.total_expenses) || 0,
+        expenses: {
+            fuel:        Number(row.fuel)        || 0,
+            toll:        Number(row.toll)        || 0,
+            parking:     Number(row.parking)     || 0,
+            repair:      Number(row.repair)      || 0,
+            maintenance: Number(row.maintenance) || 0,
+            other:       Number(row.other)       || 0,
+        },
+        status: row.status,
+        notes: row.notes,
+        pickup_addresses:  row.pickups || [],
+        delivery_address:  row.delivery_address || null,
+        payment_type:      row.payment_type || null,
+        driver_payment_state: row.driver_payment_state || null,
+        driver_total:      row.driver_total ? Number(row.driver_total) : null,
+        driver_paid:       row.driver_paid  ? Number(row.driver_paid)  : 0,
+    }));
 };
 
 const updateOrder = async (orderId, orderData) => {

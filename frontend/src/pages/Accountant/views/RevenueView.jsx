@@ -17,7 +17,9 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
     orders, loading: ordersLoading,
     onSearchChange,
     debtFilter, setDebtFilter,
-    page, setPage, meta,
+    page, setPage,
+    pageSize, setPageSize,
+    meta,
     refetch: refetchOrders,
   } = useOrders();
 
@@ -63,8 +65,10 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
         orders={orders}
         loading={ordersLoading}
         page={page}
+        pageSize={pageSize}
         meta={meta}
         onPageChange={setPage}
+        onPageSizeChange={setPageSize}
         shipmentCache={shipmentCache}
         isLoadingShipments={isLoadingShipments}
         onExpandOrder={handleExpandOrder}
