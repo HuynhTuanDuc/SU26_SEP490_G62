@@ -434,6 +434,64 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
     }
 };
 
+/** Lịch sử thanh toán của 1 người (customer hoặc driver) */
+const getPaymentHistoryByPerson = async (personType, personId) => {
+    const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
+    const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
+
+    const { rows } = await pool.query(
+        `SELECT
+            dp.id,
+            dp.amount,
+            dp.payment_method,
+            dp.paid_at,
+            dp.notes,
+            pr.full_name  AS confirmed_by_name,
+            d.order_id,
+            d.shipment_id,
+            JSON_AGG(
+                JSON_BUILD_OBJECT('debtId', dp2.debt_id, 'amount', dp2.amount)
+                ORDER BY dp2.debt_id
+            ) FILTER (WHERE dp2.id IS NOT NULL) AS items
+         FROM debt_payments dp
+         JOIN debts d ON d.id = dp.debt_id
+            AND d.debt_type = $2
+            AND ${personField} = $1
+         LEFT JOIN profiles pr ON pr.id = dp.confirmed_by
+         LEFT JOIN debt_payments dp2 ON dp2.paid_at = dp.paid_at
+            AND dp2.created_by = dp.created_by
+            AND dp2.debt_id IN (
+                SELECT id FROM debts
+                WHERE debt_type = $2 AND ${personField} = $1
+            )
+         GROUP BY dp.id, dp.amount, dp.payment_method, dp.paid_at, dp.notes,
+                  pr.full_name, d.order_id, d.shipment_id
+         ORDER BY dp.paid_at DESC
+         LIMIT 100`,
+        [personId, debtType]
+    );
+
+    // Deduplicate: group payments that happened at same time by same user
+    const seen = new Set();
+    const unique = [];
+    for (const row of rows) {
+        const key = `${row.paid_at?.toISOString()}_${row.confirmed_by_name}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push({
+                id:                row.id,
+                totalAmount:       Number(row.amount),
+                payment_method:    row.payment_method,
+                paid_at:           row.paid_at,
+                notes:             row.notes,
+                confirmed_by_name: row.confirmed_by_name,
+                items:             row.items || [],
+            });
+        }
+    }
+    return unique;
+};
+
 module.exports = {
     getPaymentsByOrderId,
     recordPayment,
@@ -442,4 +500,5 @@ module.exports = {
     allocatePayment,
     recordPaymentByShipment,
     recordPaymentByDebt,
+    getPaymentHistoryByPerson,
 };

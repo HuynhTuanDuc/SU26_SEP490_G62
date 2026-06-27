@@ -34,7 +34,6 @@ const PAYMENT_TYPE_LABEL = {
   cash:          { label: "Tiền mặt",     color: "#f59e0b" },
   bank_transfer: { label: "Chuyển khoản", color: "#3b82f6" },
   client_credit: { label: "Ghi nợ",       color: "#ef4444" },
-  qr_transfer:   { label: "QR",           color: "#8b5cf6" },
 };
 
 // ─── Stat card ────────────────────────────────────────────────────────────────

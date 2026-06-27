@@ -85,11 +85,11 @@ function PayDebtModal({ person, onClose, onDone }) {
     setSaving(true); setError(null);
     try {
       await accountantService.allocatePayment({
-        person_type:    person.debt_type,
-        person_id,
-        amount:         num,
-        payment_method: [...method][0],
-        notes:          notes.trim() || undefined,
+        personType:    person.debt_type,
+        personId:      person_id,
+        amount:        num,
+        paymentMethod: [...method][0],
+        notes:         notes.trim() || undefined,
       });
       onDone();
       onClose();
@@ -147,7 +147,6 @@ function PayDebtModal({ person, onClose, onDone }) {
           >
             <SelectItem key="cash">Tiền mặt</SelectItem>
             <SelectItem key="bank_transfer">Chuyển khoản</SelectItem>
-            <SelectItem key="qr_transfer">QR Code</SelectItem>
           </Select>
           <Input
             label="Ghi chú (tuỳ chọn)"

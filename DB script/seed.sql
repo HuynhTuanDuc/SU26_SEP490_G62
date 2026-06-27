@@ -1354,7 +1354,7 @@ BEGIN
 
         SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
         INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'qr_transfer', 900000, NULL, 'Thanh toan QR thang 2', '2026-02-20 14:00:00+07', v_rid, '2026-02-20 14:00:00+07', v_coord_id);
+        VALUES (v_sid, 'bank_transfer', 900000, NULL, 'Thanh toan QR thang 2', '2026-02-20 14:00:00+07', v_rid, '2026-02-20 14:00:00+07', v_coord_id);
     END IF;
 
     -- -------------------------------------------------------

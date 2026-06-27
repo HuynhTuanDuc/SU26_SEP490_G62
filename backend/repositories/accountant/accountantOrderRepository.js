@@ -184,7 +184,7 @@ const insertDebtForShipment = async (client, {
     // Tài xế giữ tiền chỉ áp dụng khi khách đã thanh toán tiền mặt/chuyển khoản.
     if (
         driverPaymentState === 'driver_holding'
-        && ['cash', 'bank_transfer', 'qr_transfer'].includes(normalizedPaymentType)
+        && ['cash', 'bank_transfer'].includes(normalizedPaymentType)
     ) {
         if (!driverId) {
             throw new Error('Không thể tạo công nợ tài xế khi chuyến chưa có tài xế.');

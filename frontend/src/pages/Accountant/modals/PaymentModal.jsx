@@ -12,13 +12,11 @@ import { MoneyText } from "../components/shared/MoneyText";
 const PAYMENT_METHODS = [
   { key: "cash",          label: "Tiền mặt" },
   { key: "bank_transfer", label: "Chuyển khoản" },
-  { key: "qr_transfer",   label: "QR Code" },
 ];
 
 const METHOD_LABEL = {
-  cash: "Tiền mặt",
+  cash:          "Tiền mặt",
   bank_transfer: "Chuyển khoản",
-  qr_transfer: "QR Code",
 };
 
 function HistoryItem({ payment }) {

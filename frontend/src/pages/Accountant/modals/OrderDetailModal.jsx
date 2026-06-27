@@ -15,7 +15,6 @@ import { accountantService } from "../services/accountant.service";
 const PAYMENT_LABELS = {
   cash:          "Tiền mặt",
   bank_transfer: "Chuyển khoản",
-  qr_transfer:   "QR Code",
   client_credit: "Ghi nợ khách",
 };
 

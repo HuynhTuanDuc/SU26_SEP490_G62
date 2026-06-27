@@ -33,7 +33,7 @@ function SectionLabel({ icon: Icon, children }) {
 }
 
 export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove }) {
-  const isCash = ["cash", "bank_transfer", "qr_transfer"].includes(shipment.payment_type);
+  const isCash = ["cash", "bank_transfer"].includes(shipment.payment_type);
 
   // ── Pickup helpers ────────────────────────────────────────────────────
   const handleAddPickup = () =>
