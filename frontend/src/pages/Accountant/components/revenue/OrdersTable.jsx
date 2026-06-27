@@ -30,7 +30,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         onClick={onToggle}
       >
         {/* Expand */}
-        <td className="py-3.5 pl-4 w-10">
+        <td className="py-3.5 pl-4">
           <span className="text-gray-400">
             {isExpanded
               ? <RiArrowDownSLine size={17} />
@@ -56,12 +56,12 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         </td>
 
         {/* Date */}
-        <td className="py-3.5 pr-4 w-28">
+        <td className="py-3.5 pr-4">
           <span className="text-xs text-gray-500">{date}</span>
         </td>
 
         {/* Trips */}
-        <td className="py-3.5 pr-4 w-16 text-center">
+        <td className="py-3.5 pr-4">
           <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-600">
             <RiShipLine size={12} className="text-gray-400" />
             {order.shipment_count ?? 0}
@@ -98,7 +98,7 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         </td>
 
         {/* Actions */}
-        <td className="py-3.5 pr-4 w-20" onClick={(e) => e.stopPropagation()}>
+        <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           <div className="flex gap-1.5">
             <Button
               size="sm"
@@ -185,22 +185,31 @@ export function OrdersTable({
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white shadow-sm">
-        <table className="w-full">
+        <table className="w-full table-fixed">
+          <colgroup>
+            <col className="w-10" />
+            <col />
+            <col className="w-28" />
+            <col className="w-[140px]" />
+            <col className="w-36" />
+            <col className="w-44" />
+            <col className="w-24" />
+          </colgroup>
           <thead>
             <tr className="bg-gray-50/80 border-b border-gray-200">
               {[
-                { label: "",                 cls: "w-10" },
+                { label: "" },
                 { label: "Đơn / Khách hàng" },
-                { label: "Ngày tạo",         cls: "w-28" },
-                { label: "Chuyến",           cls: "w-16 text-center" },
+                { label: "Ngày tạo" },
+                { label: "Chuyến" },
                 { label: "Doanh thu" },
                 { label: "Trạng thái" },
-                { label: "",                 cls: "w-20" },
-              ].map(({ label, cls }, i) => (
+                { label: "" },
+              ].map(({ label }, i) => (
                 <th
                   key={i}
-                  className={`text-left text-[11px] font-semibold text-gray-400 uppercase
-                             tracking-wider py-3 pr-4 first:pl-4 ${cls ?? ""}`}
+                  className="text-left text-[11px] font-semibold text-gray-400 uppercase
+                             tracking-wider py-3 pr-4 first:pl-4"
                 >
                   {label}
                 </th>

@@ -225,22 +225,12 @@ function DebtDetailRow({ d }) {
 
 // ─── Person row (expandable) ─────────────────────────────────────────────────
 function PersonRow({ person, onPay, statusFilter, searchText }) {
+  // ALL hooks must be declared before any conditional return (Rules of Hooks)
   const [expanded, setExpanded] = useState(false);
   const [debts, setDebts]       = useState(null);
   const [loading, setLoading]   = useState(false);
 
   const { name, phone, person_id } = getPersonInfo(person);
-
-  // Client-side search filter
-  if (searchText && !name.toLowerCase().includes(searchText.toLowerCase()) &&
-      !(phone ?? "").includes(searchText)) {
-    return null;
-  }
-
-  // Client-side status filter
-  if (statusFilter !== "all" && person.computed_status !== statusFilter) {
-    return null;
-  }
 
   const toggle = useCallback(async () => {
     const next = !expanded;
@@ -260,6 +250,14 @@ function PersonRow({ person, onPay, statusFilter, searchText }) {
   }, [expanded, debts, person, person_id]);
 
   const chipProps = STATUS_CHIP[person.computed_status];
+
+  // Filter checks AFTER all hooks
+  const hiddenBySearch = searchText && (
+    !name.toLowerCase().includes(searchText.toLowerCase()) &&
+    !(phone ?? "").includes(searchText)
+  );
+  const hiddenByStatus = statusFilter !== "all" && person.computed_status !== statusFilter;
+  if (hiddenBySearch || hiddenByStatus) return null;
 
   return (
     <>
