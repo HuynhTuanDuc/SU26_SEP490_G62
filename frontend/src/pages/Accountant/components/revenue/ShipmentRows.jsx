@@ -5,34 +5,35 @@ import { MoneyText } from "../shared/MoneyText";
 function ShipmentRow({ shipment }) {
   const pickup   = shipment.pickup_addresses?.[0]?.address ?? "—";
   const delivery = shipment.delivery_address ?? "—";
-  const settled  = shipment.driver_payment_state === "cleared" || shipment.driver_payment_state === "settled";
+  const settled  = shipment.driver_payment_state === "paid";
 
   return (
     <tr className="bg-blue-50/30 border-b border-blue-100/40 last:border-0">
-      {/* Index badge */}
-      <td className="pl-10 py-3 w-9">
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full
-                         bg-blue-100 text-[10px] font-bold text-blue-500">
-          {shipment.shipment_index}
-        </span>
-      </td>
+      {/* Empty expand col — must match header col 1 */}
+      <td className="py-3 pl-4" />
 
-      {/* Route */}
+      {/* Badge + Route — col 2 (order/customer column) */}
       <td className="py-3 pr-4">
-        <div className="flex items-center gap-1 text-xs text-gray-500">
-          <RiMapPin2Line size={11} className="text-green-500 flex-shrink-0" />
-          <span className="truncate max-w-[110px]">{pickup}</span>
-          <RiArrowRightLine size={11} className="text-gray-300 flex-shrink-0" />
-          <RiMapPin2Line size={11} className="text-red-400 flex-shrink-0" />
-          <span className="truncate max-w-[110px]">{delivery}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="inline-flex items-center justify-center w-5 h-5 flex-shrink-0
+                           rounded-full bg-blue-100 text-[10px] font-bold text-blue-500">
+            {shipment.shipment_index}
+          </span>
+          <div className="flex items-center gap-1 text-xs text-gray-500 min-w-0">
+            <RiMapPin2Line size={11} className="text-green-500 flex-shrink-0" />
+            <span className="truncate max-w-[90px]">{pickup}</span>
+            <RiArrowRightLine size={11} className="text-gray-300 flex-shrink-0" />
+            <RiMapPin2Line size={11} className="text-red-400 flex-shrink-0" />
+            <span className="truncate max-w-[90px]">{delivery}</span>
+          </div>
         </div>
       </td>
 
-      {/* Date spacer */}
-      <td className="py-3 w-28" />
+      {/* Date spacer — col 3 */}
+      <td className="py-3 pr-4" />
 
-      {/* Driver / Vehicle */}
-      <td className="py-3 pr-4 w-16">
+      {/* Driver / Vehicle — col 4 */}
+      <td className="py-3 pr-4">
         <div className="flex items-center gap-1.5">
           <RiTruckLine size={12} className="text-gray-400 flex-shrink-0" />
           <div className="flex flex-col min-w-0">
@@ -46,7 +47,7 @@ function ShipmentRow({ shipment }) {
         </div>
       </td>
 
-      {/* Cước */}
+      {/* Cước — col 5 */}
       <td className="py-3 pr-4">
         <MoneyText
           amount={shipment.actual_price || shipment.cargo_fee}
@@ -54,7 +55,7 @@ function ShipmentRow({ shipment }) {
         />
       </td>
 
-      {/* Driver state */}
+      {/* Driver state — col 6 */}
       <td className="py-3 pr-4">
         {shipment.driver_total ? (
           <div className="flex items-center gap-1">
@@ -74,8 +75,8 @@ function ShipmentRow({ shipment }) {
         )}
       </td>
 
-      {/* Empty actions col */}
-      <td className="py-3 w-20" />
+      {/* Empty actions col — col 7 */}
+      <td className="py-3 pr-4" />
     </tr>
   );
 }
@@ -94,7 +95,7 @@ export function ShipmentRows({ shipments, isLoading }) {
   if (!shipments || shipments.length === 0) {
     return (
       <tr>
-        <td colSpan={7} className="py-3 pl-10 text-xs text-gray-400 italic bg-blue-50/20">
+        <td colSpan={7} className="py-3 pl-12 text-xs text-gray-400 italic bg-blue-50/20">
           Không có chuyến xe nào.
         </td>
       </tr>

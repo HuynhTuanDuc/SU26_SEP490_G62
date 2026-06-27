@@ -3,6 +3,7 @@ import { StatsGrid } from "../components/revenue/StatsGrid";
 import { FilterBar } from "../components/revenue/FilterBar";
 import { OrdersTable } from "../components/revenue/OrdersTable";
 import { PaymentModal } from "../modals/PaymentModal";
+import { OrderDetailModal } from "../modals/OrderDetailModal";
 import { useFinanceStats } from "../hooks/useFinanceStats";
 import { useOrders } from "../hooks/useOrders";
 import { useShipments } from "../hooks/useShipments";
@@ -37,6 +38,7 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
   }, [refreshKey]);
 
   const [paymentOrder, setPaymentOrder] = useState(null);
+  const [detailOrder, setDetailOrder]   = useState(null);
 
   const handleExpandOrder = useCallback((order) => {
     fetchShipments(order.id);
@@ -67,7 +69,7 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
         isLoadingShipments={isLoadingShipments}
         onExpandOrder={handleExpandOrder}
         onPayment={setPaymentOrder}
-        onDetail={(order) => console.log("detail", order)}
+        onDetail={setDetailOrder}
       />
 
       <PaymentModal
@@ -75,6 +77,12 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
         onClose={() => setPaymentOrder(null)}
         order={paymentOrder}
         onPaymentRecorded={handlePaymentRecorded}
+      />
+
+      <OrderDetailModal
+        isOpen={!!detailOrder}
+        onClose={() => setDetailOrder(null)}
+        order={detailOrder}
       />
     </div>
   );
