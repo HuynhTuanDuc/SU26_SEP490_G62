@@ -186,7 +186,7 @@ export default function Accountant({ user, onLogout }) {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="profile-btn" onClick={() => setProfileOpen(true)} title="Ho so ca nhan">
+          <button className="profile-btn" onClick={() => setProfileOpen(true)} title="Hồ sơ cá nhân">
             <div className="profile-avatar">
               {currentUser?.full_name ? currentUser.full_name.charAt(0) : "A"}
             </div>
@@ -201,7 +201,7 @@ export default function Accountant({ user, onLogout }) {
           <button className="profile-btn" onClick={onLogout} title="Đăng xuất" style={{ marginTop: 8 }}>
             <div className="profile-avatar">↩</div>
             <div className="profile-info">
-              <span className="profile-name">Dang xuat</span>
+              <span className="profile-name">Đăng xuất</span>
               <span className="profile-role">{currentUser?.email || ""}</span>
             </div>
           </button>

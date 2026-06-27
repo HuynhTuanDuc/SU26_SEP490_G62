@@ -48,6 +48,7 @@ export default function AccountantPage({ user, onLogout }) {
   const [showExternalModal, setShowExternalModal] = useState(false);
   const [revenueRefreshKey, setRevenueRefreshKey] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const handleProfileUpdated = (nextProfile) => {
     const merged = { ...currentUser, ...nextProfile };
@@ -82,6 +83,8 @@ export default function AccountantPage({ user, onLogout }) {
           user={currentUser}
           onLogout={onLogout}
           onProfile={() => setProfileOpen(true)}
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((v) => !v)}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">

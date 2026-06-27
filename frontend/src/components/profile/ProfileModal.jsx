@@ -7,9 +7,9 @@ import { apiRequest } from '../../services/apiClient';
 const { Text } = Typography;
 
 const genderOptions = [
-  { value: 'male', label: 'Nam' },
-  { value: 'female', label: 'Nu' },
-  { value: 'other', label: 'Khac' },
+  { value: 'male',   label: 'Nam' },
+  { value: 'female', label: 'Nữ' },
+  { value: 'other',  label: 'Khác' },
 ];
 
 export default function ProfileModal({ open, onClose, onProfileUpdated }) {
@@ -43,7 +43,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         });
         setResendCooldown(0);
       } catch (error) {
-        message.error(error.message || 'Khong the tai ho so.');
+        message.error(error.message || 'Không thể tải hồ sơ.');
       } finally {
         setLoading(false);
       }
@@ -81,7 +81,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
       const nextProfile = { ...profile, avatar_url: data.avatar_url };
       setProfile(nextProfile);
-      message.success(data.message || 'Cap nhat avatar thanh cong.');
+      message.success(data.message || 'Cập nhật ảnh đại diện thành công.');
       onProfileUpdated?.({
         email: nextProfile.email,
         full_name: nextProfile.full_name,
@@ -93,7 +93,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       });
       onSuccess?.(data, file);
     } catch (error) {
-      message.error(error.message || 'Khong the tai avatar len.');
+      message.error(error.message || 'Không thể tải avatar lên.');
       onError?.(error);
     } finally {
       setUploadingAvatar(false);
@@ -117,7 +117,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
       const mergedProfile = { ...profile, ...data.profile };
       setProfile(mergedProfile);
-      message.success(data.message || 'Cap nhat ho so thanh cong.');
+      message.success(data.message || 'Cập nhật hồ sơ thành công.');
       onProfileUpdated?.({
         email: mergedProfile.email,
         full_name: mergedProfile.full_name,
@@ -129,7 +129,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       });
     } catch (error) {
       if (error?.errorFields) return;
-      message.error(error.message || 'Khong the cap nhat ho so.');
+      message.error(error.message || 'Không thể cập nhật hồ sơ.');
     } finally {
       setSaving(false);
     }
@@ -142,7 +142,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         method: 'POST',
       });
       setResendCooldown(Number(data.retry_after_seconds || 60));
-      message.success(data.message || 'Da gui ma xac nhan.');
+      message.success(data.message || 'Đã gửi mã xác nhận.');
     } catch (error) {
       if (Number.isFinite(Number(error?.retry_after_seconds)) && Number(error.retry_after_seconds) > 0) {
         setResendCooldown(Number(error.retry_after_seconds));
@@ -152,7 +152,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
           setResendCooldown(Number(match[1]));
         }
       }
-      message.error(error.message || 'Khong the gui ma xac nhan.');
+      message.error(error.message || 'Không thể gửi mã xác nhận.');
     } finally {
       setSendingCode(false);
     }
@@ -175,7 +175,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       form.setFieldValue('email', data.email);
       form.setFieldValue('verification_code', '');
       form.setFieldValue('new_email', '');
-      message.success(data.message || 'Cap nhat email thanh cong.');
+      message.success(data.message || 'Cập nhật email thành công.');
       onProfileUpdated?.({
         email: data.email,
         full_name: nextProfile.full_name,
@@ -187,7 +187,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
       });
     } catch (error) {
       if (error?.errorFields) return;
-      message.error(error.message || 'Khong the cap nhat email.');
+      message.error(error.message || 'Không thể cập nhật email.');
     } finally {
       setVerifyingCode(false);
     }
@@ -195,7 +195,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
   return (
     <Modal
-      title="Ho so ca nhan"
+      title="Hồ sơ cá nhân"
       open={open}
       onCancel={onClose}
       footer={null}
@@ -210,8 +210,8 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
             icon={!profile?.avatar_url ? <UserOutlined /> : undefined}
           />
           <Space direction="vertical" size={4}>
-            <Text strong>Avatar</Text>
-            <Text type="secondary">Tai anh dai dien len Cloudinary.</Text>
+            <Text strong>Ảnh đại diện</Text>
+            <Text type="secondary">Tải ảnh đại diện lên Cloudinary.</Text>
             <Upload
               accept="image/*"
               showUploadList={false}
@@ -219,7 +219,7 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
               disabled={uploadingAvatar}
             >
               <Button icon={<CameraOutlined />} loading={uploadingAvatar}>
-                {uploadingAvatar ? 'Dang tai anh...' : 'Chon avatar'}
+                {uploadingAvatar ? 'Đang tải ảnh...' : 'Chọn ảnh'}
               </Button>
             </Upload>
           </Space>
@@ -228,35 +228,35 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           <Form.Item
             name="full_name"
-            label="Ho va ten"
-            rules={[{ required: true, message: 'Vui long nhap ho va ten.' }]}
+            label="Họ và tên"
+            rules={[{ required: true, message: 'Vui lòng nhập họ và tên.' }]}
           >
-            <Input placeholder="Nhap ho va ten" />
+            <Input placeholder="Nhập họ và tên" />
           </Form.Item>
 
           <Form.Item
             name="phone"
-            label="So dien thoai"
+            label="Số điện thoại"
             rules={[
-              { pattern: /^$|^0\d{9,10}$/, message: 'So dien thoai khong hop le.' },
+              { pattern: /^$|^0\d{9,10}$/, message: 'Số điện thoại không hợp lệ.' },
             ]}
           >
-            <Input placeholder="Nhap so dien thoai" />
+            <Input placeholder="Nhập số điện thoại" />
           </Form.Item>
 
-          <Form.Item name="gender" label="Gioi tinh">
-            <Select allowClear options={genderOptions} placeholder="Chon gioi tinh" />
+          <Form.Item name="gender" label="Giới tính">
+            <Select allowClear options={genderOptions} placeholder="Chọn giới tính" />
           </Form.Item>
 
-          <Form.Item name="dob" label="Ngay sinh">
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Chon ngay sinh" />
+          <Form.Item name="dob" label="Ngày sinh">
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Chọn ngày sinh" />
           </Form.Item>
 
-          <Form.Item name="city" label="Que quan">
-            <Input placeholder="Nhap que quan" />
+          <Form.Item name="city" label="Quê quán">
+            <Input placeholder="Nhập quê quán" />
           </Form.Item>
 
-          <Form.Item name="email" label="Email hien tai">
+          <Form.Item name="email" label="Email hiện tại">
             <Input disabled />
           </Form.Item>
         </div>
@@ -264,24 +264,24 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
         <div style={{ marginTop: 8, marginBottom: 20, padding: 16, border: '1px solid #e5e7eb', borderRadius: 10, background: '#fafafa' }}>
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <div>
-              <Text strong>Doi email</Text>
+              <Text strong>Đổi email</Text>
               <br />
-              <Text type="secondary">Gui ma xac nhan 6 ky tu ve email hien tai, sau do nhap ma dung de doi sang email moi.</Text>
+              <Text type="secondary">Gửi mã xác nhận 6 ký tự về email hiện tại, sau đó nhập mã đúng để đổi sang email mới.</Text>
             </div>
 
             <Space wrap>
               <Button onClick={handleSendCode} loading={sendingCode} disabled={sendingCode || resendCooldown > 0}>
-                {resendCooldown > 0 ? `Gui lai sau ${resendCooldown}s` : 'Gui ma xac nhan'}
+                {resendCooldown > 0 ? `Gửi lại sau ${resendCooldown}s` : 'Gửi mã xác nhận'}
               </Button>
             </Space>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
               <Form.Item
                 name="verification_code"
-                label="Ma xac nhan"
+                label="Mã xác nhận"
                 rules={[
-                  { required: true, message: 'Vui long nhap ma xac nhan.' },
-                  { len: 6, message: 'Ma xac nhan phai gom 6 ky tu.' },
+                  { required: true, message: 'Vui lòng nhập mã xác nhận.' },
+                  { len: 6, message: 'Mã xác nhận phải gồm 6 ký tự.' },
                 ]}
               >
                 <Input placeholder="VD: A1B2C3" maxLength={6} />
@@ -289,26 +289,26 @@ export default function ProfileModal({ open, onClose, onProfileUpdated }) {
 
               <Form.Item
                 name="new_email"
-                label="Email moi"
+                label="Email mới"
                 rules={[
-                  { required: true, message: 'Vui long nhap email moi.' },
-                  { type: 'email', message: 'Email moi khong hop le.' },
+                  { required: true, message: 'Vui lòng nhập email mới.' },
+                  { type: 'email', message: 'Email mới không hợp lệ.' },
                 ]}
               >
-                <Input placeholder="Nhap email moi" />
+                <Input placeholder="Nhập email mới" />
               </Form.Item>
             </div>
 
             <Button type="primary" onClick={handleVerifyEmail} loading={verifyingCode}>
-              Xac nhan doi email
+              Xác nhận đổi email
             </Button>
           </Space>
         </div>
 
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-          <Button onClick={onClose}>Dong</Button>
+          <Button onClick={onClose}>Đóng</Button>
           <Button type="primary" onClick={handleSaveProfile} loading={saving}>
-            Luu thay doi
+            Lưu thay đổi
           </Button>
         </Space>
       </Form>
