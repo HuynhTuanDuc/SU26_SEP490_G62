@@ -470,7 +470,7 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
 // Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
 // 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
 const recordReceiptCollection = async (receiptId, driverId, collectionType, { collectedAmount = null, proofUrl = null } = {}) => {
-    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
+    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!ALLOWED.includes(collectionType)) {
         throw new Error('Hình thức thanh toán không hợp lệ');
     }
@@ -514,7 +514,7 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType, { co
             amount,
         });
     }
-    // bank_transfer / qr_transfer — không tạo debt; chỉ ghi driver_collection_type
+    // bank_transfer — không tạo debt; chỉ ghi driver_collection_type
 
     // Ghi xác nhận vào shipment_receipts để persist qua các lần reload
     if (receipt.shipment_receipt_id) {

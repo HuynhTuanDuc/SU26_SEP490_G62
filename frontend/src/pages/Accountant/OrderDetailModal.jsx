@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import { RiCheckLine, RiCloseLine } from "react-icons/ri";
 import { apiRequest } from "../../services/apiClient";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN");
@@ -16,19 +17,6 @@ const DRIVER_STATE_LABELS = {
   pending: { label: "Chưa xác nhận", color: "#64748b", bg: "#f8fafc" },
 };
 
-// Icons
-const Icons = {
-  Close: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M18 6L6 18M6 6l12 12" />
-    </svg>
-  ),
-  Check: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
-  ),
-};
 
 // Driver confirmation modal
 function ConfirmDriverModal({ shipment, onConfirm, onClose }) {
@@ -72,7 +60,7 @@ function ConfirmDriverModal({ shipment, onConfirm, onClose }) {
             borderRadius: 8,
             cursor: "pointer",
           }}>
-            <Icons.Close />
+            <RiCloseLine size={18} />
           </button>
         </div>
 
@@ -114,8 +102,8 @@ function ConfirmDriverModal({ shipment, onConfirm, onClose }) {
               boxSizing: "border-box",
             }}
           >
-            <option value="cash">💵 Tiền mặt</option>
-            <option value="bank_transfer">🏦 Chuyển khoản</option>
+            <option value="cash">Tiền mặt</option>
+            <option value="bank_transfer">Chuyển khoản</option>
           </select>
         </div>
 
@@ -151,7 +139,7 @@ function ConfirmDriverModal({ shipment, onConfirm, onClose }) {
               gap: 6,
             }}
           >
-            <Icons.Check /> Xác nhận
+            <RiCheckLine size={15} /> Xác nhận
           </button>
         </div>
       </div>
@@ -307,7 +295,7 @@ export default function OrderDetailModal({
                 cursor: "pointer",
               }}
             >
-              <Icons.Close />
+              <RiCloseLine size={18} />
             </button>
           </div>
 
@@ -484,7 +472,8 @@ export default function OrderDetailModal({
                               alignItems: "center",
                               gap: 4,
                             }}>
-                              ✓ Đã xác nhận thu tiền
+                              <RiCheckLine size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />
+                              Đã xác nhận thu tiền
                             </span>
                           )}
                         </div>

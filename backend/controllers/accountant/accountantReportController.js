@@ -1,13 +1,17 @@
 const { getReportOverview } = require('../../repositories/accountant/accountantReportRepository');
+const { sendError, err400 } = require('./_validate');
 
+// ── GET /accountant/reports/overview?months= ──────────────────────────────────
 const getOverview = async (req, res) => {
     try {
-        const months = Math.min(Math.max(parseInt(req.query.months) || 6, 1), 12);
+        const months = parseInt(req.query.months) || 6;
+        if (isNaN(months) || months < 1 || months > 24)
+            throw err400('Số tháng thống kê không hợp lệ (1–24).');
+
         const data = await getReportOverview({ months });
         res.json(data);
     } catch (err) {
-        console.error('[ReportController] getOverview:', err.message);
-        res.status(500).json({ error: 'Không thể tải dữ liệu báo cáo' });
+        sendError(res, err);
     }
 };
 

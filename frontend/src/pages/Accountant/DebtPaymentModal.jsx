@@ -1,1795 +1,562 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
+  Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
+  Button, Input, Checkbox, Progress, Spinner, Chip,
+} from '@heroui/react';
+import {
+  RiAlertLine, RiCheckboxCircleFill,
+  RiMoneyDollarCircleLine, RiBankLine,
+  RiPhoneLine, RiBuildingLine, RiTruckLine,
+  RiHistoryLine, RiArrowUpSLine, RiArrowDownSLine,
+} from 'react-icons/ri';
+import {
   previewDebtAllocation,
   allocateDebtPayment,
   getDebtsByPerson,
   getPaymentHistoryByPerson,
 } from '../../services/debtPaymentService';
+import { DebtBadge } from './components/debt/DebtBadge';
 
-// Utility functions
-const formatCurrency = (value) => {
-  const num = Number(value || 0);
-  return num.toLocaleString('vi-VN');
+const fmt = (v) => Number(v || 0).toLocaleString('vi-VN');
+
+const formatDate = (s) => {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-const formatDate = (dateString) => {
-  if (!dateString) return '—';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-// Status configuration
-const STATUS_CONFIG = {
-  paid: { label: 'Đã trả', color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0' },
-  partial: { label: 'Một phần', color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
-  unpaid: { label: 'Chưa trả', color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+const STATUS_CHIP = {
+  paid:    { label: 'Đã trả',   color: 'success'  },
+  partial: { label: 'Một phần', color: 'warning'  },
+  unpaid:  { label: 'Chưa trả', color: 'danger'   },
 };
 
 const PAYMENT_METHODS = [
-  { value: 'cash', label: 'Tiền mặt', icon: '💵' },
-  { value: 'bank_transfer', label: 'Chuyển khoản', icon: '🏦' },
+  { value: 'cash',          label: 'Tiền mặt',     Icon: RiMoneyDollarCircleLine },
+  { value: 'bank_transfer', label: 'Chuyển khoản', Icon: RiBankLine },
 ];
 
-// Icons
-const Icons = {
-  Close: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M18 6L6 18M6 6l12 12" />
-    </svg>
-  ),
-  Check: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
-  ),
-  Money: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 6v12M8 10h8M8 14h8" />
-    </svg>
-  ),
-  History: () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 6v6l4 2" />
-    </svg>
-  ),
-  User: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
-    </svg>
-  ),
-  Phone: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
-    </svg>
-  ),
-  ChevronDown: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  ),
-  ChevronUp: () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M18 15l-6-6-6 6" />
-    </svg>
-  ),
-  Warning: () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-    </svg>
-  ),
-  Success: () => (
-    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M8 12l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-  Loading: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
-      <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
-      <path d="M12 2a10 10 0 0110 10" strokeLinecap="round" />
-    </svg>
-  ),
-};
-
-// Badge Component
-function StatusBadge({ status }) {
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.unpaid;
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      padding: '4px 10px',
-      borderRadius: '999px',
-      fontSize: '11px',
-      fontWeight: 700,
-      color: config.color,
-      background: config.bg,
-      border: `1px solid ${config.border}`,
-    }}>
-      {config.label}
-    </span>
-  );
-}
-
-// Confirmation Modal
-function ConfirmationModal({ isOpen, onConfirm, onCancel, loading, data }) {
-  if (!isOpen) return null;
-
-  return (
-    <div style={styles.confirmOverlay} onClick={onCancel}>
-      <div style={styles.confirmCard} onClick={(e) => e.stopPropagation()}>
-        <div style={styles.confirmIcon}>
-          <Icons.Warning />
-        </div>
-        <h3 style={styles.confirmTitle}>Xác nhận thu tiền</h3>
-
-        <div style={styles.confirmDetails}>
-          <div style={styles.confirmRow}>
-            <span style={styles.confirmLabel}>Người thanh toán:</span>
-            <span style={styles.confirmValue}>{data?.personName}</span>
-          </div>
-          <div style={styles.confirmRow}>
-            <span style={styles.confirmLabel}>Tổng số tiền:</span>
-            <span style={{ ...styles.confirmValue, color: '#10b981', fontSize: '18px' }}>
-              {formatCurrency(data?.totalAmount)}đ
-            </span>
-          </div>
-          <div style={styles.confirmRow}>
-            <span style={styles.confirmLabel}>Hình thức:</span>
-            <span style={styles.confirmValue}>
-              {data?.paymentMethod === 'cash' ? '💵 Tiền mặt' : '🏦 Chuyển khoản'}
-            </span>
-          </div>
-          <div style={styles.confirmRow}>
-            <span style={styles.confirmLabel}>Số khoản nợ:</span>
-            <span style={styles.confirmValue}>{data?.itemCount} khoản</span>
-          </div>
-          {data?.notes && (
-            <div style={styles.confirmRow}>
-              <span style={styles.confirmLabel}>Ghi chú:</span>
-              <span style={styles.confirmValue}>{data.notes}</span>
-            </div>
-          )}
-        </div>
-
-        <p style={styles.confirmWarning}>
-          Hành động này không thể hoàn tác. Bạn có chắc chắn muốn ghi nhận thu tiền?
-        </p>
-
-        <div style={styles.confirmActions}>
-          <button style={styles.confirmCancelBtn} onClick={onCancel} disabled={loading}>
-            Hủy bỏ
-          </button>
-          <button style={styles.confirmSubmitBtn} onClick={onConfirm} disabled={loading}>
-            {loading ? (
-              <>
-                <Icons.Loading /> Đang xử lý...
-              </>
-            ) : (
-              <>
-                <Icons.Check /> Xác nhận thu tiền
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Success Screen
-function SuccessScreen({ data, onClose }) {
-  return (
-    <div style={styles.successOverlay}>
-      <div style={styles.successCard}>
-        <div style={styles.successIcon}>
-          <Icons.Success />
-        </div>
-        <h2 style={styles.successTitle}>Thu tiền thành công!</h2>
-
-        <div style={styles.successAmount}>
-          {formatCurrency(data?.totalAmount)}đ
-        </div>
-
-        <div style={styles.successDetails}>
-          <h4 style={styles.successDetailsTitle}>Chi tiết phân bổ:</h4>
-          {data?.allocations?.map((item, index) => (
-            <div key={index} style={styles.successAllocationItem}>
-              <div style={styles.successAllocationLeft}>
-                <span style={styles.successAllocationDebt}>
-                  {item.label || `Khoản nợ #${item.debtId}`}
-                </span>
-                <StatusBadge status={item.newStatus} />
-              </div>
-              <span style={styles.successAllocationAmount}>
-                +{formatCurrency(item.amount)}đ
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <button style={styles.successCloseBtn} onClick={onClose}>
-          Đóng
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Payment History Section
-function PaymentHistory({ personType, personId, apiBase, token }) {
+// ─── Payment History ──────────────────────────────────────────────────────────
+function PaymentHistory({ personType, personId }) {
   const [histories, setHistories] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [expanded, setExpanded]   = useState(false);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
       const data = await getPaymentHistoryByPerson(personType, personId);
       setHistories(data.payments || []);
-    } catch (err) {
-      console.error('Error fetching payment history:', err);
+    } catch {
       setHistories([]);
     } finally {
       setLoading(false);
     }
   }, [personType, personId]);
 
-  useEffect(() => {
-    if (expanded) {
-      fetchHistory();
-    }
-  }, [expanded, fetchHistory]);
-
-  if (histories.length === 0 && !expanded) {
-    return (
-      <button style={styles.historyToggleBtn} onClick={() => setExpanded(true)}>
-        <Icons.History />
-        Xem lịch sử thanh toán
-      </button>
-    );
-  }
+  useEffect(() => { if (expanded) fetchHistory(); }, [expanded, fetchHistory]);
 
   return (
-    <div style={styles.historySection}>
-      <button style={styles.historyToggleBtn} onClick={() => setExpanded(!expanded)}>
-        <Icons.History />
-        Lịch sử thanh toán ({histories.length})
-        {expanded ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
-      </button>
+    <div className="mt-2">
+      <Button
+        size="sm" variant="bordered" fullWidth
+        onPress={() => setExpanded((v) => !v)}
+        className="text-gray-500 justify-start"
+      >
+        <RiHistoryLine size={14} className="shrink-0" />
+        Lịch sử thanh toán {histories.length > 0 && `(${histories.length})`}
+        <span className="ml-auto">{expanded ? <RiArrowUpSLine size={16} /> : <RiArrowDownSLine size={16} />}</span>
+      </Button>
 
       {expanded && (
-        <div style={styles.historyContent}>
+        <div className="mt-2 flex flex-col gap-2 max-h-72 overflow-auto">
           {loading ? (
-            <div style={styles.historyLoading}>Đang tải lịch sử...</div>
+            <div className="flex justify-center py-4"><Spinner size="sm" /></div>
           ) : histories.length === 0 ? (
-            <div style={styles.historyEmpty}>Chưa có lịch sử thanh toán</div>
-          ) : (
-            histories.map((payment) => (
-              <div key={payment.id} style={styles.historyItem}>
-                <div style={styles.historyItemHeader}>
-                  <div style={styles.historyItemDate}>
-                    {formatDate(payment.paid_at)}
-                  </div>
-                  <div style={styles.historyItemAmount}>
-                    {formatCurrency(payment.total_amount || payment.totalAmount)}đ
-                  </div>
-                  <span style={styles.historyItemMethod}>
-                    {payment.payment_method === 'cash' ? '💵' : '🏦'}
-                  </span>
-                </div>
-                {payment.items && payment.items.length > 0 && (
-                  <div style={styles.historyItemDetails}>
-                    {payment.items.map((item, idx) => (
-                      <div key={idx} style={styles.historyDetailRow}>
-                        <span>Khoản nợ #{item.debtId}</span>
-                        <span style={styles.historyDetailAmount}>
-                          {formatCurrency(item.amount)}đ
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {payment.notes && (
-                  <div style={styles.historyItemNotes}>{payment.notes}</div>
-                )}
+            <p className="text-center text-gray-400 text-sm py-3">Chưa có lịch sử thanh toán</p>
+          ) : histories.map((payment) => (
+            <div key={payment.id} className="p-3 border border-gray-200 rounded-xl">
+              <div className="flex items-center gap-3">
+                <span className="flex-1 text-[13px] font-medium text-gray-500">{formatDate(payment.paid_at)}</span>
+                <span className="text-sm font-bold text-green-600">{fmt(payment.total_amount || payment.totalAmount)}đ</span>
+                <span>{payment.payment_method === 'cash' ? <RiMoneyDollarCircleLine size={15} /> : <RiBankLine size={15} />}</span>
               </div>
-            ))
-          )}
+              {payment.items?.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-0.5">
+                  {payment.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-[12px] text-gray-400">
+                      <span>Khoản nợ #{item.debtId}</span>
+                      <span className="font-semibold text-green-500">{fmt(item.amount)}đ</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {payment.notes && <p className="mt-1 text-[12px] text-gray-400 italic">{payment.notes}</p>}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// Main Component
-export default function DebtPaymentModal({
-  isOpen,
-  onClose,
-  person,
-  onPaymentRecorded,
-  apiBase,
-  token,
-}) {
-  const [loading, setLoading] = useState(false);
-  const [debts, setDebts] = useState([]);
-  const [preview, setPreview] = useState(null);
-  const [amount, setAmount] = useState('');
+// ─── Main Modal ───────────────────────────────────────────────────────────────
+export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRecorded }) {
+  const [loading, setLoading]         = useState(false);
+  const [debts, setDebts]             = useState([]);
+  const [preview, setPreview]         = useState(null);
+  const [amount, setAmount]           = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState('');
-
-  // Selected debts for payment (key = debtId, value = số tiền sẽ trừ cho khoản đó)
+  const [notes, setNotes]             = useState('');
+  const [error, setError]             = useState('');
   const [selectedDebts, setSelectedDebts] = useState({});
-
-  // Preview phân bổ tự động (FIFO) theo input amount
-  const [previewing, setPreviewing] = useState(false);
-
-  // Còn dư sau khi tự động phân bổ theo input amount (tiêu thụ vào các khoản nợ)
+  const [previewing, setPreviewing]   = useState(false);
   const [remainingInput, setRemainingInput] = useState(null);
-
-  // Confirmation & Success states
   const [showConfirm, setShowConfirm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successData, setSuccessData] = useState(null);
 
-  // Load debts when modal opens
   useEffect(() => {
-    if (isOpen && person) {
-      loadDebts();
-    }
+    if (isOpen && person) loadDebts();
   }, [isOpen, person]);
 
   const loadDebts = async () => {
     try {
       setLoading(true);
       const result = await getDebtsByPerson(person.type, person.id);
-      const debtList = result.debts || [];
-
-      const unpaidDebts = debtList.filter(d => {
-        const remaining = Number(d.total_amount || 0) - Number(d.paid_amount || 0);
-        return remaining > 0;
-      });
-
-      setDebts(unpaidDebts);
-      setSelectedDebts({});
-      setRemainingInput(null);
-      setPreview(null);
-    } catch (err) {
-      console.error('Error loading debts:', err);
+      const unpaid = (result.debts || []).filter((d) => Number(d.total_amount) - Number(d.paid_amount) > 0);
+      setDebts(unpaid);
+      setSelectedDebts({}); setRemainingInput(null); setPreview(null);
+    } catch {
       setError('Không thể tải danh sách công nợ');
     } finally {
       setLoading(false);
     }
   };
 
-  // Gọi preview phân bổ (FIFO) theo số tiền người dùng nhập vào ô tổng
-  const doAutoAllocate = useCallback(async (inputAmount) => {
-    const numeric = Number(inputAmount);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      setRemainingInput(null);
-      return;
-    }
-
+  const doAutoAllocate = useCallback(async (numeric) => {
+    if (!Number.isFinite(numeric) || numeric <= 0) { setRemainingInput(null); return; }
     try {
-      setPreviewing(true);
-      setError('');
+      setPreviewing(true); setError('');
       const result = await previewDebtAllocation(person.type, person.id, numeric);
-
-      // Dựa theo FIFO, backend trả về mảng preview theo thứ tự cũ -> mới
       const nextSelected = {};
-      (result.preview || []).forEach((item) => {
-        if (item.allocateAmount > 0) {
-          nextSelected[item.debtId] = Number(item.allocateAmount);
-        }
-      });
-
+      (result.preview || []).forEach((item) => { if (item.allocateAmount > 0) nextSelected[item.debtId] = Number(item.allocateAmount); });
       setSelectedDebts(nextSelected);
       setRemainingInput(result.overpayment || 0);
     } catch (err) {
-      console.error('Error auto allocating:', err);
-      setError(err.message || 'Không thể phân bổ thanh toán');
-      setRemainingInput(null);
+      setError(err.message || 'Không thể phân bổ thanh toán'); setRemainingInput(null);
     } finally {
       setPreviewing(false);
     }
   }, [person]);
 
-  // Khi người dùng bấm "Tự động phân bổ" (hoặc auto-run lần đầu khi đã có input)
-  const handleAutoAllocate = () => {
-    const numeric = Number(amount);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      setError('Vui lòng nhập số tiền hợp lệ để phân bổ');
-      return;
-    }
-    doAutoAllocate(numeric);
-  };
-
-  // Debounce gọi auto-allocate khi người dùng gõ trong ô tổng số tiền
   const allocateTimerRef = React.useRef(null);
-  const handleAmountInputChange = (value) => {
-    setAmount(value);
-    setPreview(null);
+  const handleAmountChange = (value) => {
+    setAmount(value); setPreview(null);
     if (allocateTimerRef.current) clearTimeout(allocateTimerRef.current);
     const numeric = Number(value);
     if (Number.isFinite(numeric) && numeric > 0 && debts.length > 0) {
       allocateTimerRef.current = setTimeout(() => doAutoAllocate(numeric), 350);
     } else {
-      setRemainingInput(null);
-      setSelectedDebts({});
+      setRemainingInput(null); setSelectedDebts({});
     }
   };
 
-  // Calculate total selected amount
-  const totalSelected = Object.entries(selectedDebts).reduce((sum, [debtId, selectedAmount]) => {
-    return sum + (Number(selectedAmount) || 0);
-  }, 0);
+  const totalSelected  = Object.values(selectedDebts).reduce((s, v) => s + (Number(v) || 0), 0);
+  const totalRemaining = debts.reduce((s, d) => s + (Number(d.total_amount) - Number(d.paid_amount)), 0);
+  const amountInput    = Number(amount) || 0;
+  const isOverInput    = amountInput > 0 && totalSelected > amountInput;
 
-  // Handle debt selection toggle
   const handleDebtToggle = (debtId) => {
-    setSelectedDebts(prev => {
-      const newSelected = { ...prev };
-      if (newSelected[debtId]) {
-        delete newSelected[debtId];
-      } else {
-        const debt = debts.find(d => d.id === debtId);
-        if (debt) {
-          const remaining = Number(debt.total_amount || 0) - Number(debt.paid_amount || 0);
-          newSelected[debtId] = remaining;
-        }
+    setSelectedDebts((prev) => {
+      const next = { ...prev };
+      if (next[debtId]) { delete next[debtId]; }
+      else {
+        const debt = debts.find((d) => d.id === debtId);
+        if (debt) next[debtId] = Number(debt.total_amount) - Number(debt.paid_amount);
       }
-      return newSelected;
+      return next;
     });
     setPreview(null);
   };
 
-  // Handle amount change for specific debt (sau khi auto xong vẫn cho sửa)
-  const handleAmountChange = (debtId, value) => {
+  const handleDebtAmountChange = (debtId, value) => {
     const numeric = Number(value) || 0;
-    setSelectedDebts(prev => ({ ...prev, [debtId]: numeric }));
+    setSelectedDebts((prev) => ({ ...prev, [debtId]: numeric }));
     setPreview(null);
-
-    // Tính lại remainingInput theo số tiền đã chọn so với input tổng ban đầu
-    const inputTotal = Number(amount) || 0;
-    const newTotalSelected = Object.entries({ ...selectedDebts, [debtId]: numeric })
-      .reduce((sum, [, v]) => sum + (Number(v) || 0), 0);
-    const over = Math.max(0, newTotalSelected - inputTotal);
-    setRemainingInput(-over); // âm => dùng vượt input
+    const newTotal = Object.entries({ ...selectedDebts, [debtId]: numeric }).reduce((s, [, v]) => s + (Number(v) || 0), 0);
+    setRemainingInput(-Math.max(0, newTotal - amountInput));
   };
 
-  // Calculate total remaining debt
-  const totalRemaining = debts.reduce((sum, debt) => {
-    const remaining = Number(debt.total_amount || 0) - Number(debt.paid_amount || 0);
-    return sum + remaining;
-  }, 0);
-
-  // Preview allocation
-  const handlePreview = async () => {
-    if (totalSelected <= 0) {
-      setError('Vui lòng chọn ít nhất một khoản nợ để thanh toán');
-      return;
-    }
-
+  const handleSubmit = async () => {
     try {
-      setLoading(true);
-      setError('');
-      const result = await previewDebtAllocation(person.type, person.id, totalSelected);
-      setPreview(result);
+      setLoading(true); setError('');
+      await allocateDebtPayment(person.type, person.id, totalSelected, paymentMethod, notes);
+      const allocations = Object.entries(selectedDebts)
+        .filter(([, amt]) => amt > 0)
+        .map(([debtId, amt]) => {
+          const debt = debts.find((d) => d.id === Number(debtId));
+          return {
+            debtId: Number(debtId),
+            label:  debt ? `#${debt.shipment_id || debt.id} - ${debt.order_cargo_name || 'Chuyến'}` : `#${debtId}`,
+            amount: amt,
+            newStatus: amt >= (debt ? Number(debt.total_amount) - Number(debt.paid_amount) : 0) - 0.01 ? 'paid' : 'partial',
+          };
+        });
+      setSuccessData({ totalAmount: totalSelected, allocations, paymentMethod });
+      setShowConfirm(false); setShowSuccess(true);
     } catch (err) {
-      console.error('Error previewing:', err);
-      setError(err.message || 'Không thể xem trước phân bổ');
-      setPreview(null);
+      setError(err.message || 'Ghi nhận thu tiền thất bại'); setShowConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
-  // Open confirmation
-  const handleOpenConfirm = () => {
-    if (totalSelected <= 0) {
-      setError('Vui lòng chọn ít nhất một khoản nợ để thanh toán');
-      return;
-    }
+  const handleSuccessClose = () => { setShowSuccess(false); onPaymentRecorded?.(); onClose(); };
+  const openConfirm = () => {
+    if (totalSelected <= 0) { setError('Vui lòng chọn ít nhất một khoản nợ'); return; }
     setShowConfirm(true);
   };
 
-  // Submit payment
-  const handleSubmit = async () => {
-    try {
-      setLoading(true);
-      setError('');
-
-      const result = await allocateDebtPayment(
-        person.type,
-        person.id,
-        totalSelected,
-        paymentMethod,
-        notes
-      );
-
-      // Prepare success data
-      const allocations = [];
-      Object.entries(selectedDebts).forEach(([debtId, amount]) => {
-        if (amount > 0) {
-          const debt = debts.find(d => d.id === Number(debtId));
-          allocations.push({
-            debtId: Number(debtId),
-            label: debt ? `#${debt.shipment_id || debt.id} - ${debt.order_cargo_name || 'Chuyến'}` : `#${debtId}`,
-            amount: amount,
-            newStatus: amount >= (debt ? Number(debt.total_amount) - Number(debt.paid_amount) : 0) - 0.01 ? 'paid' : 'partial',
-          });
-        }
-      });
-
-      setSuccessData({
-        totalAmount: totalSelected,
-        allocations,
-        paymentMethod,
-      });
-
-      setShowConfirm(false);
-      setShowSuccess(true);
-
-    } catch (err) {
-      console.error('Error recording payment:', err);
-      setError(err.message || 'Ghi nhận thu tiền thất bại');
-      setShowConfirm(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle success close
-  const handleSuccessClose = () => {
-    setShowSuccess(false);
-    onPaymentRecorded?.();
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
   return (
     <>
-      {/* Backdrop */}
-      <div style={styles.backdrop} onClick={onClose} />
-
-      {/* Main Modal */}
-      <div style={styles.modal}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div style={styles.headerContent}>
-            <div style={styles.headerIcon}>
-              <Icons.Money />
-            </div>
-            <div>
-              <h2 style={styles.title}>
-                Thu tiền {person.type === 'customer' ? 'khách hàng' : 'tài xế'}
-              </h2>
-              <p style={styles.subtitle}>Ghi nhận thanh toán công nợ</p>
-            </div>
-          </div>
-          <button style={styles.closeBtn} onClick={onClose}>
-            <Icons.Close />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={styles.body}>
-          {/* Person Info Card */}
-          <div style={styles.personCard}>
-            <div style={styles.personInfo}>
-              <div style={styles.personAvatar}>
-                <Icons.User />
-              </div>
-              <div style={styles.personDetails}>
-                <h3 style={styles.personName}>{person.name}</h3>
-                {person.phone && (
-                  <div style={styles.personPhone}>
-                    <Icons.Phone />
-                    {person.phone}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div style={styles.debtSummary}>
-              <div style={styles.debtSummaryItem}>
-                <span style={styles.debtSummaryLabel}>Tổng nợ</span>
-                <span style={styles.debtSummaryValue}>{formatCurrency(totalRemaining)}đ</span>
-              </div>
-              <div style={styles.debtSummaryItem}>
-                <span style={styles.debtSummaryLabel}>Đã chọn</span>
-                <span style={{
-                  ...styles.debtSummaryValue,
-                  color:
-                    (Number(amount) || 0) > 0 && totalSelected > (Number(amount) || 0)
-                      ? '#ef4444'
-                      : '#10b981',
-                }}>
-                  {formatCurrency(totalSelected)}đ
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {debts.length > 0 && (
-            <div style={{ ...styles.paymentForm, marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 220px' }}>
-                  <label style={styles.formLabel}>Số tiền muốn thu</label>
-                  <div style={styles.paymentInputWrapper}>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => handleAmountInputChange(e.target.value)}
-                      placeholder="Nhập số tiền cần thu..."
-                      min="0"
-                      max={totalRemaining}
-                      style={{
-                        ...styles.paymentInput,
-                        borderColor:
-                          (Number(amount) || 0) > totalRemaining
-                            ? '#ef4444'
-                            : undefined,
-                      }}
-                    />
-                    <span style={styles.paymentInputSuffix}>đ</span>
-                  </div>
+      {/* ── Main modal ── */}
+      <Modal
+        isOpen={isOpen && !showConfirm && !showSuccess}
+        onClose={onClose}
+        size="2xl"
+        scrollBehavior="inside"
+        classNames={{ header: "border-b border-gray-100 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-t-xl", footer: "border-t border-gray-100" }}
+      >
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex gap-3 items-center">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white">
+                  <RiMoneyDollarCircleLine size={22} />
                 </div>
-                <div style={{ paddingTop: '22px', display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    style={{
-                      ...styles.paymentMethodBtn,
-                      ...(amount ? styles.paymentMethodBtnActive : {}),
-                    }}
-                    onClick={handleAutoAllocate}
-                    disabled={previewing || !Number(amount) || Number(amount) <= 0}
-                  >
-                    {previewing ? 'Đang phân bổ...' : 'Tự động phân bổ'}
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.previewBtn}
-                    onClick={() => {
-                      setSelectedDebts({});
-                      setRemainingInput(null);
-                    }}
-                    disabled={previewing}
-                  >
-                    Xóa chọn
-                  </button>
+                <div>
+                  <p className="text-base font-extrabold">Thu tiền {person?.type === 'customer' ? 'khách hàng' : 'tài xế'}</p>
+                  <p className="text-[12px] opacity-80 font-normal mt-0.5">Ghi nhận thanh toán công nợ</p>
                 </div>
-              </div>
+              </ModalHeader>
 
-              {error && (
-                <div style={{ ...styles.errorBox, marginTop: '12px' }}>
-                  <Icons.Warning />
-                  {error}
-                </div>
-              )}
-
-              {(remainingInput || remainingInput === 0) && (
-                <div style={{
-                  marginTop: '10px',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  background: remainingInput > 0 ? '#fffbeb' : '#fef2f2',
-                  color: remainingInput > 0 ? '#d97706' : '#dc2626',
-                  border: `1px solid ${remainingInput > 0 ? '#fde68a' : '#fecaca'}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}>
-                  {remainingInput > 0
-                    ? `Còn dư: ${formatCurrency(remainingInput)}đ (chưa phân bổ vào khoản nợ nào)`
-                    : `Đã dùng vượt ${formatCurrency(Math.abs(remainingInput))}đ so với số tiền nhập — vui lòng giảm các khoản đã chọn`}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Debts List */}
-          {loading && debts.length === 0 ? (
-            <div style={styles.loadingState}>
-              <Icons.Loading />
-              <span>Đang tải danh sách công nợ...</span>
-            </div>
-          ) : debts.length === 0 ? (
-            <div style={styles.emptyState}>
-              <div style={styles.emptyIcon}>🎉</div>
-              <h4>Không có công nợ nào</h4>
-              <p>Tất cả các khoản nợ đã được thanh toán!</p>
-            </div>
-          ) : (
-            <div style={styles.debtsSection}>
-              <h4 style={styles.sectionTitle}>Danh sách khoản nợ</h4>
-              <div style={styles.debtsList}>
-                {debts.map((debt) => {
-                  const debtRemaining = Number(debt.total_amount || 0) - Number(debt.paid_amount || 0);
-                  const isSelected = selectedDebts[debt.id] > 0;
-                  const status = debtRemaining <= 0 ? 'paid' :
-                    Number(debt.paid_amount) > 0 ? 'partial' : 'unpaid';
-
-                  return (
-                    <div
-                      key={debt.id}
-                      style={{
-                        ...styles.debtItem,
-                        ...(isSelected ? styles.debtItemSelected : {}),
-                      }}
-                    >
-                      <div style={styles.debtItemHeader}>
-                        <label style={styles.debtCheckbox}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleDebtToggle(debt.id)}
-                            disabled={status === 'paid'}
-                          />
-                          <span style={styles.debtCheckboxCustom}>
-                            {isSelected && <Icons.Check />}
-                          </span>
-                        </label>
-                        <div style={styles.debtInfo}>
-                          <div style={styles.debtTitle}>
-                            #{debt.shipment_id || debt.id} - {debt.order_cargo_name || 'Chuyến xe'}
-                          </div>
-                          <div style={styles.debtMeta}>
-                            {debt.order_id && <span>Đơn #{debt.order_id}</span>}
-                            {debt.shipment_id && <span>Chuyến #{debt.shipment_id}</span>}
-                          </div>
-                        </div>
-                        <StatusBadge status={status} />
-                      </div>
-
-                      <div style={styles.debtAmounts}>
-                        <div style={styles.debtAmountItem}>
-                          <span style={styles.debtAmountLabel}>Tổng nợ</span>
-                          <span style={styles.debtAmountValue}>
-                            {formatCurrency(debt.total_amount)}đ
-                          </span>
-                        </div>
-                        <div style={styles.debtAmountItem}>
-                          <span style={styles.debtAmountLabel}>Đã trả</span>
-                          <span style={{ ...styles.debtAmountValue, color: '#10b981' }}>
-                            {formatCurrency(debt.paid_amount)}đ
-                          </span>
-                        </div>
-                        <div style={styles.debtAmountItem}>
-                          <span style={styles.debtAmountLabel}>Còn nợ</span>
-                          <span style={{ ...styles.debtAmountValue, color: '#ef4444' }}>
-                            {formatCurrency(debtRemaining)}đ
-                          </span>
-                        </div>
-                      </div>
-
-                      {isSelected && status !== 'paid' && (
-                        <div style={styles.debtPaymentInput}>
-                          <label style={styles.paymentInputLabel}>Số tiền thanh toán:</label>
-                          <div style={styles.paymentInputWrapper}>
-                            <input
-                              type="number"
-                              value={selectedDebts[debt.id] || ''}
-                              onChange={(e) => handleAmountChange(debt.id, e.target.value)}
-                              placeholder={`Tối đa ${formatCurrency(debtRemaining)}`}
-                              min="0"
-                              max={debtRemaining}
-                              style={{
-                                ...styles.paymentInput,
-                                borderColor:
-                                  (selectedDebts[debt.id] || 0) > debtRemaining
-                                    ? '#ef4444'
-                                    : undefined,
-                              }}
-                            />
-                            <span style={styles.paymentInputSuffix}>đ</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Progress bar */}
-                      <div style={styles.progressBar}>
-                        <div
-                          style={{
-                            ...styles.progressFill,
-                            width: `${Math.min((Number(debt.paid_amount) / Number(debt.total_amount)) * 100, 100)}%`,
-                          }}
-                        />
-                      </div>
+              <ModalBody className="py-4 flex flex-col gap-4">
+                {/* Person summary */}
+                <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white">
+                      {person?.type === 'customer' ? <RiBuildingLine size={20} /> : <RiTruckLine size={20} />}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Payment Form */}
-          {debts.length > 0 && (
-            <div style={styles.paymentForm}>
-              <h4 style={styles.sectionTitle}>Thông tin thanh toán</h4>
-
-              {/* Payment Method */}
-              <div style={styles.formGroup}>
-                <label style={styles.formLabel}>Hình thức thanh toán</label>
-                <div style={styles.paymentMethods}>
-                  {PAYMENT_METHODS.map((method) => (
-                    <button
-                      key={method.value}
-                      type="button"
-                      style={{
-                        ...styles.paymentMethodBtn,
-                        ...(paymentMethod === method.value ? styles.paymentMethodBtnActive : {}),
-                      }}
-                      onClick={() => setPaymentMethod(method.value)}
-                    >
-                      <span style={styles.paymentMethodIcon}>{method.icon}</span>
-                      {method.label}
-                    </button>
-                  ))}
+                    <div>
+                      <p className="font-bold text-gray-800 text-sm">{person?.name}</p>
+                      {person?.phone && (
+                        <p className="text-[12px] text-gray-400 flex items-center gap-1">
+                          <RiPhoneLine size={11} />{person.phone}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-5 text-right">
+                    <div>
+                      <p className="text-[11px] text-gray-400 font-bold uppercase">Tổng nợ</p>
+                      <p className="text-base font-extrabold text-gray-800">{fmt(totalRemaining)}đ</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-gray-400 font-bold uppercase">Đã chọn</p>
+                      <p className={`text-base font-extrabold ${isOverInput ? 'text-danger' : 'text-success'}`}>{fmt(totalSelected)}đ</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              {/* Notes */}
-              <div style={styles.formGroup}>
-                <label style={styles.formLabel}>Ghi chú (không bắt buộc)</label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Nhập ghi chú cho lần thanh toán này..."
-                  style={styles.formInput}
-                />
-              </div>
+                {/* Auto-allocate */}
+                {debts.length > 0 && (
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col gap-3">
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <Input
+                        size="sm" variant="bordered" type="number"
+                        label="Số tiền muốn thu" placeholder="Nhập tổng số tiền..."
+                        value={amount} onValueChange={handleAmountChange}
+                        endContent={<span className="text-gray-400 text-sm">đ</span>}
+                        isInvalid={amountInput > totalRemaining}
+                        className="flex-1 min-w-[180px]"
+                      />
+                      <Button
+                        size="sm" color="primary" variant="flat"
+                        isLoading={previewing}
+                        isDisabled={previewing || !amountInput || amountInput <= 0}
+                        onPress={() => doAutoAllocate(amountInput)}
+                      >Tự động phân bổ</Button>
+                      <Button size="sm" variant="bordered" isDisabled={previewing}
+                        onPress={() => { setSelectedDebts({}); setRemainingInput(null); }}
+                      >Xóa chọn</Button>
+                    </div>
 
-              {/* Summary */}
-              <div style={styles.summaryCard}>
-                <div style={styles.summaryRow}>
-                  <span>Tổng số tiền</span>
-                  <span style={{
-                    ...styles.summaryTotal,
-                    color:
-                      totalSelected > (Number(amount) || 0) && Number(amount) > 0
-                        ? '#ef4444'
-                        : '#10b981',
-                  }}>{formatCurrency(totalSelected)}đ</span>
-                </div>
-                <div style={styles.summaryRow}>
-                  <span>Số khoản nợ</span>
-                  <span>{Object.keys(selectedDebts).filter(id => selectedDebts[id] > 0).length} khoản</span>
-                </div>
-                {Number(amount) > 0 && (
-                  <div style={{
-                    ...styles.summaryRow,
-                    color: totalSelected > (Number(amount) || 0) ? '#dc2626' : '#059669',
-                    fontWeight: 700,
-                  }}>
-                    <span>Tổng muốn thu</span>
-                    <span>{formatCurrency(Number(amount))}đ</span>
+                    {error && <p className="text-danger text-sm font-semibold">{error}</p>}
+
+                    {remainingInput !== null && (
+                      <Chip
+                        color={remainingInput > 0 ? 'warning' : 'danger'}
+                        variant="flat" size="sm"
+                      >
+                        {remainingInput > 0
+                          ? `Còn dư: ${fmt(remainingInput)}đ chưa phân bổ`
+                          : `Vượt quá ${fmt(Math.abs(remainingInput))}đ so với số tiền nhập`}
+                      </Chip>
+                    )}
                   </div>
                 )}
-              </div>
 
-              {/* Error */}
-              {error && (
-                <div style={styles.errorBox}>
-                  <Icons.Warning />
-                  {error}
-                </div>
-              )}
-
-              {/* Payment History */}
-              <PaymentHistory
-                personType={person.type}
-                personId={person.id}
-                apiBase={apiBase}
-                token={token}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={styles.footer}>
-          <button style={styles.cancelBtn} onClick={onClose}>
-            Đóng
-          </button>
-          {debts.length > 0 && (
-            <div style={styles.footerActions}>
-              <button
-                style={styles.previewBtn}
-                onClick={handlePreview}
-                disabled={loading || totalSelected <= 0}
-              >
-                Xem trước phân bổ
-              </button>
-              <button
-                style={styles.submitBtn}
-                onClick={handleOpenConfirm}
-                disabled={loading || totalSelected <= 0}
-              >
-                {loading ? <Icons.Loading /> : <Icons.Check />}
-                Xác nhận thu tiền
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Preview Overlay */}
-      {preview && (
-        <div style={styles.previewOverlay}>
-          <div style={styles.previewCard}>
-            <h3 style={styles.previewTitle}>Phân bổ thanh toán</h3>
-            <div style={styles.previewList}>
-              {preview.preview?.map((item, index) => (
-                <div key={index} style={styles.previewItem}>
-                  <div style={styles.previewItemInfo}>
-                    <span style={styles.previewItemLabel}>
-                      #{item.debtId} - {item.orderCargoName || 'Khoản nợ'}
-                    </span>
-                    <StatusBadge status={item.newStatus} />
+                {/* Debt list */}
+                {loading && debts.length === 0 ? (
+                  <div className="flex justify-center py-10"><Spinner color="primary" label="Đang tải..." /></div>
+                ) : debts.length === 0 ? (
+                  <div className="text-center py-10">
+                    <p className="text-4xl mb-3">🎉</p>
+                    <p className="font-bold text-gray-700">Không có công nợ nào</p>
+                    <p className="text-gray-400 text-sm">Tất cả khoản nợ đã được thanh toán!</p>
                   </div>
-                  <div style={styles.previewItemAmounts}>
-                    <span style={styles.previewItemAmount}>
-                      +{formatCurrency(item.allocateAmount)}đ
-                    </span>
-                    <span style={styles.previewItemRemaining}>
-                      Còn lại: {formatCurrency(item.remaining - item.allocateAmount)}đ
-                    </span>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Danh sách khoản nợ</p>
+                    {debts.map((debt) => {
+                      const debtRemaining = Number(debt.total_amount) - Number(debt.paid_amount);
+                      const isSelected    = selectedDebts[debt.id] > 0;
+                      const statusKey     = debtRemaining <= 0 ? 'paid' : Number(debt.paid_amount) > 0 ? 'partial' : 'unpaid';
+                      const pct           = Math.min((Number(debt.paid_amount) / Number(debt.total_amount)) * 100, 100);
+                      const chipCfg       = STATUS_CHIP[statusKey];
+
+                      return (
+                        <div key={debt.id} className={`p-4 rounded-2xl border-2 transition-all ${isSelected ? 'border-success bg-success-50/30' : 'border-gray-200 bg-white'}`}>
+                          <div className="flex items-center gap-3 mb-3">
+                            <Checkbox
+                              isSelected={isSelected}
+                              onValueChange={() => handleDebtToggle(debt.id)}
+                              isDisabled={statusKey === 'paid'}
+                              color="success"
+                            />
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-gray-800">#{debt.shipment_id || debt.id} - {debt.order_cargo_name || 'Chuyến xe'}</p>
+                              <p className="text-[12px] text-gray-400">
+                                {debt.order_id && `Đơn #${debt.order_id}`}
+                                {debt.shipment_id && ` · Chuyến #${debt.shipment_id}`}
+                              </p>
+                            </div>
+                            <Chip size="sm" color={chipCfg.color} variant="flat" className="text-[11px] h-5">{chipCfg.label}</Chip>
+                          </div>
+
+                          <div className="flex gap-5 mb-3">
+                            {[['Tổng nợ', debt.total_amount, ''], ['Đã trả', debt.paid_amount, 'text-success'], ['Còn nợ', debtRemaining, 'text-danger']].map(([lbl, val, cls]) => (
+                              <div key={lbl}>
+                                <p className="text-[11px] text-gray-400 font-bold uppercase">{lbl}</p>
+                                <p className={`text-sm font-bold ${cls || 'text-gray-800'}`}>{fmt(val)}đ</p>
+                              </div>
+                            ))}
+                          </div>
+
+                          {isSelected && statusKey !== 'paid' && (
+                            <Input
+                              size="sm" variant="bordered" type="number"
+                              label="Số tiền thanh toán"
+                              placeholder={`Tối đa ${fmt(debtRemaining)}`}
+                              value={String(selectedDebts[debt.id] || '')}
+                              onValueChange={(v) => handleDebtAmountChange(debt.id, v)}
+                              endContent={<span className="text-gray-400 text-sm">đ</span>}
+                              isInvalid={(selectedDebts[debt.id] || 0) > debtRemaining}
+                              className="mb-2"
+                            />
+                          )}
+
+                          <Progress
+                            value={pct} color="success" size="sm"
+                            className="w-full" aria-label="Tiến độ thanh toán"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
+                )}
+
+                {/* Payment info */}
+                {debts.length > 0 && (
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col gap-3">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Thông tin thanh toán</p>
+
+                    <div className="flex gap-2">
+                      {PAYMENT_METHODS.map((m) => (
+                        <Button
+                          key={m.value} size="sm" fullWidth
+                          variant={paymentMethod === m.value ? 'solid' : 'bordered'}
+                          color={paymentMethod === m.value ? 'success' : 'default'}
+                          onPress={() => setPaymentMethod(m.value)}
+                          startContent={<m.Icon size={15} />}
+                        >{m.label}</Button>
+                      ))}
+                    </div>
+
+                    <Input
+                      size="sm" variant="bordered"
+                      label="Ghi chú (không bắt buộc)"
+                      placeholder="Nhập ghi chú..."
+                      value={notes} onValueChange={setNotes}
+                    />
+
+                    {/* Summary */}
+                    <div className="p-3 bg-white border-2 border-success-400 rounded-xl flex flex-col gap-1">
+                      {[
+                        ['Tổng số tiền', <span key="t" className={`text-xl font-extrabold ${isOverInput ? 'text-danger' : 'text-success'}`}>{fmt(totalSelected)}đ</span>],
+                        ['Số khoản nợ', `${Object.values(selectedDebts).filter((v) => v > 0).length} khoản`],
+                        ...(amountInput > 0 ? [['Tổng muốn thu', `${fmt(amountInput)}đ`]] : []),
+                      ].map(([lbl, val]) => (
+                        <div key={lbl} className="flex justify-between items-center text-sm text-gray-500">
+                          <span>{lbl}</span><span className="font-semibold">{val}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {error && !amount && <p className="text-danger text-sm font-semibold">{error}</p>}
+
+                    <PaymentHistory personType={person?.type} personId={person?.id} />
+                  </div>
+                )}
+              </ModalBody>
+
+              <ModalFooter>
+                <Button variant="bordered" onPress={onClose}>Đóng</Button>
+                {debts.length > 0 && (
+                  <>
+                    <Button variant="bordered" color="primary" isDisabled={loading || totalSelected <= 0}
+                      onPress={async () => {
+                        if (totalSelected <= 0) return;
+                        try {
+                          setLoading(true);
+                          const result = await previewDebtAllocation(person.type, person.id, totalSelected);
+                          setPreview(result);
+                        } catch (err) {
+                          setError(err.message || 'Không thể xem trước');
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                    >Xem trước phân bổ</Button>
+                    <Button color="success" isDisabled={loading || totalSelected <= 0} onPress={openConfirm}>
+                      Xác nhận thu tiền
+                    </Button>
+                  </>
+                )}
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* ── Preview modal ── */}
+      <Modal isOpen={!!preview} onClose={() => setPreview(null)} size="md">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader>Phân bổ thanh toán</ModalHeader>
+              <ModalBody className="flex flex-col gap-3">
+                {preview?.preview?.map((item, i) => (
+                  <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-800">#{item.debtId} - {item.orderCargoName || 'Khoản nợ'}</span>
+                      <Chip size="sm" color={STATUS_CHIP[item.newStatus]?.color || 'default'} variant="flat" className="text-[11px] h-5">
+                        {STATUS_CHIP[item.newStatus]?.label || item.newStatus}
+                      </Chip>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-extrabold text-success">+{fmt(item.allocateAmount)}đ</p>
+                      <p className="text-[11px] text-gray-400">Còn: {fmt(item.remaining - item.allocateAmount)}đ</p>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center p-3 bg-success-50 rounded-xl text-success font-semibold">
+                  <span>Tổng phân bổ:</span>
+                  <span className="text-xl font-extrabold">{fmt(preview?.totalAllocated)}đ</span>
                 </div>
-              ))}
-            </div>
-            <div style={styles.previewSummary}>
-              <span>Tổng phân bổ:</span>
-              <span style={styles.previewTotal}>
-                {formatCurrency(preview.totalAllocated)}đ
-              </span>
-            </div>
-            {preview.overpayment > 0 && (
-              <div style={styles.previewWarning}>
-                Số tiền dư: {formatCurrency(preview.overpayment)}đ
-              </div>
-            )}
-            <button style={styles.previewCloseBtn} onClick={() => setPreview(null)}>
-              Đóng
-            </button>
-          </div>
-        </div>
-      )}
+                {preview?.overpayment > 0 && (
+                  <Chip color="warning" variant="flat" size="sm">Số tiền dư: {fmt(preview.overpayment)}đ</Chip>
+                )}
+              </ModalBody>
+              <ModalFooter>
+                <Button fullWidth variant="bordered" onPress={onClose}>Đóng</Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
 
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showConfirm}
-        onConfirm={handleSubmit}
-        onCancel={() => setShowConfirm(false)}
-        loading={loading}
-        data={{
-          personName: person.name,
-          totalAmount: totalSelected,
-          paymentMethod,
-          itemCount: Object.keys(selectedDebts).filter(id => selectedDebts[id] > 0).length,
-          notes,
-        }}
-      />
+      {/* ── Confirm modal ── */}
+      <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)} size="sm">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col items-center gap-2 pt-6">
+                <RiAlertLine size={44} className="text-warning" />
+                <span className="text-base font-extrabold">Xác nhận thu tiền</span>
+              </ModalHeader>
+              <ModalBody className="flex flex-col gap-1">
+                {[
+                  ['Người thanh toán', person?.name],
+                  ['Tổng số tiền', <span key="a" className="text-lg font-extrabold text-success">{fmt(totalSelected)}đ</span>],
+                  ['Hình thức', (
+                    <span key="m" className="flex items-center gap-1">
+                      {paymentMethod === 'cash'
+                        ? <RiMoneyDollarCircleLine size={15} />
+                        : <RiBankLine size={15} />}
+                      {paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}
+                    </span>
+                  )],
+                  ['Số khoản nợ', `${Object.values(selectedDebts).filter((v) => v > 0).length} khoản`],
+                  ...(notes ? [['Ghi chú', notes]] : []),
+                ].map(([lbl, val]) => (
+                  <div key={lbl} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0 text-sm">
+                    <span className="text-gray-400">{lbl}</span>
+                    <span className="font-semibold text-gray-800">{val}</span>
+                  </div>
+                ))}
+                <p className="text-[12px] text-gray-400 text-center mt-2">Hành động này không thể hoàn tác.</p>
+              </ModalBody>
+              <ModalFooter>
+                <Button variant="bordered" onPress={onClose} isDisabled={loading}>Hủy bỏ</Button>
+                <Button color="success" onPress={handleSubmit} isLoading={loading}>Xác nhận thu tiền</Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
 
-      {/* Success Screen */}
-      {showSuccess && (
-        <SuccessScreen data={successData} onClose={handleSuccessClose} />
-      )}
+      {/* ── Success modal ── */}
+      <Modal isOpen={showSuccess} onClose={handleSuccessClose} size="md" isDismissable={false}>
+        <ModalContent>
+          {() => (
+            <>
+              <ModalHeader className="flex flex-col items-center gap-2 pt-6">
+                <RiCheckboxCircleFill size={52} className="text-success" />
+                <span className="text-lg font-extrabold text-gray-800">Thu tiền thành công!</span>
+                <span className="text-3xl font-black text-success">{fmt(successData?.totalAmount)}đ</span>
+              </ModalHeader>
+              <ModalBody className="flex flex-col gap-2">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Chi tiết phân bổ:</p>
+                {successData?.allocations?.map((item, i) => (
+                  <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-800">{item.label}</span>
+                      <Chip size="sm" color={STATUS_CHIP[item.newStatus]?.color || 'default'} variant="flat" className="text-[11px] h-5">
+                        {STATUS_CHIP[item.newStatus]?.label}
+                      </Chip>
+                    </div>
+                    <span className="text-sm font-extrabold text-success">+{fmt(item.amount)}đ</span>
+                  </div>
+                ))}
+              </ModalBody>
+              <ModalFooter>
+                <Button color="success" fullWidth onPress={handleSuccessClose}>Đóng</Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </>
   );
 }
-
-// Styles
-const styles = {
-  backdrop: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(15, 23, 42, 0.6)',
-    backdropFilter: 'blur(4px)',
-    zIndex: 1000,
-  },
-  modal: {
-    position: 'fixed',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    width: 'min(680px, calc(100vw - 40px))',
-    maxHeight: 'calc(100vh - 80px)',
-    background: '#ffffff',
-    borderRadius: '20px',
-    boxShadow: '0 25px 80px rgba(15, 23, 42, 0.35)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    zIndex: 1001,
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '20px 24px',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-    color: '#fff',
-  },
-  headerContent: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-  },
-  headerIcon: {
-    width: '48px',
-    height: '48px',
-    background: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    margin: 0,
-    fontSize: '20px',
-    fontWeight: 800,
-  },
-  subtitle: {
-    margin: '4px 0 0',
-    fontSize: '13px',
-    opacity: 0.85,
-  },
-  closeBtn: {
-    width: '36px',
-    height: '36px',
-    background: 'rgba(255, 255, 255, 0.2)',
-    border: 'none',
-    borderRadius: '10px',
-    color: '#fff',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'background 0.2s',
-  },
-  body: {
-    flex: 1,
-    overflow: 'auto',
-    padding: '20px 24px',
-  },
-  personCard: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 20px',
-    background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-    borderRadius: '16px',
-    border: '1px solid #e2e8f0',
-    marginBottom: '20px',
-  },
-  personInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-  },
-  personAvatar: {
-    width: '48px',
-    height: '48px',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#fff',
-  },
-  personDetails: {},
-  personName: {
-    margin: 0,
-    fontSize: '17px',
-    fontWeight: 800,
-    color: '#0f172a',
-  },
-  personPhone: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    marginTop: '4px',
-    fontSize: '13px',
-    color: '#64748b',
-  },
-  debtSummary: {
-    display: 'flex',
-    gap: '24px',
-  },
-  debtSummaryItem: {
-    textAlign: 'right',
-  },
-  debtSummaryLabel: {
-    display: 'block',
-    fontSize: '11px',
-    color: '#64748b',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-  debtSummaryValue: {
-    display: 'block',
-    fontSize: '18px',
-    fontWeight: 800,
-    color: '#0f172a',
-  },
-  loadingState: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '12px',
-    padding: '60px 20px',
-    color: '#64748b',
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '60px 20px',
-  },
-  emptyIcon: {
-    fontSize: '48px',
-    marginBottom: '16px',
-  },
-  emptyStateTitle: {
-    margin: '0 0 8px',
-    fontSize: '18px',
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  emptyStateText: {
-    margin: 0,
-    color: '#64748b',
-  },
-  debtsSection: {
-    marginBottom: '24px',
-  },
-  sectionTitle: {
-    margin: '0 0 12px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-  debtsList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-  },
-  debtItem: {
-    padding: '16px',
-    background: '#fff',
-    border: '2px solid #e2e8f0',
-    borderRadius: '14px',
-    transition: 'all 0.2s',
-  },
-  debtItemSelected: {
-    borderColor: '#10b981',
-    background: '#f0fdf4',
-  },
-  debtItemHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    marginBottom: '12px',
-  },
-  debtCheckbox: {
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'pointer',
-  },
-  debtCheckboxCustom: {
-    width: '22px',
-    height: '22px',
-    border: '2px solid #cbd5e1',
-    borderRadius: '6px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s',
-  },
-  debtInfo: {
-    flex: 1,
-  },
-  debtTitle: {
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  debtMeta: {
-    display: 'flex',
-    gap: '12px',
-    marginTop: '4px',
-    fontSize: '12px',
-    color: '#64748b',
-  },
-  debtAmounts: {
-    display: 'flex',
-    gap: '20px',
-    marginBottom: '12px',
-  },
-  debtAmountItem: {},
-  debtAmountLabel: {
-    display: 'block',
-    fontSize: '11px',
-    color: '#64748b',
-    fontWeight: 600,
-    textTransform: 'uppercase',
-  },
-  debtAmountValue: {
-    display: 'block',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  debtPaymentInput: {
-    marginBottom: '12px',
-  },
-  paymentInputLabel: {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: 600,
-    color: '#475569',
-    marginBottom: '6px',
-  },
-  paymentInputWrapper: {
-    position: 'relative',
-    display: 'flex',
-    alignItems: 'center',
-  },
-  paymentInput: {
-    width: '100%',
-    padding: '10px 40px 10px 14px',
-    border: '2px solid #e2e8f0',
-    borderRadius: '10px',
-    fontSize: '15px',
-    fontWeight: 600,
-    color: '#0f172a',
-    outline: 'none',
-  },
-  paymentInputSuffix: {
-    position: 'absolute',
-    right: '14px',
-    color: '#64748b',
-    fontSize: '14px',
-    fontWeight: 600,
-  },
-  progressBar: {
-    height: '4px',
-    background: '#e2e8f0',
-    borderRadius: '2px',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    background: 'linear-gradient(90deg, #10b981 0%, #34d399 100%)',
-    borderRadius: '2px',
-    transition: 'width 0.3s ease',
-  },
-  paymentForm: {
-    padding: '20px',
-    background: '#f8fafc',
-    borderRadius: '16px',
-    border: '1px solid #e2e8f0',
-  },
-  formGroup: {
-    marginBottom: '16px',
-  },
-  formLabel: {
-    display: 'block',
-    fontSize: '13px',
-    fontWeight: 700,
-    color: '#475569',
-    marginBottom: '8px',
-  },
-  paymentMethods: {
-    display: 'flex',
-    gap: '10px',
-  },
-  paymentMethodBtn: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '12px 16px',
-    background: '#fff',
-    border: '2px solid #e2e8f0',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 600,
-    color: '#475569',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  paymentMethodBtnActive: {
-    borderColor: '#10b981',
-    background: '#f0fdf4',
-    color: '#059669',
-  },
-  paymentMethodIcon: {
-    fontSize: '18px',
-  },
-  formInput: {
-    width: '100%',
-    padding: '12px 14px',
-    border: '2px solid #e2e8f0',
-    borderRadius: '10px',
-    fontSize: '14px',
-    color: '#0f172a',
-    outline: 'none',
-    boxSizing: 'border-box',
-  },
-  summaryCard: {
-    padding: '16px',
-    background: '#fff',
-    border: '2px solid #10b981',
-    borderRadius: '12px',
-    marginBottom: '16px',
-  },
-  summaryRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '6px 0',
-    fontSize: '14px',
-    color: '#475569',
-  },
-  summaryTotal: {
-    fontSize: '24px',
-    fontWeight: 800,
-    color: '#10b981',
-  },
-  errorBox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    padding: '12px 14px',
-    background: '#fef2f2',
-    border: '1px solid #fecaca',
-    borderRadius: '10px',
-    color: '#dc2626',
-    fontSize: '14px',
-    fontWeight: 600,
-    marginBottom: '16px',
-  },
-  footer: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 24px',
-    borderTop: '1px solid #e2e8f0',
-    background: '#f8fafc',
-  },
-  cancelBtn: {
-    padding: '12px 20px',
-    background: '#fff',
-    border: '2px solid #e2e8f0',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#475569',
-    cursor: 'pointer',
-  },
-  footerActions: {
-    display: 'flex',
-    gap: '10px',
-  },
-  previewBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '12px 20px',
-    background: '#fff',
-    border: '2px solid #10b981',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#059669',
-    cursor: 'pointer',
-  },
-  submitBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '12px 24px',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#fff',
-    cursor: 'pointer',
-    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)',
-  },
-
-  // Preview Overlay
-  previewOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(15, 23, 42, 0.5)',
-    backdropFilter: 'blur(4px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1002,
-    padding: '20px',
-  },
-  previewCard: {
-    width: '100%',
-    maxWidth: '500px',
-    background: '#fff',
-    borderRadius: '16px',
-    padding: '24px',
-    boxShadow: '0 25px 80px rgba(15, 23, 42, 0.35)',
-  },
-  previewTitle: {
-    margin: '0 0 20px',
-    fontSize: '18px',
-    fontWeight: 800,
-    color: '#0f172a',
-  },
-  previewList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    marginBottom: '20px',
-  },
-  previewItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '14px 16px',
-    background: '#f8fafc',
-    borderRadius: '10px',
-  },
-  previewItemInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  previewItemLabel: {
-    fontSize: '14px',
-    fontWeight: 600,
-    color: '#0f172a',
-  },
-  previewItemAmounts: {
-    textAlign: 'right',
-  },
-  previewItemAmount: {
-    display: 'block',
-    fontSize: '15px',
-    fontWeight: 800,
-    color: '#10b981',
-  },
-  previewItemRemaining: {
-    display: 'block',
-    fontSize: '11px',
-    color: '#64748b',
-    marginTop: '2px',
-  },
-  previewSummary: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '14px 16px',
-    background: '#f0fdf4',
-    borderRadius: '10px',
-    marginBottom: '12px',
-    fontSize: '14px',
-    fontWeight: 600,
-    color: '#059669',
-  },
-  previewTotal: {
-    fontSize: '20px',
-    fontWeight: 800,
-  },
-  previewWarning: {
-    padding: '10px 14px',
-    background: '#fffbeb',
-    border: '1px solid #fde68a',
-    borderRadius: '10px',
-    color: '#d97706',
-    fontSize: '13px',
-    fontWeight: 600,
-    marginBottom: '16px',
-  },
-  previewCloseBtn: {
-    width: '100%',
-    padding: '12px',
-    background: '#f1f5f9',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#475569',
-    cursor: 'pointer',
-  },
-
-  // Confirmation Modal
-  confirmOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(15, 23, 42, 0.7)',
-    backdropFilter: 'blur(4px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1003,
-    padding: '20px',
-  },
-  confirmCard: {
-    width: '100%',
-    maxWidth: '440px',
-    background: '#fff',
-    borderRadius: '20px',
-    padding: '28px',
-    boxShadow: '0 25px 80px rgba(15, 23, 42, 0.4)',
-    textAlign: 'center',
-  },
-  confirmIcon: {
-    width: '64px',
-    height: '64px',
-    margin: '0 auto 20px',
-    background: '#fef3c7',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#f59e0b',
-  },
-  confirmTitle: {
-    margin: '0 0 20px',
-    fontSize: '20px',
-    fontWeight: 800,
-    color: '#0f172a',
-  },
-  confirmDetails: {
-    textAlign: 'left',
-    padding: '16px',
-    background: '#f8fafc',
-    borderRadius: '12px',
-    marginBottom: '16px',
-  },
-  confirmRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '8px 0',
-    borderBottom: '1px solid #e2e8f0',
-  },
-  confirmLabel: {
-    fontSize: '13px',
-    color: '#64748b',
-  },
-  confirmValue: {
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  confirmWarning: {
-    margin: '0 0 20px',
-    fontSize: '13px',
-    color: '#64748b',
-  },
-  confirmActions: {
-    display: 'flex',
-    gap: '10px',
-  },
-  confirmCancelBtn: {
-    flex: 1,
-    padding: '12px',
-    background: '#f1f5f9',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#475569',
-    cursor: 'pointer',
-  },
-  confirmSubmitBtn: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '8px',
-    padding: '12px',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-    border: 'none',
-    borderRadius: '10px',
-    fontSize: '14px',
-    fontWeight: 700,
-    color: '#fff',
-    cursor: 'pointer',
-  },
-
-  // Success Screen
-  successOverlay: {
-    position: 'fixed',
-    inset: 0,
-    background: 'rgba(15, 23, 42, 0.8)',
-    backdropFilter: 'blur(8px)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1003,
-    padding: '20px',
-  },
-  successCard: {
-    width: '100%',
-    maxWidth: '480px',
-    background: '#fff',
-    borderRadius: '24px',
-    padding: '32px',
-    boxShadow: '0 25px 80px rgba(15, 23, 42, 0.4)',
-    textAlign: 'center',
-  },
-  successIcon: {
-    width: '80px',
-    height: '80px',
-    margin: '0 auto 24px',
-    background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#fff',
-  },
-  successTitle: {
-    margin: '0 0 16px',
-    fontSize: '24px',
-    fontWeight: 800,
-    color: '#0f172a',
-  },
-  successAmount: {
-    fontSize: '36px',
-    fontWeight: 900,
-    color: '#10b981',
-    marginBottom: '24px',
-  },
-  successDetails: {
-    textAlign: 'left',
-    padding: '20px',
-    background: '#f8fafc',
-    borderRadius: '16px',
-    marginBottom: '24px',
-  },
-  successDetailsTitle: {
-    margin: '0 0 12px',
-    fontSize: '13px',
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-  },
-  successAllocationItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '10px 0',
-    borderBottom: '1px solid #e2e8f0',
-  },
-  successAllocationLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-  },
-  successAllocationDebt: {
-    fontSize: '14px',
-    fontWeight: 600,
-    color: '#0f172a',
-  },
-  successAllocationAmount: {
-    fontSize: '15px',
-    fontWeight: 800,
-    color: '#10b981',
-  },
-  successCloseBtn: {
-    width: '100%',
-    padding: '14px',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-    border: 'none',
-    borderRadius: '12px',
-    fontSize: '16px',
-    fontWeight: 800,
-    color: '#fff',
-    cursor: 'pointer',
-    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)',
-  },
-
-  // Payment History
-  historySection: {
-    marginTop: '16px',
-  },
-  historyToggleBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    padding: '10px 14px',
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    fontSize: '13px',
-    fontWeight: 600,
-    color: '#475569',
-    cursor: 'pointer',
-    width: '100%',
-  },
-  historyContent: {
-    marginTop: '12px',
-    maxHeight: '300px',
-    overflow: 'auto',
-  },
-  historyLoading: {
-    padding: '20px',
-    textAlign: 'center',
-    color: '#64748b',
-  },
-  historyEmpty: {
-    padding: '20px',
-    textAlign: 'center',
-    color: '#94a3b8',
-    fontSize: '13px',
-  },
-  historyItem: {
-    padding: '14px',
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    marginBottom: '8px',
-  },
-  historyItemHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-  },
-  historyItemDate: {
-    flex: 1,
-    fontSize: '13px',
-    fontWeight: 600,
-    color: '#475569',
-  },
-  historyItemAmount: {
-    fontSize: '14px',
-    fontWeight: 800,
-    color: '#10b981',
-  },
-  historyItemMethod: {
-    fontSize: '16px',
-  },
-  historyItemDetails: {
-    marginTop: '10px',
-    paddingTop: '10px',
-    borderTop: '1px solid #e2e8f0',
-  },
-  historyDetailRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    padding: '4px 0',
-    fontSize: '12px',
-    color: '#64748b',
-  },
-  historyDetailAmount: {
-    fontWeight: 600,
-    color: '#10b981',
-  },
-  historyItemNotes: {
-    marginTop: '8px',
-    fontSize: '12px',
-    color: '#64748b',
-    fontStyle: 'italic',
-  },
-};

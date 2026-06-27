@@ -21,9 +21,10 @@ router.get('/debts/grouped', accountantDebtController.getDebtsGrouped);
 router.get('/debts/person/:personType/:personId', accountantDebtController.getDebtsByPerson);
 
 // Payment routes
-router.post('/debts/payment/preview', accountantPaymentController.previewAllocation);
-router.post('/debts/payment/allocate', accountantPaymentController.allocatePayment);
+router.get ('/debts/payment/history/:personType/:personId', accountantPaymentController.getPaymentHistory);
+router.post('/debts/payment/preview',    accountantPaymentController.previewAllocation);
+router.post('/debts/payment/allocate',   accountantPaymentController.allocatePayment);
 router.post('/debts/payment/by-shipment', accountantPaymentController.paymentByShipment);
-router.post('/debts/payment/by-debt', accountantPaymentController.paymentByDebt);
+router.post('/debts/payment/by-debt',    accountantPaymentController.paymentByDebt);
 
 module.exports = router;

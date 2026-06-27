@@ -1,12 +1,17 @@
 import React from "react";
 import PropTypes from "prop-types";
+import {
+  RiCheckLine, RiSubtractLine, RiCircleLine,
+  RiTruckLine, RiFileListLine,
+  RiArrowLeftLine, RiArrowRightLine,
+} from "react-icons/ri";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN");
 
 const COLLECTION_STATUS = {
-  paid:    { label: "Đã thu đủ",  color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", icon: "✓" },
-  partial: { label: "Thu 1 phần", color: "#d97706", bg: "#fffbeb", border: "#fde68a", icon: "◐" },
-  unpaid:  { label: "Chưa thu",   color: "#dc2626", bg: "#fef2f2", border: "#fecaca", icon: "○" },
+  paid:    { label: "Đã thu đủ",  color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0", Icon: RiCheckLine },
+  partial: { label: "Thu 1 phần", color: "#d97706", bg: "#fffbeb", border: "#fde68a", Icon: RiSubtractLine },
+  unpaid:  { label: "Chưa thu",   color: "#dc2626", bg: "#fef2f2", border: "#fecaca", Icon: RiCircleLine },
 };
 
 // Format date
@@ -165,7 +170,7 @@ function OrderRow({ order, onOpenDetail }) {
             whiteSpace: "nowrap",
             letterSpacing: "0.01em",
           }}>
-            <span style={{ fontSize: 9 }}>{statusCfg.icon}</span>
+            {statusCfg.Icon && <statusCfg.Icon size={9} />}
             {statusCfg.label}
           </span>
         </div>
@@ -364,8 +369,8 @@ export default function RevenueTable({
           e.currentTarget.style.boxShadow = "none";
         }}
         >
-          <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
-            ✓ Đã thu về
+          <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <RiCheckLine size={12} /> Đã thu về
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#16a34a" }}>{fmt(totals.company)}đ</div>
         </div>
@@ -388,8 +393,8 @@ export default function RevenueTable({
           e.currentTarget.style.boxShadow = "none";
         }}
         >
-          <div style={{ fontSize: 11, color: "#d97706", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
-            🚗 Tài xế nợ
+          <div style={{ fontSize: 11, color: "#d97706", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <RiTruckLine size={12} /> Tài xế nợ
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#d97706" }}>{fmt(totals.driver)}đ</div>
         </div>
@@ -412,8 +417,8 @@ export default function RevenueTable({
           e.currentTarget.style.boxShadow = "none";
         }}
         >
-          <div style={{ fontSize: 11, color: "#dc2626", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>
-            📋 Khách Nợ
+          <div style={{ fontSize: 11, color: "#dc2626", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <RiFileListLine size={12} /> Khách Nợ
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#dc2626" }}>{fmt(totals.customer)}đ</div>
         </div>
@@ -535,7 +540,7 @@ export default function RevenueTable({
                 transition: "all 0.15s",
               }}
             >
-              ← Trước
+              <RiArrowLeftLine size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />Trước
             </button>
             {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
               .filter((p) => p === 1 || p === pagination.totalPages || Math.abs(p - pagination.currentPage) <= 2)
@@ -578,7 +583,7 @@ export default function RevenueTable({
                 transition: "all 0.15s",
               }}
             >
-              Sau →
+              Sau<RiArrowRightLine size={14} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 3 }} />
             </button>
           </div>
         </div>

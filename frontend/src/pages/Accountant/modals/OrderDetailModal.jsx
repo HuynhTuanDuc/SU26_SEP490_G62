@@ -7,7 +7,7 @@ import {
   RiFileList3Line, RiMapPin2Line, RiArrowRightLine,
   RiTruckLine, RiUserLine, RiPhoneLine, RiBuildingLine,
   RiCheckboxCircleLine, RiTimeLine, RiCalendarLine,
-  RiMoneyDollarCircleLine,
+  RiMoneyDollarCircleLine, RiBox2Line, RiScalesLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { accountantService } from "../services/accountant.service";
@@ -15,7 +15,6 @@ import { accountantService } from "../services/accountant.service";
 const PAYMENT_LABELS = {
   cash:          "Tiền mặt",
   bank_transfer: "Chuyển khoản",
-  qr_transfer:   "QR Code",
   client_credit: "Ghi nợ khách",
 };
 
@@ -108,8 +107,18 @@ function ShipmentCard({ s, index }) {
         {/* Cargo info */}
         {(s.cargo_name || s.cargo_weight) && (
           <div className="flex items-center gap-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5">
-            {s.cargo_name && <span>📦 {s.cargo_name}</span>}
-            {s.cargo_weight && <span>⚖️ {s.cargo_weight} kg</span>}
+            {s.cargo_name && (
+              <span className="flex items-center gap-1">
+                <RiBox2Line size={12} className="shrink-0" />
+                {s.cargo_name}
+              </span>
+            )}
+            {s.cargo_weight && (
+              <span className="flex items-center gap-1">
+                <RiScalesLine size={12} className="shrink-0" />
+                {s.cargo_weight} kg
+              </span>
+            )}
           </div>
         )}
 
