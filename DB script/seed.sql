@@ -982,6 +982,14 @@ BEGIN
     END IF;
 
     IF v_shipment_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 1
+    ) THEN
+        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
+        VALUES (v_shipment_id, 1, 'pickup', '123 Lê Thánh Tôn, Q.1, TP.HCM', 'Ms. Ngọc', '0987654321', NOW() - INTERVAL '3 days' + INTERVAL '1 hour'),
+               (v_shipment_id, 2, 'delivery', '88 Nguyễn Thị Minh Khai, Q.3, TP.HCM', 'Mr. Tuấn', '0911100001', NOW() - INTERVAL '2 days');
+    END IF;
+
+    IF v_shipment_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM shipment_receipts WHERE shipment_id = v_shipment_id
     ) THEN
         INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at)

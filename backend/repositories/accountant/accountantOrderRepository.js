@@ -349,7 +349,7 @@ const createOrderWithShipments = async (orderData) => {
                 o.id, o.cargo_name, o.payment_type, o.prepaid_amount,
                 o.total_estimated_price, o.derived_status, o.notes,
                 o.created_at,
-                c.full_name AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone,
+                COALESCE(c.full_name, c.company_name) AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone,
                 COUNT(DISTINCT os.id) AS shipment_count,
                 SUM(os.estimated_price) AS total_shipment_price,
                 (SELECT SUM(e.amount) FROM expenses e WHERE e.shipment_id = ANY($1::int[])) AS total_expenses
@@ -448,7 +448,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             o.derived_status AS status,
             o.notes,
             o.created_at,
-            c.full_name      AS customer_name,
+            COALESCE(c.full_name, c.company_name) AS customer_name,
             c.company_name   AS customer_company,
             c.phone          AS customer_phone,
             d_agg.debt_total,
