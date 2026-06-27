@@ -10,24 +10,20 @@ import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
 import { apiRequest } from "../../services/apiClient";
 
-
 export default function Accountant({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(user);
 
-  // ── Active sidebar view ──────────────────────────────────────
-  const [activeView, setActiveView] = useState("revenue"); // "revenue" | "debt"
+  const [activeView, setActiveView] = useState("revenue");
 
-  // ── Revenue (orders) state ───────────────────────────────────
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  // Chỉ dùng debtFilter vì Accountant chỉ xem orders đã hoàn thành (derived_status='completed')
+
   const [debtFilter, setDebtFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 
-  // ── Modals ────────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -35,11 +31,9 @@ export default function Accountant({ user, onLogout }) {
   const [isOrderDetailOpen, setIsOrderDetailOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  // ── Debt Payment Modal ────────────────────────────────────────
   const [isDebtPaymentOpen, setIsDebtPaymentOpen] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState(null);
 
-  // ── Stats ─────────────────────────────────────────────────────
   const [stats, setStats] = useState({
     total_revenue: 0,
     total_collected: 0,
@@ -47,7 +41,6 @@ export default function Accountant({ user, onLogout }) {
     pending_payments_count: 0
   });
 
-  // ── Fetch finance stats ────────────────────────────────────────
   const fetchStats = async () => {
     try {
       const data = await apiRequest("/accountant/finance/stats");
@@ -57,7 +50,6 @@ export default function Accountant({ user, onLogout }) {
     }
   };
 
-  // ── Fetch orders (table) ──────────────────────────────────────
   const fetchOrders = async (page = 1) => {
     setLoadingOrders(true);
     try {
@@ -82,7 +74,6 @@ export default function Accountant({ user, onLogout }) {
     }
   };
 
-  // Client-side debt filter on orders
   const filteredOrders = orders.filter(order => {
     if (debtFilter === "all") return true;
     const orderDebtStatus = order.debt_status
@@ -90,7 +81,6 @@ export default function Accountant({ user, onLogout }) {
     return orderDebtStatus === debtFilter;
   });
 
-  // ── Effects ────────────────────────────────────────────────────
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, debtFilter]);
@@ -114,7 +104,6 @@ export default function Accountant({ user, onLogout }) {
     saveSession({ user: mergedUser });
   };
 
-  // ── Handlers ──────────────────────────────────────────────────
   const handlePageChange = (page) => {
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -125,13 +114,11 @@ export default function Accountant({ user, onLogout }) {
     setIsPaymentModalOpen(true);
   };
 
-  // Mở modal thu tiền cho customer hoặc driver
   const handleOpenDebtPayment = (person) => {
     setSelectedPerson(person);
     setIsDebtPaymentOpen(true);
   };
 
-  // ── Pagination meta ────────────────────────────────────────────
   const pagination = {
     currentPage,
     totalPages,
@@ -141,7 +128,7 @@ export default function Accountant({ user, onLogout }) {
 
   return (
     <div className="dashboard-layout accountant-dashboard">
-      {/* Sidebar */}
+      {}
       <aside className="sidebar">
         <div className="sidebar-brand">
           <svg className="brand-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -208,9 +195,9 @@ export default function Accountant({ user, onLogout }) {
         </div>
       </aside>
 
-      {/* Main Container */}
+      {}
       <main className="main-content">
-        {/* Header */}
+        {}
         <header className="main-header">
           <div className="search-bar">
             <svg className="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -245,10 +232,10 @@ export default function Accountant({ user, onLogout }) {
           </div>
         </header>
 
-        {/* Content */}
+        {}
         <div className="content-body">
 
-          {/* ── REVENUE VIEW ─────────────────────────────────────── */}
+          {}
           {activeView === "revenue" && (
             <>
               <div className="page-header">
@@ -258,7 +245,7 @@ export default function Accountant({ user, onLogout }) {
                 </div>
               </div>
 
-              {/* Stats */}
+              {}
               <div className="finance-stats-grid">
                 <div className="finance-stat-card glass-blue">
                   <div className="stat-card-icon">
@@ -309,7 +296,7 @@ export default function Accountant({ user, onLogout }) {
                 </div>
               </div>
 
-              {/* Filters */}
+              {}
               <div className="filter-row">
                 <div className="filter-tabs">
                   {[
@@ -329,7 +316,7 @@ export default function Accountant({ user, onLogout }) {
                 </div>
               </div>
 
-              {/* Table */}
+              {}
               <RevenueTable
                 orders={filteredOrders}
                 loading={loadingOrders}
@@ -344,7 +331,7 @@ export default function Accountant({ user, onLogout }) {
             </>
           )}
 
-          {/* ── DEBT VIEW ────────────────────────────────────────── */}
+          {}
           {activeView === "debt" && (
             <>
               <div className="page-header">
@@ -354,7 +341,7 @@ export default function Accountant({ user, onLogout }) {
                 </div>
               </div>
 
-              {/* Debt Table */}
+              {}
               <DebtTable
                 onDebtPayment={handleOpenDebtPayment}
               />
@@ -363,7 +350,7 @@ export default function Accountant({ user, onLogout }) {
         </div>
       </main>
 
-      {/* Floating Action Button */}
+      {}
       {activeView === "revenue" && (
         <button
           className="floating-action-btn"
@@ -374,7 +361,7 @@ export default function Accountant({ user, onLogout }) {
         </button>
       )}
 
-      {/* Modals */}
+      {}
       <OrderFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -420,4 +407,3 @@ export default function Accountant({ user, onLogout }) {
     </div>
   );
 }
-

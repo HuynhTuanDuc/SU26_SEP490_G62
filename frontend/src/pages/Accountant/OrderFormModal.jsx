@@ -266,7 +266,7 @@ const ShipmentCard = ({
       className="shipment-card"
       styles={{ body: { padding: 0 } }}
     >
-      {/* Card header bar */}
+      {}
       <div
         style={{
           padding: "8px 16px",
@@ -322,10 +322,10 @@ const ShipmentCard = ({
         </Space>
       </div>
 
-      {/* Card body */}
+      {}
       <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-        {/* Row 1: Nhóm xe · Xe · Tài xế */}
+        {}
         <Row gutter={12}>
           <Col span={8}>
             <Form.Item label="Nhóm xe" style={{ marginBottom: 0 }}>
@@ -430,7 +430,7 @@ const ShipmentCard = ({
           </Col>
         </Row>
 
-        {/* Row 2: Khối lượng · Tên hàng */}
+        {}
         <Row gutter={12}>
           <Col span={12}>
             <Form.Item label="Khối lượng (kg)" style={{ marginBottom: 0 }}>
@@ -457,11 +457,11 @@ const ShipmentCard = ({
           </Col>
         </Row>
 
-        {/* Row 3: Điểm lấy / giao — timeline style */}
+        {}
         <div style={{ paddingLeft: 0 }}>
-          {/* Timeline: pickup points */}
+          {}
           <div style={{ position: "relative", paddingLeft: 24 }}>
-            {/* Vertical dashed line */}
+            {}
             <div
               style={{
                 position: "absolute",
@@ -478,7 +478,7 @@ const ShipmentCard = ({
                   key={`pickup-${pi}`}
                   style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, position: "relative" }}
                 >
-                  {/* Green dot */}
+                  {}
                   <div
                     style={{
                       position: "absolute",
@@ -530,9 +530,9 @@ const ShipmentCard = ({
               </Button>
             </Form.Item>
 
-            {/* Delivery point */}
+            {}
             <div style={{ position: "relative", marginTop: 8 }}>
-              {/* Red dot */}
+              {}
               <div
                 style={{
                   position: "absolute",
@@ -559,7 +559,7 @@ const ShipmentCard = ({
           </div>
         </div>
 
-        {/* Row 4: Cước phí */}
+        {}
         <div style={{ paddingTop: 8, borderTop: "1px solid #d3e4fe" }}>
           <div style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "#757682", textTransform: "uppercase", marginBottom: 12 }}>
             Cước phí
@@ -575,7 +575,7 @@ const ShipmentCard = ({
               </Form.Item>
             </Col>
           </Row>
-          {/* Summary: Thực thu = cargo_fee + pass_through expenses */}
+          {}
           {(() => {
             const passThrough = (shipment.expenses || []).reduce(
               (sum, e) => sum + (PASS_THROUGH_TYPES.has(e.expense_type) ? (e.amount || 0) : 0),
@@ -609,14 +609,14 @@ const ShipmentCard = ({
           })()}
         </div>
 
-        {/* Row 5: Thanh toán */}
+        {}
         <div style={{ paddingTop: 8, borderTop: "1px solid #d3e4fe" }}>
           <div style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "#757682", textTransform: "uppercase", marginBottom: 12 }}>
             Thanh toán
           </div>
 
           <Row gutter={12}>
-            {/* Khách thanh toán */}
+            {}
             <Col span={12}>
               <Form.Item style={{ marginBottom: 8 }}>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -651,7 +651,7 @@ const ShipmentCard = ({
               </Form.Item>
             </Col>
 
-            {/* Tài xế */}
+            {}
             <Col span={12}>
               {(shipment.payment_type === "cash" || shipment.payment_type === "bank_transfer") && (
                 <Form.Item style={{ marginBottom: 8 }}>
@@ -683,7 +683,7 @@ const ShipmentCard = ({
             </Col>
           </Row>
 
-          {/* Alert messages */}
+          {}
           {shipment.payment_type === "client_credit" && (
             <Alert type="info" showIcon message="Đơn ghi nợ — công nợ được theo dõi trong bảng công nợ." style={{ marginTop: 4 }} />
           )}
@@ -692,7 +692,7 @@ const ShipmentCard = ({
           )}
         </div>
 
-        {/* Row 6: Chi phí chuyến */}
+        {}
         <div style={{ paddingTop: 8, borderTop: "1px solid #d3e4fe" }}>
           <div style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "#757682", textTransform: "uppercase", marginBottom: 12 }}>
             Chi phí chuyến
@@ -720,7 +720,7 @@ const ShipmentCard = ({
             </div>
           </Form.Item>
 
-          {/* Ghi chú chuyến */}
+          {}
           <Form.Item label="Ghi chú chuyến" style={{ marginBottom: 0 }}>
             <TextArea
               value={shipment.notes}
@@ -1033,7 +1033,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
             Thông tin đơn hàng
           </div>
 
-          {/* Row 1: Ngày · Tên khách hàng */}
+          {}
           <Row gutter={12} align="middle">
             <Col span={6}>
               <Form.Item label="Ngày đơn *" style={{ marginBottom: 0 }}>
@@ -1068,7 +1068,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
             </Col>
           </Row>
 
-          {/* Row 2: SĐT · Công ty */}
+          {}
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item label="Số điện thoại *" style={{ marginBottom: 8 }}>
@@ -1097,7 +1097,7 @@ export default function OrderFormModal({ isOpen, onClose, onOrderCreated }) {
             </Col>
           </Row>
 
-          {/* Row 3: Ghi chú · Số chuyến */}
+          {}
           <Row gutter={12} align="middle">
             <Col span={18}>
               <Form.Item label="Ghi chú đơn hàng" style={{ marginBottom: 0 }}>

@@ -35,7 +35,6 @@ const PAYMENT_METHODS = [
   { value: 'bank_transfer', label: 'Chuyển khoản', Icon: RiBankLine },
 ];
 
-// ─── Payment History ──────────────────────────────────────────────────────────
 function PaymentHistory({ personType, personId }) {
   const [histories, setHistories] = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -99,7 +98,6 @@ function PaymentHistory({ personType, personId }) {
   );
 }
 
-// ─── Main Modal ───────────────────────────────────────────────────────────────
 export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRecorded }) {
   const [loading, setLoading]         = useState(false);
   const [debts, setDebts]             = useState([]);
@@ -219,7 +217,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
 
   return (
     <>
-      {/* ── Main modal ── */}
+      {}
       <Modal
         isOpen={isOpen && !showConfirm && !showSuccess}
         onClose={onClose}
@@ -241,7 +239,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
               </ModalHeader>
 
               <ModalBody className="py-4 flex flex-col gap-4">
-                {/* Person summary */}
+                {}
                 <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-200">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white">
@@ -268,7 +266,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                   </div>
                 </div>
 
-                {/* Auto-allocate */}
+                {}
                 {debts.length > 0 && (
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col gap-3">
                     <div className="flex items-end gap-2 flex-wrap">
@@ -306,7 +304,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                   </div>
                 )}
 
-                {/* Debt list */}
+                {}
                 {loading && debts.length === 0 ? (
                   <div className="flex justify-center py-10"><Spinner color="primary" label="Đang tải..." /></div>
                 ) : debts.length === 0 ? (
@@ -376,7 +374,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                   </div>
                 )}
 
-                {/* Payment info */}
+                {}
                 {debts.length > 0 && (
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col gap-3">
                     <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Thông tin thanh toán</p>
@@ -400,7 +398,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                       value={notes} onValueChange={setNotes}
                     />
 
-                    {/* Summary */}
+                    {}
                     <div className="p-3 bg-white border-2 border-success-400 rounded-xl flex flex-col gap-1">
                       {[
                         ['Tổng số tiền', <span key="t" className={`text-xl font-extrabold ${isOverInput ? 'text-danger' : 'text-success'}`}>{fmt(totalSelected)}đ</span>],
@@ -449,7 +447,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
         </ModalContent>
       </Modal>
 
-      {/* ── Preview modal ── */}
+      {}
       <Modal isOpen={!!preview} onClose={() => setPreview(null)} size="md">
         <ModalContent>
           {(onClose) => (
@@ -486,7 +484,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
         </ModalContent>
       </Modal>
 
-      {/* ── Confirm modal ── */}
+      {}
       <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)} size="sm">
         <ModalContent>
           {(onClose) => (
@@ -526,7 +524,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
         </ModalContent>
       </Modal>
 
-      {/* ── Success modal ── */}
+      {}
       <Modal isOpen={showSuccess} onClose={handleSuccessClose} size="md" isDismissable={false}>
         <ModalContent>
           {() => (

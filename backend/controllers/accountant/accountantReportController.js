@@ -1,7 +1,6 @@
 const { getReportOverview } = require('../../repositories/accountant/accountantReportRepository');
 const { sendError, err400 } = require('./_validate');
 
-// ── GET /accountant/reports/overview?months= ──────────────────────────────────
 const getOverview = async (req, res) => {
     try {
         const months = parseInt(req.query.months) || 6;

@@ -14,7 +14,6 @@ import {
 } from "react-icons/ri";
 import { accountantService } from "../services/accountant.service";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const VND = (n) => {
   const num = Number(n || 0);
   if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)} tỷ`;
@@ -36,7 +35,6 @@ const PAYMENT_TYPE_LABEL = {
   client_credit: { label: "Ghi nợ",       color: "#ef4444" },
 };
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
 function StatCard({ label, value, icon: Icon, sub, gradient, lightBg, text, border }) {
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow`}>
@@ -55,7 +53,6 @@ function StatCard({ label, value, icon: Icon, sub, gradient, lightBg, text, bord
   );
 }
 
-// ─── Section wrapper ─────────────────────────────────────────────────────────
 function Section({ title, icon: Icon, children, action }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -73,7 +70,6 @@ function Section({ title, icon: Icon, children, action }) {
   );
 }
 
-// ─── Custom recharts tooltip ──────────────────────────────────────────────────
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
@@ -91,7 +87,6 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ─── Revenue area chart ───────────────────────────────────────────────────────
 function RevenueChart({ data }) {
   if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
   return (
@@ -122,7 +117,6 @@ function RevenueChart({ data }) {
   );
 }
 
-// ─── Debt aging bars ──────────────────────────────────────────────────────────
 function DebtAgingBars({ data }) {
   if (!data) return null;
 
@@ -137,7 +131,7 @@ function DebtAgingBars({ data }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* stacked bar */}
+      {}
       <div className="flex h-3 rounded-full overflow-hidden gap-px">
         {groups.map((g) => {
           const pct = total > 0 ? (Number(data[g.key] || 0) / total) * 100 : 0;
@@ -147,7 +141,7 @@ function DebtAgingBars({ data }) {
         })}
         {total === 0 && <div className="bg-gray-100 w-full" />}
       </div>
-      {/* legend */}
+      {}
       <div className="grid grid-cols-2 gap-2">
         {groups.map((g) => (
           <div key={g.key} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
@@ -167,7 +161,6 @@ function DebtAgingBars({ data }) {
   );
 }
 
-// ─── Payment type bar chart ───────────────────────────────────────────────────
 function PaymentTypeChart({ data }) {
   if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
 
@@ -195,7 +188,6 @@ function PaymentTypeChart({ data }) {
   );
 }
 
-// ─── Top customers table ──────────────────────────────────────────────────────
 function TopCustomersTable({ data }) {
   if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
 
@@ -205,7 +197,7 @@ function TopCustomersTable({ data }) {
     <div className="flex flex-col divide-y divide-gray-50">
       {data.map((c, i) => (
         <div key={i} className="flex items-center gap-3 py-3">
-          {/* Rank */}
+          {}
           <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
             ${i === 0 ? "bg-yellow-100 text-yellow-600"
             : i === 1 ? "bg-gray-100 text-gray-500"
@@ -213,13 +205,13 @@ function TopCustomersTable({ data }) {
             : "bg-gray-50 text-gray-400"}`}>
             {i + 1}
           </span>
-          {/* Info */}
+          {}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-semibold text-gray-800 truncate">{c.name}</span>
               <span className="text-xs font-bold text-blue-600 flex-shrink-0 ml-2">{VND(c.total_revenue)}</span>
             </div>
-            {/* Progress bar */}
+            {}
             <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
@@ -241,7 +233,6 @@ function TopCustomersTable({ data }) {
   );
 }
 
-// ─── Payroll quick stats ──────────────────────────────────────────────────────
 function PayrollQuickStats({ data }) {
   if (!data) return null;
 
@@ -278,7 +269,6 @@ function PayrollQuickStats({ data }) {
   );
 }
 
-// ─── Main ReportView ─────────────────────────────────────────────────────────
 export function ReportView() {
   const [months, setMonths]   = useState("6");
   const [data, setData]       = useState(null);
@@ -300,7 +290,6 @@ export function ReportView() {
 
   useEffect(() => { load(months); }, [months, load]);
 
-  // Derived stats from revenueChart
   const totalRevenue   = data?.revenueChart?.reduce((s, r) => s + Number(r.revenue || 0), 0) ?? 0;
   const totalOrders    = data?.revenueChart?.reduce((s, r) => s + Number(r.order_count || 0), 0) ?? 0;
   const totalDebt      = data?.debtAging
@@ -330,7 +319,7 @@ export function ReportView() {
   return (
     <div className="flex flex-col gap-5">
 
-      {/* Period picker */}
+      {}
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">Dữ liệu tổng hợp từ đơn hoàn thành</p>
         <Select
@@ -349,7 +338,7 @@ export function ReportView() {
         </Select>
       </div>
 
-      {/* Summary cards */}
+      {}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
           label={`Doanh thu ${months} tháng`}
@@ -385,31 +374,31 @@ export function ReportView() {
         />
       </div>
 
-      {/* Charts row */}
+      {}
       <div className="grid grid-cols-3 gap-4">
-        {/* Revenue trend — 2/3 width */}
+        {}
         <div className="col-span-2">
           <Section title="Xu hướng doanh thu" icon={RiLineChartLine}>
             <RevenueChart data={data?.revenueChart} />
           </Section>
         </div>
 
-        {/* Payment type — 1/3 width */}
+        {}
         <Section title="Theo hình thức thanh toán" icon={RiBankCard2Line}>
           <PaymentTypeChart data={data?.revenueByPaymentType} />
         </Section>
       </div>
 
-      {/* Bottom row */}
+      {}
       <div className="grid grid-cols-3 gap-4">
-        {/* Top customers — 2/3 width */}
+        {}
         <div className="col-span-2">
           <Section title="Top khách hàng theo doanh thu" icon={RiGroupLine}>
             <TopCustomersTable data={data?.topCustomers} />
           </Section>
         </div>
 
-        {/* Debt aging + Payroll */}
+        {}
         <div className="flex flex-col gap-4">
           <Section title="Phân tích nợ theo thời gian" icon={RiTimeLine}>
             <DebtAgingBars data={data?.debtAging} />

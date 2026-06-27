@@ -22,7 +22,7 @@ function formatTime(value) {
 function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead }) {
   return (
     <div className="w-80 flex flex-col overflow-hidden">
-      {/* Header */}
+      {}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-gray-900">Thông báo</span>
@@ -43,7 +43,7 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead 
         )}
       </div>
 
-      {/* Body */}
+      {}
       <div className="max-h-[360px] overflow-y-auto">
         {loading ? (
           <div className="flex justify-center py-8">
@@ -66,7 +66,7 @@ function NotificationPanel({ notifications, loading, unreadCount, onMarkAllRead 
                 }`}
               >
                 <div className="flex items-start gap-2.5">
-                  {/* Unread dot */}
+                  {}
                   <span
                     className={`mt-[5px] w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                       !n.is_read ? "bg-blue-500" : "bg-transparent"
@@ -152,7 +152,7 @@ export function TopBar({
           </Button>
         )}
 
-        {/* Notification bell */}
+        {}
         <Popover
           isOpen={open}
           onOpenChange={handleOpenChange}
@@ -173,7 +173,7 @@ export function TopBar({
               >
                 <RiNotification3Line size={18} />
               </Button>
-              {/* Unread badge */}
+              {}
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none pointer-events-none">
                   {unreadCount > 99 ? "99+" : unreadCount}

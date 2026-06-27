@@ -2,17 +2,6 @@ import { Pagination, Select, SelectItem } from "@heroui/react";
 
 const PAGE_SIZES = ["5", "10", "15", "20"];
 
-/**
- * Reusable pagination bar: item-count info + page-size selector + page nav.
- *
- * Props:
- *   page             – current page (1-based)
- *   pageSize         – current page size
- *   totalItems       – total number of items
- *   totalPages       – total number of pages
- *   onPageChange     – (page: number) => void
- *   onPageSizeChange – (size: number) => void
- */
 export function PaginationBar({
   page,
   pageSize,

@@ -4,7 +4,6 @@ const { posInt, enumVal, pageParams, sendError, err400 } = require('./_validate'
 const DEBT_TYPES   = ['customer', 'driver'];
 const DEBT_STATUSES = ['paid', 'partial', 'unpaid'];
 
-// ── GET /accountant/debts ────────────────────────────────────────────────────
 const getDebts = async (req, res) => {
     try {
         const { page, limit } = pageParams(req.query);
@@ -26,7 +25,6 @@ const getDebts = async (req, res) => {
     }
 };
 
-// ── GET /accountant/debts/stats ──────────────────────────────────────────────
 const getDebtStats = async (_req, res) => {
     try {
         const stats = await accountantDebtRepository.getDebtStats();
@@ -36,7 +34,6 @@ const getDebtStats = async (_req, res) => {
     }
 };
 
-// ── GET /accountant/debts/grouped ────────────────────────────────────────────
 const getDebtsGrouped = async (req, res) => {
     try {
         const { page, limit } = pageParams(req.query);
@@ -58,7 +55,6 @@ const getDebtsGrouped = async (req, res) => {
     }
 };
 
-// ── GET /accountant/debts/person/:personType/:personId ───────────────────────
 const getDebtsByPerson = async (req, res) => {
     try {
         const { personType, personId } = req.params;
@@ -67,7 +63,6 @@ const getDebtsByPerson = async (req, res) => {
         if (!DEBT_TYPES.includes(personType))
             throw err400('Loại đối tượng không hợp lệ.');
 
-        // Hỗ trợ truy vấn nhiều customer ghép nhóm
         if (customer_ids) {
             const ids = customer_ids.split(',').map(Number).filter((n) => n > 0);
             if (ids.length === 0)

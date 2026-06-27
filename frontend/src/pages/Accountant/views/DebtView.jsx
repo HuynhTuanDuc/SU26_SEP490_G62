@@ -50,7 +50,6 @@ function isOverdue(due_date) {
   return due_date && new Date(due_date) < new Date();
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
 function DebtStatCard({ label, value, sub, icon: Icon, gradient, lightBg, text, border }) {
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow`}>
@@ -69,7 +68,6 @@ function DebtStatCard({ label, value, sub, icon: Icon, gradient, lightBg, text, 
   );
 }
 
-// ─── Payment modal ────────────────────────────────────────────────────────────
 function PayDebtModal({ person, onClose, onDone }) {
   const { name, person_id } = getPersonInfo(person);
   const [amount, setAmount] = useState(String(person?.total_remaining || ""));
@@ -169,17 +167,16 @@ function PayDebtModal({ person, onClose, onDone }) {
   );
 }
 
-// ─── Expand debt detail row ───────────────────────────────────────────────────
 function DebtDetailRow({ d }) {
   const overdue = isOverdue(d.due_date);
   const status  = d.computed_status;
 
   return (
     <tr className="bg-orange-50/20 border-b border-orange-100/30">
-      {/* col 1: indent (w-10) */}
+      {}
       <td className="py-2.5 pl-4" />
 
-      {/* col 2: name column — show order info here */}
+      {}
       <td className="py-2.5 pr-4 overflow-hidden">
         <div className="flex items-start gap-2">
           <span className="text-[10px] text-orange-400 font-bold shrink-0 mt-0.5">#{d.id}</span>
@@ -195,7 +192,7 @@ function DebtDetailRow({ d }) {
         </div>
       </td>
 
-      {/* col 3: debt count column — show date */}
+      {}
       <td className="py-2.5 pr-4 text-center">
         <div className="flex flex-col gap-0.5 items-center">
           <span className="text-[10px] text-gray-400">
@@ -210,7 +207,7 @@ function DebtDetailRow({ d }) {
         </div>
       </td>
 
-      {/* col 4: amount */}
+      {}
       <td className="py-2.5 pr-4">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-bold text-red-500">{VND(d.remaining)}</span>
@@ -218,7 +215,7 @@ function DebtDetailRow({ d }) {
         </div>
       </td>
 
-      {/* col 5: status */}
+      {}
       <td className="py-2.5 pr-4">
         {STATUS_CHIP[status] && (
           <Chip size="sm" color={STATUS_CHIP[status].color} variant="flat" className="text-[10px] h-5">
@@ -227,13 +224,12 @@ function DebtDetailRow({ d }) {
         )}
       </td>
 
-      {/* col 6: actions placeholder */}
+      {}
       <td className="py-2.5" />
     </tr>
   );
 }
 
-// ─── Person row (expandable) ─────────────────────────────────────────────────
 function PersonRow({ person, onPay }) {
   const [expanded, setExpanded] = useState(false);
   const [debts, setDebts]       = useState(null);
@@ -265,14 +261,14 @@ function PersonRow({ person, onPay }) {
                    ${expanded ? "bg-orange-50/40" : "hover:bg-gray-50/60"}`}
         onClick={toggle}
       >
-        {/* col 1: expand icon */}
+        {}
         <td className="py-3.5 pl-4">
           <span className="text-gray-400">
             {expanded ? <RiArrowDownSLine size={17} /> : <RiArrowRightSLine size={17} />}
           </span>
         </td>
 
-        {/* col 2: name / contact */}
+        {}
         <td className="py-3.5 pr-4 overflow-hidden">
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold text-gray-800 truncate">{name}</span>
@@ -283,12 +279,12 @@ function PersonRow({ person, onPay }) {
           </div>
         </td>
 
-        {/* col 3: debt count */}
+        {}
         <td className="py-3.5 pr-4 text-center">
           <span className="text-xs text-gray-500">{person.debt_count ?? 0} khoản</span>
         </td>
 
-        {/* col 4: amount */}
+        {}
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-bold text-red-600">{VND(person.total_remaining)}</span>
@@ -296,7 +292,7 @@ function PersonRow({ person, onPay }) {
           </div>
         </td>
 
-        {/* col 5: status */}
+        {}
         <td className="py-3.5 pr-4">
           {chipProps && (
             <Chip size="sm" color={chipProps.color} variant="flat" className="text-[10px] h-5">
@@ -310,7 +306,7 @@ function PersonRow({ person, onPay }) {
           )}
         </td>
 
-        {/* col 6: actions */}
+        {}
         <td className="py-3.5 pr-4" onClick={(e) => e.stopPropagation()}>
           {person.computed_status !== "paid" && (
             <Button
@@ -346,7 +342,6 @@ function PersonRow({ person, onPay }) {
   );
 }
 
-// ─── Main DebtView ────────────────────────────────────────────────────────────
 export function DebtView({ search = "" }) {
   const {
     stats, statsLoading,
@@ -359,13 +354,11 @@ export function DebtView({ search = "" }) {
   const [payPerson, setPayPerson]       = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Pagination state
   const [page, setPage]         = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   const list = debtType === "customer" ? customerDebts : driverDebts;
 
-  // Filter at view level (not inside row)
   const filteredList = useMemo(() => list.filter((person) => {
     const { name, phone } = getPersonInfo(person);
     if (search && (
@@ -376,7 +369,6 @@ export function DebtView({ search = "" }) {
     return true;
   }), [list, search, statusFilter]);
 
-  // Reset page on filter/tab change
   useEffect(() => { setPage(1); }, [debtType, statusFilter, search]);
 
   const totalItems = filteredList.length;
@@ -386,14 +378,13 @@ export function DebtView({ search = "" }) {
 
   const handlePageSizeChange = (size) => { setPageSize(size); setPage(1); };
 
-  // Count by status (on full filtered-by-type list, not paginated)
   const unpaidCount  = list.filter((d) => d.computed_status === "unpaid").length;
   const partialCount = list.filter((d) => d.computed_status === "partial").length;
 
   return (
     <div className="flex flex-col gap-5">
 
-      {/* Stats */}
+      {}
       <div className="grid grid-cols-3 gap-4">
         <DebtStatCard
           label="Tổng nợ phải thu"
@@ -421,9 +412,9 @@ export function DebtView({ search = "" }) {
         />
       </div>
 
-      {/* Tabs + Status filter */}
+      {}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        {/* Type tabs */}
+        {}
         <div className="flex gap-1 bg-gray-100/80 p-1 rounded-xl">
           {[
             { key: "customer", label: "Khách hàng", icon: RiUserLine,  count: customerDebts.length },
@@ -449,7 +440,7 @@ export function DebtView({ search = "" }) {
           })}
         </div>
 
-        {/* Status filter */}
+        {}
         <div className="flex gap-1 bg-gray-100/60 p-1 rounded-xl">
           {STATUS_OPTIONS.map(({ key, label }) => {
             const active = statusFilter === key;
@@ -473,7 +464,7 @@ export function DebtView({ search = "" }) {
         </div>
       </div>
 
-      {/* Table */}
+      {}
       <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white shadow-sm">
         {groupedLoading ? (
           <div className="flex items-center justify-center py-20">
@@ -529,7 +520,7 @@ export function DebtView({ search = "" }) {
         )}
       </div>
 
-      {/* Pagination */}
+      {}
       {!groupedLoading && filteredList.length > 0 && (
         <PaginationBar
           page={safePage}

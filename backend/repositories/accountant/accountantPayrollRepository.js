@@ -1,14 +1,13 @@
 const pool = require('../../config/database');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
-const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105); // 557,550
-const BHXH_COMPANY          = Math.round(INSURANCE_SALARY_BASE * 0.215); // 1,141,650
+const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
+const BHXH_COMPANY          = Math.round(INSURANCE_SALARY_BASE * 0.215);
 const PHONE_ALLOWANCE        = 200_000;
-const BASE_SALARY_JUNIOR     = 8_000_000;  // < 12 months service
-const BASE_SALARY_SENIOR     = 9_000_000;  // >= 12 months service
+const BASE_SALARY_JUNIOR     = 8_000_000;
+const BASE_SALARY_SENIOR     = 9_000_000;
 const WORKING_DAYS_PER_MONTH = 28;
 
-// ─── Helper: calculate one driver's payroll components ───────────────────────
 const _calcDriverPayroll = async (client, driver, month, year) => {
     const hireDate        = new Date(driver.hire_date);
     const now             = new Date();
@@ -17,7 +16,6 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const baseSalary      = monthsOfService >= 12 ? BASE_SALARY_SENIOR : BASE_SALARY_JUNIOR;
     const revenuePct      = Number(driver.revenue_share_percent ?? 15);
 
-    // Unpaid leave days this month
     const { rows: [leaveRow] } = await client.query(`
         SELECT COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved')::int AS unpaid_days
         FROM leave_requests
@@ -30,7 +28,6 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const proRatedBase   = Math.round((baseSalary / WORKING_DAYS_PER_MONTH) * actualWorkDays);
     const absencePenalty = baseSalary - proRatedBase;
 
-    // KPI revenue + bonus eligibility
     const { rows: [kpi] } = await client.query(`
         SELECT
             COALESCE(k.total_revenue, 0)                             AS total_revenue,
@@ -70,7 +67,6 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const topDriverBonus = (Number(kpi?.revenue_rank) === 1 && kpi?.top_driver_reward)
                          ? Number(kpi.top_driver_reward) : 0;
 
-    // Salary advance deductions approved/paid this month
     const { rows: [advRow] } = await client.query(`
         SELECT COALESCE(SUM(amount), 0)::numeric AS total
         FROM salary_advances
@@ -80,7 +76,6 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id, month, year]);
     const advanceDeduction = Number(advRow.total ?? 0);
 
-    // Outstanding driver debt (capped at net salary after other deductions)
     const { rows: [debtRow] } = await client.query(`
         SELECT COALESCE(SUM(total_amount - paid_amount), 0)::numeric AS remaining
         FROM debts
@@ -89,16 +84,16 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
           AND status IN ('unpaid','partial','overdue')
     `, [driver.driver_id]);
     const totalDebt    = Number(debtRow.remaining ?? 0);
-    // Gross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus
+
     const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus;
     const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction - absencePenalty;
-    // Carry-forward rule: deduct only what's available; remainder carries to next month
+
     const driverDebtDeduction = Math.min(totalDebt, Math.max(0, netBeforeDebt));
 
     return {
         monthsOfService,
-        baseSalary,           // full base (8M or 9M)
-        proRatedBase,         // actual base after unpaid days
+        baseSalary,
+        proRatedBase,
         absencePenalty,
         totalRevenue,
         revenuePct,
@@ -112,7 +107,6 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     };
 };
 
-// ─── Get all payrolls for a given month/year ─────────────────────────────────
 const getAllPayrolls = async ({ month, year, status = null, search = null }) => {
     const params = [month, year];
     const conditions = ['p.payroll_month = $1', 'p.payroll_year = $2'];
@@ -163,7 +157,6 @@ const getAllPayrolls = async ({ month, year, status = null, search = null }) => 
     return rows;
 };
 
-// ─── Get summary stats for a period ─────────────────────────────────────────
 const getPayrollStats = async ({ month, year }) => {
     const { rows: [row] } = await pool.query(`
         SELECT
@@ -180,8 +173,6 @@ const getPayrollStats = async ({ month, year }) => {
     return row;
 };
 
-// ─── Generate / recalculate payrolls for all active drivers ─────────────────
-// Idempotent: updates pending records, skips reviewed/approved/paid ones
 const calculateAndUpsertPayrolls = async (month, year) => {
     const client = await pool.connect();
     try {
@@ -269,7 +260,6 @@ const calculateAndUpsertPayrolls = async (month, year) => {
     }
 };
 
-// ─── Confirm payroll (reviewed → approved) ───────────────────────────────────
 const confirmPayroll = async (payrollId, accountantId) => {
     const { rows: [row] } = await pool.query(`
         UPDATE payrolls
@@ -286,7 +276,6 @@ const confirmPayroll = async (payrollId, accountantId) => {
     return row;
 };
 
-// ─── Mark payroll as paid (approved → paid) ──────────────────────────────────
 const markPayrollPaid = async (payrollId, accountantId) => {
     const { rows: [row] } = await pool.query(`
         UPDATE payrolls
@@ -303,7 +292,6 @@ const markPayrollPaid = async (payrollId, accountantId) => {
     return row;
 };
 
-// ─── Salary Advances ─────────────────────────────────────────────────────────
 const getSalaryAdvances = async ({ status = null, month = null, year = null, search = null }) => {
     const params = [];
     const conditions = [];
@@ -337,7 +325,6 @@ const getSalaryAdvances = async ({ status = null, month = null, year = null, sea
     return rows;
 };
 
-// ─── Disburse salary advance (approved → paid) ───────────────────────────────
 const disburseAdvance = async (advanceId, accountantId, { notes = null } = {}) => {
     const { rows: [row] } = await pool.query(`
         UPDATE salary_advances

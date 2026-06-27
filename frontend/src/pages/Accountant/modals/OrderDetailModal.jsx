@@ -24,7 +24,6 @@ const DEBT_STATUS = {
   unpaid:  { label: "Chưa thu",     color: "danger"  },
 };
 
-// driver_payment_state = debts.status từ BE
 const DRIVER_STATE = {
   paid:    { label: "Đã nộp về công ty", color: "text-emerald-600", bg: "bg-emerald-50", icon: RiCheckboxCircleLine },
   partial: { label: "Nộp 1 phần",        color: "text-orange-600",  bg: "bg-orange-50",  icon: RiTimeLine           },
@@ -50,7 +49,7 @@ function ShipmentCard({ s, index }) {
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
-      {/* Header */}
+      {}
       <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50/80 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full
@@ -71,9 +70,9 @@ function ShipmentCard({ s, index }) {
         </div>
       </div>
 
-      {/* Body */}
+      {}
       <div className="px-4 py-3 flex flex-col gap-2.5">
-        {/* Route */}
+        {}
         <div className="flex items-start gap-1.5 text-xs text-gray-600">
           <RiMapPin2Line size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
           <span className="flex-1">{pickup}</span>
@@ -84,7 +83,7 @@ function ShipmentCard({ s, index }) {
 
         <Divider className="my-0" />
 
-        {/* Driver + payment state */}
+        {}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <RiTruckLine size={13} className="text-gray-400" />
@@ -104,7 +103,7 @@ function ShipmentCard({ s, index }) {
           </div>
         </div>
 
-        {/* Cargo info */}
+        {}
         {(s.cargo_name || s.cargo_weight) && (
           <div className="flex items-center gap-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5">
             {s.cargo_name && (
@@ -122,7 +121,7 @@ function ShipmentCard({ s, index }) {
           </div>
         )}
 
-        {/* Expenses */}
+        {}
         {Number(s.total_expenses) > 0 && (
           <div className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-1.5">
             <span className="text-[11px] text-orange-500 font-medium">Chi phí phát sinh</span>
@@ -134,9 +133,6 @@ function ShipmentCard({ s, index }) {
   );
 }
 
-/**
- * @param {{ isOpen: boolean, onClose: () => void, order: object|null }} props
- */
 export function OrderDetailModal({ isOpen, onClose, order }) {
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -178,9 +174,9 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
         </ModalHeader>
 
         <ModalBody className="gap-4">
-          {/* Customer + Revenue summary */}
+          {}
           <div className="grid grid-cols-2 gap-4">
-            {/* Customer */}
+            {}
             <div className="flex flex-col gap-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
               <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
                 Khách hàng
@@ -191,7 +187,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               <InfoRow icon={RiCalendarLine} label="Ngày tạo" value={date} />
             </div>
 
-            {/* Revenue */}
+            {}
             <div className="flex flex-col gap-2 p-4 bg-gray-50 rounded-2xl border border-gray-100">
               <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">
                 Tài chính
@@ -235,7 +231,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
 
           <Divider />
 
-          {/* Shipments */}
+          {}
           <div className="flex flex-col gap-2">
             <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide">
               Danh sách chuyến ({order.shipment_count ?? 0})

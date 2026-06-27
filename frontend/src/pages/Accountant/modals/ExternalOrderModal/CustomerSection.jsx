@@ -1,13 +1,5 @@
 import { Input } from "@heroui/react";
 
-/**
- * @param {{
- *   name: string, onNameChange: (v: string) => void,
- *   phone: string, onPhoneChange: (v: string) => void,
- *   company: string, onCompanyChange: (v: string) => void,
- *   errors: object,
- * }} props
- */
 export function CustomerSection({ name, onNameChange, phone, onPhoneChange, company, onCompanyChange, errors }) {
   return (
     <div className="flex flex-col gap-3">

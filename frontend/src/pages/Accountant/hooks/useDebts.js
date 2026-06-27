@@ -3,7 +3,6 @@ import { accountantService } from "../services/accountant.service";
 
 const DEFAULT_STATS = { total_customer_debt: 0, total_driver_debt: 0, total_debt: 0 };
 
-// Map BE response { byType, totalRemaining } → FE shape
 const mapStats = (data) => ({
   total_customer_debt: data?.byType?.customer?.total_remaining ?? 0,
   total_driver_debt:   data?.byType?.driver?.total_remaining   ?? 0,
@@ -19,7 +18,7 @@ export function useDebts() {
   const [grouped, setGrouped]               = useState([]);
   const [groupedLoading, setGroupedLoading] = useState(true);
 
-  const [debtType, setDebtType] = useState("customer"); // "customer" | "driver"
+  const [debtType, setDebtType] = useState("customer");
 
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
@@ -27,7 +26,7 @@ export function useDebts() {
       const data = await accountantService.getDebtStats();
       setStats(mapStats(data));
     } catch {
-      /* silent */
+
     } finally {
       setStatsLoading(false);
     }
@@ -37,7 +36,7 @@ export function useDebts() {
     setGroupedLoading(true);
     try {
       const data = await accountantService.getDebtsGrouped();
-      // API trả về { debts: [...], totalPersons, ... }
+
       setGrouped(Array.isArray(data?.debts) ? data.debts : []);
     } catch {
       setGrouped([]);
@@ -56,7 +55,6 @@ export function useDebts() {
     fetchGrouped();
   }, [fetchStats, fetchGrouped]);
 
-  // BE trả về field `debt_type`, không phải `person_type`
   const customerDebts = grouped.filter((d) => d.debt_type === "customer");
   const driverDebts   = grouped.filter((d) => d.debt_type === "driver");
 

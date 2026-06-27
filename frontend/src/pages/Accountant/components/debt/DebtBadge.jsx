@@ -1,6 +1,5 @@
 import { Chip } from "@heroui/react";
 
-// Maps to HeroUI Chip color props
 export const STATUS_CFG = {
   paid:    { label: "Đã thanh toán",   color: "success"   },
   partial: { label: "Thu một phần",    color: "warning"   },

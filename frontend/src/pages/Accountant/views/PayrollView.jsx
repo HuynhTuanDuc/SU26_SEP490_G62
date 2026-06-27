@@ -32,7 +32,6 @@ const STATUS_CHIP = {
   paid:     { color: "success",  label: "Đã trả lương" },
 };
 
-// ─── Stat card ───────────────────────────────────────────────────────────────
 function StatCard({ label, value, icon: Icon, bg, text, border }) {
   return (
     <div className={`relative overflow-hidden rounded-xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm`}>
@@ -47,7 +46,6 @@ function StatCard({ label, value, icon: Icon, bg, text, border }) {
   );
 }
 
-// ─── Payroll row (expandable) ────────────────────────────────────────────────
 function PayrollRow({ row, onConfirm, onPay, confirming }) {
   const [expanded, setExpanded] = useState(false);
   const chip = STATUS_CHIP[row.status] ?? { color: "default", label: row.status };
@@ -154,7 +152,6 @@ function PayrollRow({ row, onConfirm, onPay, confirming }) {
   );
 }
 
-// ─── Salary Advance row ───────────────────────────────────────────────────────
 function AdvanceRow({ row, onDisburse, disbursing }) {
   const isApproved = row.status === "approved";
   return (
@@ -204,7 +201,6 @@ function AdvanceRow({ row, onDisburse, disbursing }) {
   );
 }
 
-// ─── Disburse modal ───────────────────────────────────────────────────────────
 function DisburseModal({ advance, onClose, onDone }) {
   const [notes, setNotes]   = useState("");
   const [saving, setSaving] = useState(false);
@@ -264,7 +260,6 @@ function DisburseModal({ advance, onClose, onDone }) {
   );
 }
 
-// ─── Main PayrollView ─────────────────────────────────────────────────────────
 export function PayrollView({ defaultTab = "payroll" }) {
   const {
     period, setPeriod,
@@ -284,11 +279,9 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [generateErr, setGenerateErr] = useState(null);
   const [disburseTarget, setDisburseTarget] = useState(null);
 
-  // Pagination — payroll tab
   const [payPage, setPayPage]         = useState(1);
   const [payPageSize, setPayPageSize] = useState(10);
 
-  // Pagination — advance tab
   const [advPage, setAdvPage]         = useState(1);
   const [advPageSize, setAdvPageSize] = useState(10);
 
@@ -342,7 +335,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Top tabs */}
+      {}
       <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg w-fit">
         {[
           { key: "payroll", label: "Bảng lương" },
@@ -359,10 +352,10 @@ export function PayrollView({ defaultTab = "payroll" }) {
         ))}
       </div>
 
-      {/* ── Payroll tab ─────────────────────────────────────────────────────── */}
+      {}
       {tab === "payroll" && (
         <>
-          {/* Stats */}
+          {}
           {stats && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <StatCard
@@ -392,7 +385,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             </div>
           )}
 
-          {/* Controls */}
+          {}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <Select
@@ -443,7 +436,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             </div>
           )}
 
-          {/* Table */}
+          {}
           <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
             {loading ? (
               <div className="flex items-center justify-center py-20">
@@ -502,7 +495,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             )}
           </div>
 
-          {/* Payroll pagination */}
+          {}
           {!loading && payrolls.length > 0 && (
             <PaginationBar
               page={Math.min(payPage, payTotalPages)}
@@ -516,10 +509,10 @@ export function PayrollView({ defaultTab = "payroll" }) {
         </>
       )}
 
-      {/* ── Advance tab ──────────────────────────────────────────────────────── */}
+      {}
       {tab === "advance" && (
         <>
-          {/* Filter */}
+          {}
           <div className="flex items-center gap-2">
             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
               {[
@@ -542,7 +535,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             </Button>
           </div>
 
-          {/* Table */}
+          {}
           <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
             {advLoading ? (
               <div className="flex items-center justify-center py-20">
@@ -591,7 +584,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             )}
           </div>
 
-          {/* Advance pagination */}
+          {}
           {!advLoading && advances.length > 0 && (
             <PaginationBar
               page={Math.min(advPage, advTotalPages)}

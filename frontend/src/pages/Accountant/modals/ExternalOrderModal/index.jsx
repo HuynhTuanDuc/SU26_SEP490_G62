@@ -34,13 +34,6 @@ const validate = (customer, shipments) => {
   return errors;
 };
 
-/**
- * @param {{
- *   isOpen: boolean,
- *   onClose: () => void,
- *   onOrderCreated: () => void,
- * }} props
- */
 export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
   const [customer, setCustomer] = useState({ name: "", phone: "", company: "" });
   const [orderDate, setOrderDate] = useState("");
@@ -168,7 +161,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
 
           <Divider />
 
-          {/* Shipments */}
+          {}
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">

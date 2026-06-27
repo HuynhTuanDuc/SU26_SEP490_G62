@@ -12,9 +12,6 @@ const DRIVER_DEBT_CONFIG = {
   outstanding: { label: "Chưa nộp", color: "danger" },
 };
 
-/**
- * @param {{ type: 'debt' | 'driver_debt', status: string }} props
- */
 export function StatusBadge({ type = "debt", status }) {
   const cfg = type === "driver_debt"
     ? DRIVER_DEBT_CONFIG[status]

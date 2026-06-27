@@ -43,7 +43,6 @@ const getAllDebts = async ({
         statusFilter = `AND computed_status = $${params.length}`;
     }
 
-    // CTE computes status in SQL so we can filter and paginate correctly
     const cteSql = `
         WITH base_debts AS (
             SELECT
@@ -135,7 +134,6 @@ const getDebtStats = async () => {
     };
 };
 
-// Nhóm công nợ theo người (customer hoặc driver)
 const getDebtsGroupedByPerson = async ({
     debtType = null,
     status = null,
@@ -166,7 +164,6 @@ const getDebtsGroupedByPerson = async ({
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    // HAVING expression to compute per-person status and filter in SQL
     let havingClause = '';
     if (status) {
         params.push(status);
@@ -276,7 +273,6 @@ const getDebtsGroupedByPerson = async ({
     };
 };
 
-// Lấy chi tiết các khoản nợ của một person
 const getDebtsByPerson = async (personType, personId) => {
     const whereField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
     const result = await pool.query(`
@@ -321,7 +317,6 @@ const getDebtsByPerson = async (personType, personId) => {
     }));
 };
 
-// Lấy chi tiết công nợ của nhiều customer (gộp từ danh sách customer_id)
 const getDebtsByCustomerIds = async (customerIds) => {
     const result = await pool.query(`
         SELECT

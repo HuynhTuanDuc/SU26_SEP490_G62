@@ -20,7 +20,6 @@ router.get('/debts/stats', accountantDebtController.getDebtStats);
 router.get('/debts/grouped', accountantDebtController.getDebtsGrouped);
 router.get('/debts/person/:personType/:personId', accountantDebtController.getDebtsByPerson);
 
-// Payment routes
 router.get ('/debts/payment/history/:personType/:personId', accountantPaymentController.getPaymentHistory);
 router.post('/debts/payment/preview',    accountantPaymentController.previewAllocation);
 router.post('/debts/payment/allocate',   accountantPaymentController.allocatePayment);

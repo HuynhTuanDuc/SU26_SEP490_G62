@@ -43,7 +43,6 @@ export function useOrders() {
     }
   }, [debouncedSearch, debtFilter, pageSize]);
 
-  // Reset to page 1 when search / filter changes
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, debtFilter]);

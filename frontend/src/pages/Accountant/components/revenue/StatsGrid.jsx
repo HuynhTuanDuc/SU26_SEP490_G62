@@ -54,16 +54,16 @@ export function StatsGrid({ stats, loading }) {
           key={key}
           className={`relative overflow-hidden rounded-2xl bg-white border ${border} p-5 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow`}
         >
-          {/* Header row */}
+          {}
           <div className="flex items-start justify-between">
             <div className={`w-10 h-10 rounded-xl ${lightBg} flex items-center justify-center`}>
               <Icon size={20} className={text} />
             </div>
-            {/* Decorative gradient blob */}
+            {}
             <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${gradient} opacity-10`} />
           </div>
 
-          {/* Value */}
+          {}
           <div className="flex flex-col gap-0.5">
             <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{label}</span>
             {loading ? (

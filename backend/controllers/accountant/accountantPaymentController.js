@@ -4,7 +4,6 @@ const { posInt, posAmount, enumVal, sendError, err400 } = require('./_validate')
 const PERSON_TYPES    = ['customer', 'driver'];
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'offset'];
 
-// ── POST /accountant/debts/payment/preview ───────────────────────────────────
 const previewAllocation = async (req, res) => {
     try {
         const { personType, personId, amount } = req.body;
@@ -21,7 +20,6 @@ const previewAllocation = async (req, res) => {
     }
 };
 
-// ── POST /accountant/debts/payment/allocate ──────────────────────────────────
 const allocatePayment = async (req, res) => {
     try {
         const { personType, personId, amount, paymentMethod, notes } = req.body;
@@ -44,13 +42,12 @@ const allocatePayment = async (req, res) => {
 
         res.json(result);
     } catch (err) {
-        // Business-logic errors from repo (vượt quá, không tìm thấy...) surface as-is
+
         if (!err.status && err.message) err.status = 400;
         sendError(res, err);
     }
 };
 
-// ── POST /accountant/debts/payment/by-shipment ───────────────────────────────
 const paymentByShipment = async (req, res) => {
     try {
         const { shipmentId, amount, paymentMethod, notes } = req.body;
@@ -76,7 +73,6 @@ const paymentByShipment = async (req, res) => {
     }
 };
 
-// ── POST /accountant/debts/payment/by-debt ───────────────────────────────────
 const paymentByDebt = async (req, res) => {
     try {
         const { debtId, amount, paymentMethod, notes } = req.body;
@@ -102,7 +98,6 @@ const paymentByDebt = async (req, res) => {
     }
 };
 
-// ── GET /accountant/debts/payment/history/:personType/:personId ──────────────
 const getPaymentHistory = async (req, res) => {
     try {
         const { personType, personId } = req.params;
