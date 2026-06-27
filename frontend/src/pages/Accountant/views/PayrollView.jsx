@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Spinner, Button, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Input, Select, SelectItem,
@@ -9,6 +9,7 @@ import {
   RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
+import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
 
@@ -205,9 +206,9 @@ function AdvanceRow({ row, onDisburse, disbursing }) {
 
 // ─── Disburse modal ───────────────────────────────────────────────────────────
 function DisburseModal({ advance, onClose, onDone }) {
-  const [notes, setNotes]     = useState("");
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState(null);
+  const [notes, setNotes]   = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState(null);
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -264,7 +265,6 @@ function DisburseModal({ advance, onClose, onDone }) {
 }
 
 // ─── Main PayrollView ─────────────────────────────────────────────────────────
-// defaultTab: "payroll" | "advance"
 export function PayrollView({ defaultTab = "payroll" }) {
   const {
     period, setPeriod,
@@ -283,6 +283,27 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [generating, setGenerating] = useState(false);
   const [generateErr, setGenerateErr] = useState(null);
   const [disburseTarget, setDisburseTarget] = useState(null);
+
+  // Pagination — payroll tab
+  const [payPage, setPayPage]         = useState(1);
+  const [payPageSize, setPayPageSize] = useState(10);
+
+  // Pagination — advance tab
+  const [advPage, setAdvPage]         = useState(1);
+  const [advPageSize, setAdvPageSize] = useState(10);
+
+  const pagedPayrolls = useMemo(() => {
+    const start = (payPage - 1) * payPageSize;
+    return payrolls.slice(start, start + payPageSize);
+  }, [payrolls, payPage, payPageSize]);
+
+  const pagedAdvances = useMemo(() => {
+    const start = (advPage - 1) * advPageSize;
+    return advances.slice(start, start + advPageSize);
+  }, [advances, advPage, advPageSize]);
+
+  const payTotalPages = Math.max(1, Math.ceil(payrolls.length / payPageSize));
+  const advTotalPages = Math.max(1, Math.ceil(advances.length / advPageSize));
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -377,7 +398,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               <Select
                 size="sm"
                 selectedKeys={new Set([String(period.month)])}
-                onSelectionChange={(s) => setPeriod((p) => ({ ...p, month: Number([...s][0]) }))}
+                onSelectionChange={(s) => { setPeriod((p) => ({ ...p, month: Number([...s][0]) })); setPayPage(1); }}
                 className="w-36"
                 aria-label="Tháng"
               >
@@ -388,7 +409,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               <Select
                 size="sm"
                 selectedKeys={new Set([String(period.year)])}
-                onSelectionChange={(s) => setPeriod((p) => ({ ...p, year: Number([...s][0]) }))}
+                onSelectionChange={(s) => { setPeriod((p) => ({ ...p, year: Number([...s][0]) })); setPayPage(1); }}
                 className="w-28"
                 aria-label="Năm"
               >
@@ -397,11 +418,8 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 ))}
               </Select>
               <Button
-                size="sm"
-                variant="flat"
-                isIconOnly
-                onPress={refetch}
-                title="Làm mới"
+                size="sm" variant="flat" isIconOnly
+                onPress={refetch} title="Làm mới"
                 className="h-8 w-8"
               >
                 <RiRefreshLine size={15} />
@@ -409,9 +427,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
             </div>
 
             <Button
-              size="sm"
-              color="primary"
-              variant="bordered"
+              size="sm" color="primary" variant="bordered"
               isLoading={generating}
               onPress={handleGenerate}
               startContent={!generating && <RiRefreshLine size={15} />}
@@ -472,7 +488,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {payrolls.map((row) => (
+                  {pagedPayrolls.map((row) => (
                     <PayrollRow
                       key={row.id}
                       row={row}
@@ -485,6 +501,18 @@ export function PayrollView({ defaultTab = "payroll" }) {
               </table>
             )}
           </div>
+
+          {/* Payroll pagination */}
+          {!loading && payrolls.length > 0 && (
+            <PaginationBar
+              page={Math.min(payPage, payTotalPages)}
+              pageSize={payPageSize}
+              totalItems={payrolls.length}
+              totalPages={payTotalPages}
+              onPageChange={setPayPage}
+              onPageSizeChange={(s) => { setPayPageSize(s); setPayPage(1); }}
+            />
+          )}
         </>
       )}
 
@@ -501,7 +529,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
               ].map(({ key, label }) => (
                 <button
                   key={key}
-                  onClick={() => setStatusFilter(key)}
+                  onClick={() => { setStatusFilter(key); setAdvPage(1); }}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-150
                     ${statusFilter === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
                 >
@@ -550,7 +578,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {advances.map((row) => (
+                  {pagedAdvances.map((row) => (
                     <AdvanceRow
                       key={row.id}
                       row={row}
@@ -562,6 +590,18 @@ export function PayrollView({ defaultTab = "payroll" }) {
               </table>
             )}
           </div>
+
+          {/* Advance pagination */}
+          {!advLoading && advances.length > 0 && (
+            <PaginationBar
+              page={Math.min(advPage, advTotalPages)}
+              pageSize={advPageSize}
+              totalItems={advances.length}
+              totalPages={advTotalPages}
+              onPageChange={setAdvPage}
+              onPageSizeChange={(s) => { setAdvPageSize(s); setAdvPage(1); }}
+            />
+          )}
         </>
       )}
 

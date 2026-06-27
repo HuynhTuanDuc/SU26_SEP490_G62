@@ -1,17 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { accountantService } from "../services/accountant.service";
 
-const PAGE_SIZE = 20;
-
 export function useOrders() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [orders, setOrders]         = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState("");
   const [debtFilter, setDebtFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [meta, setMeta] = useState({ totalPages: 1, totalItems: 0 });
+  const [page, setPage]             = useState(1);
+  const [pageSize, setPageSize]     = useState(10);
+  const [meta, setMeta]             = useState({ totalPages: 1, totalItems: 0 });
 
-  // Debounce search
   const searchTimerRef = useRef(null);
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -24,31 +22,28 @@ export function useOrders() {
     }, 400);
   }, []);
 
-  const fetchOrders = useCallback(
-    async (pageNum) => {
-      setLoading(true);
-      try {
-        const params = { page: pageNum, limit: PAGE_SIZE };
-        if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-        if (debtFilter !== "all") params.debt_status = debtFilter;
+  const fetchOrders = useCallback(async (pageNum) => {
+    setLoading(true);
+    try {
+      const params = { page: pageNum, limit: pageSize };
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      if (debtFilter !== "all") params.debt_status = debtFilter;
 
-        const data = await accountantService.getOrders(params);
-        setOrders(data.orders ?? []);
-        setMeta({
-          totalPages: data.totalPages ?? 1,
-          totalItems: data.totalItems ?? 0,
-        });
-      } catch (err) {
-        console.error("useOrders:", err);
-        setOrders([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [debouncedSearch, debtFilter]
-  );
+      const data = await accountantService.getOrders(params);
+      setOrders(data.orders ?? []);
+      setMeta({
+        totalPages: data.totalPages ?? 1,
+        totalItems: data.totalItems ?? 0,
+      });
+    } catch (err) {
+      console.error("useOrders:", err);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [debouncedSearch, debtFilter, pageSize]);
 
-  // Reset về trang 1 khi filter thay đổi
+  // Reset to page 1 when search / filter changes
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, debtFilter]);
@@ -56,6 +51,11 @@ export function useOrders() {
   useEffect(() => {
     fetchOrders(page);
   }, [page, fetchOrders]);
+
+  const handleSetPageSize = useCallback((size) => {
+    setPageSize(size);
+    setPage(1);
+  }, []);
 
   const refetch = useCallback(() => fetchOrders(page), [fetchOrders, page]);
 
@@ -68,6 +68,8 @@ export function useOrders() {
     setDebtFilter: (v) => { setDebtFilter(v); setPage(1); },
     page,
     setPage,
+    pageSize,
+    setPageSize: handleSetPageSize,
     meta,
     refetch,
   };

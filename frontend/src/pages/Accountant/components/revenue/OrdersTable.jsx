@@ -1,11 +1,12 @@
 import { useState, useCallback } from "react";
-import { Button, Pagination, Spinner, Chip } from "@heroui/react";
+import { Button, Spinner, Chip } from "@heroui/react";
 import {
   RiArrowDownSLine, RiArrowRightSLine, RiBankCard2Line, RiEyeLine,
   RiShipLine, RiInboxLine,
 } from "react-icons/ri";
 import { MoneyText } from "../shared/MoneyText";
 import { ShipmentRows } from "./ShipmentRows";
+import { PaginationBar } from "../shared/PaginationBar";
 
 const DEBT_STATUS_CHIP = {
   paid:    { label: "Đã thu đủ",    color: "success" },
@@ -140,8 +141,10 @@ export function OrdersTable({
   orders,
   loading,
   page,
+  pageSize,
   meta,
   onPageChange,
+  onPageSizeChange,
   shipmentCache,
   isLoadingShipments,
   onExpandOrder,
@@ -233,19 +236,14 @@ export function OrdersTable({
         </table>
       </div>
 
-      {meta.totalPages > 1 && (
-        <div className="flex justify-center">
-          <Pagination
-            total={meta.totalPages}
-            page={page}
-            onChange={onPageChange}
-            color="primary"
-            size="sm"
-            showControls
-            classNames={{ wrapper: "shadow-sm" }}
-          />
-        </div>
-      )}
+      <PaginationBar
+        page={page}
+        pageSize={pageSize}
+        totalItems={meta.totalItems}
+        totalPages={meta.totalPages}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+      />
     </div>
   );
 }

@@ -4,6 +4,12 @@ import {
   Button, Input, Checkbox, Progress, Spinner, Chip,
 } from '@heroui/react';
 import {
+  RiAlertLine, RiCheckboxCircleFill,
+  RiMoneyDollarCircleLine, RiBankLine,
+  RiPhoneLine, RiBuildingLine, RiTruckLine,
+  RiHistoryLine, RiArrowUpSLine, RiArrowDownSLine,
+} from 'react-icons/ri';
+import {
   previewDebtAllocation,
   allocateDebtPayment,
   getDebtsByPerson,
@@ -25,8 +31,8 @@ const STATUS_CHIP = {
 };
 
 const PAYMENT_METHODS = [
-  { value: 'cash',          label: 'Tiền mặt',     icon: '💵' },
-  { value: 'bank_transfer', label: 'Chuyển khoản', icon: '🏦' },
+  { value: 'cash',          label: 'Tiền mặt',     Icon: RiMoneyDollarCircleLine },
+  { value: 'bank_transfer', label: 'Chuyển khoản', Icon: RiBankLine },
 ];
 
 // ─── Payment History ──────────────────────────────────────────────────────────
@@ -56,8 +62,9 @@ function PaymentHistory({ personType, personId }) {
         onPress={() => setExpanded((v) => !v)}
         className="text-gray-500 justify-start"
       >
-        🕐 Lịch sử thanh toán {histories.length > 0 && `(${histories.length})`}
-        <span className="ml-auto">{expanded ? '▲' : '▼'}</span>
+        <RiHistoryLine size={14} className="shrink-0" />
+        Lịch sử thanh toán {histories.length > 0 && `(${histories.length})`}
+        <span className="ml-auto">{expanded ? <RiArrowUpSLine size={16} /> : <RiArrowDownSLine size={16} />}</span>
       </Button>
 
       {expanded && (
@@ -71,7 +78,7 @@ function PaymentHistory({ personType, personId }) {
               <div className="flex items-center gap-3">
                 <span className="flex-1 text-[13px] font-medium text-gray-500">{formatDate(payment.paid_at)}</span>
                 <span className="text-sm font-bold text-green-600">{fmt(payment.total_amount || payment.totalAmount)}đ</span>
-                <span>{payment.payment_method === 'cash' ? '💵' : '🏦'}</span>
+                <span>{payment.payment_method === 'cash' ? <RiMoneyDollarCircleLine size={15} /> : <RiBankLine size={15} />}</span>
               </div>
               {payment.items?.length > 0 && (
                 <div className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-0.5">
@@ -224,7 +231,9 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
           {(onClose) => (
             <>
               <ModalHeader className="flex gap-3 items-center">
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white text-lg">💰</div>
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white">
+                  <RiMoneyDollarCircleLine size={22} />
+                </div>
                 <div>
                   <p className="text-base font-extrabold">Thu tiền {person?.type === 'customer' ? 'khách hàng' : 'tài xế'}</p>
                   <p className="text-[12px] opacity-80 font-normal mt-0.5">Ghi nhận thanh toán công nợ</p>
@@ -235,12 +244,16 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                 {/* Person summary */}
                 <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-200">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white text-sm font-bold">
-                      {person?.type === 'customer' ? '🏢' : '🚗'}
+                    <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white">
+                      {person?.type === 'customer' ? <RiBuildingLine size={20} /> : <RiTruckLine size={20} />}
                     </div>
                     <div>
                       <p className="font-bold text-gray-800 text-sm">{person?.name}</p>
-                      {person?.phone && <p className="text-[12px] text-gray-400">📞 {person.phone}</p>}
+                      {person?.phone && (
+                        <p className="text-[12px] text-gray-400 flex items-center gap-1">
+                          <RiPhoneLine size={11} />{person.phone}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-5 text-right">
@@ -375,7 +388,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
                           variant={paymentMethod === m.value ? 'solid' : 'bordered'}
                           color={paymentMethod === m.value ? 'success' : 'default'}
                           onPress={() => setPaymentMethod(m.value)}
-                          startContent={<span>{m.icon}</span>}
+                          startContent={<m.Icon size={15} />}
                         >{m.label}</Button>
                       ))}
                     </div>
@@ -479,14 +492,21 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
           {(onClose) => (
             <>
               <ModalHeader className="flex flex-col items-center gap-2 pt-6">
-                <span className="text-4xl">⚠️</span>
+                <RiAlertLine size={44} className="text-warning" />
                 <span className="text-base font-extrabold">Xác nhận thu tiền</span>
               </ModalHeader>
               <ModalBody className="flex flex-col gap-1">
                 {[
                   ['Người thanh toán', person?.name],
                   ['Tổng số tiền', <span key="a" className="text-lg font-extrabold text-success">{fmt(totalSelected)}đ</span>],
-                  ['Hình thức', paymentMethod === 'cash' ? '💵 Tiền mặt' : '🏦 Chuyển khoản'],
+                  ['Hình thức', (
+                    <span key="m" className="flex items-center gap-1">
+                      {paymentMethod === 'cash'
+                        ? <RiMoneyDollarCircleLine size={15} />
+                        : <RiBankLine size={15} />}
+                      {paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}
+                    </span>
+                  )],
                   ['Số khoản nợ', `${Object.values(selectedDebts).filter((v) => v > 0).length} khoản`],
                   ...(notes ? [['Ghi chú', notes]] : []),
                 ].map(([lbl, val]) => (
@@ -512,7 +532,7 @@ export default function DebtPaymentModal({ isOpen, onClose, person, onPaymentRec
           {() => (
             <>
               <ModalHeader className="flex flex-col items-center gap-2 pt-6">
-                <span className="text-5xl">✅</span>
+                <RiCheckboxCircleFill size={52} className="text-success" />
                 <span className="text-lg font-extrabold text-gray-800">Thu tiền thành công!</span>
                 <span className="text-3xl font-black text-success">{fmt(successData?.totalAmount)}đ</span>
               </ModalHeader>

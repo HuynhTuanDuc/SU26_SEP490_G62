@@ -4,6 +4,7 @@ import {
   Button, Input, Select, SelectItem, Spinner, Pagination,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
 } from "@heroui/react";
+import { RiPhoneLine, RiBuildingLine, RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { apiRequest } from "../../services/apiClient";
 import { DebtBadge, STATUS_CFG, DEBT_TYPE_CFG } from "./components/debt/DebtBadge";
 
@@ -390,8 +391,22 @@ function DetailDebtView({ debts, pagination, onPageChange, onDebtItemPayment }) 
               const typeCfg   = DEBT_TYPE_CFG[debt.debt_type] || DEBT_TYPE_CFG.customer;
               const statusCfg = STATUS_CFG[debt.computed_status || "unpaid"] || STATUS_CFG.unpaid;
               const name      = debt.debt_type === "driver" ? debt.driver_name || "—" : debt.customer_name || "—";
-              const contact   = debt.debt_type !== "driver"
-                ? [debt.customer_phone && `📞 ${debt.customer_phone}`, debt.customer_company && `🏢 ${debt.customer_company}`].filter(Boolean).join(" · ") || "—"
+              const contactItems = debt.debt_type !== "driver"
+                ? [
+                    debt.customer_phone && { icon: RiPhoneLine, text: debt.customer_phone },
+                    debt.customer_company && { icon: RiBuildingLine, text: debt.customer_company },
+                  ].filter(Boolean)
+                : [];
+              const contact = contactItems.length > 0
+                ? (
+                  <span className="flex flex-col gap-0.5">
+                    {contactItems.map(({ icon: Icon, text }, i) => (
+                      <span key={i} className="flex items-center gap-1">
+                        <Icon size={11} className="shrink-0 text-gray-400" />{text}
+                      </span>
+                    ))}
+                  </span>
+                )
                 : "—";
               const orderRef  = debt.order_id ? `#${debt.order_id}${debt.shipment_id ? ` / #${debt.shipment_id}` : ""}` : "—";
               const dueDate   = debt.due_date ? new Date(debt.due_date).toLocaleDateString("vi-VN") : "—";
@@ -452,7 +467,11 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                 className={`flex items-center px-4 py-3 gap-3 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50" : "hover:bg-gray-50/60"}`}
                 onClick={() => toggleExpand(debt, key)}
               >
-                <span className="text-[12px] text-gray-400 w-4 flex-shrink-0">{isExpanded ? "▼" : "▶"}</span>
+                <span className="text-gray-400 w-4 flex-shrink-0 flex items-center">
+                  {isExpanded
+                    ? <RiArrowDownSLine size={16} />
+                    : <RiArrowRightSLine size={16} />}
+                </span>
 
                 <DebtBadge label={typeCfg.label} color={typeCfg.color} />
 
@@ -462,7 +481,9 @@ function GroupedDebtView({ debts, expandedRows, personDebts, loadingPersonDebts,
                     <span className="text-[12px] text-gray-400">({debt.debt_count} chuyến)</span>
                   </div>
                   {personPhone && (
-                    <div className="text-[12px] text-gray-400 mt-0.5 font-mono">📞 {personPhone}</div>
+                    <div className="text-[12px] text-gray-400 mt-0.5 font-mono flex items-center gap-1">
+                      <RiPhoneLine size={11} className="shrink-0" />{personPhone}
+                    </div>
                   )}
                 </div>
 
