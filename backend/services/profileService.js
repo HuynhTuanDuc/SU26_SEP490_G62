@@ -9,6 +9,7 @@ const {
     normalizeDob,
     normalizeGender,
     normalizeEmail,
+    normalizeNationalId,
 } = require('../utils/userValidation');
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 const EMAIL_CODE_RESEND_COOLDOWN_MS = 60 * 1000;
@@ -25,6 +26,11 @@ const sanitizeProfileUpdate = (data = {}) => {
     if ('address' in rest) normalized.address = normalizeOptionalText(rest.address);
     if ('city' in rest) normalized.city = normalizeOptionalText(rest.city);
     if ('country' in rest) normalized.country = normalizeOptionalText(rest.country);
+    if ('national_id' in rest) normalized.national_id = normalizeNationalId(rest.national_id);
+    if ('tax_code' in rest) normalized.tax_code = normalizeOptionalText(rest.tax_code);
+    if ('emergency_contact_name' in rest) normalized.emergency_contact_name = normalizeOptionalText(rest.emergency_contact_name);
+    if ('emergency_contact_phone' in rest) normalized.emergency_contact_phone = normalizePhone(rest.emergency_contact_phone);
+    if ('notes' in rest) normalized.notes = normalizeOptionalText(rest.notes);
 
     return normalized;
 };

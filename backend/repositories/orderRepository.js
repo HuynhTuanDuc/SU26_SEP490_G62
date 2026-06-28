@@ -11,6 +11,7 @@ const selectOrderProjection = `
         o.cargo_name,
         o.cargo_weight_kg,
         o.payment_type,
+        o.prepaid_amount,
         o.total_estimated_price,
         o.total_estimated_price AS estimated_price,
         o.partner_name,
@@ -213,9 +214,57 @@ const listOrders = async ({
     };
 };
 
+//Lấy tài xế theo Id
+const getDriverById = async (client, driverId) => {
+    if (!driverId) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id,
+            v.status AS vehicle_status
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         WHERE d.profile_id = $1
+         LIMIT 1`,
+        [driverId],
+    );
+    return result.rows[0] ?? null;
+};
 
+//Lấy Id nhóm xe
+const getDefaultVehicleGroupId = async (client) => {
+    const result = await client.query(
+        `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
+    );
+    return result.rows[0]?.id ?? null;
+};
 
-
+//Lấy thông tin lái xe theo BKS
+const getDriverByPlate = async (client, plateNumber) => {
+    if (!plateNumber) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id,
+            v.status AS vehicle_status
+         FROM vehicles v
+         LEFT JOIN drivers d ON d.vehicle_id = v.id
+         LEFT JOIN profiles p ON p.id = d.profile_id
+         WHERE UPPER(v.plate_number) = UPPER($1)
+         LIMIT 1`,
+        [plateNumber],
+    );
+    return result.rows[0] ?? null;
+};
 //Lấy xe theo BKS
 const getVehicleByPlate = async (client, plateNumber, vehicleGroupId = null) => {
     if (!plateNumber) return null;
@@ -329,8 +378,20 @@ const validateVehicleShipmentAssignment = async (
     return true;
 };
 
+//Lấy loại xe 
+const getVehicleGroupById = async (client, vehicleGroupId) => {
+    if (!vehicleGroupId) return null;
+    const result = await client.query(
+        `SELECT id, name, price_per_km
+         FROM vehicle_groups
+         WHERE id = $1
+         LIMIT 1`,
+        [vehicleGroupId],
+    );
+    return result.rows[0] ?? null;
+};
 
-//Chọn loại xe rồi hiển thị các phương tiện active, có tài xế, xe chưa chạy đơn, xe không bảo trì; tài xế chưa bận.
+//Chọn loại xe rồi hiển thị các phương tiện 
 const listCoordinatorVehicleGroups = async () => {
     const result = await pool.query(
         `SELECT
@@ -388,6 +449,28 @@ const listCoordinatorVehicleGroups = async () => {
     return result.rows;
 };
 
+//Tìm tài xế theo tên
+const findDriverByName = async (client, driverName) => {
+    if (!driverName) return null;
+    const result = await client.query(
+        `SELECT
+            d.profile_id AS id,
+            p.full_name,
+            p.phone,
+            d.vehicle_id,
+            v.plate_number,
+            v.vehicle_group_id,
+            v.status AS vehicle_status
+         FROM drivers d
+         JOIN profiles p ON p.id = d.profile_id
+         JOIN roles r ON r.id = p.role_id
+         LEFT JOIN vehicles v ON v.id = d.vehicle_id
+         WHERE r.name = 'driver' AND LOWER(p.full_name) = LOWER($1)
+         LIMIT 1`,
+        [driverName],
+    );
+    return result.rows[0] ?? null;
+};
 
 //Tạo tài xế dựa trên import 
 const createImportedDriverAccount = async (client, driverName) => {
@@ -429,15 +512,67 @@ const createImportedDriverAccount = async (client, driverName) => {
     return accountId;
 };
 
+//Tìm hoặc tạo tài xế
+const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, vehicleGroupId }) => {
+    const name = String(driverName || '').trim();
+    const plate = String(plateNumber || '').trim().toUpperCase();
+    if (!name && !plate) return null;
+
+    let vehicle = null;
+    if (plate) {
+        const vehicleResult = await client.query(
+            `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
+             VALUES ($1, $2, 'active')
+             ON CONFLICT (plate_number) DO UPDATE
+             SET vehicle_group_id = COALESCE(vehicles.vehicle_group_id, EXCLUDED.vehicle_group_id),
+                 updated_at = NOW()
+             RETURNING id, plate_number, vehicle_group_id, assigned_driver_id, status`,
+            [plate, vehicleGroupId],
+        );
+        vehicle = vehicleResult.rows[0];
+    }
+
+    const driverByPlate = plate ? await getDriverByPlate(client, plate) : null;
+    if (driverByPlate?.id) return driverByPlate;
+
+    let driver = name ? await findDriverByName(client, name) : null;
+    let driverId = driver?.id;
+    if (!driverId && name) {
+        driverId = await createImportedDriverAccount(client, name);
+    }
+
+    if (!driverId) return null;
+
+    if (vehicle?.id) {
+        await client.query(
+            `UPDATE drivers
+             SET vehicle_id = $2
+             WHERE profile_id = $1 AND (vehicle_id IS NULL OR vehicle_id = $2)`,
+            [driverId, vehicle.id],
+        );
+        await client.query(
+            `UPDATE vehicles
+             SET assigned_driver_id = $2, updated_at = NOW()
+             WHERE id = $1 AND (assigned_driver_id IS NULL OR assigned_driver_id = $2)`,
+            [vehicle.id, driverId],
+        );
+    }
+
+    return getDriverById(client, driverId);
+};
+
 //Nếu sdt tồn tại trả về custormer, nếu ko tồn tại, tạo thêm customer 
-const findOrCreateCustomer = async (client, customerName, customerPhone) => {
-    if (customerPhone) {
+const findOrCreateCustomer = async (client, customerName, customerPhone, normalizePhone, safeTrim) => {
+    const normalizedPhone = normalizePhone(customerPhone);
+    const normalizedName = safeTrim(customerName);
+
+    if (normalizedPhone) {
         const existingCustomer = await client.query(// Nếu có khách hàng tìm bởi số điện thoại
             `SELECT id, full_name, phone 
              FROM customers
              WHERE phone = $1
              LIMIT 1`,
-            [customerPhone],//Query tìm khách hàng 
+            [normalizedPhone],//Query tìm khách hàng 
         );
         if (existingCustomer.rows[0]) return existingCustomer.rows[0];//Thì return khách hàng
 
@@ -449,7 +584,7 @@ const findOrCreateCustomer = async (client, customerName, customerPhone) => {
         `INSERT INTO customers (customer_type, full_name, phone)
         VALUES('individual', $1, $2)
         RETURNING id, full_name, phone`,
-        [customerName || customerPhone, customerPhone],
+        [normalizedName || normalizedPhone, normalizedPhone],
     );
     return createdCustomer.rows[0];
 };
@@ -499,8 +634,8 @@ const createOrderWithShipment = async ({
     //Ghi vào order
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()))
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()))
          RETURNING *`,
         [
             orderData.customer_id,
@@ -511,6 +646,7 @@ const createOrderWithShipment = async ({
             orderData.vehicle_group_id || null,
             orderData.estimated_price || 0,
             orderData.notes,
+            orderData.prepaid_amount || 0,
             orderData.created_at || null,
         ],
     );
@@ -588,8 +724,8 @@ const createOrderWithMultipleShipments = async ({
     //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, created_at, partner_name, total_actual_price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), $10, $11)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at, partner_name, total_actual_price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11, $12)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -600,6 +736,7 @@ const createOrderWithMultipleShipments = async ({
             orderData.vehicle_group_id || null,
             totalEstimatedPrice,
             orderData.notes,
+            orderData.prepaid_amount || 0,
             orderData.created_at || null,
             orderData.partner_name || null,
             orderData.total_actual_price || 0,
@@ -683,22 +820,61 @@ const createOrderWithMultipleShipments = async ({
     };
 };
 
-
+//Phương thức tạo order dựa trên dữ liệu được import 
+const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
+    return createOrderWithShipment({
+        client,
+        userId,
+        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash', created_at: orderData.created_at || null },
+        shipmentData: {
+            ...shipmentData,
+            cargo_name: orderData.cargo_name,
+            vehicle_group_id: shipmentData.vehicle_group_id,
+            owner_driver_id: shipmentData.owner_driver_id || null,
+            vehicle_id: shipmentData.vehicle_id || null,
+            estimated_distance_km: shipmentData.estimated_distance_km ?? null,
+            arrived_at: shipmentData.arrived_at || null,
+            plate_number: shipmentData.plate_number || null,
+            status: shipmentData.status || 'available',
+            created_at: shipmentData.created_at || null,
+        },
+    });
+};
 
 //Phương thức cập nhât order
-const updateOrder = async ({
-    orderId, 
-    orderData,
-    shipmentsDataArray}) => {
-
+const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray) => {
+    const {
+        customer_name,
+        customer_phone,
+        cargo_name,
+        cargo_weight_kg,
+        pickup_address,
+        delivery_address,
+        estimated_price,
+        notes,
+        plate,
+        driver_id,
+        vehicle_id,
+        vehicle_group_id,
+        distance,
+        arrived_at,
+        date,
+        partner_name,
+        total_actual_price,
+        prepaid_amount,
+    } = payload;
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        
+        const customer = (customer_name || customer_phone)
+            ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
+            : null;
         const totalEstimatedPrice = shipmentsDataArray ? shipmentsDataArray.reduce((sum, shipment) => sum + (shipment.estimated_price || 0), 0) : null;
-        
+        const arrivedAt = safeTrim(arrived_at || date) || null;
+        const orderNotes = notes !== undefined ? safeTrim(notes) : '';
+
         const orderResult = await client.query(
             `UPDATE orders
              SET customer_id = COALESCE($6, customer_id),
@@ -708,18 +884,20 @@ const updateOrder = async ({
                  notes = $5,
                  partner_name = COALESCE($7, partner_name),
                  total_actual_price = COALESCE($8, total_actual_price),
+                 prepaid_amount = COALESCE($9, prepaid_amount),
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
             [
                 orderId,
-               orderData.cargo_name,
-                orderData.cargo_weight_kg,
+                safeTrim(cargo_name),
+                normalizeNumber(cargo_weight_kg),
                 totalEstimatedPrice !== null ? totalEstimatedPrice : undefined,
-                orderData.notes,
-                orderData.customer_id !== undefined ? orderData.customer_id : null,
-                orderData.partner_name !== undefined ? orderData.partner_name : null,
-                orderData.total_actual_price !== undefined ? orderData.total_actual_price : 0,
+                orderNotes,
+                customer?.id ?? null,
+                partner_name !== undefined ? partner_name : null,
+                total_actual_price !== undefined ? total_actual_price : 0,
+                prepaid_amount,
             ],
         );
 
@@ -772,7 +950,7 @@ const updateOrder = async ({
                             shipmentData.vehicle_id,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
-                            orderData.arrived_at,
+                            arrivedAt,
                             shipmentData.actual_price ?? null,
                             nextStatus,
                         ],
@@ -933,32 +1111,16 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
     }
 };
 
-//Phương thức tạo order dựa trên dữ liệu được import 
-const importOrderWithShipment = async ({ client, userId, orderData, shipmentData }) => {
-    return createOrderWithShipment({
-        client,
-        userId,
-        orderData: { ...orderData, payment_type: orderData.payment_type || 'cash', created_at: orderData.created_at || null },
-        shipmentData: {
-            ...shipmentData,
-            cargo_name: orderData.cargo_name,
-            vehicle_group_id: shipmentData.vehicle_group_id,
-            owner_driver_id: shipmentData.owner_driver_id || null,
-            vehicle_id: shipmentData.vehicle_id || null,
-            estimated_distance_km: shipmentData.estimated_distance_km ?? null,
-            arrived_at: shipmentData.arrived_at || null,
-            plate_number: shipmentData.plate_number || null,
-            status: shipmentData.status || 'available',
-            created_at: shipmentData.created_at || null,
-        },
-    });
-};
-
 //Gửi phương thức ra ngoài 
 module.exports = {
     listOrders,
+    getDriverById,
+    getDriverByPlate,
     getVehicleByPlate,
+    getVehicleGroupById,
     listCoordinatorVehicleGroups,
+    findOrCreateDriverWithVehicle,
+    getDefaultVehicleGroupId,
     findOrCreateCustomer,
     validateVehicleShipmentAssignment,
     createOrderWithShipment,

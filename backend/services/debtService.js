@@ -1,4 +1,5 @@
 const debtRepository = require('../repositories/debtRepository');
+const pool = require('../config/database');
 const { broadcastToUser } = require('./notificationGateway');
 
 const VALID_METHODS = ['cash', 'bank_transfer'];
@@ -40,7 +41,6 @@ const rejectRepayment = async (paymentId, rejectedBy, reason) => {
 };
 
 const getPendingRepayments = async () => {
-    const pool = require('../config/database');
     const result = await pool.query(
         `SELECT
             dp.id,
@@ -50,18 +50,18 @@ const getPendingRepayments = async () => {
             dp.receipt_url,
             dp.notes,
             dp.paid_at,
-            dp.created_at,
+            dp.paid_at AS created_at,
             d.total_amount::text,
             d.driver_id,
-            u.full_name  AS driver_name,
+            p.full_name  AS driver_name,
             o.cargo_name
          FROM debt_payments dp
          JOIN debts d ON d.id = dp.debt_id
-         JOIN users u ON u.id = d.driver_id
+         JOIN profiles p ON p.id = d.driver_id
          LEFT JOIN order_shipments os ON os.id = d.shipment_id
          LEFT JOIN orders o ON o.id = d.order_id
          WHERE dp.status = 'pending' AND d.debt_type = 'driver'
-         ORDER BY dp.created_at DESC`,
+         ORDER BY dp.paid_at DESC, dp.id DESC`,
     );
     return result.rows;
 };

@@ -80,6 +80,7 @@ const getShipmentFinancialSummary = async (shipmentId) => {
         `SELECT
             COALESCE(os.actual_price, os.estimated_price, 0)          AS trip_value,
             o.payment_type                                             AS order_payment_type,
+            COALESCE(o.prepaid_amount, 0)                              AS prepaid_amount,
             COALESCE(SUM(sp.amount) FILTER (WHERE sp.payment_type IS NOT NULL), 0) AS cash_collected,
             COALESCE(SUM(d.total_amount)
                 FILTER (WHERE d.debt_type = 'customer'
@@ -89,20 +90,22 @@ const getShipmentFinancialSummary = async (shipmentId) => {
          LEFT JOIN shipment_receipts sp ON sp.shipment_id = os.id
          LEFT JOIN debts d ON d.shipment_id = os.id
          WHERE os.id = $1
-         GROUP BY os.id, os.actual_price, os.estimated_price, o.payment_type`,
+         GROUP BY os.id, os.actual_price, os.estimated_price, o.payment_type, o.prepaid_amount`,
         [shipmentId],
     );
     const row = result.rows[0];
     if (!row) return null;
 
     const tripValue        = Number(row.trip_value);
+    const prepaidAmount    = Number(row.prepaid_amount);
     const cashCollected    = Number(row.cash_collected);
     const customerDebt     = Number(row.customer_debt_total);
-    const remaining        = tripValue > 0 ? tripValue - cashCollected - customerDebt : null;
+    const remaining        = tripValue > 0 ? tripValue - prepaidAmount - cashCollected - customerDebt : null;
 
     return {
         trip_value:           tripValue,
         order_payment_type:   row.order_payment_type,
+        prepaid_amount:       prepaidAmount,
         cash_collected:       cashCollected,
         customer_debt_total:  customerDebt,
         remaining,            // null = không biết giá trị chuyến (chưa set actual_price/estimated_price)

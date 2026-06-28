@@ -1,5 +1,6 @@
 const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
+const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
@@ -213,8 +214,9 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
         }, { displayMode: 'alert' }).catch(() => {});
     }
 
-    // Tự động tính lại KPI sau khi hoàn thành — fire-and-forget, không block response
-    kpiService.recalculateAfterCompletion(driverId, new Date());
+    // Tự động tính lại KPI cho mọi tài xế có phân bổ doanh thu của chuyến.
+    const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
+    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -248,8 +250,8 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
-    if (!['completed', 'arrived'].includes(trip.status)) {
-        throw new Error('Chỉ có thể báo nợ khi chuyến ở trạng thái "arrived" hoặc "completed"');
+    if (trip.status !== 'completed') {
+        throw new Error('Chỉ có thể báo nợ khi chuyến đã hoàn thành (completed)');
     }
 
     const amt = Number(amount);
@@ -316,10 +318,9 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
             [trip.order_id],
         );
         notificationGateway.broadcastToRole('coordinator', {
-            type: 'coordinator.receipt_requests.changed',
-            action: 'created',
-            orderId,
-            requestId: request?.id ?? null,
+            type: 'coordinator.order.completed',
+            action: 'completed',
+            orderId: trip.order_id,
         });
     }
 
@@ -333,8 +334,8 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
 
-    // Tự động tính lại KPI — fire-and-forget
-    kpiService.recalculateAfterCompletion(driverId, new Date());
+    const revenueDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(tripId, driverId);
+    kpiService.recalculateAfterCompletion(revenueDriverIds, new Date());
 
     return completedTrip;
 };
@@ -418,13 +419,15 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
         throw err;
     }
 
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.receipt_requests.changed',
+        action: 'created',
+        requestId: request.id,
+        orderId,
+    });
+
     // Thông báo cho coordinator
-    const coordResult = await pool.query(
-        `SELECT a.id FROM accounts a
-         JOIN roles r ON r.id = a.role_id
-         WHERE r.name IN ('coordinator', 'admin') AND a.is_active = TRUE`,
-    );
-    const coordIds = coordResult.rows.map(r => r.id);
+    const coordIds = await notificationService.getUserIdsByRole('coordinator');
     if (coordIds.length > 0) {
         notificationService.createForUsers(coordIds, {
             title: 'Yêu cầu tạo phiếu thu',
@@ -466,8 +469,8 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
 
 // Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
 // 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
-const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
-    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
+const recordReceiptCollection = async (receiptId, driverId, collectionType, { collectedAmount = null, proofUrl = null } = {}) => {
+    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!ALLOWED.includes(collectionType)) {
         throw new Error('Hình thức thanh toán không hợp lệ');
     }
@@ -511,15 +514,16 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType) => {
             amount,
         });
     }
-    // bank_transfer / qr_transfer — không tạo debt; chỉ ghi driver_collection_type
+    // bank_transfer — không tạo debt; chỉ ghi driver_collection_type
 
     // Ghi xác nhận vào shipment_receipts để persist qua các lần reload
     if (receipt.shipment_receipt_id) {
         await pool.query(
             `UPDATE shipment_receipts
-             SET driver_collection_type = $1, driver_confirmed_at = NOW()
+             SET driver_collection_type = $1, driver_confirmed_at = NOW(), payment_type = $1,
+                 driver_collected_amount = $3, driver_proof_url = $4
              WHERE id = $2`,
-            [collectionType, receipt.shipment_receipt_id],
+            [collectionType, receipt.shipment_receipt_id, collectedAmount, proofUrl],
         );
     }
 

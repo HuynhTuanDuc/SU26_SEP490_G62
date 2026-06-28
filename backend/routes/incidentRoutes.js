@@ -18,13 +18,11 @@ function handleUpload(middleware) {
 }
 
 router.post('/',                         driverOnly,      handleUpload(uploadIncident.array('images', 3)), incidentController.createIncident);
-router.get('/',                         coordinatorOnly, incidentController.getAllIncidents);
 router.get('/my/counts',                 driverOnly,      incidentController.getMyCounts);
 router.get('/my',                        driverOnly,      incidentController.getMyIncidents);
 router.get('/shipment/:shipmentId',      driverOnly,      incidentController.getShipmentIncidents);
 router.get('/:id',                       driverOnly,      incidentController.getIncidentDetail);
 router.patch('/:id',                     driverOnly,      incidentController.updateMyIncident);
 router.patch('/:id/status',              coordinatorOnly, incidentController.updateIncidentStatus);
-router.post('/:id/reassign',             coordinatorOnly, incidentController.reassignVehicle);
 
 module.exports = router;

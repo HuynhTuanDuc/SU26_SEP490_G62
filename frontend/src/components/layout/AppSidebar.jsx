@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import {
+  Building2,
   Car,
   ChevronLeft,
   ChevronRight,
@@ -10,44 +11,37 @@ import {
   Settings,
   Truck,
   Users,
-  AlertTriangle,
 } from 'lucide-react';
 
-const SW = 1.75; // stroke weight — soft & modern
+const SW = 1.75;
 
 const BG = '#F8F9FF';
 const ACTIVE_BG = '#EFF6FF';
 const HOVER_BG = '#E5EEFF';
 const PRIMARY = '#3B4FD8';
-const TEXT_MAIN = '#0B1C30';
 const TEXT_SUB = '#424751';
 const TEXT_MUTED = '#737782';
 const BORDER = '#C2C6D340';
 
 const MENU_CONFIG = {
   manager: [
-    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },
-    { key: 'users', Icon: Users, label: 'Người dùng' },
-    { key: 'vehicles', Icon: Car, label: 'Quản lý xe' },
+    { key: 'partners', Icon: Building2, label: 'Doi tac' },
+    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tong quan' },
+    { key: 'users', Icon: Users, label: 'Nguoi dung' },
+    { key: 'vehicles', Icon: Car, label: 'Quan ly xe' },
     { type: 'divider' },
-    { key: 'settings', Icon: Settings, label: 'Cài đặt', disabled: true },
+    { key: 'settings', Icon: Settings, label: 'Cai dat', disabled: true },
   ],
   coordinator: [
-    { key: 'orders', Icon: FileText, label: 'Đơn hàng' },
-    { key: 'incidents', Icon: AlertTriangle, label: 'Sự cố' },
+    { key: 'orders', Icon: Truck, label: 'Don hang' },
+    { key: 'incidents', Icon: FileText, label: 'Su co' },
+    { key: 'receipts', Icon: FileText, label: 'Phieu thu' },
   ],
   accountant: [
-    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },
-    { key: 'orders', Icon: FileText, label: 'Đơn hàng' },
-    { key: 'payments', Icon: DollarSign, label: 'Thanh toán' },
+    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tong quan', disabled: true },
+    { key: 'orders', Icon: FileText, label: 'Don hang' },
+    { key: 'payments', Icon: DollarSign, label: 'Thanh toan' },
   ],
-};
-
-const ROLE_LABELS = {
-  manager: 'Quản trị viên',
-  coordinator: 'Điều phối viên',
-  accountant: 'Kế toán',
-  driver: 'Tài xế',
 };
 
 function NavItem({ item, isActive, collapsed, onClick }) {
@@ -132,44 +126,51 @@ export default function AppSidebar({ user, activeTab, onTabChange, collapsed, on
         zIndex: 50,
       }}
     >
-      {/* ── Brand ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: collapsed ? 0 : 12,
-        padding: '12px 4px 16px',
-        justifyContent: collapsed ? 'center' : 'flex-start',
-        transition: 'gap 0.22s cubic-bezier(0.4,0,0.2,1)',
-      }}>
-        <div style={{
-          width: 40,
-          height: 40,
-          borderRadius: 10,
-          backgroundColor: PRIMARY,
+      <div
+        style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          flexShrink: 0,
-        }}>
+          gap: collapsed ? 0 : 12,
+          padding: '12px 4px 16px',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          transition: 'gap 0.22s cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            backgroundColor: PRIMARY,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            flexShrink: 0,
+          }}
+        >
           <Truck size={20} strokeWidth={2} />
         </div>
 
-        <div style={{
-          overflow: 'hidden',
-          maxWidth: collapsed ? 0 : 180,
-          opacity: collapsed ? 0 : 1,
-          transition: 'max-width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.16s ease',
-        }}>
-          <div style={{
-            fontWeight: 800,
-            fontSize: 18,
-            color: PRIMARY,
-            lineHeight: '22px',
-            fontFamily: "'Geist', sans-serif",
-            letterSpacing: '-0.3px',
-            whiteSpace: 'nowrap',
-          }}>
+        <div
+          style={{
+            overflow: 'hidden',
+            maxWidth: collapsed ? 0 : 180,
+            opacity: collapsed ? 0 : 1,
+            transition: 'max-width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.16s ease',
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 18,
+              color: PRIMARY,
+              lineHeight: '22px',
+              fontFamily: "'Geist', sans-serif",
+              letterSpacing: '-0.3px',
+              whiteSpace: 'nowrap',
+            }}
+          >
             LogisCount
           </div>
           <div style={{ fontSize: 11, color: TEXT_MUTED, whiteSpace: 'nowrap' }}>
@@ -178,17 +179,20 @@ export default function AppSidebar({ user, activeTab, onTabChange, collapsed, on
         </div>
       </div>
 
-      {/* ── Navigation ── */}
       <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
         {items.map((item) => {
           if (item.type === 'divider') {
             return (
-              <div key="divider" style={{
-                margin: '8px 0',
-                borderTop: `1px solid ${BORDER}`,
-              }} />
+              <div
+                key="divider"
+                style={{
+                  margin: '8px 0',
+                  borderTop: `1px solid ${BORDER}`,
+                }}
+              />
             );
           }
+
           return (
             <NavItem
               key={item.key}
@@ -201,7 +205,6 @@ export default function AppSidebar({ user, activeTab, onTabChange, collapsed, on
         })}
       </nav>
 
-      {/* ── Collapse toggle ── */}
       <button
         onClick={() => onCollapse(!collapsed)}
         style={{
@@ -233,17 +236,17 @@ export default function AppSidebar({ user, activeTab, onTabChange, collapsed, on
           e.currentTarget.style.borderColor = BORDER;
         }}
       >
-        {collapsed
-          ? <ChevronRight size={16} strokeWidth={SW} style={{ flexShrink: 0 }} />
-          : <ChevronLeft size={16} strokeWidth={SW} style={{ flexShrink: 0 }} />}
-        <span style={{
-          overflow: 'hidden',
-          maxWidth: collapsed ? 0 : 80,
-          opacity: collapsed ? 0 : 1,
-          whiteSpace: 'nowrap',
-          transition: 'max-width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.16s ease',
-        }}>
-          Thu gọn
+        {collapsed ? <ChevronRight size={16} strokeWidth={SW} style={{ flexShrink: 0 }} /> : <ChevronLeft size={16} strokeWidth={SW} style={{ flexShrink: 0 }} />}
+        <span
+          style={{
+            overflow: 'hidden',
+            maxWidth: collapsed ? 0 : 80,
+            opacity: collapsed ? 0 : 1,
+            whiteSpace: 'nowrap',
+            transition: 'max-width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.16s ease',
+          }}
+        >
+          Thu gon
         </span>
       </button>
     </aside>

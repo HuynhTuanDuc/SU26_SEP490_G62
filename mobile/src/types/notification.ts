@@ -5,6 +5,7 @@ export type NotificationType =
   | 'ORDER_COMPLETED'
   | 'INCIDENT_REPORTED'
   | 'INCIDENT_FEEDBACK'
+  | 'TRAFFIC_ALERT'
   | 'ADVANCE_APPROVED'
   | 'ADVANCE_REJECTED'
   | 'PAYSLIP_PUBLISHED'
@@ -19,7 +20,7 @@ export type AppNotification = {
   type: NotificationType | string;
   target_id: number | string | null;
   entity_type?: string | null;
-  display_mode?: 'toast' | 'alert' | 'silent';
+  display_mode?: 'toast' | 'alert' | 'silent' | 'traffic_alert';
   is_read: boolean;
   created_at: string;
 };

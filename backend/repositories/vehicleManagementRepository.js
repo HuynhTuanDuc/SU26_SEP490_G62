@@ -1,13 +1,5 @@
 const pool = require('../config/database');
 
-//Lấy Id nhóm xe
-const getVehicleGroupId = async (client) => {
-    const result = await client.query(
-        `SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1`,
-    );
-    return result.rows[0]?.id ?? null;
-};
-
 const VEHICLE_GROUP_DETAIL_SELECT = `
     SELECT
         vg.id,
@@ -295,7 +287,7 @@ const getVehicleByPlateNumber = async (plateNumber, excludeId = null, db = pool)
 
 const getVehicleGroupReferenceById = async (vehicleGroupId, db = pool) => {
     const result = await db.query(
-        `SELECT id, name, price_per_km
+        `SELECT id, name
          FROM vehicle_groups
          WHERE status = 'active'
            AND id = $1`,
@@ -1383,7 +1375,6 @@ const updateMaintenanceBillPics = async (maintenanceRecordId, billPics, db = poo
 };
 
 module.exports = {
-    getVehicleGroupId,
     listVehicleGroups,
     getVehicleGroupById,
     getVehicleGroupByName,

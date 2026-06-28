@@ -118,6 +118,20 @@ const normalizeEmail = (value, { errorFactory } = {}) => {
     return normalizedEmail;
 };
 
+const normalizeNationalId = (value, { errorFactory } = {}) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value !== 'string') {
+        fail('So giay to khong hop le.', 400, errorFactory);
+    }
+
+    const normalizedValue = value.trim().replace(/\s+/g, '');
+    if (!/^[0-9A-Za-z-]{8,20}$/.test(normalizedValue)) {
+        fail('So giay to khong hop le.', 400, errorFactory);
+    }
+
+    return normalizedValue;
+};
+
 const assertBoolean = (value, { fieldLabel = 'Gia tri', errorFactory } = {}) => {
     if (typeof value !== 'boolean') {
         fail(`${fieldLabel} khong hop le.`, 400, errorFactory);
@@ -138,6 +152,7 @@ module.exports = {
     normalizeDob,
     normalizeRole,
     normalizeEmail,
+    normalizeNationalId,
     assertBoolean,
     isProtectedUserRole,
 };

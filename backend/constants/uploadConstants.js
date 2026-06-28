@@ -11,9 +11,10 @@ const UPLOAD = Object.freeze({
         AVATAR:          'g62/avatars',
         EXPENSE:         'g62/expenses',
         MAINTENANCE_BILL:        'g62/maintenance-bills',
-        DEBT_REPAYMENT:          'g62/debt-repayments',
-        CASH_COLLECTION_RECEIPT: 'g62/cash-collection-receipts',
-        COMPANY_QR:              'g62/company-qr',
+        DEBT_REPAYMENT:              'g62/debt-repayments',
+        CASH_COLLECTION_RECEIPT:    'g62/cash-collection-receipts',
+        COMPANY_QR:                 'g62/company-qr',
+        RECEIPT_COLLECTION_PROOF:   'g62/receipt-collection-proofs',
     },
 });
 

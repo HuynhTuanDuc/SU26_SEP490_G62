@@ -9,23 +9,6 @@ const listOrders = async (req, res) => {
     }
 };
 
-const importOrders = async (req, res) => {
-    try {
-        if (!req.file?.buffer) {
-            return res.status(400).json({ error: 'Vui lòng upload file Excel' });
-        }
-
-        const result = await orderService.importOrdersFromExcel(req.user.userId, req.file.buffer);
-        res.status(201).json({
-            message: `Đã import ${result.length} đơn hàng từ Excel`,
-            imported: result.length,
-            orders: result,
-        });
-    } catch (err) {
-        res.status(422).json({ error: err.message });
-    }
-};
-
 const createOrder = async (req, res) => {
     try {
         const result = await orderService.createOrder(req.user.userId, req.body);
@@ -70,4 +53,4 @@ const cancelOrder = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, listOrders, importOrders, updateOrder, cancelOrder };
+module.exports = { createOrder, listOrders, updateOrder, cancelOrder };

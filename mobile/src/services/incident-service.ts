@@ -11,7 +11,7 @@ export type CreateIncidentPayload = {
     shipmentId?: number | null;
     incidentType: IncidentType;
     severityLevel: IncidentSeverity;
-    description: string;
+    description?: string;
     location?: string;
     imageUris: string[];
 };
@@ -30,7 +30,9 @@ export const incidentService = {
         }
         formData.append('incidentType',  payload.incidentType);
         formData.append('severityLevel', payload.severityLevel);
-        formData.append('description',   payload.description);
+        if (payload.description) {
+            formData.append('description', payload.description);
+        }
         if (payload.location?.trim()) {
             formData.append('location', payload.location.trim());
         }

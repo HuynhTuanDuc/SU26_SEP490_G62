@@ -1,6 +1,6 @@
 const pool = require('../config/database');
 
-const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address', 'city', 'country'];
+const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address', 'city', 'country', 'national_id', 'tax_code', 'emergency_contact_name', 'emergency_contact_phone', 'notes'];
 
 const getAccountByEmail = async (email) => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -27,7 +27,7 @@ const getAccountById = async (accountId) => {
 
 const getProfileByAccountId = async (accountId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city
+        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          LEFT JOIN roles r ON p.role_id = r.id
@@ -39,7 +39,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id
@@ -61,9 +61,14 @@ const getFullProfile = async (userId) => {
             p.avatar_url,
             p.dob,
             p.gender,
+            p.national_id,
+            p.tax_code,
             p.address,
             p.city,
             p.country,
+            p.emergency_contact_name,
+            p.emergency_contact_phone,
+            p.notes,
             a.is_active,
             p.created_at,
             p.updated_at
@@ -87,7 +92,7 @@ const updateProfile = async (userId, data) => {
         `UPDATE profiles
          SET ${setClauses}, updated_at = NOW()
          WHERE id = $1
-         RETURNING id, full_name, phone, dob, gender, address, city, country, avatar_url, updated_at`,
+         RETURNING id, full_name, phone, dob, gender, national_id, tax_code, address, city, country, emergency_contact_name, emergency_contact_phone, notes, avatar_url, updated_at`,
         [userId, ...values],
     );
     return result.rows[0];
@@ -114,7 +119,7 @@ const updateLastLogin = async (accountId) => {
 
 const getProfileById = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, r.name AS role, a.is_active
+        `SELECT p.id, p.full_name, a.email, p.phone, p.role_id, r.name AS role, a.is_active, p.national_id, p.tax_code, p.address, p.city, p.country, p.emergency_contact_name, p.emergency_contact_phone, p.notes
          FROM profiles p
          JOIN accounts a ON a.id = p.id
          LEFT JOIN roles r ON r.id = a.role_id
@@ -126,7 +131,7 @@ const getProfileById = async (profileId) => {
 
 const getAllUsers = async () => {
     const result = await pool.query(
-        `SELECT a.id, a.email, p.full_name, p.phone, p.dob, p.gender, p.city, r.name AS role, a.is_active, a.last_login_at
+        `SELECT a.id, a.email, p.full_name, p.phone, p.dob, p.gender, p.national_id, p.tax_code, p.address, p.city, p.country, p.emergency_contact_name, p.emergency_contact_phone, p.notes, r.name AS role, a.is_active, a.last_login_at
          FROM accounts a
          JOIN profiles p ON a.id = p.id
          JOIN roles r ON a.role_id = r.id
@@ -140,7 +145,7 @@ const getRoleIdByName = async (roleName) => {
     return result.rows[0]?.id;
 };
 
-const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob, gender, city) => {
+const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -154,9 +159,9 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
         const accountId = accountResult.rows[0].id;
 
         await client.query(
-            `INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, city)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [accountId, fullName, phone, roleId, dob, gender, city],
+            `INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, 'VN'), $10, $11, $12, $13, $14)`,
+            [accountId, fullName, phone, roleId, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes],
         );
 
         await client.query('COMMIT');
@@ -176,10 +181,10 @@ const adminUpdateUser = async (userId, data, roleId) => {
 
         const profileResult = await client.query(
             `UPDATE profiles
-             SET full_name = $1, phone = $2, role_id = $3, dob = $4, gender = $5, city = $6, updated_at = NOW()
-             WHERE id = $7
+             SET full_name = $1, phone = $2, role_id = $3, dob = $4, gender = $5, city = $6, address = $7, country = COALESCE($8, 'VN'), national_id = $9, tax_code = $10, emergency_contact_name = $11, emergency_contact_phone = $12, notes = $13, updated_at = NOW()
+             WHERE id = $14
              RETURNING id`,
-            [data.full_name, data.phone, roleId, data.dob, data.gender, data.city, userId],
+            [data.full_name, data.phone, roleId, data.dob, data.gender, data.city, data.address, data.country, data.national_id, data.tax_code, data.emergency_contact_name, data.emergency_contact_phone, data.notes, userId],
         );
 
         if (profileResult.rowCount === 0) {

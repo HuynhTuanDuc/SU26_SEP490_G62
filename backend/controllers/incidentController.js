@@ -1,31 +1,5 @@
 const incidentService = require('../services/incidentService');
 
-
-// ─── GET /api/incidents ──────────────────────────────────────────────────────
-const getAllIncidents = async (req, res) => {
-    try {
-        const { page, limit, fromDate, toDate } = req.query;
-        const result = await incidentService.getAllIncidents({
-            page: page ? parseInt(page, 10) : 1,
-            limit: limit ? parseInt(limit, 10) : 10,
-            fromDate,
-            toDate
-        });
-        res.json({ 
-            incidents: result.data,
-            pagination: {
-                total: result.total,
-                page: result.page,
-                limit: result.limit,
-                totalPages: result.totalPages
-            }
-        });
-    } catch (err) {
-        res.status(500).json({ "Lỗi lấy danh sách sự cố": err.message });
-    }
-};
-
-
 // ─── POST /api/incidents ──────────────────────────────────────────────────────
 
 const createIncident = async (req, res) => {
@@ -114,46 +88,18 @@ const updateIncidentStatus = async (req, res) => {
         const coordinatorId = req.user.userId;
         if (!incidentId) return res.status(400).json({ error: 'ID không hợp lệ' });
 
-        const { status, resolution } = req.body;
-        
+        const { status, resolution, replacementDriverId } = req.body;
         if (!status) return res.status(400).json({ error: 'status là bắt buộc' });
 
-        const incident = await incidentService.updateIncidentStatus(incidentId, coordinatorId, { status, resolution });
-        res.json({ incident });
-    } catch (err) {
-        const code = err.message.includes('không tồn tại') ? 404
-            : err.message.includes('không hợp lệ') ? 400
-            : 500;
-        res.status(code).json({ error: err.message });
-    }
-};
-
-
-
-// ─── POST /api/incidents/:id/reassign (coordinator only) ──────────────────
-
-const reassignVehicle = async (req, res) => {
-    try {
-        const incidentId = Number(req.params.id);
-        const coordinatorId = req.user.userId;
-        if (!incidentId) return res.status(400).json({ error: 'ID không hợp lệ' });
-
-        const { replacementDriverId, replacementVehicleId } = req.body;
-        if (!replacementDriverId || !replacementVehicleId) {
-            return res.status(400).json({ error: 'replacementDriverId và replacementVehicleId là bắt buộc' });
-        }
-
-        const incident = await incidentService.reassignVehicle(
-            incidentId,
-            coordinatorId,
+        const incident = await incidentService.updateIncidentStatus(incidentId, coordinatorId, {
+            status,
+            resolution,
             replacementDriverId,
-            replacementVehicleId
-        );
+        });
         res.json({ incident });
     } catch (err) {
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('không hợp lệ') ? 400
-            : err.message.includes('quyền') ? 403
             : 500;
         res.status(code).json({ error: err.message });
     }
@@ -191,9 +137,7 @@ const updateMyIncident = async (req, res) => {
     }
 };
 
-
 module.exports = {
-    getAllIncidents,
     createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
-    getShipmentIncidents, updateMyIncident, updateIncidentStatus, reassignVehicle,
+    getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };
