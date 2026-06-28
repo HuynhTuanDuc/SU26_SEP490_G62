@@ -9,7 +9,7 @@ export const emptyForm = () => ({
   note: "",
   is_partner: false,
   partner_name: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }]
 });
 
 export const newReceiptExpense = () => ({

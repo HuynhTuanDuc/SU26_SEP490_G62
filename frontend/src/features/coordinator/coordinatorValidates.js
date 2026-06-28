@@ -4,6 +4,9 @@ export const getTodayStr = () => new Date().toISOString().slice(0, 10);
 // null -> "", loại bỏ dấu , toàn bộ 
 export const normalizeNumericText = (value) => String(value ?? "").replace(/,/g, "").trim(); 
 
+// Loại bỏ "km" ở cuối chuỗi quãng đường trước khi parse số
+export const normalizeDistanceText = (value) => normalizeNumericText(value).replace(/km$/i, "").trim();
+
 //Kiểm tra số hợp lệ
 export const isFiniteNumber = (value) => Number.isFinite(Number(value)); 
 
