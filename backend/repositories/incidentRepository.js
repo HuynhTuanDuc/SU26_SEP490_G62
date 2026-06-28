@@ -33,12 +33,18 @@ const getAllIncidents = async ({ page = 1, limit = 10, fromDate, toDate } = {}) 
             os.status AS shipment_status,
             os.actual_price,
             os.estimated_price,
+            v.plate_number,
             p.full_name,
-            p.avatar_url
+            p.avatar_url,
+            rp.full_name AS replacement_driver_name,
+            rv.plate_number AS replacement_plate_number
         FROM incidents i
         JOIN order_shipments os ON os.id = i.shipment_id
         JOIN orders o ON o.id = os.order_id
         JOIN profiles p ON p.id = i.reported_by
+        LEFT JOIN vehicles v ON v.id = os.vehicle_id
+        LEFT JOIN profiles rp ON rp.id = i.replacement_driver_id
+        LEFT JOIN vehicles rv ON rv.id = i.replacement_vehicle_id
         ${whereString}
         ORDER BY 
             CASE WHEN i.status IN ('open', 'investigating') THEN 1 ELSE 2 END ASC,

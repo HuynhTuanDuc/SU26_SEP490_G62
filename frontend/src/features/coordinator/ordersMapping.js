@@ -1,4 +1,4 @@
-import{resolveFareValue, normalizeStatus} from "../../features/coordinator/coordinatorValidates";
+import { resolveFareValue, normalizeStatus } from "../../features/coordinator/coordinatorValidates";
 
 //Tách quãng đường thành điểm lấy và điểm giao
 export const splitRoute = (route) => {
@@ -8,6 +8,20 @@ export const splitRoute = (route) => {
   const parts = text.split(/\s+-\s+/);//tách thành 2 chuỗi A-B
   if (parts.length < 2) return { pickup: text, delivery: "" };
   return { pickup: parts[0].trim(), delivery: parts.slice(1).join(" - ").trim() };
+};
+
+// Lấy phần tử đầu tiên trong mảng stops, fallback về trường đơn
+export const firstStop = (trip, key, fallbackKey) => {
+  const list = Array.isArray(trip?.[key]) ? trip[key].map((value) => String(value ?? "").trim()).filter(Boolean) : [];
+  if (list.length > 0) return list[0];
+  return String(trip?.[fallbackKey] ?? "").trim();
+};
+
+// Lấy phần tử cuối cùng trong mảng stops, fallback về trường đơn
+export const lastStop = (trip, key, fallbackKey) => {
+  const list = Array.isArray(trip?.[key]) ? trip[key].map((value) => String(value ?? "").trim()).filter(Boolean) : [];
+  if (list.length > 0) return list[list.length - 1];
+  return String(trip?.[fallbackKey] ?? "").trim();
 };
 
 export const getDistinctValues = (items, key) => [
@@ -45,6 +59,8 @@ export function buildTripFromOrder(order) {
     arrived_at: trip.arrived_at || "",
     pickup_address: trip.pickup_address || "",
     delivery_address: trip.delivery_address || "",
+    pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : (trip.pickup_address ? [trip.pickup_address] : []),
+    delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : (trip.delivery_address ? [trip.delivery_address] : []),
     fare: resolveFareValue(trip.actual_price, trip.fare),
     status: trip.status || "",
     driverName: trip.driverName || "",
@@ -60,6 +76,8 @@ export function buildTripFromOrder(order) {
     arrived_at: order.arrived_at || "",
     pickup_address: order.pickup_address || "",
     delivery_address: order.delivery_address || "",
+    pickup_addresses: Array.isArray(order.pickup_addresses) ? order.pickup_addresses : (order.pickup_address ? [order.pickup_address] : []),
+    delivery_addresses: Array.isArray(order.delivery_addresses) ? order.delivery_addresses : (order.delivery_address ? [order.delivery_address] : []),
     fare: resolveFareValue(order.total_actual_price, order.estimated_price, order.total_estimated_price),
     status: order.status || "",
     driverName: order.driver_name || "",

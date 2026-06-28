@@ -43,18 +43,12 @@ export default function IncidentPage({ user, onLogout }) {
     const fetchIncidents = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem("token");
-            if (!token) {
-                message.error("Vui lòng đăng nhập lại");
-                return;
-            }
-
             // Build query parameters
             let query = `?page=${page}&limit=${limit}`;
             if (fromDate) query += `&fromDate=${fromDate}`;
             if (toDate) query += `&toDate=${toDate}`;
 
-            const res = await apiRequest(`/api/incidents${query}`, { token });
+            const res = await apiRequest(`/api/incidents${query}`);
             setIncidents(res.incidents || []);
             if (res.pagination) {
                 setTotalPages(res.pagination.totalPages || 1);
@@ -70,11 +64,9 @@ export default function IncidentPage({ user, onLogout }) {
     // Fetch available drivers to assign replacement vehicles
     const fetchDrivers = async () => {
         try {
-            const token = localStorage.getItem("token");
-            const res = await apiRequest("/api/drivers", { token });
+            const res = await apiRequest("/api/drivers");
             let fetchedDrivers = res.drivers || [];
             
-            // Validate and format drivers
             // Sort drivers by BKS (Biển Kiểm Soát / plate_number) as requested
             fetchedDrivers.sort((a, b) => {
                 const plateA = a.plate_number || "";
@@ -107,15 +99,13 @@ export default function IncidentPage({ user, onLogout }) {
     // Submit status update
     const handleUpdateStatus = async () => {
         try {
-            const token = localStorage.getItem("token");
             await apiRequest(
                 `/api/incidents/${selectedIncident.id}/status`,
                 {
                     method: "PATCH",
-                    token,
                     body: {
                         status: newStatus,
-                        resolution: resolutionNote // Gửi resolution_note
+                        resolution: resolutionNote
                     }
                 }
             );
@@ -145,10 +135,8 @@ export default function IncidentPage({ user, onLogout }) {
 
         setIsDispatching(true);
         try {
-            const token = localStorage.getItem("token");
             await apiRequest(`/api/incidents/${selectedIncident.id}/reassign`, {
                 method: 'POST',
-                token,
                 body: {
                     replacementDriverId: selectedDriver.id,
                     replacementVehicleId: selectedDriver.vehicle_id
@@ -290,7 +278,8 @@ export default function IncidentPage({ user, onLogout }) {
                                 <thead>
                                     <tr>
                                         <th>CHUYẾN ĐI</th>
-                                        <th>TÀI XẾ HIỆN TẠI</th>
+                                        <th>BKS</th>
+                                        <th>TÀI XẾ</th>
                                         <th>LOẠI SỰ CỐ</th>
                                         <th>VỊ TRÍ</th>
                                         <th>MÔ TẢ</th>
@@ -313,6 +302,9 @@ export default function IncidentPage({ user, onLogout }) {
                                                 </div>
                                             </td>
                                             <td>
+                                                <strong style={{ fontSize: 13 }}>{inc.plate_number || "-"}</strong>
+                                            </td>
+                                            <td>
                                                 <div className="driver-info">
                                                     {inc.avatar_url ? (
                                                         <img 
@@ -325,7 +317,15 @@ export default function IncidentPage({ user, onLogout }) {
                                                             {(inc.full_name || "?").charAt(0).toUpperCase()}
                                                         </div>
                                                     )}
-                                                    <span>{inc.full_name || "N/A"}</span>
+                                                    <div>
+                                                        <span>{inc.full_name || "N/A"}</span>
+                                                        {inc.replacement_driver_name && (
+                                                            <small style={{ display: 'block', color: '#16a34a', fontWeight: 600 }}>
+                                                                ↪ Thay thế: {inc.replacement_driver_name}
+                                                                {inc.replacement_plate_number ? ` (${inc.replacement_plate_number})` : ""}
+                                                            </small>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td>

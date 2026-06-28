@@ -13,6 +13,7 @@ import {
   formatDateForInput,
   isFiniteNumber,
   normalizeNumericText,
+  normalizeDistanceText,
   normalizeStatus,
   resolveFareValue
 } from "../../features/coordinator/coordinatorValidates";
@@ -31,6 +32,7 @@ import {
 
 import {
   splitRoute,
+  firstStop,
   getDistinctValues,
   getSummaryValue,
   getOrderStatusLabel,
@@ -300,9 +302,17 @@ export default function OrdersPage({ user, onLogout }) {
     if (form.trips && form.trips.length > 0) {
       form.trips.forEach((trip, index) => {
         if (!trip.vehicle_group_id) errors[`trip_${index}_vehicle_group_id`] = `Nhóm xe chuyến ${index + 1} là bắt buộc`;
+        if (!String(trip.plate || "").trim()) errors[`trip_${index}_plate`] = `BKS chuyến ${index + 1} là bắt buộc`;
 
-        if (!String(trip.pickup_address || "").trim()) errors[`trip_${index}_pickup_address`] = `Điểm lấy hàng chuyến ${index + 1} là bắt buộc`;
-        if (!String(trip.delivery_address || "").trim()) errors[`trip_${index}_delivery_address`] = `Điểm giao hàng chuyến ${index + 1} là bắt buộc`;
+        const pickupStops = Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip.pickup_address];
+        const deliveryStops = Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip.delivery_address];
+        if (!pickupStops.some((value) => String(value ?? "").trim())) {
+          errors[`trip_${index}_pickup_address`] = `Ít nhất một điểm lấy hàng cho chuyến ${index + 1} là bắt buộc`;
+        }
+        if (!deliveryStops.some((value) => String(value ?? "").trim())) {
+          errors[`trip_${index}_delivery_address`] = `Ít nhất một điểm giao hàng cho chuyến ${index + 1} là bắt buộc`;
+        }
+
         const dist = normalizeNumericText(trip.distance);
         if (!dist) {
           errors[`trip_${index}_distance`] = `Quãng đường chuyến ${index + 1} là bắt buộc`;
@@ -332,7 +342,14 @@ export default function OrdersPage({ user, onLogout }) {
   const updateTripField = (index, key, value) => {
     setForm((current) => {
       const updatedTrips = current.trips.map((trip, i) =>
-        i === index ? { ...trip, [key]: value } : trip
+        i === index ? {
+          ...trip,
+          [key]: value,
+          ...(key === "pickup_address" ? { pickup_addresses: [value, ...(trip.pickup_addresses || []).slice(1)] } : {}),
+          ...(key === "delivery_address" ? { delivery_addresses: [value, ...(trip.delivery_addresses || []).slice(1)] } : {}),
+          ...(key === "pickup_addresses" ? { pickup_address: value } : {}),
+          ...(key === "delivery_addresses" ? { delivery_address: value } : {}),
+        } : trip
       );
       return { ...current, trips: updatedTrips };
     });
@@ -342,11 +359,45 @@ export default function OrdersPage({ user, onLogout }) {
     }
   };
 
+  const updateTripStopList = (index, key, stopIndex, value) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) => {
+        if (i !== index) return trip;
+        const nextStops = Array.isArray(trip[key]) ? [...trip[key]] : [];
+        nextStops[stopIndex] = value;
+        return { ...trip, [key]: nextStops };
+      });
+      return { ...current, trips: updatedTrips };
+    });
+  };
+
+  const addTripStop = (index, key) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) => {
+        if (i !== index) return trip;
+        const nextStops = Array.isArray(trip[key]) ? [...trip[key], ""] : [""];
+        return { ...trip, [key]: nextStops };
+      });
+      return { ...current, trips: updatedTrips };
+    });
+  };
+
+  const removeTripStop = (index, key, stopIndex) => {
+    setForm((current) => {
+      const updatedTrips = current.trips.map((trip, i) => {
+        if (i !== index) return trip;
+        const nextStops = (Array.isArray(trip[key]) ? trip[key] : []).filter((_, idx) => idx !== stopIndex);
+        return { ...trip, [key]: nextStops.length > 0 ? nextStops : [""] };
+      });
+      return { ...current, trips: updatedTrips };
+    });
+  };
+
   const addTrip = () => {
     setForm((current) => ({ //current là state hiện tại của form, dùng setForm thì current = form 
-      ...current,//Tạo object mới có thông tin từ form 
+      ...current, //Tạo object mới có thông tin từ form 
       //sau đó ghi đè trips. Lấy trip  hiện tại, tạo thêm trips từ {}, rỗng vẫn tạo 
-      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "" }]
+      trips: [...current.trips, { vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }]
     }));
   };
 
@@ -362,7 +413,7 @@ export default function OrdersPage({ user, onLogout }) {
 
   const getTripFare = (trip) => {
     const group = vehicleGroups.find((g) => String(g.id) === String(trip.vehicle_group_id)); //lấy nhóm xe 
-    const dist = Number(trip.distance);
+    const dist = Number(normalizeDistanceText(trip.distance));
     const pricePerKm = Number(group?.price_per_km || 0);
     if (!Number.isFinite(dist) || dist <= 0 || !Number.isFinite(pricePerKm) || pricePerKm <= 0) return "";
     return String(Math.round(dist * pricePerKm));
@@ -427,16 +478,22 @@ export default function OrdersPage({ user, onLogout }) {
       cargo_name: trip.cargoName || "",
       cargo_weight_kg: trip.cargoWeightKg || "",
       distance: trip.distance || "",
+      is_partner: trip.is_partner || false,
+      partner_name: trip.partner_name || "",
       trips: trip.trips?.length > 0 ? trip.trips.map((t) => ({
         ...t,
-        pickup_address: t.pickup_address || trip.pickupAddress || routeAddresses.pickup || "",
+        pickup_address: firstStop(t, "pickup_addresses", "pickup_address") || trip.pickupAddress || routeAddresses.pickup || "",
         delivery_address: firstStop(t, "delivery_addresses", "delivery_address") || trip.deliveryAddress || routeAddresses.delivery || "",
+        pickup_addresses: Array.isArray(t.pickup_addresses) && t.pickup_addresses.length > 0 ? t.pickup_addresses : [t.pickup_address || trip.pickupAddress || routeAddresses.pickup || ""],
+        delivery_addresses: Array.isArray(t.delivery_addresses) && t.delivery_addresses.length > 0 ? t.delivery_addresses : [t.delivery_address || trip.deliveryAddress || routeAddresses.delivery || ""],
       })) : [{
         vehicle_group_id: trip.vehicleGroupId ? String(trip.vehicleGroupId) : (driver?.vehicle_group_id ? String(driver.vehicle_group_id) : ""),
         plate: trip.plate || "",
         distance: trip.distance || "",
         pickup_address: trip.pickupAddress || routeAddresses.pickup || "",
         delivery_address: trip.deliveryAddress || routeAddresses.delivery || "",
+        pickup_addresses: [trip.pickupAddress || routeAddresses.pickup || ""],
+        delivery_addresses: [trip.deliveryAddress || routeAddresses.delivery || ""],
       }],
       note: trip.notes || "",
     });
@@ -610,8 +667,6 @@ export default function OrdersPage({ user, onLogout }) {
     setCreating(true);
 
     try {
-      
-      const token = localStorage.getItem("token");
       const payload = {
         date: form.date,
         customer_name: form.customer_name,
@@ -629,7 +684,6 @@ export default function OrdersPage({ user, onLogout }) {
           pickup_addresses: Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses.filter(Boolean) : [trip.pickup_address].filter(Boolean),
           delivery_addresses: Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses.filter(Boolean) : [trip.delivery_address].filter(Boolean),
           pickup_address: firstStop(trip, "pickup_addresses", "pickup_address"),
-          
           delivery_address: firstStop(trip, "delivery_addresses", "delivery_address"),
         })),
       };
@@ -639,7 +693,6 @@ export default function OrdersPage({ user, onLogout }) {
         body: payload,
       });
 
-      const savedTrip = buildTripFromOrder(data.order);
       await loadOrders(editingTrip ? pagination.page : 1);
 
       setCreateOpen(false);
@@ -739,6 +792,7 @@ export default function OrdersPage({ user, onLogout }) {
           form={form}
           formErrors={formErrors}
           vehicleGroups={vehicleGroups}
+          partners={partners}
           creating={creating}
           totalFare={totalFare}
 
