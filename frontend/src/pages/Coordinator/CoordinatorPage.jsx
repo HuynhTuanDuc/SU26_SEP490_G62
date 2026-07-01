@@ -345,7 +345,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         page: String(page),
         limit: String(pagination.limit),
       });
-      if (deferredReceiptSearchQuery.trim()) params.set("search", deferredReceiptSearchQuery.trim());
+      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim());
       if (STATUS_QUERY[activeTab]) params.set("status", STATUS_QUERY[activeTab]);
       if (dateFromFilter) params.set("dateFrom", dateFromFilter);
       if (dateToFilter) params.set("dateTo", dateToFilter);
@@ -414,7 +414,7 @@ export default function CoordinatorPage({ user, onLogout }) {
       const params = new URLSearchParams();
       if (receiptKindFilter !== "all") params.set("kind", receiptKindFilter);
       if (receiptStatusFilter !== "all") params.set("status", receiptStatusFilter);
-      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim());
+      if (deferredReceiptSearchQuery.trim()) params.set("search", deferredReceiptSearchQuery.trim());
       if (receiptDateFromFilter) params.set("dateFrom", receiptDateFromFilter);
       if (receiptDateToFilter) params.set("dateTo", receiptDateToFilter);
 
@@ -1103,6 +1103,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                 <th>BKS</th>
                 <th>Lai xe</th>
                 <th>Khach hang</th>
+                <th>Hang hoa</th>
                 <th>Hanh trinh</th>
                 <th>Quang duong</th>
                 <th>Cuoc xe</th>
@@ -1140,6 +1141,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>{trip.plate || "-"}</td>
                       <td>{trip.driverName || "-"}</td>
                       <td>{trip.customerName || "-"}</td>
+                      <td>{trip.cargoName || "-"}</td>
                       <td className="table-route-cell">{trip.route || "-"}</td>
                       <td>{trip.distance ? `${trip.distance} km` : "-"}</td>
                       <td>{formatCurrency(trip.fare)}</td>
@@ -1570,7 +1572,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   const pageSubtitleMap = {
-    orders: "Theo doi don hang, dieu phoi chuyen xe va tao moi trong cung mot luong lam viec.",
+    orders: "",
     incidents: "Giam sat su co dang mo va dieu chuyen tai xe theo quy tac doanh thu cua chuyen.",
     receipts: "Xu ly yeu cau, xem phieu thu da tao va doi soat thong tin thu tien.",
   };
