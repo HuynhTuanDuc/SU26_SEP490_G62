@@ -33,15 +33,17 @@ const getIncidents = async (req, res) => {
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
-        const { status, kind, search, dateFrom, dateTo } = req.query;
-        const rows = await coordinatorService.getReceiptRequests({
+        const { status, kind, search, dateFrom, dateTo, page, limit } = req.query;
+        const result = await coordinatorService.getReceiptRequests({
             status: status || null,
             kind: kind || 'all',
             search: search || '',
             dateFrom: dateFrom || '',
             dateTo: dateTo || '',
+            page: page,
+            limit: limit,
         });
-        res.json({ requests: rows });
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

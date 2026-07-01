@@ -23,7 +23,7 @@ const verifyToken = async (req, res, next) => {
         const bearerToken = req.headers['authorization']?.split(' ')[1];
         const cookieToken = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
         const token = bearerToken || cookieToken;
-        if (!token) return res.status(403).json({ error: 'No token provided' });
+        if (!token) return res.status(403).json({ error: 'Bạn cần đăng nhập lại' });
 
         const decoded = authService.verifyToken(token);
 

@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import "../../styles/Coordinator.css";
-import { Button, Input, Segmented, Tooltip, Typography, message as toast } from "antd";
+import { Button, Input, Segmented, Tooltip, Typography, message as toast, Pagination } from "antd";
 import {
   CloseOutlined,
   DeleteOutlined,
@@ -290,6 +290,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [receiptPagination, setReceiptPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [receiptRequests, setReceiptRequests] = useState([]);
   const [receiptRequestsLoading, setReceiptRequestsLoading] = useState(false);
@@ -408,10 +409,13 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadPartners();
   }, []);
 
-  const loadReceiptRequests = async () => {
+  const loadReceiptRequests = async (page = receiptPagination.page) => {
     setReceiptRequestsLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(receiptPagination.limit),
+      });
       if (receiptKindFilter !== "all") params.set("kind", receiptKindFilter);
       if (receiptStatusFilter !== "all") params.set("status", receiptStatusFilter);
       if (deferredReceiptSearchQuery.trim()) params.set("search", deferredReceiptSearchQuery.trim());
@@ -421,6 +425,11 @@ export default function CoordinatorPage({ user, onLogout }) {
       const queryString = params.toString();
       const data = await apiRequest(`/api/coordinator/receipt-requests${queryString ? `?${queryString}` : ""}`);
       setReceiptRequests(data.requests || []);
+      if (data.pagination) {
+        setReceiptPagination(data.pagination);
+      } else {
+        setReceiptPagination({ page, limit: receiptPagination.limit, total: data.requests?.length || 0, totalPages: 1 });
+      }
     } catch (error) {
       setMessage(error.message || "Không thể tải danh sách yêu cầu phiếu thu.");
       setMessageType("error");
@@ -431,7 +440,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   useEffect(() => {
     if (activeView !== "receipts") return;
-    loadReceiptRequests();
+    loadReceiptRequests(1);
   }, [activeView, receiptKindFilter, receiptStatusFilter, receiptDateFromFilter, receiptDateToFilter, deferredReceiptSearchQuery]);
 
   const loadIncidents = async () => {
@@ -1200,6 +1209,18 @@ export default function CoordinatorPage({ user, onLogout }) {
               )}
             </tbody>
           </table>
+          
+          {pagination.total > 0 && (
+            <div className="pagination-container" style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <Pagination
+                current={pagination.page}
+                pageSize={pagination.limit}
+                total={pagination.total}
+                onChange={(page) => loadOrders(page)}
+                showSizeChanger={false}
+              />
+            </div>
+          )}
         </div>
       </section>
     </>
@@ -1560,6 +1581,18 @@ export default function CoordinatorPage({ user, onLogout }) {
               )}
             </tbody>
           </table>
+          
+          {receiptPagination.total > 0 && (
+            <div className="pagination-container" style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <Pagination
+                current={receiptPagination.page}
+                pageSize={receiptPagination.limit}
+                total={receiptPagination.total}
+                onChange={(page) => loadReceiptRequests(page)}
+                showSizeChanger={false}
+              />
+            </div>
+          )}
         </div>
       </section>
     </>
