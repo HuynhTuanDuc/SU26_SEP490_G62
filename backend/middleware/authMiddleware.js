@@ -23,12 +23,12 @@ const verifyToken = async (req, res, next) => {
         const bearerToken = req.headers['authorization']?.split(' ')[1];
         const cookieToken = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
         const token = bearerToken || cookieToken;
-        if (!token) return res.status(403).json({ error: 'No token provided' });
+        if (!token) return res.status(403).json({ error: 'Bạn cần đăng nhập lại' });
 
         const decoded = authService.verifyToken(token);
 
         const account = await profileRepository.getAccountById(decoded.userId);
-        if (!account) return res.status(401).json({ error: 'User not found' });
+        if (!account) return res.status(401).json({ error: 'Không thấy người dùng' });
         if (account.is_active === false) {
             return res.status(403).json({ error: 'Tài khoản của bạn đã bị khoá.' });
         }
@@ -43,9 +43,9 @@ const verifyToken = async (req, res, next) => {
 // Middleware: Check user role(s)
 const requireRole = (...roles) => {
     return (req, res, next) => {
-        if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+        if (!req.user) return res.status(401).json({ error: 'Chưa xác thực' });
         if (!roles.includes(req.user.role)) {
-            return res.status(403).json({ error: 'Insufficient permissions' });
+            return res.status(403).json({ error: 'Quyền hạn không đủ' });
         }
         next();
     };

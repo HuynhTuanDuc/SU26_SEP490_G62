@@ -2,7 +2,7 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../services/apiClient";
 import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import "../../styles/Coordinator.css";
-import { Button, Input, Segmented, Tooltip, Typography, message as toast } from "antd";
+import { Button, Input, Segmented, Tooltip, Typography, message as toast, Pagination } from "antd";
 import {
   CloseOutlined,
   DeleteOutlined,
@@ -290,6 +290,8 @@ export default function CoordinatorPage({ user, onLogout }) {
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [receiptPagination, setReceiptPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
+  const [incidentPagination, setIncidentPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [receiptRequests, setReceiptRequests] = useState([]);
   const [receiptRequestsLoading, setReceiptRequestsLoading] = useState(false);
@@ -345,7 +347,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         page: String(page),
         limit: String(pagination.limit),
       });
-      if (deferredReceiptSearchQuery.trim()) params.set("search", deferredReceiptSearchQuery.trim());
+      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim().replace(/\s+/g, " "));
       if (STATUS_QUERY[activeTab]) params.set("status", STATUS_QUERY[activeTab]);
       if (dateFromFilter) params.set("dateFrom", dateFromFilter);
       if (dateToFilter) params.set("dateTo", dateToFilter);
@@ -408,19 +410,27 @@ export default function CoordinatorPage({ user, onLogout }) {
     loadPartners();
   }, []);
 
-  const loadReceiptRequests = async () => {
+  const loadReceiptRequests = async (page = receiptPagination.page) => {
     setReceiptRequestsLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(receiptPagination.limit),
+      });
       if (receiptKindFilter !== "all") params.set("kind", receiptKindFilter);
       if (receiptStatusFilter !== "all") params.set("status", receiptStatusFilter);
-      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim());
+      if (deferredReceiptSearchQuery.trim()) params.set("search", deferredReceiptSearchQuery.trim());
       if (receiptDateFromFilter) params.set("dateFrom", receiptDateFromFilter);
       if (receiptDateToFilter) params.set("dateTo", receiptDateToFilter);
 
       const queryString = params.toString();
       const data = await apiRequest(`/api/coordinator/receipt-requests${queryString ? `?${queryString}` : ""}`);
       setReceiptRequests(data.requests || []);
+      if (data.pagination) {
+        setReceiptPagination(data.pagination);
+      } else {
+        setReceiptPagination({ page, limit: receiptPagination.limit, total: data.requests?.length || 0, totalPages: 1 });
+      }
     } catch (error) {
       setMessage(error.message || "Không thể tải danh sách yêu cầu phiếu thu.");
       setMessageType("error");
@@ -431,16 +441,25 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   useEffect(() => {
     if (activeView !== "receipts") return;
-    loadReceiptRequests();
+    loadReceiptRequests(1);
   }, [activeView, receiptKindFilter, receiptStatusFilter, receiptDateFromFilter, receiptDateToFilter, deferredReceiptSearchQuery]);
 
-  const loadIncidents = async () => {
+  const loadIncidents = async (page = incidentPagination.page) => {
     setIncidentsLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(incidentPagination.limit),
+      });
       if (deferredIncidentSearchQuery.trim()) params.set("search", deferredIncidentSearchQuery.trim());
-      const data = await apiRequest(`/api/coordinator/incidents${params.toString() ? `?${params.toString()}` : ""}`);
+      const queryString = params.toString();
+      const data = await apiRequest(`/api/coordinator/incidents${queryString ? `?${queryString}` : ""}`);
       setIncidents(data.incidents || []);
+      if (data.pagination) {
+        setIncidentPagination(data.pagination);
+      } else {
+        setIncidentPagination({ page, limit: incidentPagination.limit, total: data.incidents?.length || 0, totalPages: 1 });
+      }
     } catch (error) {
       setMessage(error.message || "Khong the tai danh sach su co.");
       setMessageType("error");
@@ -451,7 +470,7 @@ export default function CoordinatorPage({ user, onLogout }) {
 
   useEffect(() => {
     if (activeView !== "incidents") return;
-    loadIncidents();
+    loadIncidents(1);
   }, [activeView, deferredIncidentSearchQuery]);
 
   useRoleRealtime(currentUser, {
@@ -1103,8 +1122,9 @@ export default function CoordinatorPage({ user, onLogout }) {
                 <th>BKS</th>
                 <th>Lai xe</th>
                 <th>Khach hang</th>
+                <th>Hang hoa</th>
                 <th>Hanh trinh</th>
-                <th>Quang duong</th>
+                <th>Km</th>
                 <th>Cuoc xe</th>
                 <th>Ghi chu</th>
                 <th>Trang thai</th>
@@ -1140,6 +1160,7 @@ export default function CoordinatorPage({ user, onLogout }) {
                       <td>{trip.plate || "-"}</td>
                       <td>{trip.driverName || "-"}</td>
                       <td>{trip.customerName || "-"}</td>
+                      <td className="table-cargo-cell">{trip.cargoName || "-"}</td>
                       <td className="table-route-cell">{trip.route || "-"}</td>
                       <td>{trip.distance ? `${trip.distance} km` : "-"}</td>
                       <td>{formatCurrency(trip.fare)}</td>
@@ -1198,6 +1219,18 @@ export default function CoordinatorPage({ user, onLogout }) {
               )}
             </tbody>
           </table>
+
+          {pagination.total > 0 && (
+            <div className="pagination-container" style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <Pagination
+                current={pagination.page}
+                pageSize={pagination.limit}
+                total={pagination.total}
+                onChange={(page) => loadOrders(page)}
+                showSizeChanger={false}
+              />
+            </div>
+          )}
         </div>
       </section>
     </>
@@ -1206,6 +1239,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const renderIncidentsPanel = () => {
     const replacementOptions = drivers.filter((driver) => {
       if (!driver?.vehicle_id) return false;
+      if (driver.has_active_trip) return false;
       if (!selectedIncident) return true;
       return Number(driver.id) !== Number(selectedIncident.current_driver_id || selectedIncident.reported_by);
     });
@@ -1287,6 +1321,10 @@ export default function CoordinatorPage({ user, onLogout }) {
                               className="coordinator-table-icon-btn"
                               type="text"
                               icon={<EyeOutlined />}
+                              disabled={
+                                incident.status === "closed" ||
+                                incident.status === "resolved"
+                              }
                               onClick={() => openIncidentModal(incident)}
                             />
                           </Tooltip>
@@ -1297,6 +1335,18 @@ export default function CoordinatorPage({ user, onLogout }) {
                 )}
               </tbody>
             </table>
+
+            {incidentPagination.total > 0 && (
+              <div className="pagination-container" style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+                <Pagination
+                  current={incidentPagination.page}
+                  pageSize={incidentPagination.limit}
+                  total={incidentPagination.total}
+                  onChange={(page) => loadIncidents(page)}
+                  showSizeChanger={false}
+                />
+              </div>
+            )}
           </div>
         </section>
 
@@ -1558,6 +1608,18 @@ export default function CoordinatorPage({ user, onLogout }) {
               )}
             </tbody>
           </table>
+
+          {receiptPagination.total > 0 && (
+            <div className="pagination-container" style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <Pagination
+                current={receiptPagination.page}
+                pageSize={receiptPagination.limit}
+                total={receiptPagination.total}
+                onChange={(page) => loadReceiptRequests(page)}
+                showSizeChanger={false}
+              />
+            </div>
+          )}
         </div>
       </section>
     </>
@@ -1570,7 +1632,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   };
 
   const pageSubtitleMap = {
-    orders: "Theo doi don hang, dieu phoi chuyen xe va tao moi trong cung mot luong lam viec.",
+    orders: "",
     incidents: "Giam sat su co dang mo va dieu chuyen tai xe theo quy tac doanh thu cua chuyen.",
     receipts: "Xu ly yeu cau, xem phieu thu da tao va doi soat thong tin thu tien.",
   };
@@ -1610,14 +1672,14 @@ export default function CoordinatorPage({ user, onLogout }) {
 
         <section style={{ padding: 24, flex: 1, overflow: "auto" }}>
           <div className="coordinator-shell coordinator-content-shell">
-            <div style={{ marginBottom: 20 }}>
+            {/* <div style={{ marginBottom: 20 }}>
               <Title level={3} style={{ margin: 0, color: C.onSurface }}>
                 {pageTitleMap[activeView] || "Coordinator"}
               </Title>
               <Text style={{ color: C.onSurfaceVariant }}>
                 {pageSubtitleMap[activeView] || "Dieu huong va theo doi nghiep vu coordinator."}
               </Text>
-            </div>
+            </div> */}
 
             <header className="topbar">
               <Input
@@ -1889,21 +1951,21 @@ export default function CoordinatorPage({ user, onLogout }) {
                         {(trip.pickup_addresses || [trip.pickup_address]).slice(1).map((address, extraIndex) => {
                           const stopIndex = extraIndex + 1;
                           return (
-                          <div key={`pickup-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
-                            <input
-                              value={address || ""}
-                              onChange={(e) => updateTripStopList(index, 'pickup_addresses', stopIndex, e.target.value)}
-                              placeholder={stopIndex === 0 ? 'Điểm lấy hàng' : `Điểm lấy #${stopIndex + 1}`}
-                              style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
-                            />
-                            <Button
-                              type="text"
-                              danger
-                              icon={<CloseOutlined />}
-                              className="coordinator-stop-remove-btn"
-                              onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)}
-                            />
-                          </div>
+                            <div key={`pickup-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
+                              <input
+                                value={address || ""}
+                                onChange={(e) => updateTripStopList(index, 'pickup_addresses', stopIndex, e.target.value)}
+                                placeholder={stopIndex === 0 ? 'Điểm lấy hàng' : `Điểm lấy #${stopIndex + 1}`}
+                                style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
+                              />
+                              <Button
+                                type="text"
+                                danger
+                                icon={<CloseOutlined />}
+                                className="coordinator-stop-remove-btn"
+                                onClick={() => removeTripStop(index, 'pickup_addresses', stopIndex)}
+                              />
+                            </div>
                           );
                         })}
                         <Button type="dashed" className="coordinator-dashed-btn" onClick={() => addTripStop(index, 'pickup_addresses')}>
@@ -1928,21 +1990,21 @@ export default function CoordinatorPage({ user, onLogout }) {
                         {(trip.delivery_addresses || [trip.delivery_address]).slice(1).map((address, extraIndex) => {
                           const stopIndex = extraIndex + 1;
                           return (
-                          <div key={`delivery-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
-                            <input
-                              value={address || ""}
-                              onChange={(e) => updateTripStopList(index, 'delivery_addresses', stopIndex, e.target.value)}
-                              placeholder={stopIndex === 0 ? 'Điểm giao hàng' : `Điểm giao #${stopIndex + 1}`}
-                              style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
-                            />
-                            <Button
-                              type="text"
-                              danger
-                              icon={<CloseOutlined />}
-                              className="coordinator-stop-remove-btn"
-                              onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)}
-                            />
-                          </div>
+                            <div key={`delivery-${stopIndex}`} style={{ display: 'flex', gap: 8 }}>
+                              <input
+                                value={address || ""}
+                                onChange={(e) => updateTripStopList(index, 'delivery_addresses', stopIndex, e.target.value)}
+                                placeholder={stopIndex === 0 ? 'Điểm giao hàng' : `Điểm giao #${stopIndex + 1}`}
+                                style={{ flex: 1, border: '1px solid #cfd6e6', borderRadius: 14, padding: '11px 12px', font: 'inherit', background: '#fff', boxSizing: 'border-box' }}
+                              />
+                              <Button
+                                type="text"
+                                danger
+                                icon={<CloseOutlined />}
+                                className="coordinator-stop-remove-btn"
+                                onClick={() => removeTripStop(index, 'delivery_addresses', stopIndex)}
+                              />
+                            </div>
                           );
                         })}
                         <Button type="dashed" className="coordinator-dashed-btn" onClick={() => addTripStop(index, 'delivery_addresses')}>
