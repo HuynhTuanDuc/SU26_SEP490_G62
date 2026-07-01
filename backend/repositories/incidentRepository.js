@@ -86,7 +86,13 @@ const getCoordinatorIds = async () => {
     return result.rows.map((r) => r.id);
 };
 
-const getCoordinatorIncidents = async ({ status = null, search = '' } = {}) => {
+const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, limit = 10 } = {}) => {
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const normalizedPage = isNaN(pageNum) || pageNum < 1 ? 1 : pageNum;
+    const normalizedLimit = isNaN(limitNum) || limitNum < 1 ? 10 : limitNum;
+    const offset = (normalizedPage - 1) * normalizedLimit;
+
     const conditions = [];
     const params = [];
 
@@ -109,6 +115,20 @@ const getCoordinatorIncidents = async ({ status = null, search = '' } = {}) => {
     }
 
     const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM incidents i
+         LEFT JOIN order_shipments os ON os.id = i.shipment_id
+         LEFT JOIN profiles p_report ON p_report.id = i.reported_by
+         LEFT JOIN profiles p_owner ON p_owner.id = os.owner_driver_id
+         LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
+         LEFT JOIN vehicles v ON v.id = os.vehicle_id
+         ${whereSql}`,
+        params
+    );
+
+    const total = Number(countResult.rows[0]?.total ?? 0);
+
     const result = await pool.query(
         `SELECT
             i.id,
@@ -151,10 +171,21 @@ const getCoordinatorIncidents = async ({ status = null, search = '' } = {}) => {
                 WHEN 'resolved' THEN 2
                 ELSE 3
             END,
-            i.created_at DESC`,
-        params,
+            i.created_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, normalizedLimit, offset],
     );
-    return result.rows};
+
+    return {
+        incidents: result.rows,
+        pagination: {
+            page: normalizedPage,
+            limit: normalizedLimit,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / normalizedLimit)),
+        }
+    };
+};
     const getActiveDriverIds = async (excludeDriverId) => {
         const result = await pool.query(
             `SELECT p.id

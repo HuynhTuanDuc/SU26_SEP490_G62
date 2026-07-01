@@ -93,7 +93,6 @@ CREATE TABLE customers (
     email           TEXT,
     address         TEXT,
     tax_code        TEXT,
-    current_debt    NUMERIC(12,2) NOT NULL DEFAULT 0,
     notes           TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -129,8 +128,6 @@ CREATE TABLE orders (
     vehicle_group_id    INT REFERENCES vehicle_groups(id),
 
     total_estimated_price   NUMERIC(12,2) NOT NULL DEFAULT 0,
-    total_actual_price      NUMERIC(12,2) NOT NULL DEFAULT 0,
-    final_price            NUMERIC(12,2) NOT NULL DEFAULT 0,  -- snapshot of actual_price at invoice time
     prepaid_amount         NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (prepaid_amount >= 0),
     derived_status      TEXT NOT NULL DEFAULT 'open'
                             CHECK (derived_status IN ('open','completed','cancelled','partial')),
@@ -255,19 +252,10 @@ CREATE TABLE shipment_receipts (
                             'cash_collected', 'bank_transfer', 'client_credit'
                         )),
     amount              NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
-    gross_amount        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (gross_amount >= 0),
-    prepaid_amount      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (prepaid_amount >= 0),
     collected_by        INT REFERENCES profiles(id),
     collected_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     notes               TEXT,
     order_receipt_request_id  INT REFERENCES order_receipt_requests(id),
-    qr_code_data        TEXT,
-    driver_collection_type  TEXT CHECK (driver_collection_type IN (
-                                'cash_collected', 'bank_transfer', 'client_credit'
-                            )),
-    driver_confirmed_at     TIMESTAMPTZ,
-    driver_collected_amount NUMERIC(12,2),
-    driver_proof_url        TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by          INT REFERENCES profiles(id)
 );
@@ -382,16 +370,11 @@ CREATE TABLE debts (
     order_id        INT REFERENCES orders(id),
     shipment_id     INT REFERENCES order_shipments(id),
     total_amount    NUMERIC(12,2) NOT NULL CHECK (total_amount > 0),
-    paid_amount     NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
     due_date        DATE,
-    status          TEXT NOT NULL DEFAULT 'unpaid'
-                        CHECK (status IN ('unpaid','partial','paid','overdue')),
     notes           TEXT,
     updated_by      INT REFERENCES profiles(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT debt_no_overpay CHECK (paid_amount <= total_amount)
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE debt_payments (
@@ -745,7 +728,6 @@ CREATE INDEX idx_expenses_shipment_id     ON expenses(shipment_id);
 CREATE INDEX idx_expenses_vehicle_id      ON expenses(vehicle_id);
 CREATE INDEX idx_expenses_created_by      ON expenses(created_by);
 
-CREATE INDEX idx_debts_status             ON debts(status);
 CREATE INDEX idx_debts_customer_id        ON debts(customer_id);
 CREATE INDEX idx_debts_driver_id          ON debts(driver_id);
 CREATE INDEX idx_debts_shipment_id        ON debts(shipment_id);
@@ -834,24 +816,76 @@ WHERE os.status = 'available';
 CREATE VIEW v_driver_debt_summary AS
 SELECT
     d.driver_id,
-    p.full_name                             AS driver_name,
-    SUM(d.total_amount - d.paid_amount)     AS remaining_debt,
-    COUNT(*) FILTER (WHERE d.status <> 'paid') AS open_debt_count
+    p.full_name                                                         AS driver_name,
+    d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS remaining_debt,
+    COUNT(d.id)                                                         AS open_debt_count
 FROM debts d
 JOIN profiles p ON p.id = d.driver_id
+LEFT JOIN debt_payments dp ON dp.debt_id = d.id
 WHERE d.debt_type = 'driver'
-  AND d.status IN ('unpaid','partial','overdue')
-GROUP BY d.driver_id, p.full_name;
+GROUP BY d.id, d.driver_id, p.full_name, d.total_amount
+HAVING d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) > 0;
 
 CREATE VIEW v_customer_debt_summary AS
 SELECT
-    c.id                                    AS customer_id,
-    COALESCE(c.company_name, c.full_name)   AS customer_name,
-    SUM(d.total_amount - d.paid_amount)     AS remaining_debt,
-    COUNT(*) FILTER (WHERE d.status = 'overdue') AS overdue_count
+    c.id                                                                AS customer_id,
+    COALESCE(c.company_name, c.full_name)                               AS customer_name,
+    d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS remaining_debt,
+    COUNT(d.id) FILTER (WHERE d.due_date < CURRENT_DATE)                AS overdue_count
 FROM debts d
 JOIN customers c ON c.id = d.customer_id
+LEFT JOIN debt_payments dp ON dp.debt_id = d.id
 WHERE d.debt_type = 'customer'
-  AND d.status IN ('unpaid','partial','overdue')
-GROUP BY c.id, c.company_name, c.full_name;
+GROUP BY d.id, c.id, c.company_name, c.full_name, d.total_amount, d.due_date
+HAVING d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) > 0;
+
+-- =============================================================================
+-- FINANCIAL TRANSACTIONS (append-only accounting ledger)
+-- Ghi nhận mọi sự kiện tài chính. Không UPDATE, không DELETE.
+-- Là nguồn sự thật duy nhất cho dòng tiền — thay thế các cột tĩnh
+-- (customers.current_debt, debts.paid_amount, orders.total_actual_price).
+-- =============================================================================
+
+CREATE TABLE financial_transactions (
+    id              BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+
+    event_type      TEXT NOT NULL CHECK (event_type IN (
+                        'shipment_revenue',       -- coordinator chốt actual_price
+                        'prepaid_received',       -- khách đặt cọc
+                        'cash_receipt',           -- thu tiền mặt từ khách
+                        'bank_receipt',           -- thu chuyển khoản từ khách
+                        'driver_debt_created',    -- tài xế đang giữ tiền công ty
+                        'driver_debt_paid',       -- tài xế nộp tiền về công ty
+                        'customer_debt_created',  -- khách nợ công ty (client_credit)
+                        'customer_payment',       -- khách thanh toán nợ
+                        'pass_through_cost',      -- phụ phí (BOT, phà, bãi...)
+                        'expense_recorded',       -- chi phí vận hành được duyệt
+                        'payroll_paid',           -- lương đã chi trả
+                        'advance_disbursed'       -- ứng lương đã giải ngân
+                    )),
+
+    debit_account   TEXT NOT NULL,
+    credit_account  TEXT NOT NULL,
+
+    amount          NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    description     TEXT,
+
+    ref_type        TEXT CHECK (ref_type IN (
+                        'shipment', 'order', 'debt',
+                        'expense', 'payroll', 'advance', 'pass_through_cost'
+                    )),
+    ref_id          INT,
+
+    actor_id        INT REFERENCES profiles(id),
+    occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    exported_at     TIMESTAMPTZ,
+    export_batch_id TEXT
+);
+
+CREATE INDEX idx_ftx_event_type    ON financial_transactions(event_type);
+CREATE INDEX idx_ftx_ref           ON financial_transactions(ref_type, ref_id);
+CREATE INDEX idx_ftx_actor         ON financial_transactions(actor_id);
+CREATE INDEX idx_ftx_occurred_at   ON financial_transactions(occurred_at DESC);
+CREATE INDEX idx_ftx_export        ON financial_transactions(exported_at) WHERE exported_at IS NULL;
 

@@ -16,7 +16,7 @@ ON CONFLICT (name) DO NOTHING;
 -- =============================================================================
 INSERT INTO accounts (email, password_hash, role_id, is_active) VALUES
     ('admin@example.com',       crypt('admin123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
-    ('ntck005@gmail.com',       crypt('coord123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
+    ('coord@gmail.com',       crypt('coord123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
     ('accountant@example.com',  crypt('acct123',   gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'),  TRUE),
     ('driver1@example.com',     crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
     ('driver2@example.com',     crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
@@ -30,36 +30,47 @@ ON CONFLICT (email) DO UPDATE
 -- =============================================================================
 -- SECTION 3: PROFILES
 -- =============================================================================
-WITH account_data AS (
-    SELECT id, email FROM accounts
-    WHERE email IN (
-        'admin@example.com', 'ntck005@gmail.com', 'accountant@example.com',
-        'driver1@example.com', 'driver2@example.com', 'driver3@example.com', 'driver4@example.com'
-    )
-)
 INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, tax_code, address, city, country, emergency_contact_name, emergency_contact_phone, notes)
-VALUES
-    ((SELECT id FROM account_data WHERE email = 'admin@example.com'),       'Manager',            '0901234560', (SELECT id FROM roles WHERE name = 'manager'),     DATE '1988-05-12', 'male',   '079188001111', '0101234567', '12 Nguyen Hue, District 1',        'Ho Chi Minh', 'VN', 'Tran Thi Huong', '0908888001', 'Tai khoan quan ly he thong'),
-    ((SELECT id FROM account_data WHERE email = 'ntck005@gmail.com'),       'Nguyen Coordinator', '0901234561', (SELECT id FROM roles WHERE name = 'coordinator'), DATE '1992-09-21', 'female', '079192002222', '0300123456', '88 Le Loi, Hai Chau',               'Da Nang',     'VN', 'Nguyen Van Phuc', '0908888002', 'Phu trach dieu phoi mien Trung'),
-    ((SELECT id FROM account_data WHERE email = 'accountant@example.com'),  'Tran Accountant',    '0901234562', (SELECT id FROM roles WHERE name = 'accountant'),  DATE '1991-03-14', 'female', '079191003333', '0312233445', '25 Vo Thi Sau, Ninh Kieu',          'Can Tho',     'VN', 'Tran Minh Chau', '0908888003', 'Theo doi doi soat va cong no'),
-    ((SELECT id FROM account_data WHERE email = 'driver1@example.com'),     'Le Driver 1',        '0901234563', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1995-07-08', 'male',   '079195004444', '0700112233', '101 Tran Hung Dao, Thu Duc',        'Ho Chi Minh', 'VN', 'Le Thi Lan', '0908888004', 'Tai xe tuyen noi thanh'),
-    ((SELECT id FROM account_data WHERE email = 'driver2@example.com'),     'Pham Driver 2',      '0901234564', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1994-11-02', 'male',   '079194005555', '0700223344', '55 Hung Vuong, Thanh Khe',          'Da Nang',     'VN', 'Pham Thi Hanh', '0908888005', 'Tai xe tuyen lien tinh'),
-    ((SELECT id FROM account_data WHERE email = 'driver3@example.com'),     'Do Driver 3',        '0901234565', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1997-01-18', 'other',  '079197006666', '0700334455', '7 Nguyen Van Cu, Ninh Kieu',        'Can Tho',     'VN', 'Do Quoc Minh', '0908888006', 'Tai xe hang trung'),
-    ((SELECT id FROM account_data WHERE email = 'driver4@example.com'),     'Vo Driver 4',        '0901234566', (SELECT id FROM roles WHERE name = 'driver'),      DATE '1990-12-27', 'male',   '079190007777', '0700445566', '240 Le Duan, Hai Chau',             'Da Nang',     'VN', 'Vo Thi Mai', '0908888007', 'Tai xe xe tai nhe')
+SELECT
+    a.id,
+    v.full_name,
+    v.phone,
+    r.id,
+    v.dob::DATE,
+    v.gender,
+    v.national_id,
+    v.tax_code,
+    v.address,
+    v.city,
+    v.country,
+    v.ec_name,
+    v.ec_phone,
+    v.notes
+FROM (VALUES
+    ('admin@example.com',       'Manager',            '0901234560', 'manager',     '1988-05-12', 'male',   '079188001111', '0101234567', '12 Nguyen Hue, District 1',   'Ho Chi Minh', 'VN', 'Tran Thi Huong', '0908888001', 'Tai khoan quan ly he thong'),
+    ('coord@gmail.com',         'Nguyen Coordinator', '0901234561', 'coordinator', '1992-09-21', 'female', '079192002222', '0300123456', '88 Le Loi, Hai Chau',          'Da Nang',     'VN', 'Nguyen Van Phuc', '0908888002', 'Phu trach dieu phoi mien Trung'),
+    ('accountant@example.com',  'Tran Accountant',    '0901234562', 'accountant',  '1991-03-14', 'female', '079191003333', '0312233445', '25 Vo Thi Sau, Ninh Kieu',    'Can Tho',     'VN', 'Tran Minh Chau', '0908888003', 'Theo doi doi soat va cong no'),
+    ('driver1@example.com',     'Le Driver 1',        '0901234563', 'driver',      '1995-07-08', 'male',   '079195004444', '0700112233', '101 Tran Hung Dao, Thu Duc',  'Ho Chi Minh', 'VN', 'Le Thi Lan',      '0908888004', 'Tai xe tuyen noi thanh'),
+    ('driver2@example.com',     'Pham Driver 2',      '0901234564', 'driver',      '1994-11-02', 'male',   '079194005555', '0700223344', '55 Hung Vuong, Thanh Khe',    'Da Nang',     'VN', 'Pham Thi Hanh',   '0908888005', 'Tai xe tuyen lien tinh'),
+    ('driver3@example.com',     'Do Driver 3',        '0901234565', 'driver',      '1997-01-18', 'other',  '079197006666', '0700334455', '7 Nguyen Van Cu, Ninh Kieu',  'Can Tho',     'VN', 'Do Quoc Minh',    '0908888006', 'Tai xe hang trung'),
+    ('driver4@example.com',     'Vo Driver 4',        '0901234566', 'driver',      '1990-12-27', 'male',   '079190007777', '0700445566', '240 Le Duan, Hai Chau',       'Da Nang',     'VN', 'Vo Thi Mai',      '0908888007', 'Tai xe xe tai nhe')
+) AS v(email, full_name, phone, role_name, dob, gender, national_id, tax_code, address, city, country, ec_name, ec_phone, notes)
+JOIN accounts a ON a.email = v.email
+JOIN roles   r ON r.name  = v.role_name
 ON CONFLICT (id) DO UPDATE
-    SET full_name = EXCLUDED.full_name,
-        phone = EXCLUDED.phone,
-        role_id = EXCLUDED.role_id,
-        dob = EXCLUDED.dob,
-        gender = EXCLUDED.gender,
-        national_id = EXCLUDED.national_id,
-        tax_code = EXCLUDED.tax_code,
-        address = EXCLUDED.address,
-        city = EXCLUDED.city,
-        country = EXCLUDED.country,
+    SET full_name              = EXCLUDED.full_name,
+        phone                  = EXCLUDED.phone,
+        role_id                = EXCLUDED.role_id,
+        dob                    = EXCLUDED.dob,
+        gender                 = EXCLUDED.gender,
+        national_id            = EXCLUDED.national_id,
+        tax_code               = EXCLUDED.tax_code,
+        address                = EXCLUDED.address,
+        city                   = EXCLUDED.city,
+        country                = EXCLUDED.country,
         emergency_contact_name = EXCLUDED.emergency_contact_name,
-        emergency_contact_phone = EXCLUDED.emergency_contact_phone,
-        notes = EXCLUDED.notes;
+        emergency_contact_phone= EXCLUDED.emergency_contact_phone,
+        notes                  = EXCLUDED.notes;
 
 -- =============================================================================
 -- SECTION 4: DRIVERS
@@ -84,24 +95,24 @@ ON CONFLICT (profile_id) DO UPDATE
 -- =============================================================================
 -- SECTION 5: CUSTOMERS
 -- =============================================================================
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, current_debt, notes)
-SELECT 'individual', 'Nguyen Hoang Anh', NULL, 'Nguyen Hoang Anh', '0987654321', 'anh@email.com', '123 Nguyen Hue, District 1, HCMC', NULL, 0, 'Khach hang ca nhan, giao hang noi thanh'
+INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
+SELECT 'individual', 'Nguyen Hoang Anh', NULL, 'Nguyen Hoang Anh', '0987654321', 'anh@email.com', '123 Nguyen Hue, District 1, HCMC', NULL, 'Khach hang ca nhan, giao hang noi thanh'
 WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654321');
 
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, current_debt, notes)
-SELECT 'business', NULL, 'ABC Logistics Co.', 'Ms. Lan Anh', '0987654322', 'contact@abclogistics.vn', '456 Le Loi, District 1, HCMC', '0300456789', 500000, 'Doi tac logistics, thanh toan hang thang'
+INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
+SELECT 'business', NULL, 'ABC Logistics Co.', 'Ms. Lan Anh', '0987654322', 'contact@abclogistics.vn', '456 Le Loi, District 1, HCMC', '0300456789', 'Doi tac logistics, thanh toan hang thang'
 WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654322');
 
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, current_debt, notes)
-SELECT 'individual', 'Tran Van Binh', NULL, 'Tran Van Binh', '0987654323', 'binh@email.com', '789 Tran Hung Dao, District 5, HCMC', NULL, 0, 'Khach hang ca nhan, thong xuyen van chuyen do noi that'
+INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
+SELECT 'individual', 'Tran Van Binh', NULL, 'Tran Van Binh', '0987654323', 'binh@email.com', '789 Tran Hung Dao, District 5, HCMC', NULL, 'Khach hang ca nhan, thong xuyen van chuyen do noi that'
 WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654323');
 
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, current_debt, notes)
-SELECT 'business', NULL, 'XYZ Trading Co.', 'Mr. Hung', '0987654324', 'sales@xyztrading.vn', '321 Nguyen Trai, District 5, HCMC', '0301234567', 1000000, 'Cong ty thuong mai, van chuyen hang hoa xuat nhap khau'
+INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
+SELECT 'business', NULL, 'XYZ Trading Co.', 'Mr. Hung', '0987654324', 'sales@xyztrading.vn', '321 Nguyen Trai, District 5, HCMC', '0301234567', 'Cong ty thuong mai, van chuyen hang hoa xuat nhap khau'
 WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654324');
 
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, current_debt, notes)
-SELECT 'business', NULL, 'Sunrise Manufacturing', 'Mr. Tuan Kiet', '0987654325', 'kiet@sunrisemfg.vn', '50 Nguyen Van Linh, District 7, HCMC', '0302345678', 0, 'Nha may san xuat, van chuyen nguyen lieu va san pham'
+INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
+SELECT 'business', NULL, 'Sunrise Manufacturing', 'Mr. Tuan Kiet', '0987654325', 'kiet@sunrisemfg.vn', '50 Nguyen Van Linh, District 7, HCMC', '0302345678', 'Nha may san xuat, van chuyen nguyen lieu va san pham'
 WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654325');
 
 -- =============================================================================
@@ -388,7 +399,7 @@ DECLARE
 BEGIN
     SELECT p.id INTO v_coordinator_id
     FROM profiles p JOIN accounts a ON a.id = p.id
-    WHERE a.email = 'ntck005@gmail.com';
+    WHERE a.email = 'coord@gmail.com';
 
     SELECT p.id INTO v_driver_id
     FROM profiles p JOIN accounts a ON a.id = p.id
@@ -536,7 +547,7 @@ DECLARE
 BEGIN
     SELECT p.id INTO v_coordinator_id
     FROM profiles p JOIN accounts a ON a.id = p.id
-    WHERE a.email = 'ntck005@gmail.com';
+    WHERE a.email = 'coord@gmail.com';
 
     SELECT p.id INTO v_driver_id
     FROM profiles p JOIN accounts a ON a.id = p.id
@@ -559,12 +570,12 @@ BEGIN
     ) THEN
         INSERT INTO orders (
             customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, total_actual_price, payment_type, vehicle_group_id,
+            total_estimated_price, payment_type, vehicle_group_id,
             derived_status, notes
         )
         VALUES (
             v_customer_id, v_coordinator_id, 'Receipt Approved Demo: Construction AC Units', 320.0,
-            v_estimated_km * v_price_per_km, v_actual_income, 'bank_transfer', v_vehicle_group_id,
+            v_estimated_km * v_price_per_km, 'bank_transfer', v_vehicle_group_id,
             'completed', 'Coordinator already published receipt based on driver actual km'
         )
         RETURNING id INTO v_order_id;
@@ -576,7 +587,6 @@ BEGIN
 
         UPDATE orders
         SET total_estimated_price = v_estimated_km * v_price_per_km,
-            total_actual_price = v_actual_income,
             vehicle_group_id = v_vehicle_group_id,
             payment_type = 'bank_transfer',
             derived_status = 'completed',
@@ -721,12 +731,7 @@ BEGIN
     );
 
     UPDATE orders
-    SET total_actual_price = (
-            SELECT COALESCE(SUM(COALESCE(os.actual_price, 0)), 0)
-            FROM order_shipments os
-            WHERE os.order_id = v_order_id
-        ),
-        updated_at = NOW()
+    SET updated_at = NOW()
     WHERE id = v_order_id;
 END $$;
 
@@ -742,7 +747,7 @@ SELECT c.id, p.id, 'Multi-Trip: Hàng điện tử 3 chuyến', 150.0, 2100000, 
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654322'
-  AND a.email = 'ntck005@gmail.com'
+  AND a.email = 'coord@gmail.com'
   AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến')
 LIMIT 1;
 
@@ -811,7 +816,7 @@ SELECT c.id, p.id, 'Arrived Test: Giao ngay hôm nay', 80.0, 650000, 'cash',
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654321'
-  AND a.email = 'ntck005@gmail.com'
+  AND a.email = 'coord@gmail.com'
   AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Arrived Test: Giao ngay hôm nay')
 LIMIT 1;
 
@@ -867,7 +872,7 @@ SELECT c.id, p.id, 'Failed Test: Khách từ chối nhận', 120.0, 500000, 'cas
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654324'
-  AND a.email = 'ntck005@gmail.com'
+  AND a.email = 'coord@gmail.com'
   AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Failed Test: Khách từ chối nhận')
 LIMIT 1;
 
@@ -922,7 +927,7 @@ BEGIN
     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
 
     SELECT p.id INTO v_coord_id
-    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'ntck005@gmail.com';
+    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
 
     SELECT id, vehicle_group_id INTO v_vehicle_id, v_group_id
     FROM vehicles
@@ -937,12 +942,12 @@ BEGIN
     ) THEN
         INSERT INTO orders (
             customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, total_actual_price, payment_type,
+            total_estimated_price, payment_type,
             vehicle_group_id, derived_status, notes
         )
         VALUES (
             v_customer_id, v_coord_id, 'Driver Debt Demo: Cash Collected Office Supplies', 95.0,
-            1500000, 1500000, 'cash', v_group_id, 'completed',
+            1500000, 'cash', v_group_id, 'completed',
             'Dedicated cash-collected demo for driver debt and remittance flow'
         )
         RETURNING id INTO v_order_id;
@@ -1000,8 +1005,8 @@ BEGIN
         INSERT INTO payment_receipts (payment_id, file_url, uploaded_at)
         VALUES (v_payment_id, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', NOW() - INTERVAL '1 day');
 
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes)
-        VALUES ('driver', v_driver_id, v_shipment_id, v_order_id, 1500000, 500000, 'partial',
+        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes)
+        VALUES ('driver', v_driver_id, v_shipment_id, v_order_id, 1500000,
                 'Khách thanh toán tiền mặt — driver đang cầm tiền');
 
         -- Lần nộp 1: đã được kế toán xác nhận
@@ -1021,8 +1026,8 @@ BEGIN
         FROM debts d WHERE d.driver_id = v_driver_id AND d.total_amount = 1500000;
 
         -- Công nợ thứ 2 (chưa nộp)
-        INSERT INTO debts (debt_type, driver_id, order_id, total_amount, paid_amount, status, notes)
-        VALUES ('driver', v_driver_id, v_order_id, 800000, 0, 'unpaid',
+        INSERT INTO debts (debt_type, driver_id, order_id, total_amount, notes)
+        VALUES ('driver', v_driver_id, v_order_id, 800000,
                 'Thu hộ chuyến thứ 2, chưa nộp về công ty');
     END IF;
 END $$;
@@ -1213,7 +1218,7 @@ DECLARE
     v_sid       INT;
     v_rid       INT;
 BEGIN
-    SELECT p.id INTO v_coord_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'ntck005@gmail.com';
+    SELECT p.id INTO v_coord_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
     SELECT p.id INTO v_drv1     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
     SELECT p.id INTO v_drv2     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
     SELECT p.id INTO v_drv3     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver3@example.com';
@@ -1234,9 +1239,9 @@ BEGIN
     -- JAN 2026 — Order H1: bank_transfer, driver1
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jan-01: Thiet bi van phong') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Jan-01: Thiet bi van phong', 80.0, 1200000, 1200000,
+        VALUES (v_cust2, v_coord_id, 'Hist-Jan-01: Thiet bi van phong', 80.0, 1200000,
                 'bank_transfer', v_vg_small, 'completed', 'Historical order Jan 2026',
                 TIMESTAMPTZ '2026-01-08 08:00:00+07', TIMESTAMPTZ '2026-01-08 17:00:00+07')
         RETURNING id INTO v_oid;
@@ -1265,9 +1270,9 @@ BEGIN
     -- JAN 2026 — Order H2: cash, driver2
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jan-02: Do noi that') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust3, v_coord_id, 'Hist-Jan-02: Do noi that', 180.0, 2200000, 2200000,
+        VALUES (v_cust3, v_coord_id, 'Hist-Jan-02: Do noi that', 180.0, 2200000,
                 'cash', v_vg_small, 'completed', 'Historical order Jan 2026',
                 TIMESTAMPTZ '2026-01-15 08:00:00+07', TIMESTAMPTZ '2026-01-15 18:00:00+07')
         RETURNING id INTO v_oid;
@@ -1291,17 +1296,17 @@ BEGIN
         INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
         VALUES (v_sid, 'cash_collected', 2200000, v_drv2, 'Thu tien mat tu khach', '2026-01-15 15:00:00+07', v_rid, '2026-01-15 16:00:00+07', v_coord_id);
 
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes, created_at)
-        VALUES ('driver', v_drv2, v_sid, v_oid, 2200000, 2200000, 'paid', 'Da nop toan bo ve cong ty', '2026-01-15 16:00:00+07');
+        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
+        VALUES ('driver', v_drv2, v_sid, v_oid, 2200000, 'Da nop toan bo ve cong ty', '2026-01-15 16:00:00+07');
     END IF;
 
     -- -------------------------------------------------------
     -- FEB 2026 — Order H3: bank_transfer, driver3 (medium truck)
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Feb-01: Hang xay dung') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust5, v_coord_id, 'Hist-Feb-01: Hang xay dung', 2500.0, 3500000, 3500000,
+        VALUES (v_cust5, v_coord_id, 'Hist-Feb-01: Hang xay dung', 2500.0, 3500000,
                 'bank_transfer', v_vg_medium, 'completed', 'Historical order Feb 2026',
                 TIMESTAMPTZ '2026-02-05 08:00:00+07', TIMESTAMPTZ '2026-02-05 18:00:00+07')
         RETURNING id INTO v_oid;
@@ -1330,9 +1335,9 @@ BEGIN
     -- FEB 2026 — Order H4: bank_transfer (receipt via QR), driver1
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Feb-02: Linh kien dien tu') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Feb-02: Linh kien dien tu', 45.0, 900000, 900000,
+        VALUES (v_cust2, v_coord_id, 'Hist-Feb-02: Linh kien dien tu', 45.0, 900000,
                 'bank_transfer', v_vg_small, 'completed', 'Historical order Feb 2026',
                 TIMESTAMPTZ '2026-02-20 08:00:00+07', TIMESTAMPTZ '2026-02-20 14:00:00+07')
         RETURNING id INTO v_oid;
@@ -1361,9 +1366,9 @@ BEGIN
     -- MAR 2026 — Order H5: cash, driver4 (medium truck)
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Mar-01: May moc cong nghiep') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust4, v_coord_id, 'Hist-Mar-01: May moc cong nghiep', 1800.0, 4500000, 4500000,
+        VALUES (v_cust4, v_coord_id, 'Hist-Mar-01: May moc cong nghiep', 1800.0, 4500000,
                 'cash', v_vg_medium, 'completed', 'Historical order Mar 2026',
                 TIMESTAMPTZ '2026-03-10 07:00:00+07', TIMESTAMPTZ '2026-03-10 18:00:00+07')
         RETURNING id INTO v_oid;
@@ -1387,17 +1392,17 @@ BEGIN
         INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
         VALUES (v_sid, 'cash_collected', 4500000, v_drv4, 'Thu tien mat may moc', '2026-03-10 16:00:00+07', v_rid, '2026-03-10 17:00:00+07', v_coord_id);
 
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes, created_at)
-        VALUES ('driver', v_drv4, v_sid, v_oid, 4500000, 4500000, 'paid', 'Da nop toan bo ve cong ty', '2026-03-11 09:00:00+07');
+        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
+        VALUES ('driver', v_drv4, v_sid, v_oid, 4500000, 'Da nop toan bo ve cong ty', '2026-03-11 09:00:00+07');
     END IF;
 
     -- -------------------------------------------------------
     -- MAR 2026 — Order H6: client_credit (ghi no), driver1 → CUSTOMER DEBT
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Mar-02: Hang tiet kiem') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Mar-02: Hang tiet kiem', 60.0, 750000, 750000,
+        VALUES (v_cust2, v_coord_id, 'Hist-Mar-02: Hang tiet kiem', 60.0, 750000,
                 'client_credit', v_vg_small, 'completed', 'Ghi no khach hang thang 3',
                 TIMESTAMPTZ '2026-03-22 08:00:00+07', TIMESTAMPTZ '2026-03-22 16:00:00+07')
         RETURNING id INTO v_oid;
@@ -1414,17 +1419,17 @@ BEGIN
         VALUES (v_sid, 1, 'pickup', '456 Le Loi, District 1, HCMC', 'Ms. Lan Anh', '0987654322', '2026-03-22 09:30:00+07'),
                (v_sid, 2, 'delivery', '150 Nam Ky Khoi Nghia, District 3, HCMC', 'Ms. Hoa', '0911100006', '2026-03-22 13:00:00+07');
 
-        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, paid_amount, status, due_date, notes, created_at)
-        VALUES ('customer', v_cust2, v_sid, v_oid, 750000, 0, 'unpaid', DATE '2026-04-22', 'Ghi no ABC Logistics thang 3', '2026-03-22 16:00:00+07');
+        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, due_date, notes, created_at)
+        VALUES ('customer', v_cust2, v_sid, v_oid, 750000, DATE '2026-04-22', 'Ghi no ABC Logistics thang 3', '2026-03-22 16:00:00+07');
     END IF;
 
     -- -------------------------------------------------------
     -- APR 2026 — Order H7: bank_transfer, driver2
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Apr-01: Thuc pham dong lanh') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust1, v_coord_id, 'Hist-Apr-01: Thuc pham dong lanh', 120.0, 1800000, 1800000,
+        VALUES (v_cust1, v_coord_id, 'Hist-Apr-01: Thuc pham dong lanh', 120.0, 1800000,
                 'bank_transfer', v_vg_small, 'completed', 'Historical order Apr 2026',
                 TIMESTAMPTZ '2026-04-03 07:00:00+07', TIMESTAMPTZ '2026-04-03 16:00:00+07')
         RETURNING id INTO v_oid;
@@ -1453,9 +1458,9 @@ BEGIN
     -- APR 2026 — Order H8: client_credit → CUSTOMER DEBT (XYZ Trading)
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Apr-02: Hang hoa xuat khau') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust4, v_coord_id, 'Hist-Apr-02: Hang hoa xuat khau', 500.0, 5500000, 5500000,
+        VALUES (v_cust4, v_coord_id, 'Hist-Apr-02: Hang hoa xuat khau', 500.0, 5500000,
                 'client_credit', v_vg_medium, 'completed', 'Ghi no khach hang thang 4',
                 TIMESTAMPTZ '2026-04-18 07:00:00+07', TIMESTAMPTZ '2026-04-18 18:00:00+07')
         RETURNING id INTO v_oid;
@@ -1472,17 +1477,17 @@ BEGIN
         VALUES (v_sid, 1, 'pickup', '321 Nguyen Trai, District 5, HCMC', 'Mr. Hung', '0987654324', '2026-04-18 09:30:00+07'),
                (v_sid, 2, 'delivery', 'Cang Cat Lai, District 2, HCMC', 'Mr. Phong', '0911100008', '2026-04-18 17:00:00+07');
 
-        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, paid_amount, status, due_date, notes, created_at)
-        VALUES ('customer', v_cust4, v_sid, v_oid, 5500000, 2000000, 'partial', DATE '2026-05-18', 'Ghi no XYZ Trading thang 4 - da tra 1 phan', '2026-04-18 18:00:00+07');
+        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, due_date, notes, created_at)
+        VALUES ('customer', v_cust4, v_sid, v_oid, 5500000, DATE '2026-05-18', 'Ghi no XYZ Trading thang 4 - da tra 1 phan', '2026-04-18 18:00:00+07');
     END IF;
 
     -- -------------------------------------------------------
     -- MAY 2026 — Order H9: bank_transfer, driver1
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-May-01: Phu tung o to') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust5, v_coord_id, 'Hist-May-01: Phu tung o to', 300.0, 3200000, 3200000,
+        VALUES (v_cust5, v_coord_id, 'Hist-May-01: Phu tung o to', 300.0, 3200000,
                 'bank_transfer', v_vg_medium, 'completed', 'Historical order May 2026',
                 TIMESTAMPTZ '2026-05-06 07:00:00+07', TIMESTAMPTZ '2026-05-06 17:00:00+07')
         RETURNING id INTO v_oid;
@@ -1511,9 +1516,9 @@ BEGIN
     -- MAY 2026 — Order H10: cash, driver4
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-May-02: San pham nhua') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust3, v_coord_id, 'Hist-May-02: San pham nhua', 90.0, 1100000, 1100000,
+        VALUES (v_cust3, v_coord_id, 'Hist-May-02: San pham nhua', 90.0, 1100000,
                 'cash', v_vg_small, 'completed', 'Historical order May 2026',
                 TIMESTAMPTZ '2026-05-20 08:00:00+07', TIMESTAMPTZ '2026-05-20 16:00:00+07')
         RETURNING id INTO v_oid;
@@ -1537,17 +1542,17 @@ BEGIN
         INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
         VALUES (v_sid, 'cash_collected', 1100000, v_drv4, 'Thu tien mat san pham nhua', '2026-05-20 14:00:00+07', v_rid, '2026-05-20 15:00:00+07', v_coord_id);
 
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes, created_at)
-        VALUES ('driver', v_drv4, v_sid, v_oid, 1100000, 1100000, 'paid', 'Da nop ve cong ty', '2026-05-21 09:00:00+07');
+        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
+        VALUES ('driver', v_drv4, v_sid, v_oid, 1100000, 'Da nop ve cong ty', '2026-05-21 09:00:00+07');
     END IF;
 
     -- -------------------------------------------------------
     -- JUN 2026 — Order H11: bank_transfer, driver2
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jun-01: Thiet bi y te') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Jun-01: Thiet bi y te', 55.0, 1050000, 1050000,
+        VALUES (v_cust2, v_coord_id, 'Hist-Jun-01: Thiet bi y te', 55.0, 1050000,
                 'bank_transfer', v_vg_small, 'completed', 'Historical order Jun 2026',
                 TIMESTAMPTZ '2026-06-03 08:00:00+07', TIMESTAMPTZ '2026-06-03 16:00:00+07')
         RETURNING id INTO v_oid;
@@ -1576,9 +1581,9 @@ BEGIN
     -- JUN 2026 — Order H12: client_credit → CUSTOMER DEBT (Sunrise Manufacturing)
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jun-02: Nguyen lieu san xuat') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price, total_actual_price,
+        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
                             payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust5, v_coord_id, 'Hist-Jun-02: Nguyen lieu san xuat', 3000.0, 6000000, 6000000,
+        VALUES (v_cust5, v_coord_id, 'Hist-Jun-02: Nguyen lieu san xuat', 3000.0, 6000000,
                 'client_credit', v_vg_medium, 'completed', 'Ghi no Sunrise Manufacturing thang 6',
                 TIMESTAMPTZ '2026-06-15 07:00:00+07', TIMESTAMPTZ '2026-06-15 19:00:00+07')
         RETURNING id INTO v_oid;
@@ -1595,8 +1600,8 @@ BEGIN
         VALUES (v_sid, 1, 'pickup', '50 Nguyen Van Linh, District 7, HCMC', 'Mr. Tuan Kiet', '0987654325', '2026-06-15 09:30:00+07'),
                (v_sid, 2, 'delivery', 'KCN Binh Duong, Thu Dau Mot, Binh Duong', 'Mr. Duc', '0911100012', '2026-06-15 17:00:00+07');
 
-        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, paid_amount, status, due_date, notes, created_at)
-        VALUES ('customer', v_cust5, v_sid, v_oid, 6000000, 0, 'unpaid', DATE '2026-07-15', 'Ghi no Sunrise Manufacturing thang 6 - chua thanh toan', '2026-06-15 19:00:00+07');
+        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, due_date, notes, created_at)
+        VALUES ('customer', v_cust5, v_sid, v_oid, 6000000, DATE '2026-07-15', 'Ghi no Sunrise Manufacturing thang 6 - chua thanh toan', '2026-06-15 19:00:00+07');
     END IF;
 
 END $$;
@@ -1777,6 +1782,19 @@ BEGIN
     ON CONFLICT (driver_id, month, year) DO UPDATE SET
         completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
 END $$;
+
+UPDATE shipment_receipts
+SET payment_type = 'bank_transfer'
+WHERE payment_type = 'qr_transfer';
+
+-- 2. Drop old CHECK constraint if exists
+ALTER TABLE shipment_receipts
+  DROP CONSTRAINT IF EXISTS shipment_receipts_payment_type_check;
+
+-- 3. Re-add CHECK constraint
+ALTER TABLE shipment_receipts
+  ADD CONSTRAINT shipment_receipts_payment_type_check
+    CHECK (payment_type IN ('cash_collected', 'bank_transfer', 'client_credit'));
 
 -- =============================================================================
 -- SEED VALIDATION — Đếm số bản ghi sau khi seed
