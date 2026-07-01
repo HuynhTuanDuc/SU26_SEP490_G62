@@ -20,11 +20,14 @@ const listPartners = async (_req, res) => {
 
 const getIncidents = async (req, res) => {
     try {
-        const incidents = await coordinatorService.getIncidents({
-            status: req.query.status || null,
-            search: req.query.search || '',
+        const { status, search, page, limit } = req.query;
+        const result = await coordinatorService.getIncidents({
+            status: status || null,
+            search: search || '',
+            page: page,
+            limit: limit,
         });
-        res.json({ incidents });
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -33,15 +36,17 @@ const getIncidents = async (req, res) => {
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
-        const { status, kind, search, dateFrom, dateTo } = req.query;
-        const rows = await coordinatorService.getReceiptRequests({
+        const { status, kind, search, dateFrom, dateTo, page, limit } = req.query;
+        const result = await coordinatorService.getReceiptRequests({
             status: status || null,
             kind: kind || 'all',
             search: search || '',
             dateFrom: dateFrom || '',
             dateTo: dateTo || '',
+            page: page,
+            limit: limit,
         });
-        res.json({ requests: rows });
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
