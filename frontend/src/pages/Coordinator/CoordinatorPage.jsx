@@ -347,7 +347,7 @@ export default function CoordinatorPage({ user, onLogout }) {
         page: String(page),
         limit: String(pagination.limit),
       });
-      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim());
+      if (deferredOrderSearchQuery.trim()) params.set("search", deferredOrderSearchQuery.trim().replace(/\s+/g, " "));
       if (STATUS_QUERY[activeTab]) params.set("status", STATUS_QUERY[activeTab]);
       if (dateFromFilter) params.set("dateFrom", dateFromFilter);
       if (dateToFilter) params.set("dateTo", dateToFilter);
@@ -1239,6 +1239,7 @@ export default function CoordinatorPage({ user, onLogout }) {
   const renderIncidentsPanel = () => {
     const replacementOptions = drivers.filter((driver) => {
       if (!driver?.vehicle_id) return false;
+      if (driver.has_active_trip) return false;
       if (!selectedIncident) return true;
       return Number(driver.id) !== Number(selectedIncident.current_driver_id || selectedIncident.reported_by);
     });
