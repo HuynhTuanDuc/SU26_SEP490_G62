@@ -26,9 +26,7 @@ const rejectExpiredLeaveRequests = async () => {
     try {
         const result = await pool.query(
             `UPDATE leave_requests
-             SET status     = 'rejected',
-                 reject_reason = 'Tự động từ chối — quá ngày nghỉ mà chưa được phê duyệt',
-                 updated_at = NOW()
+             SET status = 'rejected'
              WHERE status    = 'pending'
                AND leave_date < CURRENT_DATE
              RETURNING id`,

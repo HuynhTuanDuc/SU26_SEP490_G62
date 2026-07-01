@@ -1,14 +1,18 @@
 const pool = require('../../config/database');
 
-const getVehicleDriverLookup = async () => {
-    const [vehiclesResult, driversResult, customersResult, groupsResult] = await Promise.all([
+const CACHE_TTL_MS = 30_000;
+let _cache       = null;
+let _cacheExpiry = 0;
+
+const getVehicleDriverLookup = async (bustCache = false) => {
+    const now = Date.now();
+    if (!bustCache && _cache && now < _cacheExpiry) return _cache;
+
+    const [vehiclesRes, driversRes, customersRes, groupsRes] = await Promise.all([
         pool.query(
             `SELECT
-                v.id,
-                v.plate_number,
-                v.status,
-                v.vehicle_group_id,
-                v.assigned_driver_id,
+                v.id, v.plate_number, v.status,
+                v.vehicle_group_id, v.assigned_driver_id,
                 vg.name AS vehicle_group_name,
                 p.full_name AS assigned_driver_name
              FROM vehicles v
@@ -18,11 +22,9 @@ const getVehicleDriverLookup = async () => {
         ),
         pool.query(
             `SELECT
-                d.profile_id AS id,
-                p.full_name,
-                d.vehicle_id,
-                v.plate_number,
-                v.status AS vehicle_status,
+                d.profile_id AS id, p.full_name,
+                d.vehicle_id, v.vehicle_group_id,
+                v.plate_number, v.status AS vehicle_status,
                 vg.name AS vehicle_group_name
              FROM drivers d
              JOIN profiles p ON p.id = d.profile_id
@@ -30,15 +32,12 @@ const getVehicleDriverLookup = async () => {
              LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
              ORDER BY p.full_name ASC`
         ),
-        // Individual customers
         pool.query(
-            `SELECT id, full_name, phone, company_name
+            `SELECT id, full_name, phone, company_name, customer_type
              FROM customers
-             WHERE customer_type = 'individual'
              ORDER BY full_name ASC
-             LIMIT 200`
+             LIMIT 300`
         ),
-        // Vehicle groups (cho dropdown chọn nhóm xe trên form)
         pool.query(
             `SELECT id, name, description, max_load_weight_kg, price_per_km, status
              FROM vehicle_groups
@@ -47,14 +46,16 @@ const getVehicleDriverLookup = async () => {
         ),
     ]);
 
-    return {
-        vehicles: vehiclesResult.rows,
-        drivers: driversResult.rows,
-        customers: customersResult.rows,
-        vehicle_groups: groupsResult.rows,
+    _cache = {
+        vehicles:       vehiclesRes.rows,
+        drivers:        driversRes.rows,
+        customers:      customersRes.rows,
+        vehicle_groups: groupsRes.rows,
     };
+    _cacheExpiry = now + CACHE_TTL_MS;
+    return _cache;
 };
 
-module.exports = {
-    getVehicleDriverLookup,
-};
+const invalidateLookupCache = () => { _cache = null; };
+
+module.exports = { getVehicleDriverLookup, invalidateLookupCache };

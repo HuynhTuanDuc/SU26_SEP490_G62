@@ -205,8 +205,8 @@ const listPartners = async () => {
   return result.rows;
 };
 
-const getIncidents = async ({ status = null, search = '' } = {}) => {
-  return incidentRepository.getCoordinatorIncidents({ status, search });
+const getIncidents = async ({ status = null, search = '', page = 1, limit = 10 } = {}) => {
+  return incidentRepository.getCoordinatorIncidents({ status, search, page, limit });
 };
 
 const importExcel = async (userId, fileBuffer) => {
@@ -609,7 +609,15 @@ const getReceiptRequests = async ({
     search = '',
     dateFrom = '',
     dateTo = '',
+    page = 1,
+    limit = 10,
 } = {}) => {
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const normalizedPage = isNaN(pageNum) || pageNum < 1 ? 1 : pageNum;
+    const normalizedLimit = isNaN(limitNum) || limitNum < 1 ? 10 : limitNum;
+    const offset = (normalizedPage - 1) * normalizedLimit;
+
     const conditions = [];
     const params = [];
 
@@ -749,10 +757,41 @@ const getReceiptRequests = async ({
             WHERE os_exp.order_id = rr.order_id
          ) exp ON TRUE
          ${where}
-         ORDER BY rr.requested_at DESC`,
-        params,
+         ORDER BY rr.requested_at DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, normalizedLimit, offset],
     );
-    return result.rows;
+
+    const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+         FROM order_receipt_requests rr
+         JOIN profiles p       ON p.id  = rr.driver_id
+         JOIN orders o         ON o.id  = rr.order_id
+         LEFT JOIN customers c  ON c.id  = o.customer_id
+         LEFT JOIN shipment_receipts sr ON sr.order_receipt_request_id = rr.id
+         LEFT JOIN LATERAL (
+            SELECT os_primary.*
+            FROM order_shipments os_primary
+            WHERE os_primary.order_id = rr.order_id
+            ORDER BY CASE WHEN os_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
+            LIMIT 1
+         ) primary_shipment ON TRUE
+         LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id
+         ${where}`,
+        params
+    );
+
+    const total = Number(countResult.rows[0]?.total ?? 0);
+
+    return {
+        requests: result.rows,
+        pagination: {
+            page: normalizedPage,
+            limit: normalizedLimit,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / normalizedLimit)),
+        }
+    };
 };
 
 const getReceiptRequestDetail = async (requestId) => {
