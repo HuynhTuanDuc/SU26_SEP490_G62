@@ -1519,12 +1519,18 @@
   background-color: #fffbeb !important;
 }
 .coordinator-shell .table-route-cell {
-  min-width: 400px;
+  min-width: 300px;
   white-space: normal !important;
   word-break: break-word;
   overflow-wrap: break-word;
 }
 
+.coordinator-shell .table-cargo-cell {
+  min-width: 300px;
+  white-space: normal !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
 .coordinator-shell .table-address-cell {
   min-width: 240px;
   max-width: 320px;

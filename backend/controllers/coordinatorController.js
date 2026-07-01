@@ -20,11 +20,14 @@ const listPartners = async (_req, res) => {
 
 const getIncidents = async (req, res) => {
     try {
-        const incidents = await coordinatorService.getIncidents({
-            status: req.query.status || null,
-            search: req.query.search || '',
+        const { status, search, page, limit } = req.query;
+        const result = await coordinatorService.getIncidents({
+            status: status || null,
+            search: search || '',
+            page: page,
+            limit: limit,
         });
-        res.json({ incidents });
+        res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

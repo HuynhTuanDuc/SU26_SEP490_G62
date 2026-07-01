@@ -205,8 +205,8 @@ const listPartners = async () => {
   return result.rows;
 };
 
-const getIncidents = async ({ status = null, search = '' } = {}) => {
-  return incidentRepository.getCoordinatorIncidents({ status, search });
+const getIncidents = async ({ status = null, search = '', page = 1, limit = 10 } = {}) => {
+  return incidentRepository.getCoordinatorIncidents({ status, search, page, limit });
 };
 
 const importExcel = async (userId, fileBuffer) => {
