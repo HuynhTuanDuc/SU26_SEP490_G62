@@ -106,7 +106,6 @@ router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder
 // Phiếu thu (coordinator đã tạo) — driver xem + show cho khách
 router.get('/receipts',                                   driverOnly, tripController.getDriverReceipts);
 router.get('/receipts/:receiptId',                        driverOnly, tripController.getDriverReceiptDetail);
-router.post('/receipts/:receiptId/record-collection',     driverOnly, handleUpload(uploadReceiptCollectionProof.single('proof')), tripController.recordReceiptCollection);
 
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
