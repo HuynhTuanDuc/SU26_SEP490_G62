@@ -1,13 +1,13 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 
-const accountantFinanceController = require('../../controllers/accountant/accountantFinanceController');
-const accountantDebtController    = require('../../controllers/accountant/accountantDebtController');
-const accountantPaymentController = require('../../controllers/accountant/accountantPaymentController');
-const accountantReportController  = require('../../controllers/accountant/accountantReportController');
+const accountantFinanceController = require('../controllers/accountantFinanceController');
+const accountantDebtController    = require('../controllers/accountantDebtController');
+const accountantPaymentController = require('../controllers/accountantPaymentController');
+const accountantReportController  = require('../controllers/accountantReportController');
 const accountantOrderRoutes = require('./accountantOrderRoutes');
 const accountantPayrollRoutes = require('./accountantPayrollRoutes');
-const { verifyToken, requireRole } = require('../../middleware/authMiddleware');
+const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
 router.use(verifyToken, requireRole('accountant'));
 

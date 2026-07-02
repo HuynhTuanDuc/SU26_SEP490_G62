@@ -1,5 +1,5 @@
-const accountantOrderService = require('../../services/accountant/accountantOrderService');
-const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError, err400 } = require('./_validate');
+﻿const accountantOrderService = require('../services/accountantOrderService');
+const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError, err400 } = require('../utils/accountantValidate');
 
 const PAYMENT_TYPES   = ['cash', 'bank_transfer', 'client_credit'];
 const DRIVER_STATES   = ['driver_holding', 'settled', 'pending'];

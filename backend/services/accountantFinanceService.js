@@ -1,4 +1,4 @@
-const accountantFinanceRepository = require('../../repositories/accountant/accountantFinanceRepository');
+﻿const accountantFinanceRepository = require('../repositories/accountantFinanceRepository');
 
 const getFinanceStats = async () => {
     return accountantFinanceRepository.getFinanceStats();
