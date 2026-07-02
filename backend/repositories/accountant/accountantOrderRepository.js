@@ -364,27 +364,27 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         LEFT JOIN LATERAL (
             SELECT
                 CASE
-                    WHEN COUNT(*) = 0 THEN 'paid'
-                    WHEN SUM(COALESCE(dp_agg.paid_amount, 0)) >= SUM(d.total_amount) - 0.01 THEN 'paid'
-                    WHEN SUM(COALESCE(dp_agg.paid_amount, 0)) > 0 THEN 'partial'
+                    WHEN COUNT(d.id) = 0 THEN 'paid'
+                    WHEN SUM(COALESCE(dp_c.paid, 0)) >= SUM(d.total_amount) - 0.01 THEN 'paid'
+                    WHEN SUM(COALESCE(dp_c.paid, 0)) > 0 THEN 'partial'
                     ELSE 'unpaid'
                 END AS debt_status,
-                COALESCE(SUM(d.total_amount), 0) AS debt_total,
-                COALESCE(SUM(COALESCE(dp_agg.paid_amount, 0)), 0) AS debt_paid
+                COALESCE(SUM(d.total_amount), 0)          AS debt_total,
+                COALESCE(SUM(COALESCE(dp_c.paid, 0)), 0)  AS debt_paid
             FROM debts d
             LEFT JOIN (
-                SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
+                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
                 FROM debt_payments GROUP BY debt_id
-            ) dp_agg ON dp_agg.debt_id = d.id
+            ) dp_c ON dp_c.debt_id = d.id
             WHERE d.order_id = o.id AND d.debt_type = 'customer'
         ) d_agg ON TRUE
         LEFT JOIN LATERAL (
-            SELECT GREATEST(COALESCE(SUM(d.total_amount - COALESCE(dp_agg.paid_amount, 0)), 0), 0) AS driver_debt_remaining
+            SELECT GREATEST(COALESCE(SUM(d.total_amount - COALESCE(dp_d.paid, 0)), 0), 0) AS driver_debt_remaining
             FROM debts d
             LEFT JOIN (
-                SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
+                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
                 FROM debt_payments GROUP BY debt_id
-            ) dp_agg ON dp_agg.debt_id = d.id
+            ) dp_d ON dp_d.debt_id = d.id
             WHERE d.order_id = o.id AND d.debt_type = 'driver'
         ) dd_agg ON TRUE
         LEFT JOIN LATERAL (
@@ -493,7 +493,7 @@ const getOrderShipments = async (orderId) => {
             SELECT
                 d.shipment_id,
                 d.total_amount,
-                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS driver_paid,
                 CASE
                     WHEN COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) >= d.total_amount - 0.01 THEN 'paid'
                     WHEN COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) > 0 THEN 'partial'
@@ -530,7 +530,7 @@ const getOrderShipments = async (orderId) => {
             sa.delivery_address,
             da.driver_payment_state,
             da.total_amount                        AS driver_total,
-            da.paid_amount                         AS driver_paid,
+            da.driver_paid,
             pa.payment_type
         FROM order_shipments os
         LEFT JOIN vehicles  v  ON v.id  = os.vehicle_id

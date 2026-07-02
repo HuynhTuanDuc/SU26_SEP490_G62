@@ -39,10 +39,12 @@ const _ensureCustomerDebt = async (client, orderId, createdBy) => {
     if (existing) return existing.id;
 
     const { rows: [order] } = await client.query(
-        `SELECT customer_id,
-                (SELECT COALESCE(SUM(COALESCE(actual_price, estimated_price)), 0)
-                 FROM order_shipments WHERE order_id = o.id) AS order_total
-         FROM orders o WHERE id = $1`,
+        `SELECT o.customer_id,
+                COALESCE(SUM(os.actual_price), SUM(os.estimated_price), 0) AS order_total
+         FROM orders o
+         LEFT JOIN order_shipments os ON os.order_id = o.id
+         WHERE o.id = $1
+         GROUP BY o.customer_id`,
         [orderId]
     );
     if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);
@@ -84,15 +86,15 @@ const previewAllocation = async (personType, personId, amount) => {
             d.id AS debt_id, d.shipment_id,
             d.total_amount::text,
             COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)::text AS paid_amount,
-            (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0))::text AS remaining,
+            GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0))::text AS remaining,
             o.cargo_name AS order_cargo_name, o.created_at AS order_date
          FROM debts d
          LEFT JOIN debt_payments dp ON dp.debt_id = d.id
          LEFT JOIN orders o ON o.id = d.order_id
          WHERE ${personField} = $1
            AND d.debt_type = $2
-         GROUP BY d.id, d.total_amount, d.shipment_id, o.cargo_name, o.created_at
-         HAVING (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
+         GROUP BY d.id, d.shipment_id, d.total_amount, o.cargo_name, o.created_at
+         HAVING GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
          ORDER BY d.created_at ASC`,
         [personId, debtType]
     );
@@ -147,7 +149,7 @@ const recordPayment = async (orderId, paymentData) => {
              FROM debts d
              LEFT JOIN debt_payments dp ON dp.debt_id = d.id
              WHERE d.id = $1
-             GROUP BY d.id`,
+             GROUP BY d.id, d.total_amount, d.customer_id`,
             [debtId]
         );
 
@@ -180,7 +182,7 @@ const recordPaymentByDebt = async (debtId, paymentData) => {
              FROM debts d
              LEFT JOIN debt_payments dp ON dp.debt_id = d.id
              WHERE d.id = $1
-             GROUP BY d.id`,
+             GROUP BY d.id, d.total_amount, d.customer_id`,
             [debtId]
         );
         if (!debt) throw new Error('Không tìm thấy khoản công nợ');
@@ -209,8 +211,7 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
         await client.query('BEGIN');
 
         let { rows: [debtBase] } = await client.query(
-            `SELECT d.id, d.total_amount, d.customer_id
-             FROM debts d WHERE d.shipment_id = $1 AND d.debt_type = 'customer' LIMIT 1`,
+            `SELECT id FROM debts WHERE shipment_id = $1 AND debt_type = 'customer' LIMIT 1`,
             [shipmentId]
         );
 
@@ -225,20 +226,19 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
             const { rows: [created] } = await client.query(
                 `INSERT INTO debts (debt_type, customer_id, driver_id, order_id, shipment_id, total_amount, created_at, updated_at)
                  VALUES ('customer', $1, $2, $3, $4, $5, NOW(), NOW())
-                 RETURNING id, total_amount, customer_id`,
+                 RETURNING id`,
                 [si.customer_id, si.owner_driver_id, si.order_id, shipmentId, Number(si.estimated_price) || 0]
             );
             debtBase = created;
         }
 
-        // Fetch with computed paid_amount
         const { rows: [debt] } = await client.query(
             `SELECT d.id, d.total_amount, d.customer_id,
                     COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount
              FROM debts d
              LEFT JOIN debt_payments dp ON dp.debt_id = d.id
              WHERE d.id = $1
-             GROUP BY d.id`,
+             GROUP BY d.id, d.total_amount, d.customer_id`,
             [debtBase.id]
         );
 
@@ -270,16 +270,15 @@ const allocatePayment = async (personType, personId, paymentData) => {
 
         const { rows: debts } = await client.query(
             `SELECT
-                d.id AS debt_id, d.total_amount,
+                d.id AS debt_id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id,
                 COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
-                d.driver_id, d.customer_id, d.shipment_id,
-                (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining
+                GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining
              FROM debts d
              LEFT JOIN debt_payments dp ON dp.debt_id = d.id
              WHERE ${personField} = $1
                AND d.debt_type = $2
-             GROUP BY d.id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id, d.created_at
-             HAVING (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
+             GROUP BY d.id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id
+             HAVING GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
              ORDER BY d.created_at ASC
              FOR UPDATE OF d`,
             [personId, debtType]
@@ -355,8 +354,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
         await client.query('BEGIN');
 
         const { rows: [existing] } = await client.query(
-            `SELECT id, total_amount
-             FROM debts WHERE shipment_id = $1 AND debt_type = 'driver' LIMIT 1`,
+            `SELECT id, total_amount FROM debts WHERE shipment_id = $1 AND debt_type = 'driver' LIMIT 1`,
             [shipmentId]
         );
 

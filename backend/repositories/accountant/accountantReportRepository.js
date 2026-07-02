@@ -58,15 +58,14 @@ const _getTopCustomers = async () => {
             COUNT(DISTINCT o.id)::int                          AS total_orders,
             COALESCE(SUM(os.actual_price), 0)::float           AS total_revenue,
             COALESCE(
-                SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0))
-                FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01), 0
+                SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0
             )::float AS outstanding_debt
         FROM customers c
         JOIN orders o ON o.customer_id = c.id
         JOIN order_shipments os ON os.order_id = o.id
         LEFT JOIN debts d ON d.order_id = o.id AND d.debt_type = 'customer'
         LEFT JOIN (
-            SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
+            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
             FROM debt_payments GROUP BY debt_id
         ) dp_agg ON dp_agg.debt_id = d.id
         WHERE o.derived_status = 'completed'
@@ -79,31 +78,29 @@ const _getTopCustomers = async () => {
 
 const _getDebtAging = async () => {
     const { rows } = await pool.query(`
+        WITH dp_agg AS (
+            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+            FROM debt_payments GROUP BY debt_id
+        )
         SELECT
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0))
-                FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01
-                          AND NOW() - d.created_at <= INTERVAL '30 days'), 0)::float
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
+                FILTER (WHERE NOW() - d.created_at <= INTERVAL '30 days'), 0)::float
                 AS d0_30,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0))
-                FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01
-                          AND NOW() - d.created_at > INTERVAL '30 days'
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
+                FILTER (WHERE NOW() - d.created_at > INTERVAL '30 days'
                           AND NOW() - d.created_at <= INTERVAL '60 days'), 0)::float
                 AS d30_60,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0))
-                FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01
-                          AND NOW() - d.created_at > INTERVAL '60 days'
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
+                FILTER (WHERE NOW() - d.created_at > INTERVAL '60 days'
                           AND NOW() - d.created_at <= INTERVAL '90 days'), 0)::float
                 AS d60_90,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0))
-                FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01
-                          AND NOW() - d.created_at > INTERVAL '90 days'), 0)::float
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
+                FILTER (WHERE NOW() - d.created_at > INTERVAL '90 days'), 0)::float
                 AS d90_plus
         FROM debts d
-        LEFT JOIN (
-            SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
-            FROM debt_payments GROUP BY debt_id
-        ) dp_agg ON dp_agg.debt_id = d.id
-        WHERE d.debt_type = 'customer'
+        LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
+        WHERE GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0) > 0.01
+          AND d.debt_type = 'customer'
     `);
     return rows[0];
 };

@@ -50,7 +50,7 @@ const getAllDebts = async ({
                 d.debt_type,
                 d.total_amount,
                 COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
-                COALESCE(d.total_amount, 0) - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS remaining,
+                GREATEST(0, COALESCE(d.total_amount, 0) - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining,
                 CASE
                     WHEN COALESCE(d.total_amount, 0) <= 0 THEN 'paid'
                     WHEN COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) >= d.total_amount - 0.01 THEN 'paid'
@@ -75,8 +75,8 @@ const getAllDebts = async ({
             LEFT JOIN orders o ON o.id = d.order_id
             ${baseWhere}
             GROUP BY
-                d.id, d.debt_type, d.total_amount, d.due_date, d.notes, d.created_at, d.updated_at,
-                d.order_id, d.shipment_id,
+                d.id, d.debt_type, d.total_amount, d.due_date, d.notes,
+                d.created_at, d.updated_at, d.order_id, d.shipment_id,
                 c.id, c.full_name, c.company_name, c.phone,
                 dr.id, dr.full_name, dr.phone,
                 o.cargo_name, o.created_at
@@ -111,19 +111,20 @@ const getAllDebts = async ({
 
 const getDebtStats = async () => {
     const result = await pool.query(`
-        SELECT
-            d.debt_type,
-            COUNT(*)::int                                  AS count,
-            COALESCE(SUM(d.total_amount), 0)::text        AS total_amount,
-            COALESCE(SUM(COALESCE(dp_agg.paid_amount, 0)), 0)::text AS total_paid,
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0)), 0)::text AS total_remaining
-        FROM debts d
-        LEFT JOIN (
-            SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
+        WITH dp_agg AS (
+            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
             FROM debt_payments
             GROUP BY debt_id
-        ) dp_agg ON dp_agg.debt_id = d.id
-        WHERE GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0) > 0.01
+        )
+        SELECT
+            d.debt_type,
+            COUNT(*)::int                                                               AS count,
+            COALESCE(SUM(d.total_amount), 0)::text                                     AS total_amount,
+            COALESCE(SUM(COALESCE(dp_agg.paid, 0)), 0)::text                           AS total_paid,
+            COALESCE(SUM(GREATEST(0, d.total_amount - COALESCE(dp_agg.paid, 0))), 0)::text AS total_remaining
+        FROM debts d
+        LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
+        WHERE GREATEST(0, d.total_amount - COALESCE(dp_agg.paid, 0)) > 0.01
         GROUP BY d.debt_type
     `);
 
@@ -198,19 +199,13 @@ const getDebtsGroupedByPerson = async ({
             c.full_name AS customer_name, c.company_name AS customer_company, c.phone AS customer_phone,
             dr.full_name AS driver_name, dr.phone AS driver_phone,
             d.total_amount,
-            COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
+            COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp WHERE dp.debt_id = d.id AND dp.status = 'confirmed'), 0) AS paid_amount,
             d.due_date, d.created_at,
             d.id AS debt_id, d.customer_id, d.shipment_id, d.order_id
         FROM debts d
-        LEFT JOIN debt_payments dp ON dp.debt_id = d.id
         LEFT JOIN customers c ON c.id = d.customer_id
         LEFT JOIN profiles dr ON dr.id = d.driver_id
         ${where}
-        GROUP BY
-            d.id, d.debt_type, d.driver_id, d.total_amount, d.due_date, d.created_at,
-            d.customer_id, d.shipment_id, d.order_id,
-            c.full_name, c.company_name, c.phone,
-            dr.full_name, dr.phone
     `;
 
     const countQuery = `
@@ -297,7 +292,7 @@ const getDebtsByPerson = async (personType, personId) => {
             d.debt_type,
             d.total_amount::text,
             COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)::text AS paid_amount,
-            (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0))::text AS remaining,
+            GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0))::text AS remaining,
             d.due_date,
             d.notes,
             d.created_at,
@@ -321,10 +316,9 @@ const getDebtsByPerson = async (personType, personId) => {
         LEFT JOIN profiles dr ON dr.id = d.driver_id
         WHERE ${whereField} = $1 AND d.debt_type = $2
         GROUP BY
-            d.id, d.debt_type, d.total_amount, d.due_date, d.notes, d.created_at, d.updated_at,
-            d.order_id, d.shipment_id, d.driver_id,
-            o.cargo_name, o.created_at,
-            os.estimated_price,
+            d.id, d.debt_type, d.total_amount, d.due_date, d.notes,
+            d.created_at, d.updated_at, d.order_id, d.shipment_id, d.driver_id,
+            o.cargo_name, o.created_at, os.estimated_price,
             c.full_name, c.company_name, c.phone,
             dr.full_name, dr.phone
         ORDER BY d.created_at DESC
@@ -350,7 +344,7 @@ const getDebtsByCustomerIds = async (customerIds) => {
             d.shipment_id,
             d.total_amount,
             COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
-            (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining,
+            GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining,
             d.due_date,
             d.notes,
             d.created_at,
@@ -371,8 +365,7 @@ const getDebtsByCustomerIds = async (customerIds) => {
         GROUP BY
             d.id, d.debt_type, d.customer_id, d.order_id, d.shipment_id,
             d.total_amount, d.due_date, d.notes, d.created_at,
-            o.cargo_name,
-            os.estimated_price,
+            o.cargo_name, os.estimated_price,
             c.full_name, c.company_name, c.phone,
             dr.full_name, dr.phone
         ORDER BY d.created_at DESC
