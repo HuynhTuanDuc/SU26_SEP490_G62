@@ -82,9 +82,14 @@ const getShipmentFinancialSummary = async (shipmentId) => {
             o.payment_type                                             AS order_payment_type,
             COALESCE(o.prepaid_amount, 0)                              AS prepaid_amount,
             COALESCE(SUM(sp.amount) FILTER (WHERE sp.payment_type IS NOT NULL), 0) AS cash_collected,
-            COALESCE(SUM(d.total_amount)
-                FILTER (WHERE d.debt_type = 'customer'
-                          AND d.status NOT IN ('paid')), 0)           AS customer_debt_total
+            COALESCE(SUM(
+                CASE WHEN d.debt_type = 'customer'
+                     AND d.total_amount - COALESCE((
+                         SELECT SUM(dp.amount) FROM debt_payments dp
+                         WHERE dp.debt_id = d.id AND dp.status = 'confirmed'
+                     ), 0) > 0.01
+                THEN d.total_amount ELSE 0 END
+            ), 0) AS customer_debt_total
          FROM order_shipments os
          JOIN orders o ON o.id = os.order_id
          LEFT JOIN shipment_receipts sp ON sp.shipment_id = os.id
@@ -126,8 +131,8 @@ const createDriverDebt = async ({ driverId, shipmentId, orderId, amount, notes }
 const createCustomerDebt = async ({ customerId, driverId, shipmentId, orderId, amount }) => {
     await pool.query(
         `INSERT INTO debts
-             (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, paid_amount, status, created_at, updated_at)
-         VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', NOW(), NOW())`,
+             (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, $4, $5, NOW(), NOW())`,
         [customerId, driverId, shipmentId ?? null, orderId ?? null, amount],
     );
 };

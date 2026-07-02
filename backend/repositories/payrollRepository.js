@@ -171,11 +171,19 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
 
     // 5. Công nợ driver chưa nộp (BR-020 / Payroll §24)
     const debtRes = await pool.query(
-        `SELECT COALESCE(SUM(total_amount - paid_amount), 0) AS remaining
-         FROM debts
-         WHERE driver_id = $1
-           AND debt_type = 'driver'
-           AND status IN ('unpaid','partial','overdue')`,
+        `SELECT COALESCE(SUM(
+             d.total_amount - COALESCE((
+                 SELECT SUM(dp.amount) FROM debt_payments dp
+                 WHERE dp.debt_id = d.id AND dp.status = 'confirmed'
+             ), 0)
+         ), 0) AS remaining
+         FROM debts d
+         WHERE d.driver_id = $1
+           AND d.debt_type = 'driver'
+           AND d.total_amount - COALESCE((
+               SELECT SUM(dp2.amount) FROM debt_payments dp2
+               WHERE dp2.debt_id = d.id AND dp2.status = 'confirmed'
+           ), 0) > 0.01`,
         [driverId],
     );
     const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);

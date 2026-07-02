@@ -55,8 +55,8 @@ const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
         return lookup.rows[0].id;
     }
     const insert = await client.query(
-        `INSERT INTO customers (customer_type, full_name, company_name, phone, address, current_debt, created_at, updated_at)
-         VALUES ('individual', $1, $2, $3, '', 0, NOW(), NOW()) RETURNING id`,
+        `INSERT INTO customers (customer_type, full_name, company_name, phone, address, created_at, updated_at)
+         VALUES ('individual', $1, $2, $3, '', NOW(), NOW()) RETURNING id`,
         [cleanName, cleanCompanyName, cleanPhone]
     );
     return insert.rows[0].id;
@@ -185,52 +185,43 @@ const insertDebtForShipment = async (client, {
         if (!driverId) {
             throw new Error('Không thể tạo công nợ tài xế khi chuyến chưa có tài xế.');
         }
-        const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
                 debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
-                total_amount, paid_amount, due_date, status, notes,
+                total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
+             VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
+                CURRENT_DATE + INTERVAL '30 days',
                 'Tai xe da thu nhung chua mang tien ve cong ty',
-                $6, NOW(), NOW())`,
-            [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+                $5, NOW(), NOW())`,
+            [driverId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     } else if (normalizedPaymentType === 'client_credit') {
 
-        const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
                 debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
-                total_amount, paid_amount, due_date, status, notes,
+                total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('customer', NULL, $1, NULL, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
-                'Khach chua thanh toan', $6, NOW(), NOW())`,
-            [customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
-        );
-        await client.query(
-            `UPDATE customers
-             SET current_debt = current_debt + $1, updated_at = NOW()
-             WHERE id = $2`,
-            [actualPrice, customerId]
+             VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                CURRENT_DATE + INTERVAL '30 days',
+                'Khach chua thanh toan', $5, NOW(), NOW())`,
+            [customerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     } else if (partnerId && normalizedPaymentType === 'partner') {
 
-        const debtStatus = buildDebtStatus(0, actualPrice);
         await client.query(
             `INSERT INTO debts (
                 debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
-                total_amount, paid_amount, due_date, status, notes,
+                total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('partner', NULL, NULL, $1, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
-                'Doi tac chua thanh toan', $6, NOW(), NOW())`,
-            [partnerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+             VALUES ('partner', NULL, NULL, $1, $2, $3, $4,
+                CURRENT_DATE + INTERVAL '30 days',
+                'Doi tac chua thanh toan', $5, NOW(), NOW())`,
+            [partnerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     }
 
@@ -266,10 +257,10 @@ const createOrderWithShipments = async (orderData) => {
         `INSERT INTO orders (
             customer_id, created_by, updated_by,
             cargo_name, payment_type,
-            total_estimated_price, total_actual_price, prepaid_amount,
+            total_estimated_price, prepaid_amount,
             derived_status, notes, created_at, updated_at
         )
-         VALUES ($1, $2, $2, $3, $4, $5, $5, $6, 'completed', $7, NOW(), NOW())
+         VALUES ($1, $2, $2, $3, $4, $5, $6, 'completed', $7, NOW(), NOW())
          RETURNING *`,
         [
             customerId,
@@ -379,20 +370,28 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         LEFT JOIN LATERAL (
             SELECT
                 CASE
-                    WHEN COUNT(*) = 0 THEN 'paid'
-                    WHEN SUM(paid_amount) >= SUM(total_amount) - 0.01 THEN 'paid'
-                    WHEN SUM(paid_amount) > 0 THEN 'partial'
+                    WHEN COUNT(d.id) = 0 THEN 'paid'
+                    WHEN SUM(COALESCE(dp_c.paid, 0)) >= SUM(d.total_amount) - 0.01 THEN 'paid'
+                    WHEN SUM(COALESCE(dp_c.paid, 0)) > 0 THEN 'partial'
                     ELSE 'unpaid'
                 END AS debt_status,
-                COALESCE(SUM(total_amount), 0) AS debt_total,
-                COALESCE(SUM(paid_amount), 0)  AS debt_paid
-            FROM debts
-            WHERE order_id = o.id AND debt_type = 'customer'
+                COALESCE(SUM(d.total_amount), 0)          AS debt_total,
+                COALESCE(SUM(COALESCE(dp_c.paid, 0)), 0)  AS debt_paid
+            FROM debts d
+            LEFT JOIN (
+                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                FROM debt_payments GROUP BY debt_id
+            ) dp_c ON dp_c.debt_id = d.id
+            WHERE d.order_id = o.id AND d.debt_type = 'customer'
         ) d_agg ON TRUE
         LEFT JOIN LATERAL (
-            SELECT GREATEST(COALESCE(SUM(total_amount - paid_amount), 0), 0) AS driver_debt_remaining
-            FROM debts
-            WHERE order_id = o.id AND debt_type = 'driver'
+            SELECT GREATEST(COALESCE(SUM(d.total_amount - COALESCE(dp_d.paid, 0)), 0), 0) AS driver_debt_remaining
+            FROM debts d
+            LEFT JOIN (
+                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                FROM debt_payments GROUP BY debt_id
+            ) dp_d ON dp_d.debt_id = d.id
+            WHERE d.order_id = o.id AND d.debt_type = 'driver'
         ) dd_agg ON TRUE
         LEFT JOIN LATERAL (
             SELECT
@@ -497,7 +496,18 @@ const getOrderShipments = async (orderId) => {
             GROUP BY ts.shipment_id
         ),
         debt_agg AS (
-            SELECT d.shipment_id, d.status AS driver_payment_state, d.total_amount, d.paid_amount
+            SELECT
+                d.shipment_id,
+                d.total_amount,
+                COALESCE((
+                    SELECT SUM(dp.amount) FROM debt_payments dp
+                    WHERE dp.debt_id = d.id AND dp.status = 'confirmed'
+                ), 0) AS driver_paid,
+                CASE
+                    WHEN COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp WHERE dp.debt_id = d.id AND dp.status = 'confirmed'), 0) >= d.total_amount - 0.01 THEN 'paid'
+                    WHEN COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp WHERE dp.debt_id = d.id AND dp.status = 'confirmed'), 0) > 0 THEN 'partial'
+                    ELSE 'unpaid'
+                END AS driver_payment_state
             FROM debts d
             WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
               AND d.debt_type = 'driver'
@@ -527,7 +537,7 @@ const getOrderShipments = async (orderId) => {
             sa.delivery_address,
             da.driver_payment_state,
             da.total_amount                        AS driver_total,
-            da.paid_amount                         AS driver_paid,
+            da.driver_paid,
             pa.payment_type
         FROM order_shipments os
         LEFT JOIN vehicles  v  ON v.id  = os.vehicle_id
