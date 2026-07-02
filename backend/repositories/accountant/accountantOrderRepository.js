@@ -1,4 +1,5 @@
 const pool = require('../../config/database');
+const { insertAssignmentHistory } = require('../tripRepository');
 
 const buildDebtStatus = (paidAmount, totalAmount) => {
     if (paidAmount >= totalAmount - 0.01) return 'paid';
@@ -116,22 +117,30 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments (
             order_id, shipment_index,
-            vehicle_id, owner_driver_id,
             estimated_price, actual_price,
             cargo_name, cargo_weight_kg,
             status, notes, completed_at, created_at, updated_at
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9, NOW(), NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, NOW(), NOW(), NOW())
          RETURNING id`,
         [
             orderId, shipmentIndex,
-            vehicleId, driverId,
             estimatedPrice, actualPrice || null,
             cargoName || null, cargoWeight || 0,
             shipmentNotes,
         ]
     );
     const shipmentId = shipmentResult.rows[0].id;
+
+    if (vehicleId || driverId) {
+        await insertAssignmentHistory(client, {
+            shipmentId,
+            toDriverId: driverId || null,
+            toVehicleId: vehicleId || null,
+            changedBy: createdByUserId,
+            changeReason: 'initial_assign',
+        });
+    }
 
     const stopAddresses = [...pickupAddresses, deliveryAddress];
     const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
@@ -511,7 +520,7 @@ const getOrderShipments = async (orderId) => {
             ORDER BY d.shipment_id, dp.paid_at DESC
         )
         SELECT
-            os.id, os.shipment_index, os.vehicle_id, os.owner_driver_id,
+            os.id, os.shipment_index, sc.vehicle_id, sc.owner_driver_id,
             os.estimated_price, os.actual_price, os.cargo_name, os.cargo_weight_kg,
             os.status, os.notes, os.completed_at, os.created_at,
             v.plate_number                         AS vehicle_plate,
@@ -530,8 +539,9 @@ const getOrderShipments = async (orderId) => {
             da.paid_amount                         AS driver_paid,
             pa.payment_type
         FROM order_shipments os
-        LEFT JOIN vehicles  v  ON v.id  = os.vehicle_id
-        LEFT JOIN profiles  p  ON p.id  = os.owner_driver_id
+        LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+        LEFT JOIN vehicles  v  ON v.id  = sc.vehicle_id
+        LEFT JOIN profiles  p  ON p.id  = sc.owner_driver_id
         LEFT JOIN exp_agg   ea ON ea.shipment_id = os.id
         LEFT JOIN stop_agg  sa ON sa.shipment_id = os.id
         LEFT JOIN debt_agg  da ON da.shipment_id = os.id

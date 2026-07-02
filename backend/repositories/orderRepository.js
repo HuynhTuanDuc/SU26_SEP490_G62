@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
-const { ASSIGNMENT_TYPE, ACTIVE_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
+const { ACTIVE_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
+const { insertAssignmentHistory } = require('./tripRepository');
 
 
 //Query to list order specific detail
@@ -26,7 +27,7 @@ const selectOrderProjection = `
         os.id AS shipment_id,
         os.completed_at,
         o.vehicle_group_id,
-        os.owner_driver_id,
+        sc.owner_driver_id,
         os.estimated_distance_km,
         os.arrived_at,
         pickup.address AS pickup_address,
@@ -46,7 +47,9 @@ const selectOrderProjection = `
         ORDER BY s1.shipment_index ASC
         LIMIT 1
     ) os ON TRUE
-     
+
+    LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+
     LEFT JOIN LATERAL (
         SELECT ts.address
         FROM trip_stops ts
@@ -63,8 +66,8 @@ const selectOrderProjection = `
         LIMIT 1
     ) delivery ON TRUE
 
-    LEFT JOIN profiles d ON d.id = os.owner_driver_id
-    LEFT JOIN vehicles v ON v.id = os.vehicle_id
+    LEFT JOIN profiles d ON d.id = sc.owner_driver_id
+    LEFT JOIN vehicles v ON v.id = sc.vehicle_id
 
     LEFT JOIN LATERAL (
         SELECT json_agg(
@@ -72,8 +75,8 @@ const selectOrderProjection = `
                 'vehicle_group_id', o.vehicle_group_id,
                 'shipment_id', s_all.id,
                 'shipment_index', s_all.shipment_index,
-                'owner_driver_id', s_all.owner_driver_id,
-                'vehicle_id', s_all.vehicle_id,
+                'owner_driver_id', sc_all.owner_driver_id,
+                'vehicle_id', sc_all.vehicle_id,
                 'plate', v_all.plate_number,
                 'distance', s_all.estimated_distance_km,
                 'arrived_at', s_all.arrived_at,
@@ -87,8 +90,9 @@ const selectOrderProjection = `
             ) ORDER BY s_all.shipment_index ASC
         ) AS trips
         FROM order_shipments s_all
-        LEFT JOIN vehicles v_all ON v_all.id = s_all.vehicle_id
-        LEFT JOIN profiles d_all ON d_all.id = s_all.owner_driver_id
+        LEFT JOIN v_shipment_current sc_all ON sc_all.shipment_id = s_all.id
+        LEFT JOIN vehicles v_all ON v_all.id = sc_all.vehicle_id
+        LEFT JOIN profiles d_all ON d_all.id = sc_all.owner_driver_id
         WHERE s_all.order_id = o.id
     ) all_shipments ON TRUE
 `;
@@ -173,8 +177,9 @@ const listOrders = async ({
             OR EXISTS (
                 SELECT 1
                 FROM order_shipments os_search
-                LEFT JOIN vehicles v_search ON v_search.id = os_search.vehicle_id
-                LEFT JOIN profiles d_search ON d_search.id = os_search.owner_driver_id
+                LEFT JOIN v_shipment_current sc_search ON sc_search.shipment_id = os_search.id
+                LEFT JOIN vehicles v_search ON v_search.id = sc_search.vehicle_id
+                LEFT JOIN profiles d_search ON d_search.id = sc_search.owner_driver_id
                 LEFT JOIN trip_stops ts_search ON ts_search.shipment_id = os_search.id
                 WHERE os_search.order_id = o.id
                   AND (
@@ -325,11 +330,12 @@ const validateVehicleShipmentAssignment = async (
     }
 
     const activeVehicleShipment = await client.query(
-        `SELECT id
-         FROM order_shipments
-         WHERE vehicle_id = $1
-           AND status = ANY($2::text[])
-           AND ($3::int IS NULL OR id <> $3)
+        `SELECT os.id
+         FROM order_shipments os
+         JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         WHERE sc.vehicle_id = $1
+           AND os.status = ANY($2::text[])
+           AND ($3::int IS NULL OR os.id <> $3)
          LIMIT 1`,
         [vehicleId, ACTIVE_STATUSES, excludeShipmentId],
     );
@@ -338,11 +344,12 @@ const validateVehicleShipmentAssignment = async (
     }
 
     const activeDriverShipment = await client.query(
-        `SELECT id
-         FROM order_shipments
-         WHERE owner_driver_id = $1
-           AND status = ANY($2::text[])
-           AND ($3::int IS NULL OR id <> $3)
+        `SELECT os.id
+         FROM order_shipments os
+         JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         WHERE sc.owner_driver_id = $1
+           AND os.status = ANY($2::text[])
+           AND ($3::int IS NULL OR os.id <> $3)
          LIMIT 1`,
         [driverId, ACTIVE_STATUSES, excludeShipmentId],
     );
@@ -419,7 +426,8 @@ const listCoordinatorVehicleGroups = async () => {
             AND NOT EXISTS (
                 SELECT 1
                 FROM order_shipments os
-                WHERE os.vehicle_id = v.id
+                JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                WHERE sc.vehicle_id = v.id
                   AND os.status = ANY($1::text[])
             )
             AND NOT EXISTS (
@@ -431,7 +439,8 @@ const listCoordinatorVehicleGroups = async () => {
             AND NOT EXISTS (
                 SELECT 1
                 FROM order_shipments os_driver
-                WHERE os_driver.owner_driver_id = v.assigned_driver_id
+                JOIN v_shipment_current sc_driver ON sc_driver.shipment_id = os_driver.id
+                WHERE sc_driver.owner_driver_id = v.assigned_driver_id
                   AND os_driver.status = ANY($1::text[])
             )
             AND NOT EXISTS (
@@ -651,16 +660,14 @@ const createOrderWithShipment = async ({
         ],
     );
 
-    const order = orderResult.rows[0]; 
+    const order = orderResult.rows[0];
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
-            (order_id, shipment_index, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
-         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, NOW()), CASE WHEN $9 = 'claimed' THEN NOW() ELSE NULL END)
+            (order_id, shipment_index, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+         VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, NOW()), CASE WHEN $7 = 'claimed' THEN NOW() ELSE NULL END)
          RETURNING *`,
         [
             order.id,
-            shipmentData.owner_driver_id,
-            shipmentData.vehicle_id || null,
             shipmentData.cargo_name || order.cargo_name,
             shipmentData.cargo_weight_kg,
             shipmentData.estimated_price,
@@ -681,19 +688,14 @@ const createOrderWithShipment = async ({
         orderData.customer_phone,
     );
 
-    if (assignmentData?.driver_id && assignmentData?.vehicle_id) {
-        await client.query(
-            `INSERT INTO shipment_assignments
-                (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at)
-             VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [
-                shipmentResult.rows[0].id,
-                assignmentData.driver_id,
-                assignmentData.vehicle_id,
-                assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
-                assignmentData.assigned_by ?? null,
-            ],
-        );
+    if (shipmentData.owner_driver_id || shipmentData.vehicle_id) {
+        await insertAssignmentHistory(client, {
+            shipmentId: shipmentResult.rows[0].id,
+            toDriverId: shipmentData.owner_driver_id || null,
+            toVehicleId: shipmentData.vehicle_id || null,
+            changedBy: assignmentData?.assigned_by ?? userId,
+            changeReason: 'initial_assign',
+        });
     }
 
     return {
@@ -753,14 +755,12 @@ const createOrderWithMultipleShipments = async ({
 
         const shipmentResult = await client.query(// ghi 1 lần và lấy bản ghi ordershipment vừa tạo
             `INSERT INTO order_shipments
-                (order_id, shipment_index, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, COALESCE($12, NOW()), CASE WHEN $10 = 'claimed' THEN NOW() ELSE NULL END)
+                (order_id, shipment_index, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), CASE WHEN $8 = 'claimed' THEN NOW() ELSE NULL END)
              RETURNING *`,
             [
                 order.id,
                 i + 1,
-                shipmentData.owner_driver_id,
-                shipmentData.vehicle_id || null,
                 shipmentData.cargo_name || order.cargo_name,
                 shipmentData.cargo_weight_kg,
                 shipmentData.estimated_price,
@@ -772,27 +772,22 @@ const createOrderWithMultipleShipments = async ({
             ],
         );
 
-        const shipment = shipmentResult.rows[0]; //hàng 1 của order_shipment 
+        const shipment = shipmentResult.rows[0]; //hàng 1 của order_shipment
         createdShipments.push(shipment);
 
         const assignmentData = shipmentData.assignmentData; //Lấy giá trị assignment Data trong object shipment Data
 
-        if (assignmentData?.driver_id && assignmentData?.vehicle_id) { //Kiểm tra null
-            await client.query(//Chèm vào shipment_assignment 
-                `INSERT INTO shipment_assignments
-                    (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at)
-                 VALUES ($1, $2, $3, $4, $5, NOW())`,
-                [
-                    shipment.id,
-                    assignmentData.driver_id,
-                    assignmentData.vehicle_id,
-                    assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
-                    assignmentData.assigned_by ?? null
-                ],
-            );
+        if (shipmentData.owner_driver_id || shipmentData.vehicle_id) {
+            await insertAssignmentHistory(client, {
+                shipmentId: shipment.id,
+                toDriverId: shipmentData.owner_driver_id || null,
+                toVehicleId: shipmentData.vehicle_id || null,
+                changedBy: assignmentData?.assigned_by ?? userId,
+                changeReason: 'initial_assign',
+            });
         }
 
-        
+
         await insertStops(//Chèn vào bảng trip stop 
             client,
             shipment.id,
@@ -908,7 +903,11 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
 
         if (shipmentsDataArray && shipmentsDataArray.length > 0) {
             const existingShipmentsRes = await client.query(
-                `SELECT id, status, owner_driver_id, vehicle_id FROM order_shipments WHERE order_id = $1 ORDER BY shipment_index ASC`,
+                `SELECT os.id, os.status, sc.owner_driver_id, sc.vehicle_id
+                 FROM order_shipments os
+                 LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                 WHERE os.order_id = $1
+                 ORDER BY os.shipment_index ASC`,
                 [orderId],
             );
             const existingShipments = existingShipmentsRes.rows;
@@ -934,20 +933,16 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
 
                     await client.query(
                         `UPDATE order_shipments
-                         SET owner_driver_id = $2,
-                             vehicle_id = COALESCE($3, vehicle_id),
-                             estimated_price = COALESCE($4, estimated_price),
-                             estimated_distance_km = COALESCE($5, estimated_distance_km),
-                             arrived_at = COALESCE($6, arrived_at),
-                             actual_price = COALESCE($7, actual_price),
-                             status = $8,
-                             claimed_at = CASE WHEN $8 = 'claimed' AND claimed_at IS NULL THEN NOW() ELSE claimed_at END,
+                         SET estimated_price = COALESCE($2, estimated_price),
+                             estimated_distance_km = COALESCE($3, estimated_distance_km),
+                             arrived_at = COALESCE($4, arrived_at),
+                             actual_price = COALESCE($5, actual_price),
+                             status = $6,
+                             claimed_at = CASE WHEN $6 = 'claimed' AND claimed_at IS NULL THEN NOW() ELSE claimed_at END,
                              updated_at = NOW()
                          WHERE id = $1`,
                         [
                             existing.id,
-                            shipmentData.owner_driver_id,
-                            shipmentData.vehicle_id,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
                             arrivedAt,
@@ -956,27 +951,19 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                         ],
                     );
 
-                    if (shipmentData.assignmentData?.driver_id && shipmentData.assignmentData?.vehicle_id) {
-                        await client.query(
-                            `INSERT INTO shipment_assignments
-                                (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at)
-                             SELECT $1, $2, $3, $4, $5, NOW()
-                             WHERE NOT EXISTS (
-                                 SELECT 1
-                                 FROM shipment_assignments
-                                 WHERE shipment_id = $1
-                                   AND driver_id = $2
-                                   AND vehicle_id = $3
-                                   AND completed_at IS NULL
-                             )`,
-                            [
-                                existing.id,
-                                shipmentData.assignmentData.driver_id,
-                                shipmentData.assignmentData.vehicle_id,
-                                shipmentData.assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
-                                shipmentData.assignmentData.assigned_by ?? null,
-                            ],
-                        );
+                    if (
+                        Number(existing.owner_driver_id || 0) !== Number(shipmentData.owner_driver_id || 0)
+                        || Number(existing.vehicle_id || 0) !== Number(shipmentData.vehicle_id || 0)
+                    ) {
+                        await insertAssignmentHistory(client, {
+                            shipmentId: existing.id,
+                            fromDriverId: existing.owner_driver_id || null,
+                            fromVehicleId: existing.vehicle_id || null,
+                            toDriverId: shipmentData.owner_driver_id || null,
+                            toVehicleId: shipmentData.vehicle_id || null,
+                            changedBy: shipmentData.assignmentData?.assigned_by ?? null,
+                            changeReason: 'coordinator_swap',
+                        });
                     }
 
                     if (
@@ -999,37 +986,30 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 } else if (!existing && shipmentData) {
                     const shipmentResult = await client.query(
                         `INSERT INTO order_shipments
-                            (order_id, shipment_index, owner_driver_id, vehicle_id, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $11, $10, NOW(), CASE WHEN $11 = 'claimed' THEN NOW() ELSE NULL END)
+                            (order_id, shipment_index, cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), CASE WHEN $8 = 'claimed' THEN NOW() ELSE NULL END)
                          RETURNING id`,
                         [
                             orderId,
                             i + 1,
-                            shipmentData.owner_driver_id,
-                            shipmentData.vehicle_id,
                             orderResult.rows[0].cargo_name,
                             orderResult.rows[0].cargo_weight_kg,
                             shipmentData.estimated_price,
                             shipmentData.estimated_distance_km,
                             arrivedAt,
-                            orderNotes,
                             shipmentData.status || SHIPMENT_STATUS.AVAILABLE,
+                            orderNotes,
                         ],
                     );
                     const newShipmentId = shipmentResult.rows[0].id;
-                    if (shipmentData.assignmentData?.driver_id && shipmentData.assignmentData?.vehicle_id) {
-                        await client.query(
-                            `INSERT INTO shipment_assignments
-                                (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at)
-                             VALUES ($1, $2, $3, $4, $5, NOW())`,
-                            [
-                                newShipmentId,
-                                shipmentData.assignmentData.driver_id,
-                                shipmentData.assignmentData.vehicle_id,
-                                shipmentData.assignmentData.assignment_type ?? ASSIGNMENT_TYPE.COORDINATOR_ASSIGN,
-                                shipmentData.assignmentData.assigned_by ?? null,
-                            ],
-                        );
+                    if (shipmentData.owner_driver_id || shipmentData.vehicle_id) {
+                        await insertAssignmentHistory(client, {
+                            shipmentId: newShipmentId,
+                            toDriverId: shipmentData.owner_driver_id || null,
+                            toVehicleId: shipmentData.vehicle_id || null,
+                            changedBy: shipmentData.assignmentData?.assigned_by ?? null,
+                            changeReason: 'initial_assign',
+                        });
                     }
                     await insertStops(
                         client,
@@ -1045,7 +1025,6 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                         throw new Error(`Không thể xóa chuyến xe đã được xử lý (trạng thái: ${existing.status})`);
                     }
                     await client.query(`DELETE FROM trip_stops WHERE shipment_id = $1`, [existing.id]);
-                    await client.query(`DELETE FROM shipment_assignments WHERE shipment_id = $1`, [existing.id]);
                     await client.query(`DELETE FROM order_shipments WHERE id = $1`, [existing.id]);
                 }
             }

@@ -411,7 +411,8 @@ const updateOrderReceiptTotals = async (client, orderId) => {
                 ) AS total_actual_price
             FROM order_shipments os
             LEFT JOIN orders o_src ON o_src.id = os.order_id
-            LEFT JOIN vehicles v ON v.id = os.vehicle_id
+            LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+            LEFT JOIN vehicles v ON v.id = sc.vehicle_id
             LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
             LEFT JOIN vehicle_groups vg_order ON vg_order.id = o_src.vehicle_group_id
             WHERE os.order_id = $1
@@ -441,8 +442,8 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
             os.id,
             os.order_id,
             os.shipment_index,
-            os.owner_driver_id,
-            os.vehicle_id,
+            sc.owner_driver_id,
+            sc.vehicle_id,
             os.status,
             os.cargo_name,
             os.cargo_weight_kg,
@@ -457,8 +458,9 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
             COALESCE(vg_vehicle.name, vg_order.name) AS vehicle_group_name,
             COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
          FROM order_shipments os
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
-         LEFT JOIN profiles p ON p.id = os.owner_driver_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+         LEFT JOIN profiles p ON p.id = sc.owner_driver_id
          LEFT JOIN orders o ON o.id = os.order_id
          LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
          LEFT JOIN vehicle_groups vg_order ON vg_order.id = o.vehicle_group_id
@@ -736,10 +738,11 @@ const getReceiptRequests = async ({
             WHERE os_revenue.order_id = rr.order_id
          ) revenue_summary ON TRUE
          LEFT JOIN LATERAL (
-            SELECT os_primary.*
+            SELECT os_primary.*, sc_primary.owner_driver_id, sc_primary.vehicle_id
             FROM order_shipments os_primary
+            LEFT JOIN v_shipment_current sc_primary ON sc_primary.shipment_id = os_primary.id
             WHERE os_primary.order_id = rr.order_id
-            ORDER BY CASE WHEN os_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
+            ORDER BY CASE WHEN sc_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
             LIMIT 1
          ) primary_shipment ON TRUE
          LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id
@@ -770,10 +773,11 @@ const getReceiptRequests = async ({
          LEFT JOIN customers c  ON c.id  = o.customer_id
          LEFT JOIN shipment_receipts sr ON sr.order_receipt_request_id = rr.id
          LEFT JOIN LATERAL (
-            SELECT os_primary.*
+            SELECT os_primary.*, sc_primary.owner_driver_id, sc_primary.vehicle_id
             FROM order_shipments os_primary
+            LEFT JOIN v_shipment_current sc_primary ON sc_primary.shipment_id = os_primary.id
             WHERE os_primary.order_id = rr.order_id
-            ORDER BY CASE WHEN os_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
+            ORDER BY CASE WHEN sc_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
             LIMIT 1
          ) primary_shipment ON TRUE
          LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id

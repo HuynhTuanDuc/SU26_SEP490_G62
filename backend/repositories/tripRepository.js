@@ -1,7 +1,6 @@
 const pool = require('../config/database');
 const {
     SHIPMENT_STATUS,
-    ASSIGNMENT_TYPE,
     ACTIVE_STATUSES,
     STATUS_TIMESTAMP_COL,
 } = require('../constants/tripConstants');
@@ -10,6 +9,24 @@ const {
 const PICKUP_SUBQ  = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'   ORDER BY ts.stop_index ASC  LIMIT 1)`;
 const DELIVERY_SUBQ = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery' ORDER BY ts.stop_index DESC LIMIT 1)`;
 const RECEIPT_PAYMENT_TYPE_SQL = `COALESCE(sr.payment_type, o.payment_type)`;
+
+// Tài xế/xe hiện tại của chuyến được suy ra từ dòng shipment_assignment_history mới nhất
+// (view v_shipment_current). owner_driver_id IS NULL ⇒ chuyến đang ở pool, không ai giữ.
+const CURRENT_JOIN = `LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id`;
+
+// Ghi 1 dòng lịch sử gán xe — nguồn sự thật tài xế/xe hiện tại của chuyến
+const insertAssignmentHistory = async (
+    client,
+    { shipmentId, fromDriverId = null, fromVehicleId = null, toDriverId = null, toVehicleId = null, changedBy, changeReason, incidentId = null, notes = null },
+) => {
+    await client.query(
+        `INSERT INTO shipment_assignment_history
+             (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
+              changed_by, change_reason, incident_id, notes, changed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [shipmentId, fromDriverId, fromVehicleId, toDriverId, toVehicleId, changedBy, changeReason, incidentId, notes],
+    );
+};
 
 const getDriverVehicleGroupId = async (driverId) => {
     const result = await pool.query(
@@ -27,11 +44,11 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
 
     // vehicle_group_id đã bị xoá khỏi order_shipments — lookup qua orders
     const rowsWhere  = vehicleGroupId
-        ? `WHERE os.status = 'available' AND os.owner_driver_id IS NULL AND vg.id = $3`
-        : `WHERE os.status = 'available' AND os.owner_driver_id IS NULL`;
+        ? `WHERE os.status = 'available' AND sc.owner_driver_id IS NULL AND vg.id = $3`
+        : `WHERE os.status = 'available' AND sc.owner_driver_id IS NULL`;
     const countWhere = vehicleGroupId
-        ? `WHERE os.status = 'available' AND os.owner_driver_id IS NULL AND vg.id = $1`
-        : `WHERE os.status = 'available' AND os.owner_driver_id IS NULL`;
+        ? `WHERE os.status = 'available' AND sc.owner_driver_id IS NULL AND vg.id = $1`
+        : `WHERE os.status = 'available' AND sc.owner_driver_id IS NULL`;
 
     const rowsParams  = vehicleGroupId ? [limit, offset, vehicleGroupId] : [limit, offset];
     const countParams = vehicleGroupId ? [vehicleGroupId] : [];
@@ -60,6 +77,7 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
              FROM order_shipments os
              JOIN orders o          ON o.id = os.order_id
              JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
+             ${CURRENT_JOIN}
              ${rowsWhere}
              ORDER BY os.created_at ASC
              LIMIT $1 OFFSET $2`,
@@ -70,6 +88,7 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
              FROM order_shipments os
              JOIN orders o ON o.id = os.order_id
              JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
+             ${CURRENT_JOIN}
              ${countWhere}`,
             countParams,
         ),
@@ -109,7 +128,8 @@ const getActiveTrip = async (driverId) => {
             ) AS max_shipment_index
          FROM order_shipments os
          JOIN orders o ON os.order_id = o.id
-         WHERE os.owner_driver_id = $1
+         ${CURRENT_JOIN}
+         WHERE sc.owner_driver_id = $1
            AND os.status = ANY($2::text[])
          LIMIT 1`,
         [driverId, ACTIVE_STATUSES],
@@ -135,7 +155,8 @@ const getActiveTrip = async (driverId) => {
 
 const getTripById = async (tripId) => {
     const result = await pool.query(
-        `SELECT os.*, o.cargo_name, o.notes AS order_notes,
+        `SELECT os.*, sc.owner_driver_id, sc.vehicle_id,
+                o.cargo_name, o.notes AS order_notes,
                 (SELECT ts.completed_at
                  FROM trip_stops ts
                  WHERE ts.shipment_id = os.id
@@ -144,6 +165,7 @@ const getTripById = async (tripId) => {
                  LIMIT 1) AS pickup_completed_at
          FROM order_shipments os
          JOIN orders o ON os.order_id = o.id
+         ${CURRENT_JOIN}
          WHERE os.id = $1`,
         [tripId],
     );
@@ -152,7 +174,8 @@ const getTripById = async (tripId) => {
 
 const getTripByIdForUpdate = async (client, tripId) => {
     const result = await client.query(
-        `SELECT os.*, o.cargo_name, o.notes AS order_notes,
+        `SELECT os.*, sc.owner_driver_id, sc.vehicle_id,
+                o.cargo_name, o.notes AS order_notes,
                 (SELECT ts.completed_at
                  FROM trip_stops ts
                  WHERE ts.shipment_id = os.id
@@ -161,8 +184,9 @@ const getTripByIdForUpdate = async (client, tripId) => {
                  LIMIT 1) AS pickup_completed_at
          FROM order_shipments os
          JOIN orders o ON os.order_id = o.id
+         ${CURRENT_JOIN}
          WHERE os.id = $1
-         FOR UPDATE`,
+         FOR UPDATE OF os`,
         [tripId],
     );
     return result.rows[0] ?? null;
@@ -266,9 +290,10 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const activeVehicleCheck = await client.query(
-            `SELECT id FROM order_shipments
-             WHERE vehicle_id = $1
-               AND status = ANY($2::text[])
+            `SELECT os.id FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.vehicle_id = $1
+               AND os.status = ANY($2::text[])
              LIMIT 1`,
             [vehicleId, ACTIVE_STATUSES],
         );
@@ -278,9 +303,10 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const activeCheck = await client.query(
-            `SELECT id FROM order_shipments
-             WHERE owner_driver_id = $1
-               AND status = ANY($2::text[])
+            `SELECT os.id FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.owner_driver_id = $1
+               AND os.status = ANY($2::text[])
              LIMIT 1`,
             [driverId, ACTIVE_STATUSES],
         );
@@ -290,10 +316,11 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
         }
 
         const locked = await client.query(
-            `SELECT id, order_id, status, owner_driver_id
-             FROM order_shipments
-             WHERE id = $1
-             FOR UPDATE`,
+            `SELECT os.id, os.order_id, os.status, sc.owner_driver_id
+             FROM order_shipments os
+             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE os.id = $1
+             FOR UPDATE OF os`,
             [shipmentId],
         );
         if (!locked.rows[0]) {
@@ -309,10 +336,11 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
 
         // Chặn nếu driver đang có active trip trong CÙNG order (không chặn nếu đã hoàn thành)
         const sameOrderCheck = await client.query(
-            `SELECT id FROM order_shipments
-             WHERE order_id = $1
-               AND owner_driver_id = $2
-               AND status = ANY($3::text[])
+            `SELECT os.id FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE os.order_id = $1
+               AND sc.owner_driver_id = $2
+               AND os.status = ANY($3::text[])
              LIMIT 1`,
             [order_id, driverId, ACTIVE_STATUSES],
         );
@@ -323,24 +351,23 @@ const claimShipment = async (shipmentId, driverId, vehicleId) => {
 
         const result = await client.query(
             `UPDATE order_shipments
-             SET owner_driver_id = $1,
-                 vehicle_id      = $2,
-                 status          = $3,
+             SET status          = $1,
                  claimed_at      = NOW(),
                  version         = version + 1,
                  updated_at      = NOW()
-             WHERE id = $4
+             WHERE id = $2
              RETURNING *`,
-            [driverId, vehicleId, SHIPMENT_STATUS.CLAIMED, shipmentId],
+            [SHIPMENT_STATUS.CLAIMED, shipmentId],
         );
         const claimed = result.rows[0];
 
-        await client.query(
-            `INSERT INTO shipment_assignments
-                 (shipment_id, driver_id, vehicle_id, assignment_type, assigned_at)
-             VALUES ($1, $2, $3, $4, NOW())`,
-            [claimed.id, driverId, vehicleId, ASSIGNMENT_TYPE.SELF_CLAIM],
-        );
+        await insertAssignmentHistory(client, {
+            shipmentId: claimed.id,
+            toDriverId: driverId,
+            toVehicleId: vehicleId,
+            changedBy: driverId,
+            changeReason: 'self_claim',
+        });
 
         await client.query('COMMIT');
         return claimed;
@@ -366,36 +393,33 @@ const activateNextShipment = async (completedShipmentId, driverId, vehicleId) =>
         const { order_id, shipment_index } = cur.rows[0];
 
         // Chỉ auto-activate nếu coordinator đã pre-assign chuyến tiếp cho driver này
-        // (owner_driver_id = driverId AND status = 'available')
-        // Pool trips (owner_driver_id = NULL) không auto-activate — driver tự claim từ pool
+        // (history hiện tại trỏ owner = driverId AND status = 'available')
+        // Pool trips (chưa gán) không auto-activate — driver tự claim từ pool
         const nextResult = await client.query(
-            `UPDATE order_shipments
+            `UPDATE order_shipments os
              SET status     = $1,
                  claimed_at = NOW(),
                  version    = version + 1,
                  updated_at = NOW()
-             WHERE order_id        = $2
-               AND owner_driver_id = $3
-               AND status          = 'available'
-               AND shipment_index  = (
-                   SELECT MIN(shipment_index)
-                   FROM order_shipments
-                   WHERE order_id = $2
-                     AND shipment_index > $4
-                     AND owner_driver_id = $3
+             FROM v_shipment_current sc
+             WHERE sc.shipment_id = os.id
+               AND os.order_id        = $2
+               AND sc.owner_driver_id = $3
+               AND os.status          = 'available'
+               AND os.shipment_index  = (
+                   SELECT MIN(os2.shipment_index)
+                   FROM order_shipments os2
+                   JOIN v_shipment_current sc2 ON sc2.shipment_id = os2.id
+                   WHERE os2.order_id = $2
+                     AND os2.shipment_index > $4
+                     AND sc2.owner_driver_id = $3
                )
-             RETURNING *`,
+             RETURNING os.*`,
             [SHIPMENT_STATUS.CLAIMED, order_id, driverId, shipment_index],
         );
 
         if (nextResult.rows[0]) {
             const next = nextResult.rows[0];
-            await client.query(
-                `INSERT INTO shipment_assignments
-                     (shipment_id, driver_id, vehicle_id, assignment_type, assigned_at)
-                 VALUES ($1, $2, $3, $4, NOW())`,
-                [next.id, driverId, vehicleId, ASSIGNMENT_TYPE.SELF_CLAIM],
-            );
             await client.query('COMMIT');
             return next;
         }
@@ -477,17 +501,19 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
         await client.query('BEGIN');
 
         const cur = await client.query(
-            `SELECT order_id, status, vehicle_id FROM order_shipments WHERE id = $1 FOR UPDATE`,
+            `SELECT os.order_id, os.status, sc.owner_driver_id, sc.vehicle_id
+             FROM order_shipments os
+             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE os.id = $1 FOR UPDATE OF os`,
             [tripId],
         );
         if (!cur.rows[0]) throw new Error('Chuyến không tồn tại');
+        const { owner_driver_id: currentDriverId, vehicle_id: currentVehicleId } = cur.rows[0];
 
-        // Trả trip về pool: xóa sạch thông tin driver/thời điểm claim trước đó
+        // Trả trip về pool: xóa thời điểm claim, không còn cột owner/vehicle trên order_shipments
         await client.query(
             `UPDATE order_shipments
              SET status          = 'available',
-                 owner_driver_id = NULL,
-                 vehicle_id      = NULL,
                  claimed_at      = NULL,
                  notes           = CASE WHEN $1::text IS NOT NULL
                                        THEN COALESCE(notes || E'\n', '') || '[Released] ' || $1::text
@@ -498,32 +524,17 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
             [reason ?? null, tripId],
         );
 
-        // Đóng shipment_assignments record của lần claim này
-        await client.query(
-            `UPDATE shipment_assignments
-             SET completed_at = NOW()
-             WHERE shipment_id = $1 AND driver_id = $2 AND completed_at IS NULL`,
-            [tripId, driverId],
-        );
-
-        // Ghi audit vào shipment_assignment_history
-        await client.query(
-            `INSERT INTO shipment_assignment_history
-                 (shipment_id, from_driver_id, from_vehicle_id,
-                  to_driver_id, to_vehicle_id,
-                  changed_by, change_reason, notes, changed_at)
-             SELECT $1,
-                    sa.driver_id, sa.vehicle_id,
-                    sa.driver_id, sa.vehicle_id,
-                    $2, 'driver_request',
-                    $3,
-                    NOW()
-             FROM shipment_assignments sa
-             WHERE sa.shipment_id = $1 AND sa.driver_id = $2
-             ORDER BY sa.assigned_at DESC
-             LIMIT 1`,
-            [tripId, driverId, reason ? `Driver tự hủy: ${reason}` : 'Driver tự hủy chuyến'],
-        );
+        // Ghi audit: trả chuyến về pool (to_driver/to_vehicle = NULL)
+        await insertAssignmentHistory(client, {
+            shipmentId: tripId,
+            fromDriverId: currentDriverId ?? driverId,
+            fromVehicleId: currentVehicleId ?? null,
+            toDriverId: null,
+            toVehicleId: null,
+            changedBy: driverId,
+            changeReason: 'release_to_pool',
+            notes: reason ? `Driver tự hủy: ${reason}` : 'Driver tự hủy chuyến',
+        });
 
         await client.query('COMMIT');
         return { order_id: cur.rows[0].order_id, released: true };
@@ -620,11 +631,12 @@ const reassignShipmentAfterIncident = async (
         }
 
         const vehicleBusyRes = await client.query(
-            `SELECT id
-             FROM order_shipments
-             WHERE vehicle_id = $1
-               AND status = ANY($2::text[])
-               AND id <> $3
+            `SELECT os.id
+             FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.vehicle_id = $1
+               AND os.status = ANY($2::text[])
+               AND os.id <> $3
              LIMIT 1`,
             [toVehicleId, ACTIVE_STATUSES, shipmentId],
         );
@@ -658,11 +670,12 @@ const reassignShipmentAfterIncident = async (
         }
 
         const activeTripRes = await client.query(
-            `SELECT id
-             FROM order_shipments
-             WHERE owner_driver_id = $1
-               AND status = ANY($2::text[])
-               AND id <> $3
+            `SELECT os.id
+             FROM order_shipments os
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.owner_driver_id = $1
+               AND os.status = ANY($2::text[])
+               AND os.id <> $3
              LIMIT 1`,
             [toDriverId, ACTIVE_STATUSES, shipmentId],
         );
@@ -670,47 +683,17 @@ const reassignShipmentAfterIncident = async (
             throw new Error('Tài xế thay thế đang có chuyến hoạt động khác');
         }
 
-        await client.query(
-            `UPDATE shipment_assignments
-             SET completed_at = NOW()
-             WHERE shipment_id = $1
-               AND driver_id = $2
-               AND completed_at IS NULL`,
-            [shipmentId, fromDriverId],
-        );
-
-        await client.query(
-            `UPDATE order_shipments
-             SET owner_driver_id = $1,
-                 vehicle_id = $2,
-                 updated_at = NOW()
-             WHERE id = $3`,
-            [toDriverId, toVehicleId, shipmentId],
-        );
-
-        await client.query(
-            `INSERT INTO shipment_assignments
-                (shipment_id, driver_id, vehicle_id, assignment_type, assigned_by, assigned_at, accepted_at)
-             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-            [shipmentId, toDriverId, toVehicleId, ASSIGNMENT_TYPE.COORDINATOR_ASSIGN, changedBy],
-        );
-
-        await client.query(
-            `INSERT INTO shipment_assignment_history
-                (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-                 changed_by, change_reason, incident_id, notes, changed_at)
-             VALUES ($1, $2, $3, $4, $5, $6, 'incident_reassign', $7, $8, NOW())`,
-            [
-                shipmentId,
-                fromDriverId,
-                shipment.vehicle_id,
-                toDriverId,
-                toVehicleId,
-                changedBy,
-                incidentId,
-                note ?? null,
-            ],
-        );
+        await insertAssignmentHistory(client, {
+            shipmentId,
+            fromDriverId,
+            fromVehicleId: shipment.vehicle_id,
+            toDriverId,
+            toVehicleId,
+            changedBy,
+            changeReason: 'incident_reassign',
+            incidentId,
+            notes: note ?? null,
+        });
 
         if (shouldManageTransaction) {
             await client.query('COMMIT');
@@ -742,8 +725,9 @@ const getDriverStats = async (driverId) => {
                 WHERE status = $2
                   AND DATE_TRUNC('month', completed_at) = DATE_TRUNC('month', NOW())
             )::int                                          AS month_completed
-         FROM order_shipments
-         WHERE owner_driver_id = $1`,
+         FROM order_shipments os
+         JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         WHERE sc.owner_driver_id = $1`,
         [driverId, SHIPMENT_STATUS.COMPLETED],
     );
     return result.rows[0];
@@ -783,7 +767,8 @@ const getDriverOrderHistory = async (driverId, { limit = 30, offset = 0 } = {}) 
             (MAX(os.completed_at) FILTER (WHERE os.status = 'completed'))   AS last_completed_at,
             COUNT(*) OVER()::int                                            AS total_count
          FROM orders o
-         JOIN order_shipments os ON os.order_id = o.id AND os.owner_driver_id = $1
+         JOIN order_shipments os ON os.order_id = o.id
+         JOIN v_shipment_current sc ON sc.shipment_id = os.id AND sc.owner_driver_id = $1
          GROUP BY o.id, o.cargo_name, o.notes, o.payment_type, o.derived_status, o.created_at
          ORDER BY MIN(os.claimed_at) DESC NULLS LAST, o.created_at DESC
          LIMIT $2 OFFSET $3`,
@@ -816,9 +801,10 @@ const getAvailableShipmentDetail = async (shipmentId) => {
          FROM order_shipments os
          JOIN orders o          ON o.id = os.order_id
          JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
+         ${CURRENT_JOIN}
          WHERE os.id = $1
            AND os.status = 'available'
-           AND os.owner_driver_id IS NULL`,
+           AND sc.owner_driver_id IS NULL`,
         [shipmentId],
     );
     return result.rows[0] ?? null;
@@ -855,9 +841,10 @@ const getAvailableOrderDetail = async (orderId) => {
          FROM order_shipments os
          JOIN orders o2         ON o2.id = os.order_id
          JOIN vehicle_groups vg ON vg.id = o2.vehicle_group_id
+         ${CURRENT_JOIN}
          WHERE os.order_id = $1
            AND os.status = 'available'
-           AND os.owner_driver_id IS NULL
+           AND sc.owner_driver_id IS NULL
          ORDER BY os.shipment_index ASC`,
         [orderId],
     );
@@ -903,7 +890,8 @@ const getOrderWithShipments = async (orderId, driverId) => {
              WHERE dp.shipment_id = os.id
              ORDER BY dp.captured_at DESC LIMIT 1) AS proof_url
          FROM order_shipments os
-         WHERE os.order_id = $1 AND os.owner_driver_id = $2
+         ${CURRENT_JOIN}
+         WHERE os.order_id = $1 AND sc.owner_driver_id = $2
          ORDER BY os.shipment_index ASC`,
         [orderId, driverId],
     );
@@ -943,7 +931,8 @@ const getPendingReceiptOrder = async (driverId) => {
             ) AS max_shipment_index
          FROM order_shipments os
          JOIN orders o ON o.id = os.order_id
-         WHERE os.owner_driver_id = $1
+         ${CURRENT_JOIN}
+         WHERE sc.owner_driver_id = $1
            AND os.status = 'completed'
            AND o.payment_type = 'cash'
            AND (
@@ -1087,8 +1076,9 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
          JOIN orders o                   ON o.id    = orr.order_id
          LEFT JOIN customers c           ON c.id    = o.customer_id
          JOIN order_shipments os         ON os.id   = orr.requesting_shipment_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN profiles p_driver     ON p_driver.id = orr.driver_id
-         LEFT JOIN vehicles v            ON v.id    = os.vehicle_id`;
+         LEFT JOIN vehicles v            ON v.id    = sc.vehicle_id`;
 
     // Thử tìm qua shipment_receipts.id trước
     let result = await pool.query(
@@ -1116,6 +1106,7 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
 };
 
 module.exports = {
+    insertAssignmentHistory,
     getDriverVehicleGroupId,
     getDriverVehicleId,
     getAvailableShipments,

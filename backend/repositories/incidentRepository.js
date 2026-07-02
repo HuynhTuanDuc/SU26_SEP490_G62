@@ -119,10 +119,11 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
         `SELECT COUNT(*)::int AS total
          FROM incidents i
          LEFT JOIN order_shipments os ON os.id = i.shipment_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN profiles p_report ON p_report.id = i.reported_by
-         LEFT JOIN profiles p_owner ON p_owner.id = os.owner_driver_id
+         LEFT JOIN profiles p_owner ON p_owner.id = sc.owner_driver_id
          LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
          ${whereSql}`,
         params
     );
@@ -147,7 +148,7 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
             p_replace.full_name AS replacement_driver_name,
             os.order_id,
             os.status AS shipment_status,
-            os.owner_driver_id AS current_driver_id,
+            sc.owner_driver_id AS current_driver_id,
             p_owner.full_name AS current_driver_name,
             v.plate_number,
             EXISTS (
@@ -159,10 +160,11 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
             ) AS pickup_completed
          FROM incidents i
          LEFT JOIN order_shipments os ON os.id = i.shipment_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN profiles p_report ON p_report.id = i.reported_by
-         LEFT JOIN profiles p_owner ON p_owner.id = os.owner_driver_id
+         LEFT JOIN profiles p_owner ON p_owner.id = sc.owner_driver_id
          LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
          ${whereSql}
          ORDER BY
             CASE i.status

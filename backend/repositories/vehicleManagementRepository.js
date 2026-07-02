@@ -312,7 +312,8 @@ const getDriverById = async (driverId, db = pool) => {
          LEFT JOIN LATERAL (
              SELECT COUNT(*)::int AS active_shipment_count
              FROM order_shipments os
-             WHERE os.owner_driver_id = d.profile_id
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.owner_driver_id = d.profile_id
                AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
          ) active_shipments ON TRUE
          LEFT JOIN LATERAL (
@@ -346,7 +347,8 @@ const listDriverOptions = async () => {
          LEFT JOIN LATERAL (
              SELECT COUNT(*)::int AS active_shipment_count
              FROM order_shipments os
-             WHERE os.owner_driver_id = d.profile_id
+             JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             WHERE sc.owner_driver_id = d.profile_id
                AND ${ACTIVE_SHIPMENT_STATUS_CONDITION}
          ) active_shipments ON TRUE
          LEFT JOIN LATERAL (

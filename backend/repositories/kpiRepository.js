@@ -228,14 +228,14 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     const shipRes = await pool.query(
         `SELECT
             COUNT(*) FILTER (
-                WHERE os.owner_driver_id = $1
+                WHERE sc.owner_driver_id = $1
             )                                                           AS completed_shipments,
             COALESCE(
                 SUM(
                     CASE
                         WHEN alloc.allocation_count > 0 THEN
                             COALESCE(os.actual_price, os.estimated_price, 0) * (alloc.driver_share_percent / 100.0)
-                        WHEN os.owner_driver_id = $1 THEN
+                        WHEN sc.owner_driver_id = $1 THEN
                             COALESCE(os.actual_price, os.estimated_price, 0)
                         ELSE 0
                     END
@@ -243,6 +243,7 @@ const recalculateDriverKPI = async (driverId, month, year) => {
                 0
             )                                                           AS total_revenue
          FROM order_shipments os
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN LATERAL (
             SELECT
                 COUNT(*)::int AS allocation_count,
@@ -257,7 +258,7 @@ const recalculateDriverKPI = async (driverId, month, year) => {
            AND EXTRACT(MONTH FROM os.completed_at) = $2
            AND EXTRACT(YEAR  FROM os.completed_at) = $3
            AND (
-                os.owner_driver_id = $1
+                sc.owner_driver_id = $1
                 OR alloc.driver_share_percent > 0
            )`,
         [driverId, month, year],

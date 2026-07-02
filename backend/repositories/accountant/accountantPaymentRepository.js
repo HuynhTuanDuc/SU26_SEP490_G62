@@ -213,8 +213,11 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
 
         if (!debt) {
             const { rows: [si] } = await client.query(
-                `SELECT os.estimated_price, os.owner_driver_id, o.customer_id, o.id AS order_id
-                 FROM order_shipments os JOIN orders o ON o.id = os.order_id WHERE os.id = $1`,
+                `SELECT os.estimated_price, sc.owner_driver_id, o.customer_id, o.id AS order_id
+                 FROM order_shipments os
+                 JOIN orders o ON o.id = os.order_id
+                 LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                 WHERE os.id = $1`,
                 [shipmentId]
             );
             if (!si) throw new Error('Không tìm thấy chuyến xe');
@@ -368,8 +371,11 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
 
         if (!existing) {
             const { rows: [s] } = await client.query(
-                `SELECT os.actual_price, os.estimated_price, os.owner_driver_id, o.id AS order_id
-                 FROM order_shipments os JOIN orders o ON o.id = os.order_id WHERE os.id = $1`,
+                `SELECT os.actual_price, os.estimated_price, sc.owner_driver_id, o.id AS order_id
+                 FROM order_shipments os
+                 JOIN orders o ON o.id = os.order_id
+                 LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                 WHERE os.id = $1`,
                 [shipmentId]
             );
             if (!s) throw new Error('Không tìm thấy chuyến xe');
