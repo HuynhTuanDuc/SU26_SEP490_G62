@@ -10,7 +10,13 @@ const getAllDrivers = async () => {
             d.vehicle_id,
             v.plate_number,
             v.vehicle_group_id,
-            vg.name AS vehicle_group_name
+            vg.name AS vehicle_group_name,
+            EXISTS (
+                SELECT 1
+                FROM order_shipments os
+                WHERE os.owner_driver_id = d.profile_id
+                  AND os.status IN ('claimed', 'picking', 'transit', 'arrived', 'returning')
+            ) AS has_active_trip
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id

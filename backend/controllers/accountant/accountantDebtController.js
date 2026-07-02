@@ -1,96 +1,81 @@
 const accountantDebtRepository = require('../../repositories/accountant/accountantDebtRepository');
+const { posInt, enumVal, pageParams, sendError, err400 } = require('./_validate');
+
+const DEBT_TYPES   = ['customer', 'driver'];
+const DEBT_STATUSES = ['paid', 'partial', 'unpaid'];
 
 const getDebts = async (req, res) => {
     try {
-        const {
-            debt_type,    // 'customer' | 'driver'
-            status,       // 'paid' | 'partial' | 'unpaid'
-            customer,
-            driver,
-            page = 1,
-            limit = 20,
-        } = req.query;
+        const { page, limit } = pageParams(req.query);
+        enumVal(req.query.debt_type, DEBT_TYPES,    'Loại công nợ');
+        enumVal(req.query.status,    DEBT_STATUSES, 'Trạng thái công nợ');
 
         const result = await accountantDebtRepository.getAllDebts({
-            debtType: debt_type || null,
-            status: status || null,
-            customerSearch: customer || null,
-            driverSearch: driver || null,
-            page: Number(page) || 1,
-            limit: Number(limit) || 20,
+            debtType:       req.query.debt_type || null,
+            status:         req.query.status    || null,
+            customerSearch: req.query.customer?.trim() || null,
+            driverSearch:   req.query.driver?.trim()   || null,
+            page,
+            limit,
         });
 
         res.json(result);
     } catch (err) {
-        console.error('Error fetching debts:', err);
-        res.status(500).json({ error: 'Failed to fetch debts', details: err.message });
+        sendError(res, err);
     }
 };
 
-const getDebtStats = async (req, res) => {
+const getDebtStats = async (_req, res) => {
     try {
         const stats = await accountantDebtRepository.getDebtStats();
         res.json(stats);
     } catch (err) {
-        console.error('Error fetching debt stats:', err);
-        res.status(500).json({ error: 'Failed to fetch debt stats', details: err.message });
+        sendError(res, err);
     }
 };
 
-// Nhóm công nợ theo người
 const getDebtsGrouped = async (req, res) => {
     try {
-        const {
-            debt_type,
-            status,
-            customer,
-            driver,
-            page = 1,
-            limit = 20,
-        } = req.query;
+        const { page, limit } = pageParams(req.query);
+        enumVal(req.query.debt_type, DEBT_TYPES,    'Loại công nợ');
+        enumVal(req.query.status,    DEBT_STATUSES, 'Trạng thái công nợ');
 
         const result = await accountantDebtRepository.getDebtsGroupedByPerson({
-            debtType: debt_type || null,
-            status: status || null,
-            customerSearch: customer || null,
-            driverSearch: driver || null,
-            page: Number(page) || 1,
-            limit: Number(limit) || 20,
+            debtType:       req.query.debt_type || null,
+            status:         req.query.status    || null,
+            customerSearch: req.query.customer?.trim() || null,
+            driverSearch:   req.query.driver?.trim()   || null,
+            page,
+            limit,
         });
 
         res.json(result);
     } catch (err) {
-        console.error('Error fetching grouped debts:', err);
-        res.status(500).json({ error: 'Failed to fetch grouped debts', details: err.message });
+        sendError(res, err);
     }
 };
 
-// Chi tiết công nợ của một người
 const getDebtsByPerson = async (req, res) => {
     try {
         const { personType, personId } = req.params;
         const { customer_ids } = req.query;
 
-        if (!['customer', 'driver'].includes(personType)) {
-            return res.status(400).json({ error: 'Invalid person type' });
-        }
+        if (!DEBT_TYPES.includes(personType))
+            throw err400('Loại đối tượng không hợp lệ.');
 
-        // Nếu có customer_ids (nhiều customer gộp), lấy tất cả
         if (customer_ids) {
-            const ids = customer_ids.split(',').map(Number).filter(Boolean);
+            const ids = customer_ids.split(',').map(Number).filter((n) => n > 0);
+            if (ids.length === 0)
+                throw err400('Danh sách mã khách hàng không hợp lệ.');
             const debts = await accountantDebtRepository.getDebtsByCustomerIds(ids);
             return res.json({ debts });
         }
 
-        const debts = await accountantDebtRepository.getDebtsByPerson(
-            personType,
-            Number(personId)
-        );
-
+        const id = posInt(personId, 'Mã đối tượng');
+        const debts = await accountantDebtRepository.getDebtsByPerson(personType, id);
         res.json({ debts });
     } catch (err) {
-        console.error('Error fetching debts by person:', err);
-        res.status(500).json({ error: 'Failed to fetch debts by person', details: err.message });
+        sendError(res, err);
     }
 };
 

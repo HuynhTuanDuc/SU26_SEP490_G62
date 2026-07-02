@@ -250,8 +250,8 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
-    if (!['completed', 'arrived'].includes(trip.status)) {
-        throw new Error('Chỉ có thể báo nợ khi chuyến ở trạng thái "arrived" hoặc "completed"');
+    if (trip.status !== 'completed') {
+        throw new Error('Chỉ có thể báo nợ khi chuyến đã hoàn thành (completed)');
     }
 
     const amt = Number(amount);
@@ -318,10 +318,9 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
             [trip.order_id],
         );
         notificationGateway.broadcastToRole('coordinator', {
-            type: 'coordinator.receipt_requests.changed',
-            action: 'created',
-            orderId,
-            requestId: request?.id ?? null,
+            type: 'coordinator.order.completed',
+            action: 'completed',
+            orderId: trip.order_id,
         });
     }
 
@@ -471,7 +470,7 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
 // Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
 // 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
 const recordReceiptCollection = async (receiptId, driverId, collectionType, { collectedAmount = null, proofUrl = null } = {}) => {
-    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit', 'qr_transfer'];
+    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!ALLOWED.includes(collectionType)) {
         throw new Error('Hình thức thanh toán không hợp lệ');
     }
@@ -515,7 +514,7 @@ const recordReceiptCollection = async (receiptId, driverId, collectionType, { co
             amount,
         });
     }
-    // bank_transfer / qr_transfer — không tạo debt; chỉ ghi driver_collection_type
+    // bank_transfer — không tạo debt; chỉ ghi driver_collection_type
 
     // Ghi xác nhận vào shipment_receipts để persist qua các lần reload
     if (receipt.shipment_receipt_id) {
