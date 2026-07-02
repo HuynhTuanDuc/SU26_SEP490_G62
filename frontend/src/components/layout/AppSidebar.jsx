@@ -25,22 +25,22 @@ const BORDER = '#C2C6D340';
 
 const MENU_CONFIG = {
   manager: [
-    { key: 'partners', Icon: Building2, label: 'Doi tac' },
-    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tong quan' },
-    { key: 'users', Icon: Users, label: 'Nguoi dung' },
-    { key: 'vehicles', Icon: Car, label: 'Quan ly xe' },
+    { key: 'partners', Icon: Building2, label: 'Đối tác' },
+    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan' },
+    { key: 'users', Icon: Users, label: 'Người dùng' },
+    { key: 'vehicles', Icon: Car, label: 'Quản lý xe' },
     { type: 'divider' },
-    { key: 'settings', Icon: Settings, label: 'Cai dat', disabled: true },
+    { key: 'settings', Icon: Settings, label: 'Cài đặt', disabled: true },
   ],
   coordinator: [
-    { key: 'orders', Icon: Truck, label: 'Don hang' },
-    { key: 'incidents', Icon: FileText, label: 'Su co' },
-    { key: 'receipts', Icon: FileText, label: 'Phieu thu' },
+    { key: 'orders', Icon: Truck, label: 'Đơn hàng' },
+    { key: 'incidents', Icon: FileText, label: 'Sự cố' },
+    { key: 'receipts', Icon: FileText, label: 'Phiếu thu' },
   ],
   accountant: [
-    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tong quan', disabled: true },
-    { key: 'orders', Icon: FileText, label: 'Don hang' },
-    { key: 'payments', Icon: DollarSign, label: 'Thanh toan' },
+    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },
+    { key: 'orders', Icon: FileText, label: 'Đơn hàng' },
+    { key: 'payments', Icon: DollarSign, label: 'Thanh toán' },
   ],
 };
 
@@ -246,7 +246,7 @@ export default function AppSidebar({ user, activeTab, onTabChange, collapsed, on
             transition: 'max-width 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.16s ease',
           }}
         >
-          Thu gon
+          Thu gọn
         </span>
       </button>
     </aside>

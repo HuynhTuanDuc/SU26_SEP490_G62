@@ -227,33 +227,6 @@
 .coordinator-danger-text-btn:hover {
   background: #ffe1e1 !important;
 }
-.coordinator-shell .coordinator-modal-close-btn,
-.coordinator-modal-close-btn {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  border-radius: 14px;
-  border: 1px solid rgba(20, 30, 70, 0.14);
-  color: #45516c;
-  background: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 !important;
-  margin-left: 12px;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.coordinator-shell .coordinator-modal-close-btn:hover,
-.coordinator-modal-close-btn:hover {
-  color: #18227f !important;
-  background: #f7f9ff !important;
-  border-color: rgba(24, 34, 127, 0.22) !important;
-}
-.coordinator-shell .coordinator-modal-close-btn .anticon,
-.coordinator-modal-close-btn .anticon {
-  font-size: 16px;
-}
 .coordinator-shell .coordinator-table-icon-btn,
 .coordinator-table-icon-btn {
   width: 36px;
@@ -420,14 +393,6 @@
   font-weight: 600;
 }
 
-.coordinator-shell .trip-status {
-  display: inline-flex;
-  background: #fde6c7;
-  color: #a55f1f;
-  padding: 6px 12px;
-  border-radius: 14px;
-}
-
 .coordinator-shell .assign-btn {
   background: linear-gradient(135deg, #1a2a98 0%, #0f1d70 100%);
   color: #fff;
@@ -455,68 +420,12 @@
 .coordinator-shell .panel-head h2 { margin: 0; }
 .coordinator-shell .panel-head p { margin: 6px 0 0; color: #586074; }
 .coordinator-shell .upload-hint { padding: 10px 14px; border-radius: 999px; background: #eef1ff; color: #18227f; font-weight: 700; }
-.coordinator-shell .table-wrap { overflow: auto; }
-.coordinator-shell .orders-table { width: 100%; border-collapse: collapse; min-width: 1100px; font-size: 13px; }
-.coordinator-shell .orders-table th,
-.coordinator-shell .orders-table td { border: 1px solid #d7dce8; padding: 10px 12px; text-align: left; white-space: nowrap; }
-.coordinator-shell .orders-table th { background: #f2f5ff; position: sticky; top: 0; z-index: 1; }
-
-.coordinator-shell .orders-table {
-  min-width: 1000px;
-}
-
-.coordinator-shell .table-route-cell,
-.coordinator-shell .table-address-cell {
-  max-width: 260px;
-  white-space: normal !important;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  line-height: 1.35;
-  vertical-align: top;
-}
-
 .coordinator-shell .table-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.coordinator-shell .empty-table-cell {
-  padding: 28px;
-  text-align: center;
-  color: #5d6475;
-}
-
-.coordinator-shell .pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-top: 14px;
-  color: #50586a;
-  font-size: 14px;
-}
-
-.coordinator-shell .pagination-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.coordinator-shell .pagination-btn {
-  border: 1px solid rgba(20, 30, 70, 0.16);
-  border-radius: 12px;
-  background: #fff;
-  color: #18227f;
-  cursor: pointer;
-  font-weight: 700;
-  padding: 10px 14px;
-}
-
-.coordinator-shell .pagination-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
 
 .coordinator-shell .pagination-page {
   color: #2a3144;
@@ -556,34 +465,6 @@
   place-items: center;
   font: 600 18px/1.4 Inter, system-ui, sans-serif;
   color: #18227f;
-}
-
-.coordinator-shell .modal-backdrop,
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(18, 24, 48, 0.5);
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  z-index: 80;
-}
-
-.coordinator-shell .modal-card,
-.modal-card {
-  display: block;
-  flex-direction: initial;
-  position: relative;
-  width: min(800px, calc(100vw - 32px));
-  max-width: none;
-  background: #fff;
-  border-radius: 24px;
-  padding: 24px;
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(20, 30, 70, 0.08);
-  max-height: calc(100vh - 32px);
-  overflow: auto;
-  animation: none;
 }
 
 .coordinator-shell .create-form,
@@ -666,46 +547,6 @@
   border-color: #18227f;
 }
 
-.coordinator-shell .create-form input,
-.coordinator-shell .create-form select,
-.coordinator-shell .create-form textarea,
-.create-form input,
-.create-form select,
-.create-form textarea {
-  width: 100%;
-  border: 1px solid #cfd6e6;
-  border-radius: 14px;
-  padding: 13px 14px;
-  font: inherit;
-  background: #fff;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  outline: none;
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-.coordinator-shell .create-form input:focus,
-.coordinator-shell .create-form select:focus,
-.coordinator-shell .create-form textarea:focus,
-.create-form input:focus,
-.create-form select:focus,
-.create-form textarea:focus {
-  border-color: #18227f;
-  box-shadow: 0 0 0 4px rgba(24, 34, 127, 0.12);
-}
-
-.coordinator-shell .input-error,
-.input-error {
-  border-color: #d14343 !important;
-  background: #fff7f7;
-}
-
-.coordinator-shell .create-form textarea,
-.create-form textarea {
-  min-height: 96px;
-  resize: vertical;
-}
-
 .coordinator-shell .create-form .full,
 .create-form .full {
   grid-column: 1 / -1;
@@ -744,48 +585,6 @@
   border-radius: 14px;
   background: #fff7f7;
   border: 1px solid #f1c0c0;
-}
-
-.coordinator-shell .modal-card .panel-head,
-.modal-card .panel-head {
-  margin-bottom: 10px;
-  align-items: flex-start;
-}
-
-.coordinator-shell .modal-card .panel-head h2,
-.modal-card .panel-head h2 {
-  font-size: 24px;
-  line-height: 1.2;
-}
-
-.coordinator-shell .modal-card .ghost-btn,
-.modal-card .ghost-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  font-size: 24px;
-  line-height: 1;
-}
-
-.coordinator-shell .modal-card .primary-btn,
-.coordinator-shell .modal-card .filter,
-.modal-card .primary-btn,
-.modal-card .filter {
-  min-width: 110px;
-  padding-inline: 18px;
-}
-
-.coordinator-shell .receipt-modal-card,
-.receipt-modal-card {
-  width: min(960px, calc(100vw - 32px));
-}
-
-.coordinator-shell .receipt-loading,
-.receipt-loading {
-  padding: 32px 0;
-  text-align: center;
-  color: #586074;
-  font-weight: 600;
 }
 
 .coordinator-shell .receipt-layout,
@@ -1062,11 +861,6 @@
 }
 
 @media (max-width: 720px) {
-  .coordinator-shell .modal-card {
-    padding: 18px;
-    border-radius: 18px;
-  }
-
   .coordinator-shell .form-row-3,
   .coordinator-shell .form-row-2,
   .coordinator-shell .form-row-address,
@@ -1100,10 +894,6 @@
 }
 
 @media (max-width: 1024px) {
-  .coordinator-shell .modal-card {
-    width: min(100%, calc(100vw - 24px));
-  }
-
   .coordinator-shell .receipt-overview-grid {
     grid-template-columns: 1fr;
   }
@@ -1467,77 +1257,9 @@
   color: #b94a5a;
 }
 
-/* Color-coded trip statuses */
-.coordinator-shell .trip-status.status-available,
-.coordinator-shell .trip-status.status-new {
-  background: #e0f2fe;
-  color: #0369a1;
-}
-.coordinator-shell .trip-status.status-claimed {
-  background: #fef3c7;
-  color: #d97706;
-}
-.coordinator-shell .trip-status.status-picking {
-  background: #ffedd5;
-  color: #ea580c;
-}
-.coordinator-shell .trip-status.status-loaded {
-  background: #f3e8ff;
-  color: #7e22ce;
-}
-.coordinator-shell .trip-status.status-transit {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-.coordinator-shell .trip-status.status-arrived {
-  background: #ccfbf1;
-  color: #0f766e;
-}
-.coordinator-shell .trip-status.status-completed {
-  background: #dcfce7;
-  color: #15803d;
-}
-.coordinator-shell .trip-status.status-cancelled,
-.coordinator-shell .trip-status.status-failed {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-.coordinator-shell .trip-status.status-returning {
-  background: #fce7f3;
-  color: #be185d;
-}
-.coordinator-shell .trip-status.status-partial {
-  background: #ede9fe;
-  color: #6d28d9;
-}
-
-/* Absent driver (no check-in) row styling */
-.coordinator-shell .orders-table tr.row-no-checkin {
+/* Absent driver (no check-in) row styling — antd Table rowClassName */
+.coordinator-shell tr.row-no-checkin > td {
   background-color: #fffbeb !important;
-}
-.coordinator-shell .orders-table tr.row-no-checkin td {
-  background-color: #fffbeb !important;
-}
-.coordinator-shell .table-route-cell {
-  min-width: 300px;
-  white-space: normal !important;
-  word-break: break-word;
-  overflow-wrap: break-word;
-}
-
-.coordinator-shell .table-cargo-cell {
-  min-width: 300px;
-  white-space: normal !important;
-  word-break: break-word;
-  overflow-wrap: break-word;
-}
-.coordinator-shell .table-address-cell {
-  min-width: 240px;
-  max-width: 320px;
-  white-space: pre-wrap !important;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-  vertical-align: top;
 }
 
 .notification {

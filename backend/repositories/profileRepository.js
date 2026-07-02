@@ -188,7 +188,7 @@ const adminUpdateUser = async (userId, data, roleId) => {
         );
 
         if (profileResult.rowCount === 0) {
-            throw new Error('Nguoi dung khong ton tai.');
+            throw new Error('Người dùng không tồn tại.');
         }
 
         const accountResult = await client.query(
@@ -200,7 +200,7 @@ const adminUpdateUser = async (userId, data, roleId) => {
         );
 
         if (accountResult.rowCount === 0) {
-            throw new Error('Nguoi dung khong ton tai.');
+            throw new Error('Người dùng không tồn tại.');
         }
 
         await client.query('COMMIT');
@@ -223,7 +223,7 @@ const adminToggleUserStatus = async (userId, isActive) => {
     );
 
     if (result.rowCount === 0) {
-        throw new Error('Nguoi dung khong ton tai.');
+        throw new Error('Người dùng không tồn tại.');
     }
 
     return result.rows[0];

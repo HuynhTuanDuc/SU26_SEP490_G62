@@ -113,19 +113,19 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
             >
               <div>
                 <Text strong style={{ color: C.onSurface }}>
-                  {user?.role === 'manager' ? 'Thong bao Manager' : 'Thong bao Coordinator'}
+                  {user?.role === 'manager' ? 'Thông báo Manager' : 'Thông báo Coordinator'}
                 </Text>
               </div>
               <Text style={{ color: C.onSurfaceVariant, fontSize: 12 }}>
-                {notificationUnreadCount} moi
+                {notificationUnreadCount} mới
               </Text>
             </div>
 
             <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8, paddingRight: 4 }}>
               {notificationsLoading ? (
-                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Dang tai thong bao...</div>
+                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Đang tải thông báo...</div>
               ) : notifications.length === 0 ? (
-                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Chua co thong bao.</div>
+                <div style={{ padding: '12px 8px', color: C.onSurfaceVariant }}>Chưa có thông báo.</div>
               ) : (
                 notifications.map((notification) => (
                   <div
@@ -262,8 +262,8 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
                   <Settings2 size={16} strokeWidth={2} />
                 </span>
                 <span>
-                  <span style={{ display: 'block', fontWeight: 600, fontSize: 13 }}>Ho so ca nhan</span>
-                  <span style={{ display: 'block', fontSize: 11, color: C.onSurfaceVariant }}>Cap nhat thong tin, avatar va email</span>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: 13 }}>Hồ sơ cá nhân</span>
+                  <span style={{ display: 'block', fontSize: 11, color: C.onSurfaceVariant }}>Cập nhật thông tin, avatar và email</span>
                 </span>
               </button>
 
@@ -300,8 +300,8 @@ export default function AppHeader({ user, onLogout, onProfileUpdated, showUtilit
                   <LogOut size={16} strokeWidth={2} />
                 </span>
                 <span>
-                  <span style={{ display: 'block', fontWeight: 600, fontSize: 13 }}>Dang xuat</span>
-                  <span style={{ display: 'block', fontSize: 11, color: '#B94A5A' }}>Ket thuc phien lam viec hien tai</span>
+                  <span style={{ display: 'block', fontWeight: 600, fontSize: 13 }}>Đăng xuất</span>
+                  <span style={{ display: 'block', fontSize: 11, color: '#B94A5A' }}>Kết thúc phiên làm việc hiện tại</span>
                 </span>
               </button>
             </div>

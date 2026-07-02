@@ -10,11 +10,6 @@ const SHIPMENT_STATUS = Object.freeze({
     RETURNING: 'returning',
 });
 
-const ASSIGNMENT_TYPE = Object.freeze({
-    SELF_CLAIM: 'self_claim',
-    COORDINATOR_ASSIGN: 'coordinator_assign',
-});
-
 // CANCELLED is terminal — driver is freed after cancellation (not active)
 // RETURNING is active — driver is returning cargo to pickup point
 const ACTIVE_STATUSES = Object.freeze([
@@ -60,7 +55,6 @@ const STATUS_TIMESTAMP_COL = Object.freeze({
 
 module.exports = {
     SHIPMENT_STATUS,
-    ASSIGNMENT_TYPE,
     ACTIVE_STATUSES,
     CANCELLABLE_STATUSES,
     RELEASABLE_STATUSES,

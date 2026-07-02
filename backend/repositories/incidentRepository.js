@@ -119,10 +119,11 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
         `SELECT COUNT(*)::int AS total
          FROM incidents i
          LEFT JOIN order_shipments os ON os.id = i.shipment_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN profiles p_report ON p_report.id = i.reported_by
-         LEFT JOIN profiles p_owner ON p_owner.id = os.owner_driver_id
+         LEFT JOIN profiles p_owner ON p_owner.id = sc.owner_driver_id
          LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
          ${whereSql}`,
         params
     );
@@ -147,7 +148,7 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
             p_replace.full_name AS replacement_driver_name,
             os.order_id,
             os.status AS shipment_status,
-            os.owner_driver_id AS current_driver_id,
+            sc.owner_driver_id AS current_driver_id,
             p_owner.full_name AS current_driver_name,
             v.plate_number,
             EXISTS (
@@ -159,10 +160,11 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
             ) AS pickup_completed
          FROM incidents i
          LEFT JOIN order_shipments os ON os.id = i.shipment_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN profiles p_report ON p_report.id = i.reported_by
-         LEFT JOIN profiles p_owner ON p_owner.id = os.owner_driver_id
+         LEFT JOIN profiles p_owner ON p_owner.id = sc.owner_driver_id
          LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
          ${whereSql}
          ORDER BY
             CASE i.status
@@ -186,22 +188,22 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
         }
     };
 };
-    const getActiveDriverIds = async (excludeDriverId) => {
-        const result = await pool.query(
-            `SELECT p.id
+const getActiveDriverIds = async (excludeDriverId) => {
+    const result = await pool.query(
+        `SELECT p.id
          FROM profiles p
          JOIN roles r ON r.id = p.role_id
          WHERE r.name = 'driver'
            AND p.id != $1`,
-            [Number(excludeDriverId)],
-        );
-        return result.rows.map((r) => r.id);
-    };
+        [Number(excludeDriverId)],
+    );
+    return result.rows.map((r) => r.id);
+};
 
-    // Lấy incidents của 1 shipment (để check duplicate type + list)
-    const getIncidentsByShipment = async (shipmentId) => {
-        const result = await pool.query(
-            `SELECT
+// Lấy incidents của 1 shipment (để check duplicate type + list)
+const getIncidentsByShipment = async (shipmentId) => {
+    const result = await pool.query(
+        `SELECT
             i.id, i.shipment_id, i.incident_type, i.severity_level,
             i.description, i.location, i.status, i.occurred_at, i.resolved_at, i.created_at,
             COALESCE(
@@ -213,67 +215,67 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
          WHERE i.shipment_id = $1
          GROUP BY i.id
          ORDER BY i.created_at DESC`,
-            [shipmentId],
-        );
-        return result.rows;
-    };
+        [shipmentId],
+    );
+    return result.rows;
+};
 
-    // Kiểm tra driver có sự cố đang mở (không gắn chuyến) cùng loại không
-    const getOpenIncidentsByDriverAndType = async (driverId, incidentType) => {
-        const result = await pool.query(
-            `SELECT id FROM incidents
+// Kiểm tra driver có sự cố đang mở (không gắn chuyến) cùng loại không
+const getOpenIncidentsByDriverAndType = async (driverId, incidentType) => {
+    const result = await pool.query(
+        `SELECT id FROM incidents
          WHERE reported_by = $1
            AND incident_type = $2
            AND shipment_id IS NULL
            AND status IN ('open', 'investigating')
          LIMIT 1`,
-            [driverId, incidentType],
-        );
-        return result.rows[0] ?? null;
-    };
+        [driverId, incidentType],
+    );
+    return result.rows[0] ?? null;
+};
 
-    // Driver cập nhật sự cố của mình (chỉ khi còn open)
-    const updateIncident = async (incidentId, driverId, { severityLevel, description, location }) => {
-        const result = await pool.query(
-            `UPDATE incidents
+// Driver cập nhật sự cố của mình (chỉ khi còn open)
+const updateIncident = async (incidentId, driverId, { severityLevel, description, location }) => {
+    const result = await pool.query(
+        `UPDATE incidents
          SET severity_level = COALESCE($3, severity_level),
              description    = COALESCE($4, description),
              location       = COALESCE($5, location),
              updated_at     = NOW()
          WHERE id = $1 AND reported_by = $2 AND status = 'open'
          RETURNING *`,
-            [incidentId, driverId, severityLevel ?? null, description ?? null, location ?? null],
-        );
-        return result.rows[0] ?? null;
-    };
+        [incidentId, driverId, severityLevel ?? null, description ?? null, location ?? null],
+    );
+    return result.rows[0] ?? null;
+};
 
-    const updateIncidentStatus = async (incidentId, { status, resolution = null }) => {
-        const isClosing = status === 'resolved' || status === 'closed';
-        const result = await pool.query(
-            `UPDATE incidents
+const updateIncidentStatus = async (incidentId, { status, resolution = null }) => {
+    const isClosing = status === 'resolved' || status === 'closed';
+    const result = await pool.query(
+        `UPDATE incidents
          SET status     = $2
              ${isClosing ? ', resolved_at = NOW()' : ''}
          WHERE id = $1
          RETURNING *`,
-            [incidentId, status],
-        );
-        return result.rows[0] ?? null;
-    };
+        [incidentId, status],
+    );
+    return result.rows[0] ?? null;
+};
 
-    const updateIncidentResolution = async (
-        client,
-        incidentId,
-        {
-            status,
-            resolution = null,
-            resolvedBy = null,
-            replacementDriverId = null,
-            replacementVehicleId = null,
-        },
-    ) => {
-        const isClosing = status === 'resolved' || status === 'closed';
-        const result = await client.query(
-            `UPDATE incidents
+const updateIncidentResolution = async (
+    client,
+    incidentId,
+    {
+        status,
+        resolution = null,
+        resolvedBy = null,
+        replacementDriverId = null,
+        replacementVehicleId = null,
+    },
+) => {
+    const isClosing = status === 'resolved' || status === 'closed';
+    const result = await client.query(
+        `UPDATE incidents
          SET status = $2,
              resolution_note = COALESCE($3, resolution_note),
              resolved_by = COALESCE($4, resolved_by),
@@ -286,29 +288,29 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
              updated_at = NOW()
          WHERE id = $1
          RETURNING *`,
-            [
-                incidentId,
-                status,
-                resolution,
-                resolvedBy,
-                replacementDriverId,
-                replacementVehicleId,
-            ],
-        );
-        return result.rows[0] ?? null;
-    };
+        [
+            incidentId,
+            status,
+            resolution,
+            resolvedBy,
+            replacementDriverId,
+            replacementVehicleId,
+        ],
+    );
+    return result.rows[0] ?? null;
+};
 
-    module.exports = {
-        createIncident,
-        addIncidentEvidence,
-        getIncidentById,
-        getIncidentsByDriver,
-        getCoordinatorIncidents,
-        getIncidentsByShipment,
-        getOpenIncidentsByDriverAndType,
-        updateIncident,
-        getCoordinatorIds,
-        getActiveDriverIds,
-        updateIncidentStatus,
-        updateIncidentResolution,
-    }
+module.exports = {
+    createIncident,
+    addIncidentEvidence,
+    getIncidentById,
+    getIncidentsByDriver,
+    getCoordinatorIncidents,
+    getIncidentsByShipment,
+    getOpenIncidentsByDriverAndType,
+    updateIncident,
+    getCoordinatorIds,
+    getActiveDriverIds,
+    updateIncidentStatus,
+    updateIncidentResolution,
+};
