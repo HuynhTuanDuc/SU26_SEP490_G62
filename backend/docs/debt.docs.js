@@ -6,6 +6,8 @@
  *       Driver chỉ xem công nợ. Công nợ được kế toán tạo thủ công
  *       (thường khi convert từ cash_collection bị không xác nhận).
  *       Driver không tự tạo hay nộp tiền qua đây — dùng Cash Collection để báo thu hộ.
+ *   - name: Debt — Finance
+ *     description: Accountant / Manager xác nhận các khoản driver nộp tiền (BR-020, mục 16)
  */
 
 /**
@@ -183,4 +185,70 @@
  *         description: Không phải khoản nộp của mình
  *       422:
  *         description: Kế toán đã xác nhận, không thể hủy
+ */
+
+/**
+ * @swagger
+ * /api/debts/repayments/pending:
+ *   get:
+ *     tags: [Debt — Finance]
+ *     summary: Danh sách khoản driver nộp tiền đang chờ xác nhận (Accountant / Manager)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Mảng repayments trạng thái pending
+ */
+
+/**
+ * @swagger
+ * /api/debts/repayments/{paymentId}/confirm:
+ *   patch:
+ *     tags: [Debt — Finance]
+ *     summary: Xác nhận đã nhận tiền driver nộp — trừ vào debt.paid_amount
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Đã xác nhận thanh toán
+ *       404:
+ *         description: Không tìm thấy khoản nộp
+ *       409:
+ *         description: Đã được xử lý trước đó
+ */
+
+/**
+ * @swagger
+ * /api/debts/repayments/{paymentId}/reject:
+ *   patch:
+ *     tags: [Debt — Finance]
+ *     summary: Từ chối khoản driver nộp tiền (cần lý do)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: Ảnh biên lai không rõ số tiền
+ *     responses:
+ *       200:
+ *         description: Đã từ chối yêu cầu nộp tiền
+ *       404:
+ *         description: Không tìm thấy khoản nộp
+ *       409:
+ *         description: Đã được xử lý trước đó
  */
