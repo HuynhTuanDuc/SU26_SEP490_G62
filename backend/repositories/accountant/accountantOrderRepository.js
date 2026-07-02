@@ -1,11 +1,5 @@
 const pool = require('../../config/database');
 
-const buildDebtStatus = (paidAmount, totalAmount) => {
-    if (paidAmount >= totalAmount - 0.01) return 'paid';
-    if (paidAmount > 0) return 'partial';
-    return 'unpaid';
-};
-
 const trimToNull = (value) => {
     const text = String(value || '').trim();
     return text || null;
@@ -499,18 +493,17 @@ const getOrderShipments = async (orderId) => {
             SELECT
                 d.shipment_id,
                 d.total_amount,
-                COALESCE((
-                    SELECT SUM(dp.amount) FROM debt_payments dp
-                    WHERE dp.debt_id = d.id AND dp.status = 'confirmed'
-                ), 0) AS driver_paid,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS driver_paid,
                 CASE
-                    WHEN COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp WHERE dp.debt_id = d.id AND dp.status = 'confirmed'), 0) >= d.total_amount - 0.01 THEN 'paid'
-                    WHEN COALESCE((SELECT SUM(dp.amount) FROM debt_payments dp WHERE dp.debt_id = d.id AND dp.status = 'confirmed'), 0) > 0 THEN 'partial'
+                    WHEN COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) >= d.total_amount - 0.01 THEN 'paid'
+                    WHEN COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) > 0 THEN 'partial'
                     ELSE 'unpaid'
                 END AS driver_payment_state
             FROM debts d
+            LEFT JOIN debt_payments dp ON dp.debt_id = d.id
             WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
               AND d.debt_type = 'driver'
+            GROUP BY d.id, d.shipment_id, d.total_amount
         ),
         pay_agg AS (
             SELECT DISTINCT ON (d.shipment_id)

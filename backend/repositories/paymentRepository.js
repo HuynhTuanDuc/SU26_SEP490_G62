@@ -82,18 +82,17 @@ const getShipmentFinancialSummary = async (shipmentId) => {
             o.payment_type                                             AS order_payment_type,
             COALESCE(o.prepaid_amount, 0)                              AS prepaid_amount,
             COALESCE(SUM(sp.amount) FILTER (WHERE sp.payment_type IS NOT NULL), 0) AS cash_collected,
-            COALESCE(SUM(
-                CASE WHEN d.debt_type = 'customer'
-                     AND d.total_amount - COALESCE((
-                         SELECT SUM(dp.amount) FROM debt_payments dp
-                         WHERE dp.debt_id = d.id AND dp.status = 'confirmed'
-                     ), 0) > 0.01
-                THEN d.total_amount ELSE 0 END
-            ), 0) AS customer_debt_total
+            COALESCE(SUM(d.total_amount - COALESCE(dp_agg.paid_amount, 0))
+                FILTER (WHERE d.debt_type = 'customer'
+                          AND (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01), 0) AS customer_debt_total
          FROM order_shipments os
          JOIN orders o ON o.id = os.order_id
          LEFT JOIN shipment_receipts sp ON sp.shipment_id = os.id
          LEFT JOIN debts d ON d.shipment_id = os.id
+         LEFT JOIN (
+             SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
+             FROM debt_payments GROUP BY debt_id
+         ) dp_agg ON dp_agg.debt_id = d.id
          WHERE os.id = $1
          GROUP BY os.id, os.actual_price, os.estimated_price, o.payment_type, o.prepaid_amount`,
         [shipmentId],

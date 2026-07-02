@@ -15,11 +15,11 @@ const getFinanceStats = async () => {
                 COUNT(DISTINCT d.order_id)
                     FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid, 0)) > 0.01) AS pending_count
             FROM debts d
-            JOIN orders o ON o.id = d.order_id
             LEFT JOIN (
                 SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
                 FROM debt_payments GROUP BY debt_id
             ) dp_agg ON dp_agg.debt_id = d.id
+            JOIN orders o ON o.id = d.order_id
             WHERE o.derived_status = 'completed'
         )
         SELECT
