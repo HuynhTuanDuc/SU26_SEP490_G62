@@ -28,18 +28,6 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
         [debt.id, numericAmount, method || 'cash', createdBy, notes || null]
     );
 
-    await client.query(
-        `UPDATE debts SET paid_amount = $1, status = $2, updated_by = $3, updated_at = NOW() WHERE id = $4`,
-        [newPaidAmount, newStatus, createdBy, debt.id]
-    );
-
-    if (debt.customer_id && numericAmount > 0) {
-        await client.query(
-            `UPDATE customers SET current_debt = GREATEST(0, current_debt - $1), updated_at = NOW() WHERE id = $2`,
-            [numericAmount, debt.customer_id]
-        );
-    }
-
     return { payment, newPaidAmount, newStatus };
 };
 
@@ -51,15 +39,18 @@ const _ensureCustomerDebt = async (client, orderId, createdBy) => {
     if (existing) return existing.id;
 
     const { rows: [order] } = await client.query(
-        `SELECT customer_id, total_actual_price, total_estimated_price FROM orders WHERE id = $1`,
+        `SELECT customer_id,
+                (SELECT COALESCE(SUM(COALESCE(actual_price, estimated_price)), 0)
+                 FROM order_shipments WHERE order_id = o.id) AS order_total
+         FROM orders o WHERE id = $1`,
         [orderId]
     );
     if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);
 
-    const totalAmount = Number(order.total_actual_price || order.total_estimated_price) || 0;
+    const totalAmount = Number(order.order_total) || 0;
     const { rows: [created] } = await client.query(
-        `INSERT INTO debts (debt_type, customer_id, order_id, total_amount, paid_amount, due_date, status, notes, updated_by, created_at, updated_at)
-         VALUES ('customer', $1, $2, $3, 0, CURRENT_DATE + INTERVAL '30 days', 'unpaid', $4, $5, NOW(), NOW())
+        `INSERT INTO debts (debt_type, customer_id, order_id, total_amount, due_date, notes, updated_by, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, CURRENT_DATE + INTERVAL '30 days', $4, $5, NOW(), NOW())
          RETURNING id`,
         [order.customer_id, orderId, totalAmount, `Tự động tạo công nợ cho đơn #${orderId}`, createdBy]
     );
@@ -70,7 +61,7 @@ const getPaymentsByOrderId = async (orderId) => {
     const { rows } = await pool.query(
         `SELECT
             dp.id, dp.debt_id, dp.amount, dp.payment_method,
-            d.status,
+            dp.status AS payment_status,
             dp.paid_at, dp.confirmed_at, dp.confirmed_by,
             dp.created_by, dp.notes,
             pr.full_name AS creator_name
@@ -91,15 +82,17 @@ const previewAllocation = async (personType, personId, amount) => {
     const { rows } = await pool.query(
         `SELECT
             d.id AS debt_id, d.shipment_id,
-            d.total_amount::text, d.paid_amount::text,
-            (d.total_amount - d.paid_amount)::text AS remaining,
+            d.total_amount::text,
+            COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)::text AS paid_amount,
+            (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0))::text AS remaining,
             o.cargo_name AS order_cargo_name, o.created_at AS order_date
          FROM debts d
+         LEFT JOIN debt_payments dp ON dp.debt_id = d.id
          LEFT JOIN orders o ON o.id = d.order_id
          WHERE ${personField} = $1
            AND d.debt_type = $2
-           AND d.status != 'paid'
-           AND (d.total_amount - d.paid_amount) > 0.01
+         GROUP BY d.id, d.total_amount, d.shipment_id, o.cargo_name, o.created_at
+         HAVING (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
          ORDER BY d.created_at ASC`,
         [personId, debtType]
     );
@@ -149,7 +142,12 @@ const recordPayment = async (orderId, paymentData) => {
         const debtId = await _ensureCustomerDebt(client, orderId, paymentData.createdBy);
 
         const { rows: [debt] } = await client.query(
-            `SELECT id, total_amount, paid_amount, customer_id FROM debts WHERE id = $1`,
+            `SELECT d.id, d.total_amount, d.customer_id,
+                    COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount
+             FROM debts d
+             LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+             WHERE d.id = $1
+             GROUP BY d.id`,
             [debtId]
         );
 
@@ -177,7 +175,12 @@ const recordPaymentByDebt = async (debtId, paymentData) => {
         await client.query('BEGIN');
 
         const { rows: [debt] } = await client.query(
-            `SELECT id, total_amount, paid_amount, customer_id FROM debts WHERE id = $1`,
+            `SELECT d.id, d.total_amount, d.customer_id,
+                    COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount
+             FROM debts d
+             LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+             WHERE d.id = $1
+             GROUP BY d.id`,
             [debtId]
         );
         if (!debt) throw new Error('Không tìm thấy khoản công nợ');
@@ -205,13 +208,13 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
     try {
         await client.query('BEGIN');
 
-        let { rows: [debt] } = await client.query(
-            `SELECT id, total_amount, paid_amount, customer_id
-             FROM debts WHERE shipment_id = $1 AND debt_type = 'customer' LIMIT 1`,
+        let { rows: [debtBase] } = await client.query(
+            `SELECT d.id, d.total_amount, d.customer_id
+             FROM debts d WHERE d.shipment_id = $1 AND d.debt_type = 'customer' LIMIT 1`,
             [shipmentId]
         );
 
-        if (!debt) {
+        if (!debtBase) {
             const { rows: [si] } = await client.query(
                 `SELECT os.estimated_price, os.owner_driver_id, o.customer_id, o.id AS order_id
                  FROM order_shipments os JOIN orders o ON o.id = os.order_id WHERE os.id = $1`,
@@ -220,13 +223,24 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
             if (!si) throw new Error('Không tìm thấy chuyến xe');
 
             const { rows: [created] } = await client.query(
-                `INSERT INTO debts (debt_type, customer_id, driver_id, order_id, shipment_id, total_amount, paid_amount, status, created_at, updated_at)
-                 VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', NOW(), NOW())
-                 RETURNING id, total_amount, paid_amount, customer_id`,
+                `INSERT INTO debts (debt_type, customer_id, driver_id, order_id, shipment_id, total_amount, created_at, updated_at)
+                 VALUES ('customer', $1, $2, $3, $4, $5, NOW(), NOW())
+                 RETURNING id, total_amount, customer_id`,
                 [si.customer_id, si.owner_driver_id, si.order_id, shipmentId, Number(si.estimated_price) || 0]
             );
-            debt = created;
+            debtBase = created;
         }
+
+        // Fetch with computed paid_amount
+        const { rows: [debt] } = await client.query(
+            `SELECT d.id, d.total_amount, d.customer_id,
+                    COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount
+             FROM debts d
+             LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+             WHERE d.id = $1
+             GROUP BY d.id`,
+            [debtBase.id]
+        );
 
         const result = await _applyPaymentToDebt(client, {
             debt,
@@ -256,16 +270,18 @@ const allocatePayment = async (personType, personId, paymentData) => {
 
         const { rows: debts } = await client.query(
             `SELECT
-                d.id AS debt_id, d.total_amount, d.paid_amount,
+                d.id AS debt_id, d.total_amount,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
                 d.driver_id, d.customer_id, d.shipment_id,
-                (d.total_amount - d.paid_amount) AS remaining
+                (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining
              FROM debts d
+             LEFT JOIN debt_payments dp ON dp.debt_id = d.id
              WHERE ${personField} = $1
                AND d.debt_type = $2
-               AND d.status != 'paid'
-               AND (d.total_amount - d.paid_amount) > 0.01
+             GROUP BY d.id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id, d.created_at
+             HAVING (d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
              ORDER BY d.created_at ASC
-             FOR UPDATE`,
+             FOR UPDATE OF d`,
             [personId, debtType]
         );
 
@@ -281,8 +297,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
         let remaining   = requestedAmount;
         const debtIds   = [];
         const allocAmts = [];
-        const newPaids  = [];
-        const newStats  = [];
         const details   = [];
 
         for (const debt of debts) {
@@ -295,8 +309,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
 
             debtIds.push(Number(debt.debt_id));
             allocAmts.push(alloc);
-            newPaids.push(newPaid);
-            newStats.push(newState);
             details.push({
                 debtId:       debt.debt_id,
                 shipmentId:   debt.shipment_id,
@@ -327,24 +339,6 @@ const allocatePayment = async (personType, personId, paymentData) => {
             ]
         );
 
-        await client.query(
-            `UPDATE debts AS d
-             SET paid_amount = v.new_paid,
-                 status      = v.new_status,
-                 updated_by  = $3,
-                 updated_at  = NOW()
-             FROM UNNEST($1::int[], $2::numeric[], $4::text[]) AS v(debt_id, new_paid, new_status)
-             WHERE d.id = v.debt_id`,
-            [debtIds, newPaids, paymentData.createdBy, newStats]
-        );
-
-        if (totalAllocated > 0 && personType === 'customer') {
-            await client.query(
-                `UPDATE customers SET current_debt = GREATEST(0, current_debt - $1), updated_at = NOW() WHERE id = $2`,
-                [totalAllocated, personId]
-            );
-        }
-
         await client.query('COMMIT');
         return { success: true, totalAllocated, overpayment: remaining, allocations: details, payments };
     } catch (err) {
@@ -361,7 +355,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
         await client.query('BEGIN');
 
         const { rows: [existing] } = await client.query(
-            `SELECT id, total_amount, paid_amount
+            `SELECT id, total_amount
              FROM debts WHERE shipment_id = $1 AND debt_type = 'driver' LIMIT 1`,
             [shipmentId]
         );
@@ -375,17 +369,10 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
             if (!s) throw new Error('Không tìm thấy chuyến xe');
 
             const shipmentPrice = Number(s.actual_price || s.estimated_price) || 0;
-            const paidNow       = Number(amount) || 0;
             await client.query(
-                `INSERT INTO debts (debt_type, driver_id, customer_id, partner_id, order_id, shipment_id, total_amount, paid_amount, status, updated_by, created_at, updated_at)
-                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-                [s.owner_driver_id, s.order_id, shipmentId, shipmentPrice, paidNow, _debtStatus(paidNow, shipmentPrice), confirmedBy]
-            );
-        } else {
-            const newPaid = Number(existing.paid_amount) + Number(amount || 0);
-            await client.query(
-                `UPDATE debts SET paid_amount = $1, status = $2, updated_by = $3, updated_at = NOW() WHERE id = $4`,
-                [newPaid, _debtStatus(newPaid, Number(existing.total_amount)), confirmedBy, existing.id]
+                `INSERT INTO debts (debt_type, driver_id, customer_id, partner_id, order_id, shipment_id, total_amount, updated_by, created_at, updated_at)
+                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, $5, NOW(), NOW())`,
+                [s.owner_driver_id, s.order_id, shipmentId, shipmentPrice, confirmedBy]
             );
         }
 
