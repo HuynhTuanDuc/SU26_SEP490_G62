@@ -11,13 +11,16 @@ const getFinanceStats = async () => {
         ),
         outstanding_debts AS (
             SELECT
-                COALESCE(SUM(GREATEST(d.total_amount - d.paid_amount, 0)), 0) AS total_receivables,
+                COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0) AS total_receivables,
                 COUNT(DISTINCT d.order_id)
-                    FILTER (WHERE (d.total_amount - d.paid_amount) > 0.01) AS pending_count
+                    FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid, 0)) > 0.01) AS pending_count
             FROM debts d
+            LEFT JOIN (
+                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                FROM debt_payments GROUP BY debt_id
+            ) dp_agg ON dp_agg.debt_id = d.id
             JOIN orders o ON o.id = d.order_id
             WHERE o.derived_status = 'completed'
-              AND d.status != 'paid'
         )
         SELECT
             cr.total_revenue,
