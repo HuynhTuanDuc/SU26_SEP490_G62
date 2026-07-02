@@ -9,7 +9,7 @@ const {
 // Địa chỉ pickup/delivery lưu trong trip_stops — dùng subquery để kéo ra
 const PICKUP_SUBQ  = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'   ORDER BY ts.stop_index ASC  LIMIT 1)`;
 const DELIVERY_SUBQ = `(SELECT ts.address FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery' ORDER BY ts.stop_index DESC LIMIT 1)`;
-const RECEIPT_PAYMENT_TYPE_SQL = `COALESCE(sr.driver_collection_type, sr.payment_type, o.payment_type)`;
+const RECEIPT_PAYMENT_TYPE_SQL = `COALESCE(sr.payment_type, o.payment_type)`;
 
 const getDriverVehicleGroupId = async (driverId) => {
     const result = await pool.query(
@@ -1014,13 +1014,6 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
                  WHERE os2.order_id = orr.order_id
                    AND os2.actual_price IS NOT NULL)
             )                                             AS amount,
-            COALESCE(sr.gross_amount,
-                (SELECT COALESCE(SUM(os2.actual_price), 0)
-                 FROM order_shipments os2
-                 WHERE os2.order_id = orr.order_id
-                   AND os2.actual_price IS NOT NULL)
-            )                                             AS gross_amount,
-            COALESCE(sr.prepaid_amount, COALESCE(o.prepaid_amount, 0)) AS prepaid_amount,
             COALESCE(sr.collected_at, orr.processed_at)  AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)     AS notes,
             o.id                                          AS order_id,
@@ -1058,11 +1051,6 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
                 ) FROM order_shipments os2
                  WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
             )                            AS amount,
-            COALESCE(sr.gross_amount,
-                (SELECT COALESCE(SUM(os2.actual_price), 0) FROM order_shipments os2
-                 WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
-            )                            AS gross_amount,
-            COALESCE(sr.prepaid_amount, COALESCE(o.prepaid_amount, 0)) AS prepaid_amount,
             COALESCE(sr.collected_at, orr.processed_at) AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)   AS notes,
             o.id                         AS order_id,
@@ -1080,10 +1068,6 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             p_driver.phone               AS driver_phone,
             v.plate_number,
             p_coord.full_name            AS coordinator_name,
-            sr.driver_collection_type,
-            sr.driver_confirmed_at,
-            sr.driver_collected_amount,
-            sr.driver_proof_url,
             EXISTS(SELECT 1 FROM debts d
                    WHERE d.shipment_id = orr.requesting_shipment_id
                      AND d.debt_type = 'driver') AS has_driver_debt,

@@ -102,7 +102,7 @@ export function Sidebar({ activeView, onViewChange, user, onLogout, onProfile, c
         )}
         {!collapsed && (
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="font-bold text-sm text-gray-800 leading-none truncate">Finance HQ</span>
+            <span className="font-bold text-sm text-gray-800 leading-none truncate">LogisCount</span>
             <span className="text-xs text-gray-400 mt-0.5">Kế toán</span>
           </div>
         )}

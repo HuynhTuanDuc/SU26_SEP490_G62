@@ -280,8 +280,8 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
     const customerId = orderResult.rows[0].customer_id;
 
     const debtResult = await pool.query(
-        `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, paid_amount, status, notes, created_at, updated_at)
-         VALUES ('customer', $1, $2, $3, $4, $5, 0, 'unpaid', $6, NOW(), NOW())
+        `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, notes, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, $4, $5, $6, NOW(), NOW())
          RETURNING *`,
         [customerId, driverId, tripId, trip.order_id, amt, notes ?? null],
     );
@@ -467,68 +467,6 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return receipt;
 };
 
-// Driver xác nhận hình thức thu tiền thực tế sau khi coordinator tạo phiếu thu
-// 3 lựa chọn: cash_collected (tài thu) | bank_transfer (công ty thu) | client_credit (chưa trả)
-const recordReceiptCollection = async (receiptId, driverId, collectionType, { collectedAmount = null, proofUrl = null } = {}) => {
-    const ALLOWED = ['cash_collected', 'bank_transfer', 'client_credit'];
-    if (!ALLOWED.includes(collectionType)) {
-        throw new Error('Hình thức thanh toán không hợp lệ');
-    }
-
-    const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
-    if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền');
-
-    // Dùng driver_collection_type làm trạng thái authoritative (persistent, bao gồm cả bank_transfer)
-    if (receipt.driver_collection_type) {
-        throw new Error('Hình thức thanh toán đã được ghi nhận cho chuyến này');
-    }
-
-    const shipmentId = receipt.shipment_id;
-    const amount     = Number(receipt.amount);
-
-    if (collectionType === 'cash_collected') {
-        const shipment = await tripRepository.getTripById(shipmentId);
-        await paymentRepository.createDriverDebt({
-            driverId,
-            shipmentId,
-            orderId: shipment.order_id,
-            amount,
-            notes: null,
-        });
-        notificationService.createForUser(driverId, {
-            title: 'Đã ghi nhận thu tiền mặt',
-            message: `Bạn đang giữ ${amount.toLocaleString('vi-VN')}đ — nộp về công ty khi có dịp.`,
-            type: 'DEBT_CREATED',
-            entityType: 'shipments',
-            entityId: shipmentId,
-        }, { displayMode: 'silent' }).catch(() => {});
-    } else if (collectionType === 'client_credit') {
-        const shipment = await tripRepository.getTripById(shipmentId);
-        const orderRes = await pool.query(`SELECT customer_id FROM orders WHERE id = $1`, [shipment.order_id]);
-        if (!orderRes.rows[0]) throw new Error('Không tìm thấy đơn hàng liên quan');
-        await paymentRepository.createCustomerDebt({
-            customerId: orderRes.rows[0].customer_id,
-            driverId,
-            shipmentId,
-            orderId: shipment.order_id,
-            amount,
-        });
-    }
-    // bank_transfer — không tạo debt; chỉ ghi driver_collection_type
-
-    // Ghi xác nhận vào shipment_receipts để persist qua các lần reload
-    if (receipt.shipment_receipt_id) {
-        await pool.query(
-            `UPDATE shipment_receipts
-             SET driver_collection_type = $1, driver_confirmed_at = NOW(), payment_type = $1,
-                 driver_collected_amount = $3, driver_proof_url = $4
-             WHERE id = $2`,
-            [collectionType, receipt.shipment_receipt_id, collectedAmount, proofUrl],
-        );
-    }
-
-    return { collection_type: collectionType, amount, recorded: true };
-};
 
 module.exports = {
     getTripPool,
@@ -550,5 +488,4 @@ module.exports = {
     getPendingReceiptOrder,
     getDriverReceipts,
     getDriverReceiptDetail,
-    recordReceiptCollection,
 };
