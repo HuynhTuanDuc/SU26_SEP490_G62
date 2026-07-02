@@ -305,7 +305,6 @@ const importExcel = async (userId, fileBuffer) => {
           delivery_address: deliveryAddress,
           estimated_price: fare || 0,
           payment_type: 'cash',
-          vehicle_group_id: finalVehicleGroupId,
           customer_name: customerName,
           customer_phone: customerPhone,
           notes,
@@ -313,6 +312,7 @@ const importExcel = async (userId, fileBuffer) => {
         shipmentData: {
           owner_driver_id: finalDriverId,
           vehicle_id: finalVehicleId,
+          vehicle_group_id: finalVehicleGroupId,
           pickup_address: pickupAddress,
           delivery_address: deliveryAddress,
           cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
@@ -392,57 +392,14 @@ const normalizeExpenses = (expenses = []) => {
     });
 };
 
-const updateOrderReceiptTotals = async (client, orderId) => {
-    await client.query(
-        `UPDATE orders o
-         SET total_actual_price = COALESCE(shipment_totals.total_actual_price, 0),
-             final_price = COALESCE(shipment_totals.total_actual_price, 0) + COALESCE(expense_totals.total_pass_through_expenses, 0),
-             updated_at = NOW()
-         FROM (
-            SELECT
-                os.order_id,
-                SUM(
-                    COALESCE(
-                        NULLIF(os.actual_price, 0),
-                        COALESCE(os.actual_distance_km, os.estimated_distance_km, 0)
-                        * COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0),
-                        0
-                    )
-                ) AS total_actual_price
-            FROM order_shipments os
-            LEFT JOIN orders o_src ON o_src.id = os.order_id
-            LEFT JOIN vehicles v ON v.id = os.vehicle_id
-            LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
-            LEFT JOIN vehicle_groups vg_order ON vg_order.id = o_src.vehicle_group_id
-            WHERE os.order_id = $1
-            GROUP BY os.order_id
-         ) shipment_totals
-         LEFT JOIN (
-            SELECT os.order_id,
-                   SUM(
-                        CASE
-                            WHEN e.expense_type IN ('parking', 'toll', 'depreciation') THEN COALESCE(e.amount, 0)
-                            ELSE 0
-                        END
-                   ) AS total_pass_through_expenses
-            FROM order_shipments os
-            LEFT JOIN expenses e ON e.shipment_id = os.id
-            WHERE os.order_id = $1
-            GROUP BY os.order_id
-         ) expense_totals ON expense_totals.order_id = shipment_totals.order_id
-         WHERE o.id = $1`,
-        [orderId],
-    );
-};
-
 const getOrderShipmentsForReceipt = async (db, orderId) => {
     const shipmentResult = await db.query(
         `SELECT
             os.id,
             os.order_id,
             os.shipment_index,
-            os.owner_driver_id,
-            os.vehicle_id,
+            sc.owner_driver_id,
+            sc.vehicle_id,
             os.status,
             os.cargo_name,
             os.cargo_weight_kg,
@@ -457,11 +414,11 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
             COALESCE(vg_vehicle.name, vg_order.name) AS vehicle_group_name,
             COALESCE(vg_vehicle.price_per_km, vg_order.price_per_km, 0) AS price_per_km
          FROM order_shipments os
-         LEFT JOIN vehicles v ON v.id = os.vehicle_id
-         LEFT JOIN profiles p ON p.id = os.owner_driver_id
-         LEFT JOIN orders o ON o.id = os.order_id
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+         LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+         LEFT JOIN profiles p ON p.id = sc.owner_driver_id
          LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
-         LEFT JOIN vehicle_groups vg_order ON vg_order.id = o.vehicle_group_id
+         LEFT JOIN vehicle_groups vg_order ON vg_order.id = os.vehicle_group_id
          WHERE os.order_id = $1
          ORDER BY os.shipment_index ASC`,
         [orderId],
@@ -686,21 +643,19 @@ const getReceiptRequests = async ({
                 COALESCE(revenue_summary.total_actual_price, 0) - COALESCE(o.prepaid_amount, 0),
                 0
             )) AS receipt_amount,
-            COALESCE(sr.gross_amount, COALESCE(revenue_summary.total_actual_price, 0)) AS gross_amount,
-            COALESCE(sr.prepaid_amount, COALESCE(o.prepaid_amount, 0)) AS prepaid_amount,
+            COALESCE(revenue_summary.total_actual_price, 0) AS gross_amount,
+            COALESCE(o.prepaid_amount, 0) AS prepaid_amount,
             COALESCE(sr.collected_at, rr.processed_at) AS receipt_created_at,
             COALESCE(sr.notes, rr.coordinator_notes) AS receipt_notes,
-            sr.driver_collection_type,
-            sr.driver_confirmed_at,
             COALESCE(shipments.shipment_count, 0) AS shipment_count,
             primary_shipment.id  AS shipment_id,
             primary_shipment.shipment_index,
             primary_shipment.status AS shipment_status,
             primary_shipment.actual_distance_km,
             COALESCE(distance_summary.total_actual_distance_km, 0) AS total_actual_distance_km,
-            COALESCE(revenue_summary.total_actual_price, o.total_actual_price, 0) AS actual_price,
+            COALESCE(revenue_summary.total_actual_price, 0) AS actual_price,
             COALESCE(revenue_summary.total_estimated_price, primary_shipment.estimated_price, 0) AS estimated_price,
-            COALESCE(NULLIF(o.final_price, 0), revenue_summary.total_actual_price + COALESCE(exp.pass_through_expenses, 0), 0) AS final_price,
+            COALESCE(revenue_summary.total_actual_price, 0) + COALESCE(exp.pass_through_expenses, 0) AS final_price,
             primary_vehicle.plate_number,
             COALESCE(exp.total_expenses, 0) AS total_expenses
          FROM order_receipt_requests rr
@@ -730,16 +685,18 @@ const getReceiptRequests = async ({
                 ) AS total_actual_price,
                 SUM(COALESCE(os_revenue.estimated_price, 0)) AS total_estimated_price
             FROM order_shipments os_revenue
-            LEFT JOIN vehicles v_revenue ON v_revenue.id = os_revenue.vehicle_id
+            LEFT JOIN v_shipment_current sc_revenue ON sc_revenue.shipment_id = os_revenue.id
+            LEFT JOIN vehicles v_revenue ON v_revenue.id = sc_revenue.vehicle_id
             LEFT JOIN vehicle_groups vg_vehicle_revenue ON vg_vehicle_revenue.id = v_revenue.vehicle_group_id
-            LEFT JOIN vehicle_groups vg_order_revenue ON vg_order_revenue.id = o.vehicle_group_id
+            LEFT JOIN vehicle_groups vg_order_revenue ON vg_order_revenue.id = os_revenue.vehicle_group_id
             WHERE os_revenue.order_id = rr.order_id
          ) revenue_summary ON TRUE
          LEFT JOIN LATERAL (
-            SELECT os_primary.*
+            SELECT os_primary.*, sc_primary.owner_driver_id, sc_primary.vehicle_id
             FROM order_shipments os_primary
+            LEFT JOIN v_shipment_current sc_primary ON sc_primary.shipment_id = os_primary.id
             WHERE os_primary.order_id = rr.order_id
-            ORDER BY CASE WHEN os_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
+            ORDER BY CASE WHEN sc_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
             LIMIT 1
          ) primary_shipment ON TRUE
          LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id
@@ -770,10 +727,11 @@ const getReceiptRequests = async ({
          LEFT JOIN customers c  ON c.id  = o.customer_id
          LEFT JOIN shipment_receipts sr ON sr.order_receipt_request_id = rr.id
          LEFT JOIN LATERAL (
-            SELECT os_primary.*
+            SELECT os_primary.*, sc_primary.owner_driver_id, sc_primary.vehicle_id
             FROM order_shipments os_primary
+            LEFT JOIN v_shipment_current sc_primary ON sc_primary.shipment_id = os_primary.id
             WHERE os_primary.order_id = rr.order_id
-            ORDER BY CASE WHEN os_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
+            ORDER BY CASE WHEN sc_primary.owner_driver_id = rr.driver_id THEN 0 ELSE 1 END, os_primary.shipment_index ASC
             LIMIT 1
          ) primary_shipment ON TRUE
          LEFT JOIN vehicles primary_vehicle ON primary_vehicle.id = primary_shipment.vehicle_id
@@ -808,8 +766,6 @@ const getReceiptRequestDetail = async (requestId) => {
             o.cargo_name,
             o.cargo_weight_kg,
             o.notes                    AS order_notes,
-            o.total_actual_price       AS order_total_actual_price,
-            o.final_price              AS order_final_price,
             COALESCE(o.prepaid_amount, 0) AS order_prepaid_amount,
             c.id                       AS customer_id,
             c.full_name                AS customer_name,
@@ -959,8 +915,6 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             );
         }
 
-        await updateOrderReceiptTotals(client, req.order_id);
-
         // Cập nhật trạng thái request → approved
         await client.query(
             `UPDATE order_receipt_requests
@@ -973,13 +927,11 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         const totalAmount = computed.remaining_amount;
         await client.query(
             `INSERT INTO shipment_receipts
-                 (shipment_id, amount, gross_amount, prepaid_amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                 (shipment_id, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
             [
                 targetShipment.id,
                 totalAmount,
-                computed.gross_amount,
-                computed.prepaid_amount,
                 req.driver_id,
                 notes ?? null,
                 requestId,

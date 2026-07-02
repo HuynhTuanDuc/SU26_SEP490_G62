@@ -105,7 +105,7 @@ const listOrders = async (query = {}) => {
 const ensureUniqueActiveAssignment = (seen, key, label) => {
     if (!key) return;
     if (seen.has(String(key))) {
-        throw new Error(`${label} da duoc gan cho mot chuyen khac trong cung yeu cau`);
+        throw new Error(`${label} đã được gán cho một chuyến khác trong cùng yêu cầu`);
     }
     seen.add(String(key));
 };
@@ -169,7 +169,6 @@ const createOrder = async (userId, payload) => {
         const shipmentsDataArray = [];
         const usedVehicleIds = new Set();
         const usedDriverIds = new Set();
-        let orderVehicleGroupId = null;
 
         for (const trip of trips) {
             const { plate, vehicle_group_id, distance, pickup_address: trip_pickup, delivery_address: trip_delivery } = trip;
@@ -178,12 +177,7 @@ const createOrder = async (userId, payload) => {
                 throw new Error('Quãng đường là bắt buộc để tính cước');
             }
 
-            if (!plate) {
-                throw new Error('BKS là bắt buộc khi tạo đơn');
-            }
-
             const finalVehicleGroupId = vehicle_group_id ? Number(vehicle_group_id) : defaultVehicleGroupId;
-            if (!orderVehicleGroupId) orderVehicleGroupId = finalVehicleGroupId;
 
             if (!finalVehicleGroupId) {
                 throw new Error('Chưa có nhóm xe trong hệ thống');
@@ -194,7 +188,7 @@ const createOrder = async (userId, payload) => {
                 throw new Error('Nhóm xe không tồn tại');
             }
 
-            const vehicle = await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId);
+            const vehicle = plate ? await orderRepository.getVehicleByPlate(dbClient, plate, finalVehicleGroupId) : null;
 
             if (plate && !vehicle) {
                 throw new Error(`BKS ${plate} không tồn tại trong nhóm xe đã chọn`);
@@ -208,16 +202,15 @@ const createOrder = async (userId, payload) => {
 
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
-            if (!finalDriverId || !finalVehicleId) {
-                throw new Error(`Xe ${vehicle.plate_number} chua co tai xe duoc gan`);
-            }
 
-            await orderRepository.validateVehicleShipmentAssignment(dbClient, {
-                vehicleId: finalVehicleId,
-                driverId: finalDriverId,
-            });
-            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
-            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
+            if (finalDriverId && finalVehicleId) {
+                await orderRepository.validateVehicleShipmentAssignment(dbClient, {
+                    vehicleId: finalVehicleId,
+                    driverId: finalDriverId,
+                });
+            }
+            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle?.plate_number || plate}`);
+            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tài xe');
 
             const shipmentStatus =
                 finalDriverId && finalVehicleId
@@ -229,12 +222,13 @@ const createOrder = async (userId, payload) => {
             shipmentsDataArray.push({
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
+                vehicle_group_id: finalVehicleGroupId,
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 estimated_price: normalizedPrice,
                 estimated_distance_km: normalizedDistance,
                 arrived_at: normalizedDate,
-                plate_number: vehicle.plate_number,
+                plate_number: vehicle?.plate_number || null,
                 status: shipmentStatus,
                 payment_type: payload.payment_type,
                 notes: orderNotes,
@@ -260,10 +254,8 @@ const createOrder = async (userId, payload) => {
                 cargo_name: safeTrim(cargo_name) || `${safeTrim(pickup_address)} - ${safeTrim(delivery_address)}`,
                 cargo_weight_kg: normalizedWeight,
                 payment_type: payload.payment_type,
-                vehicle_group_id: orderVehicleGroupId,
                 notes: notes !== undefined ? safeTrim(notes) : '',
                 partner_name: is_partner ? safeTrim(partner_name) : null,
-                total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
                 prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
             },
             shipmentsDataArray
@@ -364,7 +356,6 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     pickup_addresses: [pickupAddress],
                     delivery_addresses: [deliveryAddress],
                     estimated_price: estimatedPrice,
-                    vehicle_group_id: finalVehicleGroupId,
                     notes,
                     status: shipmentStatus,
                 },
@@ -374,6 +365,7 @@ const importOrdersFromExcel = async (userId, fileBuffer) => {
                     pickup_addresses: [pickupAddress],
                     delivery_addresses: [deliveryAddress],
                     cargo_weight_kg: cargoWeight,
+                    vehicle_group_id: finalVehicleGroupId,
                     estimated_price: estimatedPrice,
                     estimated_distance_km: distanceValue,
                     arrived_at: date,
@@ -474,21 +466,26 @@ const updateOrder = async (orderId, payload) => {
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
             const finalDriverId = vehicle?.assigned_driver_id ?? null;
             const finalVehicleId = vehicle?.id ?? null;
-            if (!finalDriverId || !finalVehicleId) {
-                throw new Error(`Xe ${vehicle?.plate_number || plate} chua co tai xe duoc gan`);
-            }
 
-            await orderRepository.validateVehicleShipmentAssignment(dbClient, {
-                vehicleId: finalVehicleId,
-                driverId: finalDriverId,
-                excludeShipmentId: existingShipments[index]?.id ?? null,
-            });
-            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle.plate_number}`);
-            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tai xe');
+            if (finalDriverId && finalVehicleId) {
+                await orderRepository.validateVehicleShipmentAssignment(dbClient, {
+                    vehicleId: finalVehicleId,
+                    driverId: finalDriverId,
+                    excludeShipmentId: existingShipments[index]?.id ?? null,
+                });
+            }
+            ensureUniqueActiveAssignment(usedVehicleIds, finalVehicleId, `Xe ${vehicle?.plate_number || plate}`);
+            ensureUniqueActiveAssignment(usedDriverIds, finalDriverId, 'Tài xe');
+
+            const shipmentStatus =
+                finalDriverId && finalVehicleId
+                    ? SHIPMENT_STATUS.CLAIMED
+                    : SHIPMENT_STATUS.AVAILABLE;
 
             shipmentsDataArray.push({
                 owner_driver_id: finalDriverId,
                 vehicle_id: finalVehicleId,
+                vehicle_group_id: finalVehicleGroupId,
                 estimated_price: normalizedPrice,
                 estimated_distance_km: normalizedDistance,
                 plate_number: vehicle?.plate_number,
@@ -496,7 +493,7 @@ const updateOrder = async (orderId, payload) => {
                 delivery_address: safeTrim(trip_delivery || delivery_address),
                 pickup_addresses: (Array.isArray(trip.pickup_addresses) ? trip.pickup_addresses : [trip_pickup || pickup_address]).filter(Boolean),
                 delivery_addresses: (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip_delivery || delivery_address]).filter(Boolean),
-                status: SHIPMENT_STATUS.CLAIMED,
+                status: shipmentStatus,
                 assignmentData: {
                     driver_id: finalDriverId,
                     vehicle_id: finalVehicleId,
@@ -519,7 +516,6 @@ const updateOrder = async (orderId, payload) => {
         notes,
         arrived_at: arrived_at || date,
         partner_name: is_partner ? safeTrim(partner_name) : null,
-        total_actual_price: is_partner ? normalizeNumber(partner_fee) : 0,
         prepaid_amount: normalizeNonNegativeAmount(prepaid_amount, 'Số tiền khách ứng trước'),
     }, normalizeNumber, safeTrim, normalizePhone, shipmentsDataArray);
     broadcastCoordinatorOrderChange('updated', updatedOrder);

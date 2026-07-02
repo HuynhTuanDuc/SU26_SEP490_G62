@@ -1,4 +1,5 @@
 const pool = require('../../config/database');
+const { insertAssignmentHistory } = require('../tripRepository');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
@@ -110,22 +111,30 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments (
             order_id, shipment_index,
-            vehicle_id, owner_driver_id,
             estimated_price, actual_price,
             cargo_name, cargo_weight_kg,
             status, notes, completed_at, created_at, updated_at
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'completed', $9, NOW(), NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, NOW(), NOW(), NOW())
          RETURNING id`,
         [
             orderId, shipmentIndex,
-            vehicleId, driverId,
             estimatedPrice, actualPrice || null,
             cargoName || null, cargoWeight || 0,
             shipmentNotes,
         ]
     );
     const shipmentId = shipmentResult.rows[0].id;
+
+    if (vehicleId || driverId) {
+        await insertAssignmentHistory(client, {
+            shipmentId,
+            toDriverId: driverId || null,
+            toVehicleId: vehicleId || null,
+            changedBy: createdByUserId,
+            changeReason: 'initial_assign',
+        });
+    }
 
     const stopAddresses = [...pickupAddresses, deliveryAddress];
     const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
@@ -185,11 +194,11 @@ const insertDebtForShipment = async (client, {
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
-                CURRENT_DATE + INTERVAL '30 days',
-                'Tai xe da thu nhung chua mang tien ve cong ty',
-                $5, NOW(), NOW())`,
-            [driverId, orderId, shipmentId, actualPrice, createdByUserId]
+             VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0,
+                CURRENT_DATE + INTERVAL '30 days', $5,
+                'Tài xế đã thu nhưng chưa mang tiền về công ty',
+                $6, NOW(), NOW())`,
+            [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     } else if (normalizedPaymentType === 'client_credit') {
 
@@ -199,10 +208,16 @@ const insertDebtForShipment = async (client, {
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
-                CURRENT_DATE + INTERVAL '30 days',
-                'Khach chua thanh toan', $5, NOW(), NOW())`,
-            [customerId, orderId, shipmentId, actualPrice, createdByUserId]
+             VALUES ('customer', NULL, $1, NULL, $2, $3, $4, 0,
+                CURRENT_DATE + INTERVAL '30 days', $5,
+                'Khách chưa thanh toán', $6, NOW(), NOW())`,
+            [customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+        );
+        await client.query(
+            `UPDATE customers
+             SET current_debt = current_debt + $1, updated_at = NOW()
+             WHERE id = $2`,
+            [actualPrice, customerId]
         );
     } else if (partnerId && normalizedPaymentType === 'partner') {
 
@@ -212,10 +227,10 @@ const insertDebtForShipment = async (client, {
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('partner', NULL, NULL, $1, $2, $3, $4,
-                CURRENT_DATE + INTERVAL '30 days',
-                'Doi tac chua thanh toan', $5, NOW(), NOW())`,
-            [partnerId, orderId, shipmentId, actualPrice, createdByUserId]
+             VALUES ('partner', NULL, NULL, $1, $2, $3, $4, 0,
+                CURRENT_DATE + INTERVAL '30 days', $5,
+                'Đối tác chưa thanh toán', $6, NOW(), NOW())`,
+            [partnerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     }
 
@@ -514,7 +529,7 @@ const getOrderShipments = async (orderId) => {
             ORDER BY d.shipment_id, dp.paid_at DESC
         )
         SELECT
-            os.id, os.shipment_index, os.vehicle_id, os.owner_driver_id,
+            os.id, os.shipment_index, sc.vehicle_id, sc.owner_driver_id,
             os.estimated_price, os.actual_price, os.cargo_name, os.cargo_weight_kg,
             os.status, os.notes, os.completed_at, os.created_at,
             v.plate_number                         AS vehicle_plate,
@@ -533,8 +548,9 @@ const getOrderShipments = async (orderId) => {
             da.driver_paid,
             pa.payment_type
         FROM order_shipments os
-        LEFT JOIN vehicles  v  ON v.id  = os.vehicle_id
-        LEFT JOIN profiles  p  ON p.id  = os.owner_driver_id
+        LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+        LEFT JOIN vehicles  v  ON v.id  = sc.vehicle_id
+        LEFT JOIN profiles  p  ON p.id  = sc.owner_driver_id
         LEFT JOIN exp_agg   ea ON ea.shipment_id = os.id
         LEFT JOIN stop_agg  sa ON sa.shipment_id = os.id
         LEFT JOIN debt_agg  da ON da.shipment_id = os.id

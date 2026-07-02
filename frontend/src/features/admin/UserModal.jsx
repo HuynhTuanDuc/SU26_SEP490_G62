@@ -5,8 +5,8 @@ import '../../styles/admin/UserModal.css';
 
 const genderOptions = [
   { value: 'male', label: 'Nam' },
-  { value: 'female', label: 'Nu' },
-  { value: 'other', label: 'Khac' },
+  { value: 'female', label: 'Nữ' },
+  { value: 'other', label: 'Khác' },
 ];
 
 export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
@@ -62,12 +62,12 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
 
   return (
     <Modal
-      title={editingUser ? 'Sua thong tin nguoi dung' : 'Them nguoi dung moi'}
+      title={editingUser ? 'Sửa thông tin người dùng' : 'Thêm người dùng mới'}
       open={isOpen}
       onOk={handleOk}
       onCancel={onClose}
-      okText="Luu lai"
-      cancelText="Huy"
+      okText="Lưu lại"
+      cancelText="Hủy"
       destroyOnClose
       width={920}
       styles={{ body: modalBodyStyle }}
@@ -79,23 +79,23 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
               name="email"
               label="Email"
               rules={[
-                { required: true, message: 'Vui long nhap email!' },
-                { type: 'email', message: 'Email khong hop le!' },
+                { required: true, message: 'Vui lòng nhập email!' },
+                { type: 'email', message: 'Email không hợp lệ!' },
               ]}
             >
-              <Input disabled={!!editingUser} placeholder="Nhap dia chi email" />
+              <Input disabled={!!editingUser} placeholder="Nhập địa chỉ email" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item
               name="role"
-              label="Vai tro"
-              rules={[{ required: true, message: 'Vui long chon vai tro!' }]}
+              label="Vai trò"
+              rules={[{ required: true, message: 'Vui lòng chọn vai trò!' }]}
             >
-              <Select placeholder="Chon vai tro">
-                <Select.Option value="coordinator">Coordinator (Dieu phoi)</Select.Option>
-                <Select.Option value="accountant">Accountant (Ke toan)</Select.Option>
-                <Select.Option value="driver">Driver (Tai xe)</Select.Option>
+              <Select placeholder="Chọn vai trò">
+                <Select.Option value="coordinator">Coordinator (Điều phối)</Select.Option>
+                <Select.Option value="accountant">Accountant (Kế toán)</Select.Option>
+                <Select.Option value="driver">Driver (Tài xế)</Select.Option>
               </Select>
             </Form.Item>
           </Col>
@@ -103,92 +103,92 @@ export default function UserModal({ isOpen, onClose, onSave, editingUser }) {
           <Col xs={24} md={12}>
             <Form.Item
               name="full_name"
-              label="Ho va Ten"
-              rules={[{ required: true, message: 'Vui long nhap ho va ten!' }]}
+              label="Họ và Tên"
+              rules={[{ required: true, message: 'Vui lòng nhập họ và tên!' }]}
             >
-              <Input placeholder="Nhap ho va ten" />
+              <Input placeholder="Nhập họ và tên" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item
               name="phone"
-              label="So dien thoai"
+              label="Số điện thoại"
               rules={[
-                { required: true, message: 'Vui long nhap so dien thoai!' },
-                { pattern: /^0\d{9,10}$/, message: 'So dien thoai khong hop le!' },
+                { required: true, message: 'Vui lòng nhập số điện thoại!' },
+                { pattern: /^0\d{9,10}$/, message: 'Số điện thoại không hợp lệ!' },
               ]}
             >
-              <Input placeholder="Nhap so dien thoai" />
+              <Input placeholder="Nhập số điện thoại" />
             </Form.Item>
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item name="gender" label="Gioi tinh">
+            <Form.Item name="gender" label="Giới tính">
               <Select
                 allowClear
-                placeholder="Chon gioi tinh"
+                placeholder="Chọn giới tính"
                 options={genderOptions}
               />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item name="dob" label="Ngay sinh">
+            <Form.Item name="dob" label="Ngày sinh">
               <DatePicker
                 style={{ width: '100%' }}
                 format="DD/MM/YYYY"
-                placeholder="Chon ngay sinh"
+                placeholder="Chọn ngày sinh"
               />
             </Form.Item>
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item name="city" label="Que quan">
-              <Input placeholder="Nhap que quan" />
+            <Form.Item name="city" label="Quê quán">
+              <Input placeholder="Nhập quê quán" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item name="country" label="Quoc gia">
+            <Form.Item name="country" label="Quốc gia">
               <Input placeholder="VN" />
             </Form.Item>
           </Col>
 
           <Col xs={24}>
-            <Form.Item name="address" label="Dia chi">
-              <Input.TextArea rows={2} placeholder="Nhap dia chi" />
+            <Form.Item name="address" label="Địa chỉ">
+              <Input.TextArea rows={2} placeholder="Nhập địa chỉ" />
             </Form.Item>
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item name="national_id" label="So giay to">
+            <Form.Item name="national_id" label="Số giấy tờ">
               <Input placeholder="CCCD / Passport" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item name="tax_code" label="Ma so thue ca nhan">
-              <Input placeholder="Neu co" />
+            <Form.Item name="tax_code" label="Mã số thuế cá nhân">
+              <Input placeholder="Nếu có" />
             </Form.Item>
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item name="emergency_contact_name" label="Lien he khan cap">
-              <Input placeholder="Nguoi lien he khan cap" />
+            <Form.Item name="emergency_contact_name" label="Liên hệ khẩn cấp">
+              <Input placeholder="Người liên hệ khẩn cấp" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item
               name="emergency_contact_phone"
-              label="SDT lien he khan cap"
+              label="SĐT liên hệ khẩn cấp"
               rules={[
-                { pattern: /^$|^0\d{9,10}$/, message: 'So dien thoai khan cap khong hop le!' },
+                { pattern: /^$|^0\d{9,10}$/, message: 'Số điện thoại khẩn cấp không hợp lệ!' },
               ]}
             >
-              <Input placeholder="Nhap so dien thoai khan cap" />
+              <Input placeholder="Nhập số điện thoại khẩn cấp" />
             </Form.Item>
           </Col>
 
           <Col xs={24}>
-            <Form.Item name="notes" label="Ghi chu">
-              <Input.TextArea rows={3} placeholder="Thong tin bo sung" />
+            <Form.Item name="notes" label="Ghi chú">
+              <Input.TextArea rows={3} placeholder="Thông tin bổ sung" />
             </Form.Item>
           </Col>
         </Row>

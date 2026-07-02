@@ -18,8 +18,8 @@ const parsePositiveAmount = (value, fieldName) => {
 };
 
 const buildMaintenanceVerificationMessage = (vehicle) => {
-    const vehicleLabel = vehicle?.plate_number ? `xe ${vehicle.plate_number}` : 'xe vua bao duong';
-    return `Tai xe da hoan tat bao duong ${vehicleLabel}. Vui long kiem tra hoa don va xac nhan.`;
+    const vehicleLabel = vehicle?.plate_number ? `xe ${vehicle.plate_number}` : 'xe vừa bảo dưỡng';
+    return `Tài xế đã hoàn tất bảo dưỡng ${vehicleLabel}. Vui lòng kiểm tra hóa đơn và xác nhận.`;
 };
 
 const getAllDrivers = async () => driverRepository.getAllDrivers();
@@ -127,7 +127,7 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
         const managerIds = await notificationService.getUserIdsByRole('manager');
         if (managerIds.length > 0) {
             await notificationService.createForUsers(managerIds, {
-                title: 'Tai xe da hoan tat bao duong',
+                title: 'Tài xế đã hoàn tất bảo dưỡng',
                 message: notificationMessage,
                 type: 'MAINTENANCE_COMPLETED',
                 entityType: 'vehicle',

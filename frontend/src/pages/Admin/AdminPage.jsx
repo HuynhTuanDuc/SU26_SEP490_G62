@@ -28,17 +28,17 @@ export default function AdminPage({ user, onLogout }) {
   };
 
   const pageTitleMap = {
-    partners: "Quan ly doi tac",
-    dashboard: "Tong quan manager",
-    users: "Quan ly nguoi dung",
-    vehicles: "Quan ly xe",
+    partners: "Quản lý đối tác",
+    dashboard: "Tổng quan manager",
+    users: "Quản lý người dùng",
+    vehicles: "Quản lý xe",
   };
 
   const pageSubtitleMap = {
-    partners: "Quan ly thong tin doi tac va theo doi cong no neu doi tac dang ton dong thanh toan.",
-    dashboard: "Theo doi phe duyet, cong no, phieu thu va thong tin cong ty tren cung mot luong van hanh.",
-    users: "Quan ly tai khoan, vai tro va trang thai truy cap.",
-    vehicles: "Theo doi phuong tien, tai xe duoc gan va trang thai bao tri.",
+    partners: "Quản lý thông tin đối tác và theo dõi công nợ nếu đối tác đang tồn đọng thanh toán.",
+    dashboard: "Theo dõi phê duyệt, công nợ, phiếu thu và thông tin công ty trên cùng một luồng vận hành.",
+    users: "Quản lý tài khoản, vai trò và trạng thái truy cập.",
+    vehicles: "Theo dõi phương tiện, tài xế được gán và trạng thái bảo trì.",
   };
 
   return (
@@ -57,10 +57,10 @@ export default function AdminPage({ user, onLogout }) {
         <section style={{ padding: 24, flex: 1, overflow: "auto" }}>
           <div style={{ marginBottom: 20 }}>
             <Title level={3} style={{ margin: 0, color: C.onSurface }}>
-              {pageTitleMap[activeTab] || "Trang chu"}
+              {pageTitleMap[activeTab] || "Trang chủ"}
             </Title>
             <Text style={{ color: C.onSurfaceVariant }}>
-              {pageSubtitleMap[activeTab] || "Chon mot chuc nang tu thanh dieu huong."}
+              {pageSubtitleMap[activeTab] || "Chọn một chức năng từ thanh điều hướng."}
             </Text>
           </div>
 

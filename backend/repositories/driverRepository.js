@@ -35,7 +35,8 @@ const getAllDrivers = async () => {
             EXISTS (
                 SELECT 1
                 FROM order_shipments os
-                WHERE os.owner_driver_id = d.profile_id
+                JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                WHERE sc.owner_driver_id = d.profile_id
                   AND os.status IN ('claimed', 'picking', 'transit', 'arrived', 'returning')
             ) AS has_active_trip
          FROM drivers d
