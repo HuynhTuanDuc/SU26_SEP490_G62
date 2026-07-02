@@ -188,16 +188,6 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
             [confirmedBy, paymentId],
         );
 
-        // Cập nhật debts.paid_amount và debts.status
-        const newPaid = Number(pay.already_paid) + Number(pay.amount);
-        const total = Number(pay.total_amount);
-        const newStatus = newPaid >= total ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
-
-        await client.query(
-            `UPDATE debts SET paid_amount = $1, status = $2, updated_at = NOW() WHERE id = $3`,
-            [newPaid, newStatus, pay.debt_id],
-        );
-
         await client.query('COMMIT');
         return { paymentId, debtId: pay.debt_id, driverId: pay.driver_id, newPaid, newStatus };
     } catch (err) {
