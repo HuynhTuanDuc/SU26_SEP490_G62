@@ -152,14 +152,24 @@ const getPartnerSummary = async () => {
                 WHERE EXISTS (
                     SELECT 1
                     FROM debts d
+                    LEFT JOIN (
+                        SELECT debt_id,
+                               COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                        FROM debt_payments GROUP BY debt_id
+                    ) dp ON dp.debt_id = d.id
                     WHERE d.partner_id = p.id
                       AND d.debt_type = 'partner'
-                      AND COALESCE(d.total_amount, 0) > COALESCE(d.paid_amount, 0)
+                      AND d.total_amount - COALESCE(dp.paid, 0) > 0.01
                 )
             )::int AS partners_with_debt,
             COALESCE((
-                SELECT SUM(d.total_amount - d.paid_amount)
+                SELECT SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0))
                 FROM debts d
+                LEFT JOIN (
+                    SELECT debt_id,
+                           COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                    FROM debt_payments GROUP BY debt_id
+                ) dp_agg ON dp_agg.debt_id = d.id
                 WHERE d.debt_type = 'partner'
             ), 0)::text AS total_remaining
          FROM partners p`,
@@ -205,18 +215,23 @@ const listPartners = async ({ search = '' } = {}) => {
             p.created_at,
             COUNT(d.id)::int AS debt_count,
             COALESCE(SUM(d.total_amount), 0)::text AS total_amount,
-            COALESCE(SUM(d.paid_amount), 0)::text AS total_paid,
-            COALESCE(SUM(d.total_amount - d.paid_amount), 0)::text AS total_remaining,
+            COALESCE(SUM(COALESCE(dp_agg.paid, 0)), 0)::text AS total_paid,
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0)::text AS total_remaining,
             MIN(d.due_date) AS earliest_due_date,
             MAX(d.created_at) AS latest_debt_at
          FROM partners p
          LEFT JOIN debts d
             ON d.partner_id = p.id
            AND d.debt_type = 'partner'
+         LEFT JOIN (
+             SELECT debt_id,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+             FROM debt_payments GROUP BY debt_id
+         ) dp_agg ON dp_agg.debt_id = d.id
          ${whereClause}
          GROUP BY p.id
          ORDER BY
-            COALESCE(SUM(d.total_amount - d.paid_amount), 0) DESC,
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0) DESC,
             p.company_name ASC`,
         params,
     );
@@ -293,9 +308,13 @@ const getPartnerDebtDetails = async (partnerId) => {
             d.order_id,
             d.shipment_id,
             d.total_amount::text,
-            d.paid_amount::text,
-            (COALESCE(d.total_amount, 0) - COALESCE(d.paid_amount, 0))::text AS remaining,
-            d.status,
+            COALESCE(dp_agg.paid, 0)::text AS paid_amount,
+            GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)::text AS remaining,
+            CASE
+                WHEN d.total_amount - COALESCE(dp_agg.paid, 0) <= 0.01 THEN 'paid'
+                WHEN COALESCE(dp_agg.paid, 0) > 0 THEN 'partial'
+                ELSE 'unpaid'
+            END AS status,
             d.due_date,
             d.notes,
             d.created_at,
@@ -303,6 +322,11 @@ const getPartnerDebtDetails = async (partnerId) => {
             c.full_name AS customer_name,
             c.company_name AS customer_company
          FROM debts d
+         LEFT JOIN (
+             SELECT debt_id,
+                    COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+             FROM debt_payments GROUP BY debt_id
+         ) dp_agg ON dp_agg.debt_id = d.id
          LEFT JOIN orders o ON o.id = d.order_id
          LEFT JOIN customers c ON c.id = d.customer_id
          WHERE d.partner_id = $1
