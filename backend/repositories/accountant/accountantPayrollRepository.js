@@ -77,11 +77,15 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const advanceDeduction = Number(advRow.total ?? 0);
 
     const { rows: [debtRow] } = await client.query(`
-        SELECT COALESCE(SUM(total_amount - paid_amount), 0)::numeric AS remaining
-        FROM debts
-        WHERE driver_id = $1
-          AND debt_type = 'driver'
-          AND status IN ('unpaid','partial','overdue')
+        SELECT COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid_amount, 0), 0)), 0)::numeric AS remaining
+        FROM debts d
+        LEFT JOIN (
+            SELECT debt_id, SUM(amount) FILTER (WHERE status = 'confirmed') AS paid_amount
+            FROM debt_payments GROUP BY debt_id
+        ) dp_agg ON dp_agg.debt_id = d.id
+        WHERE d.driver_id = $1
+          AND d.debt_type = 'driver'
+          AND (d.total_amount - COALESCE(dp_agg.paid_amount, 0)) > 0.01
     `, [driver.driver_id]);
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
