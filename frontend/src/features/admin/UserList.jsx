@@ -13,8 +13,8 @@ const { Title, Text } = Typography;
 
 const genderLabelMap = {
   male: 'Nam',
-  female: 'Nu',
-  other: 'Khac',
+  female: 'Nữ',
+  other: 'Khác',
 };
 
 const USER_IMPORT_HEADERS = [
@@ -37,7 +37,7 @@ const USER_IMPORT_HEADERS = [
 const USER_IMPORT_SAMPLE_ROWS = [
   {
     email: 'coordinator.new@example.com',
-    full_name: 'Nguyen Van Dieu Phoi',
+    full_name: 'Nguyễn Văn Điều Phối',
     phone: '0912345678',
     role: 'coordinator',
     gender: 'male',
@@ -49,11 +49,11 @@ const USER_IMPORT_SAMPLE_ROWS = [
     tax_code: '',
     emergency_contact_name: 'Nguyen Thi Lan',
     emergency_contact_phone: '0901234567',
-    notes: 'Nhan su dieu phoi moi',
+    notes: 'Nhân sự điều phối mới',
   },
   {
     email: 'driver.new@example.com',
-    full_name: 'Tran Tai Xe',
+    full_name: 'Trần Tài Xế',
     phone: '0987654321',
     role: 'driver',
     gender: 'female',
@@ -65,7 +65,7 @@ const USER_IMPORT_SAMPLE_ROWS = [
     tax_code: '',
     emergency_contact_name: 'Tran Van B',
     emergency_contact_phone: '0907654321',
-    notes: 'Luu y dien day du cac cot bat buoc',
+    notes: 'Lưu ý điền đầy đủ các cột bắt buộc',
   },
 ];
 
@@ -168,7 +168,7 @@ export default function UserList({ user }) {
       const data = await apiRequest('/api/admin/users');
       setAllUsers(data.users || []);
     } catch (error) {
-      message.error(`Loi: ${error.message}`);
+      message.error(`Lỗi: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -220,7 +220,7 @@ export default function UserList({ user }) {
       const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
       const firstSheetName = workbook.SheetNames[0];
       if (!firstSheetName) {
-        throw new Error('File Excel khong co sheet nao.');
+        throw new Error('File Excel không có sheet nào.');
       }
 
       const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
@@ -230,12 +230,12 @@ export default function UserList({ user }) {
 
       const importRows = rows.filter((row) => !isImportedRowEmpty(row));
       if (importRows.length === 0) {
-        throw new Error('File Excel khong co dong du lieu hop le.');
+        throw new Error('File Excel không có dòng dữ liệu hợp lệ.');
       }
 
       const missingHeaders = USER_IMPORT_HEADERS.filter((header) => !(header in (rows[0] || {})));
       if (missingHeaders.length > 0) {
-        throw new Error(`File thieu cot: ${missingHeaders.join(', ')}`);
+        throw new Error(`File thiếu cột: ${missingHeaders.join(', ')}`);
       }
 
       const successes = [];
@@ -248,7 +248,7 @@ export default function UserList({ user }) {
         if (!payload.email || !payload.full_name || !payload.phone || !payload.role) {
           failures.push({
             row: rowNumber,
-            message: 'Thieu email, full_name, phone hoac role.',
+            message: 'Thiếu email, full_name, phone hoặc role.',
           });
           continue;
         }
@@ -260,13 +260,13 @@ export default function UserList({ user }) {
           });
           successes.push({
             row: rowNumber,
-            message: data.message || 'Da tao nguoi dung.',
+            message: data.message || 'Đã tạo người dùng.',
             email: payload.email,
           });
         } catch (error) {
           failures.push({
             row: rowNumber,
-            message: error.message || 'Khong the tao nguoi dung.',
+            message: error.message || 'Không thể tạo người dùng.',
           });
         }
       }
@@ -276,31 +276,31 @@ export default function UserList({ user }) {
       }
 
       Modal.info({
-        title: 'Ket qua import nguoi dung',
+        title: 'Kết quả import người dùng',
         width: 720,
         content: (
           <div style={{ display: 'grid', gap: 12 }}>
-            <Text>{`Thanh cong: ${successes.length} dong`}</Text>
-            <Text>{`That bai: ${failures.length} dong`}</Text>
+            <Text>{`Thành công: ${successes.length} dòng`}</Text>
+            <Text>{`Thất bại: ${failures.length} dòng`}</Text>
             {failures.length > 0 ? (
               <div style={{ maxHeight: 240, overflowY: 'auto', paddingRight: 8 }}>
                 {failures.slice(0, 12).map((failure) => (
                   <div key={`${failure.row}-${failure.message}`} style={{ marginBottom: 8 }}>
-                    <Text type="danger">{`Dong ${failure.row}: ${failure.message}`}</Text>
+                    <Text type="danger">{`Dòng ${failure.row}: ${failure.message}`}</Text>
                   </div>
                 ))}
                 {failures.length > 12 ? (
-                  <Text type="secondary">{`Con ${failures.length - 12} loi khac, vui long chia nho file hoac sua va import lai.`}</Text>
+                  <Text type="secondary">{`Còn ${failures.length - 12} lỗi khác, vui lòng chia nhỏ file hoặc sửa và import lại.`}</Text>
                 ) : null}
               </div>
             ) : (
-              <Text type="secondary">Tat ca dong du lieu deu da duoc tao thanh cong.</Text>
+              <Text type="secondary">Tất cả dòng dữ liệu đều đã được tạo thành công.</Text>
             )}
           </div>
         ),
       });
     } catch (error) {
-      message.error(error.message || 'Khong the import file Excel.');
+      message.error(error.message || 'Không thể import file Excel.');
     } finally {
       setImporting(false);
     }
@@ -319,18 +319,18 @@ export default function UserList({ user }) {
       setIsModalOpen(false);
       fetchUsers();
     } catch (error) {
-      message.error(error.message || 'Da co loi xay ra.');
+      message.error(error.message || 'Đã có lỗi xảy ra.');
     }
   };
 
   const handleToggleStatus = (user) => {
-    const action = user.is_active ? 'khoa' : 'mo khoa';
+    const action = user.is_active ? 'khóa' : 'mở khóa';
     Modal.confirm({
-      title: 'Xac nhan',
-      content: `Ban co chac muon ${action} tai khoan "${user.full_name || user.email}"?`,
-      okText: 'Xac nhan',
+      title: 'Xác nhận',
+      content: `Bạn có chắc muốn ${action} tài khoản "${user.full_name || user.email}"?`,
+      okText: 'Xác nhận',
       okType: 'danger',
-      cancelText: 'Huy',
+      cancelText: 'Hủy',
       onOk: async () => {
         try {
           const data = await apiRequest(`/api/admin/users/${user.id}/status`, {
@@ -340,7 +340,7 @@ export default function UserList({ user }) {
           message.success(data.message);
           fetchUsers();
         } catch (error) {
-          message.error(error.message || 'Da co loi.');
+          message.error(error.message || 'Đã có lỗi.');
         }
       },
     });
@@ -358,11 +358,11 @@ export default function UserList({ user }) {
       render: (_, __, index) => <strong>{(currentPage - 1) * pageSize + index + 1}</strong>,
     },
     {
-      title: 'Ho va Ten',
+      title: 'Họ và Tên',
       dataIndex: 'full_name',
       key: 'full_name',
       sorter: (a, b) => (a.full_name || '').localeCompare(b.full_name || ''),
-      render: (text) => text || <Text type="secondary">Chua cap nhat</Text>,
+      render: (text) => text || <Text type="secondary">Chưa cập nhật</Text>,
     },
     {
       title: 'Email',
@@ -371,49 +371,49 @@ export default function UserList({ user }) {
       sorter: (a, b) => (a.email || '').localeCompare(b.email || ''),
     },
     {
-      title: 'So DT',
+      title: 'Số ĐT',
       dataIndex: 'phone',
       key: 'phone',
       render: (text) => text || <Text type="secondary">-</Text>,
     },
     {
-      title: 'Gioi tinh',
+      title: 'Giới tính',
       dataIndex: 'gender',
       key: 'gender',
       render: (value) => genderLabelMap[value] || <Text type="secondary">-</Text>,
     },
     {
-      title: 'Ngay sinh',
+      title: 'Ngày sinh',
       dataIndex: 'dob',
       key: 'dob',
       render: (value) => formatDate(value) || <Text type="secondary">-</Text>,
     },
     {
-      title: 'Que quan',
+      title: 'Quê quán',
       dataIndex: 'city',
       key: 'city',
       render: (value) => value || <Text type="secondary">-</Text>,
     },
     {
-      title: 'Vai tro',
+      title: 'Vai trò',
       dataIndex: 'role',
       key: 'role',
       sorter: (a, b) => (a.role || '').localeCompare(b.role || ''),
       render: (role) => <Tag color={getRoleColor(role)}>{(role || '').toUpperCase()}</Tag>,
     },
     {
-      title: 'Trang thai',
+      title: 'Trạng thái',
       dataIndex: 'is_active',
       key: 'is_active',
       sorter: (a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1),
       render: (isActive) => (
         <Tag color={isActive ? 'green' : 'red'}>
-          {isActive ? 'Hoat dong' : 'Da khoa'}
+          {isActive ? 'Hoạt động' : 'Đã khóa'}
         </Tag>
       ),
     },
     {
-      title: 'Thao tac',
+      title: 'Thao tác',
       key: 'action',
       render: (_, user) => (
         <Space size="middle">
@@ -423,7 +423,7 @@ export default function UserList({ user }) {
             onClick={() => handleOpenEdit(user)}
             disabled={user.role === 'manager'}
           >
-            Sua
+            Sửa
           </Button>
           <Button
             danger={user.is_active}
@@ -432,7 +432,7 @@ export default function UserList({ user }) {
             onClick={() => handleToggleStatus(user)}
             disabled={user.role === 'manager'}
           >
-            {user.is_active ? 'Khoa' : 'Mo khoa'}
+            {user.is_active ? 'Khóa' : 'Mở khóa'}
           </Button>
         </Space>
       ),
@@ -443,18 +443,18 @@ export default function UserList({ user }) {
     <div style={{ padding: '24px', background: '#fff', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <Title level={3} style={{ margin: 0 }}>Danh sach tai khoan</Title>
-          <Text type="secondary" style={{ margin: 0 }}>Tong: {filtered.length} / {allUsers.length} nguoi dung</Text>
+          <Title level={3} style={{ margin: 0 }}>Danh sách tài khoản</Title>
+          <Text type="secondary" style={{ margin: 0 }}>Tổng: {filtered.length} / {allUsers.length} người dùng</Text>
         </div>
         <Space wrap>
           <Button icon={<DownloadOutlined />} onClick={handleDownloadSample}>
-            Tai file mau
+            Tải file mẫu
           </Button>
           <Button icon={<UploadOutlined />} loading={importing} onClick={handleOpenImportPicker}>
             Import Excel
           </Button>
           <Button type="primary" icon={<PlusOutlined />} size="middle" onClick={handleOpenAdd}>
-            Them nguoi dung
+            Thêm người dùng
           </Button>
           <input
             ref={fileInputRef}
@@ -468,7 +468,7 @@ export default function UserList({ user }) {
 
       <div style={{ marginBottom: '16px' }}>
         <Input
-          placeholder="Tim kiem theo ten, email, SDT, vai tro..."
+          placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
           prefix={<SearchOutlined />}
           value={search}
           onChange={(event) => {
@@ -490,7 +490,7 @@ export default function UserList({ user }) {
           pageSize,
           defaultPageSize: 10,
           showSizeChanger: true,
-          showTotal: (total, range) => `${range[0]}-${range[1]} cua ${total} muc`,
+          showTotal: (total, range) => `${range[0]}-${range[1]} của ${total} mục`,
           onChange: (page, size) => {
             setCurrentPage(page);
             setPageSize(size);

@@ -40,12 +40,12 @@ const generateVerificationCode = () => {
 
 const normalizeEmail = (email) => {
     if (typeof email !== 'string' || !email.trim()) {
-        throw new AuthError('Email la bat buoc.', 400);
+        throw new AuthError('Email là bắt buộc.', 400);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-        throw new AuthError('Email khong hop le.', 400);
+        throw new AuthError('Email không hợp lệ.', 400);
     }
 
     return normalizedEmail;
@@ -162,19 +162,19 @@ const issueSession = async (account) => {
 
 const validateActiveAccount = async (account) => {
     if (!account) {
-        throw new AuthError('Email khong ton tai.', 404);
+        throw new AuthError('Email không tồn tại.', 404);
     }
     if (!account.role) {
-        throw new AuthError('Tai khoan chua duoc gan vai tro.', 403);
+        throw new AuthError('Tài khoản chưa được gán vai trò.', 403);
     }
     if (account.is_active === false) {
-        throw new AuthError('Tai khoan cua ban da bi khoa.', 403);
+        throw new AuthError('Tài khoản của bạn đã bị khóa.', 403);
     }
 };
 
 const login = async (email, password) => {
     if (!email || !password) {
-        throw new AuthError('Email va mat khau la bat buoc.', 400);
+        throw new AuthError('Email và mật khẩu là bắt buộc.', 400);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -183,7 +183,7 @@ const login = async (email, password) => {
 
     const validPassword = await bcrypt.compare(password, account.password_hash);
     if (!validPassword) {
-        throw new AuthError('Mat khau khong dung.', 401);
+        throw new AuthError('Mật khẩu không đúng.', 401);
     }
 
     await profileRepository.updateLastLogin(account.id);
@@ -259,13 +259,13 @@ const requestPasswordReset = async (email) => {
     const normalizedEmail = normalizeEmail(email);
     const account = await profileRepository.getAccountByEmail(normalizedEmail);
     if (!account) {
-        throw new AuthError('Email khong ton tai.', 404);
+        throw new AuthError('Email không tồn tại.', 404);
     }
 
     const existingReset = passwordResetStore.get(normalizedEmail);
     if (existingReset?.cooldownUntil && existingReset.cooldownUntil > Date.now()) {
         const retryAfterSeconds = Math.ceil((existingReset.cooldownUntil - Date.now()) / 1000);
-        const error = new AuthError(`Vui long cho ${retryAfterSeconds} giay truoc khi yeu cau ma moi.`, 429);
+        const error = new AuthError(`Vui lòng chờ ${retryAfterSeconds} giây trước khi yêu cầu mã mới.`, 429);
         error.retry_after_seconds = retryAfterSeconds;
         throw error;
     }
@@ -285,7 +285,7 @@ const requestPasswordReset = async (email) => {
     await emailService.sendPasswordResetCodeEmail(account.email, profile?.full_name, code);
 
     return {
-        message: 'Da gui ma xac nhan toi email cua ban.',
+        message: 'Đã gửi mã xác nhận tới email của bạn.',
         expires_in_seconds: Math.floor(PASSWORD_RESET_CODE_TTL_MS / 1000),
         retry_after_seconds: Math.floor(PASSWORD_RESET_RESEND_COOLDOWN_MS / 1000),
     };
@@ -294,22 +294,22 @@ const requestPasswordReset = async (email) => {
 const verifyPasswordResetCode = async (email, code) => {
     const normalizedEmail = normalizeEmail(email);
     if (!code || typeof code !== 'string' || code.trim().length !== 6) {
-        throw new AuthError('Ma xac nhan khong hop le.', 400);
+        throw new AuthError('Mã xác nhận không hợp lệ.', 400);
     }
 
     const resetRequest = passwordResetStore.get(normalizedEmail);
     if (!resetRequest) {
-        throw new AuthError('Khong tim thay yeu cau dat lai mat khau. Vui long gui lai ma.', 400);
+        throw new AuthError('Không tìm thấy yêu cầu đặt lại mật khẩu. Vui lòng gửi lại mã.', 400);
     }
 
     if (resetRequest.expiresAt < Date.now()) {
         passwordResetStore.delete(normalizedEmail);
-        throw new AuthError('Ma xac nhan da het han.', 400);
+        throw new AuthError('Mã xác nhận đã hết hạn.', 400);
     }
 
     const submittedHash = crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
     if (submittedHash !== resetRequest.codeHash) {
-        throw new AuthError('Ma xac nhan khong dung.', 400);
+        throw new AuthError('Mã xác nhận không đúng.', 400);
     }
 
     passwordResetStore.set(normalizedEmail, {
@@ -317,39 +317,39 @@ const verifyPasswordResetCode = async (email, code) => {
         verified: true,
     });
 
-    return { message: 'Xac nhan ma thanh cong.' };
+    return { message: 'Xác nhận mã thành công.' };
 };
 
 const resetPassword = async (email, code, newPassword, confirmPassword) => {
     const normalizedEmail = normalizeEmail(email);
     if (!code || typeof code !== 'string' || code.trim().length !== 6) {
-        throw new AuthError('Ma xac nhan khong hop le.', 400);
+        throw new AuthError('Mã xác nhận không hợp lệ.', 400);
     }
     if (!newPassword || !confirmPassword) {
-        throw new AuthError('Mat khau moi va xac nhan mat khau la bat buoc.', 400);
+        throw new AuthError('Mật khẩu mới và xác nhận mật khẩu là bắt buộc.', 400);
     }
     if (newPassword.length < 6) {
-        throw new AuthError('Mat khau moi phai co it nhat 6 ky tu.', 400);
+        throw new AuthError('Mật khẩu mới phải có ít nhất 6 ký tự.', 400);
     }
     if (newPassword !== confirmPassword) {
-        throw new AuthError('Xac nhan mat khau khong khop.', 400);
+        throw new AuthError('Xác nhận mật khẩu không khớp.', 400);
     }
 
     const resetRequest = passwordResetStore.get(normalizedEmail);
     if (!resetRequest) {
-        throw new AuthError('Khong tim thay yeu cau dat lai mat khau. Vui long gui lai ma.', 400);
+        throw new AuthError('Không tìm thấy yêu cầu đặt lại mật khẩu. Vui lòng gửi lại mã.', 400);
     }
     if (resetRequest.expiresAt < Date.now()) {
         passwordResetStore.delete(normalizedEmail);
-        throw new AuthError('Ma xac nhan da het han.', 400);
+        throw new AuthError('Mã xác nhận đã hết hạn.', 400);
     }
 
     const submittedHash = crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
     if (submittedHash !== resetRequest.codeHash) {
-        throw new AuthError('Ma xac nhan khong dung.', 400);
+        throw new AuthError('Mã xác nhận không đúng.', 400);
     }
     if (!resetRequest.verified) {
-        throw new AuthError('Vui long xac nhan ma truoc khi dat lai mat khau.', 400);
+        throw new AuthError('Vui lòng xác nhận mã trước khi đặt lại mật khẩu.', 400);
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
@@ -361,7 +361,7 @@ const resetPassword = async (email, code, newPassword, confirmPassword) => {
     );
 
     passwordResetStore.delete(normalizedEmail);
-    return { message: 'Dat lai mat khau thanh cong.' };
+    return { message: 'Đặt lại mật khẩu thành công.' };
 };
 
 const getUserFromToken = async (userId) => {
@@ -410,7 +410,7 @@ const refreshSession = async (refreshToken) => {
     }
     if (account.is_active === false) {
         await revokeStoredRefreshToken(decoded.tokenId);
-        throw new AuthError('Tai khoan cua ban da bi khoa.', 403);
+        throw new AuthError('Tài khoản của bạn đã bị khóa.', 403);
     }
 
     const session = await issueSession(account);

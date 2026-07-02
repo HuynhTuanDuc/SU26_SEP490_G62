@@ -52,64 +52,64 @@ const sendWelcomeEmail = async (toEmail, rawPassword, fullName, role) => {
 const sendEmailChangeVerificationCode = async (toEmail, fullName, code) => {
     try {
         if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
-            console.log(`[Email Service] Can cau hinh SMTP de gui ma xac nhan doi email toi ${toEmail}: ${code}`);
+            console.log(`[Email Service] Cần cấu hình SMTP để gửi mã xác nhận đổi email tới ${toEmail}: ${code}`);
             return;
         }
 
         const transporter = createTransporter();
         const mailOptions = {
-            from: `"He thong Quan ly (Security)" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+            from: `"Hệ thống Quản lý (Security)" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
             to: toEmail,
-            subject: 'Ma xac nhan thay doi email',
+            subject: 'Mã xác nhận thay đổi email',
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.5; color: #333;">
-                    <h2 style="color: #1D4ED8;">Xin chao ${fullName || 'ban'},</h2>
-                    <p>Ban vua yeu cau thay doi email dang nhap cho tai khoan cua minh.</p>
-                    <p>Nhap ma xac nhan ben duoi de tiep tuc:</p>
+                    <h2 style="color: #1D4ED8;">Xin chào ${fullName || 'bạn'},</h2>
+                    <p>Bạn vừa yêu cầu thay đổi email đăng nhập cho tài khoản của mình.</p>
+                    <p>Nhập mã xác nhận bên dưới để tiếp tục:</p>
                     <div style="background-color: #EFF6FF; padding: 18px; border-radius: 8px; margin: 20px 0; text-align: center;">
                         <span style="font-size: 28px; letter-spacing: 6px; font-weight: 700; color: #1D4ED8;">${code}</span>
                     </div>
-                    <p>Ma co hieu luc trong 10 phut. Neu ban khong thuc hien yeu cau nay, hay bo qua email.</p>
+                    <p>Mã có hiệu lực trong 10 phút. Nếu bạn không thực hiện yêu cầu này, hãy bỏ qua email.</p>
                 </div>
             `,
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log(`[Email Service] Da gui ma xac nhan doi email toi ${toEmail} (Message ID: ${info.messageId})`);
+        console.log(`[Email Service] Đã gửi mã xác nhận đổi email tới ${toEmail} (Message ID: ${info.messageId})`);
     } catch (error) {
-        console.error('[Email Service] Loi khi gui ma xac nhan doi email:', error);
+        console.error('[Email Service] Lỗi khi gửi mã xác nhận đổi email:', error);
     }
 };
 
 const sendPasswordResetCodeEmail = async (toEmail, fullName, code) => {
     try {
         if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
-            console.log(`[Email Service] Can cau hinh SMTP de gui ma dat lai mat khau toi ${toEmail}: ${code}`);
+            console.log(`[Email Service] Cần cấu hình SMTP để gửi mã đặt lại mật khẩu tới ${toEmail}: ${code}`);
             return;
         }
 
         const transporter = createTransporter();
         const mailOptions = {
-            from: `"He thong Quan ly (Security)" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+            from: `"Hệ thống Quản lý (Security)" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
             to: toEmail,
-            subject: 'Ma xac nhan dat lai mat khau',
+            subject: 'Mã xác nhận đặt lại mật khẩu',
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.5; color: #333;">
-                    <h2 style="color: #1D4ED8;">Xin chao ${fullName || 'ban'},</h2>
-                    <p>He thong vua nhan yeu cau quen mat khau cho tai khoan cua ban.</p>
-                    <p>Nhap ma xac nhan ben duoi de tiep tuc dat lai mat khau:</p>
+                    <h2 style="color: #1D4ED8;">Xin chào ${fullName || 'bạn'},</h2>
+                    <p>Hệ thống vừa nhận yêu cầu quên mật khẩu cho tài khoản của bạn.</p>
+                    <p>Nhập mã xác nhận bên dưới để tiếp tục đặt lại mật khẩu:</p>
                     <div style="background-color: #EFF6FF; padding: 18px; border-radius: 8px; margin: 20px 0; text-align: center;">
                         <span style="font-size: 28px; letter-spacing: 6px; font-weight: 700; color: #1D4ED8;">${code}</span>
                     </div>
-                    <p>Ma co hieu luc trong 10 phut. Neu ban khong yeu cau dat lai mat khau, hay bo qua email nay.</p>
+                    <p>Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này.</p>
                 </div>
             `,
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log(`[Email Service] Da gui ma dat lai mat khau toi ${toEmail} (Message ID: ${info.messageId})`);
+        console.log(`[Email Service] Đã gửi mã đặt lại mật khẩu tới ${toEmail} (Message ID: ${info.messageId})`);
     } catch (error) {
-        console.error('[Email Service] Loi khi gui ma dat lai mat khau:', error);
+        console.error('[Email Service] Lỗi khi gửi mã đặt lại mật khẩu:', error);
     }
 };
 

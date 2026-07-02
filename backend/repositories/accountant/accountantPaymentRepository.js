@@ -51,7 +51,11 @@ const _ensureCustomerDebt = async (client, orderId, createdBy) => {
     if (existing) return existing.id;
 
     const { rows: [order] } = await client.query(
-        `SELECT customer_id, total_actual_price, total_estimated_price FROM orders WHERE id = $1`,
+        `SELECT o.customer_id, o.total_estimated_price, SUM(os.actual_price) AS total_actual_price
+         FROM orders o
+         LEFT JOIN order_shipments os ON os.order_id = o.id
+         WHERE o.id = $1
+         GROUP BY o.id`,
         [orderId]
     );
     if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);

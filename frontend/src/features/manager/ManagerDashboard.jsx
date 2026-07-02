@@ -52,10 +52,10 @@ function formatCurrency(value) {
 function getManagerRealtimeMessage(payload) {
   const notification = payload?.notification;
   if (payload?.type === "notification.created" && notification?.type === "MAINTENANCE_COMPLETED") {
-    return notification.message || "Tai xe da hoan tat bao duong. Vui long kiem tra va xac nhan.";
+    return notification.message || "Tài xế đã hoàn tất bảo dưỡng. Vui lòng kiểm tra và xác nhận.";
   }
   if (payload?.type === "maintenance.completed") {
-    return payload.message || "Tai xe da hoan tat bao duong. Vui long kiem tra va xac nhan.";
+    return payload.message || "Tài xế đã hoàn tất bảo dưỡng. Vui lòng kiểm tra và xác nhận.";
   }
   return null;
 }
@@ -179,7 +179,7 @@ export default function ManagerDashboard({ user }) {
         bank_account_name: companyData.info?.bank_account_name || "",
       });
     } catch (error) {
-      message.error(error.message || "Khong the tai du lieu manager.");
+      message.error(error.message || "Không thể tải dữ liệu manager.");
     } finally {
       setLoading(false);
     }
@@ -217,36 +217,36 @@ export default function ManagerDashboard({ user }) {
   const queueStats = useMemo(() => {
     const workflow = overview?.workflow || {};
     return [
-      { key: "advances", count: workflow.pending_advances || 0, label: "yeu cau ung luong", tone: "blue" },
-      { key: "repayments", count: workflow.pending_repayments || 0, label: "yeu cau nop tien", tone: "orange" },
-      { key: "receipts", count: (workflow.pending_receipts || 0) + (workflow.processing_receipts || 0), label: "phieu thu dang cho", tone: "green" },
+      { key: "advances", count: workflow.pending_advances || 0, label: "yêu cầu ứng lương", tone: "blue" },
+      { key: "repayments", count: workflow.pending_repayments || 0, label: "yêu cầu nộp tiền", tone: "orange" },
+      { key: "receipts", count: (workflow.pending_receipts || 0) + (workflow.processing_receipts || 0), label: "phiếu thu đang chờ", tone: "green" },
     ];
   }, [overview]);
 
   const handleRejectAdvance = (record) => {
     let reasonInput = "";
     Modal.confirm({
-      title: "Tu choi yeu cau ung luong",
+      title: "Từ chối yêu cầu ứng lương",
       content: (
         <Input.TextArea
           rows={4}
-          placeholder="Ly do tu choi"
+          placeholder="Lý do từ chối"
           onChange={(event) => {
             reasonInput = event.target.value;
           }}
         />
       ),
-      okText: "Tu choi",
+      okText: "Từ chối",
       okButtonProps: { danger: true },
-      cancelText: "Huy",
+      cancelText: "Hủy",
       onOk: async () => {
         setActingId(`advance-reject-${record.id}`);
         try {
           await rejectManagerSalaryAdvance(record.id, reasonInput);
-          message.success("Da tu choi yeu cau ung luong.");
+          message.success("Đã từ chối yêu cầu ứng lương.");
           await refreshAll();
         } catch (error) {
-          message.error(error.message || "Khong the tu choi yeu cau.");
+          message.error(error.message || "Không thể từ chối yêu cầu.");
         } finally {
           setActingId(null);
         }
@@ -258,10 +258,10 @@ export default function ManagerDashboard({ user }) {
     setActingId(`advance-approve-${record.id}`);
     try {
       await approveManagerSalaryAdvance(record.id);
-      message.success("Da phe duyet yeu cau ung luong.");
+      message.success("Đã phê duyệt yêu cầu ứng lương.");
       await refreshAll();
     } catch (error) {
-      message.error(error.message || "Khong the phe duyet yeu cau.");
+      message.error(error.message || "Không thể phê duyệt yêu cầu.");
     } finally {
       setActingId(null);
     }
@@ -270,27 +270,27 @@ export default function ManagerDashboard({ user }) {
   const handleRejectRepayment = (record) => {
     let reasonInput = "";
     Modal.confirm({
-      title: "Tu choi nop tien",
+      title: "Từ chối nộp tiền",
       content: (
         <Input.TextArea
           rows={4}
-          placeholder="Nhap ly do tu choi"
+          placeholder="Nhập lý do từ chối"
           onChange={(event) => {
             reasonInput = event.target.value;
           }}
         />
       ),
-      okText: "Tu choi",
+      okText: "Từ chối",
       okButtonProps: { danger: true },
-      cancelText: "Huy",
+      cancelText: "Hủy",
       onOk: async () => {
         setActingId(`repayment-reject-${record.id}`);
         try {
           await rejectManagerDebtRepayment(record.id, reasonInput);
-          message.success("Da tu choi yeu cau nop tien.");
+          message.success("Đã từ chối yêu cầu nộp tiền.");
           await refreshAll();
         } catch (error) {
-          message.error(error.message || "Khong the tu choi yeu cau.");
+          message.error(error.message || "Không thể từ chối yêu cầu.");
         } finally {
           setActingId(null);
         }
@@ -302,10 +302,10 @@ export default function ManagerDashboard({ user }) {
     setActingId(`repayment-confirm-${record.id}`);
     try {
       await confirmManagerDebtRepayment(record.id);
-      message.success("Da xac nhan nop tien.");
+      message.success("Đã xác nhận nộp tiền.");
       await refreshAll();
     } catch (error) {
-      message.error(error.message || "Khong the xac nhan nop tien.");
+      message.error(error.message || "Không thể xác nhận nộp tiền.");
     } finally {
       setActingId(null);
     }
@@ -317,11 +317,11 @@ export default function ManagerDashboard({ user }) {
       setSavingCompany(true);
       const result = await updateCompanyInfo(values);
       setCompanyInfo(result.info || {});
-      message.success("Da cap nhat thong tin cong ty.");
+      message.success("Đã cập nhật thông tin công ty.");
       await refreshAll();
     } catch (error) {
       if (error?.errorFields) return;
-      message.error(error.message || "Khong the cap nhat thong tin cong ty.");
+      message.error(error.message || "Không thể cập nhật thông tin công ty.");
     } finally {
       setSavingCompany(false);
     }
@@ -329,7 +329,7 @@ export default function ManagerDashboard({ user }) {
 
   const advanceColumns = [
     {
-      title: "Tai xe",
+      title: "Tài xế",
       key: "driver",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
@@ -339,21 +339,21 @@ export default function ManagerDashboard({ user }) {
       ),
     },
     {
-      title: "Ky ung",
+      title: "Kỳ ứng",
       key: "period",
       render: (_, record) => `${record.request_month}/${record.request_year}`,
     },
     {
-      title: "So tien",
+      title: "Số tiền",
       dataIndex: "amount",
       key: "amount",
       render: (value) => <Text strong>{formatCurrency(value)}</Text>,
     },
     {
-      title: "Ly do",
+      title: "Lý do",
       dataIndex: "reason",
       key: "reason",
-      render: (value) => value || <Text type="secondary">Khong co</Text>,
+      render: (value) => value || <Text type="secondary">Không có</Text>,
     },
     {
       title: "Trang thai",
@@ -376,7 +376,7 @@ export default function ManagerDashboard({ user }) {
             loading={actingId === `advance-approve-${record.id}`}
             onClick={() => handleApproveAdvance(record)}
           >
-            Duyet
+            Duyệt
           </Button>
           <Button
             danger
@@ -385,7 +385,7 @@ export default function ManagerDashboard({ user }) {
             loading={actingId === `advance-reject-${record.id}`}
             onClick={() => handleRejectAdvance(record)}
           >
-            Tu choi
+            Từ chối
           </Button>
         </Space>
       ),
@@ -394,7 +394,7 @@ export default function ManagerDashboard({ user }) {
 
   const repaymentColumns = [
     {
-      title: "Tai xe",
+      title: "Tài xế",
       key: "driver",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
@@ -404,25 +404,25 @@ export default function ManagerDashboard({ user }) {
       ),
     },
     {
-      title: "Don hang",
+      title: "Đơn hàng",
       dataIndex: "cargo_name",
       key: "cargo_name",
-      render: (value) => value || <Text type="secondary">Cong no noi bo</Text>,
+      render: (value) => value || <Text type="secondary">Công nợ nội bộ</Text>,
     },
     {
-      title: "So tien nop",
+      title: "Số tiền nộp",
       dataIndex: "amount",
       key: "amount",
       render: (value) => <Text strong>{formatCurrency(value)}</Text>,
     },
     {
-      title: "Tong cong no",
+      title: "Tổng công nợ",
       dataIndex: "total_amount",
       key: "total_amount",
       render: (value) => formatCurrency(value),
     },
     {
-      title: "Phuong thuc",
+      title: "Phương thức",
       dataIndex: "payment_method",
       key: "payment_method",
       render: (value) => <Tag>{String(value || "cash").replaceAll("_", " ").toUpperCase()}</Tag>,
@@ -438,7 +438,7 @@ export default function ManagerDashboard({ user }) {
             loading={actingId === `repayment-confirm-${record.id}`}
             onClick={() => handleConfirmRepayment(record)}
           >
-            Xac nhan
+            Xác nhận
           </Button>
           <Button
             danger
@@ -446,7 +446,7 @@ export default function ManagerDashboard({ user }) {
             loading={actingId === `repayment-reject-${record.id}`}
             onClick={() => handleRejectRepayment(record)}
           >
-            Tu choi
+            Từ chối
           </Button>
         </Space>
       ),
@@ -483,10 +483,10 @@ export default function ManagerDashboard({ user }) {
           </div>
           <div style={{ maxWidth: 780 }}>
             <Title level={2} style={{ color: "#fff", margin: 0 }}>
-              Quan ly cong viec lien phong ban trong mot man hinh.
+              Quản lý công việc liên phòng ban trong một màn hình.
             </Title>
             <Text style={{ color: "rgba(255,255,255,0.82)", fontSize: 15 }}>
-              Theo doi cac diem nghen giua tai xe, dieu phoi va ke toan, phe duyet yeu cau quan trong va giu thong tin cong ty luon san sang cho van hanh.
+              Theo dõi các điểm nghẽn giữa tài xế, điều phối và kế toán, phê duyệt yêu cầu quan trọng và giữ thông tin công ty luôn sẵn sàng cho vận hành.
             </Text>
           </div>
           <Space wrap size="middle">
@@ -501,8 +501,8 @@ export default function ManagerDashboard({ user }) {
         <Col xs={24} md={12} xl={6}>
           <SummaryCard
             icon={<Users size={20} />}
-            title="Nhan su dang hoat dong"
-            subtitle={`${overview?.workforce?.driver_count || 0} tai xe, ${overview?.workforce?.active_staff || 0} nhan su van phong`}
+            title="Nhân sự đang hoạt động"
+            subtitle={`${overview?.workforce?.driver_count || 0} tài xế, ${overview?.workforce?.active_staff || 0} nhân sự văn phòng`}
             value={overview?.workforce?.active_users || 0}
             accent="#3B4FD8"
           />
@@ -510,8 +510,8 @@ export default function ManagerDashboard({ user }) {
         <Col xs={24} md={12} xl={6}>
           <SummaryCard
             icon={<Truck size={20} />}
-            title="Xe san sang"
-            subtitle={`${overview?.fleet?.maintenance || 0} bao tri, ${overview?.fleet?.broken || 0} hu hong`}
+            title="Xe sẵn sàng"
+            subtitle={`${overview?.fleet?.maintenance || 0} bảo trì, ${overview?.fleet?.broken || 0} hư hỏng`}
             value={overview?.fleet?.active || 0}
             accent="#1E7E34"
           />
@@ -519,8 +519,8 @@ export default function ManagerDashboard({ user }) {
         <Col xs={24} md={12} xl={6}>
           <SummaryCard
             icon={<Coins size={20} />}
-            title="Cong no can thu"
-            subtitle={`${finance?.pending_payments_count || 0} don chua thu du`}
+            title="Công nợ cần thu"
+            subtitle={`${finance?.pending_payments_count || 0} đơn chưa thu đủ`}
             value={formatCurrency(finance?.total_receivables)}
             accent="#B76E00"
           />
@@ -528,8 +528,8 @@ export default function ManagerDashboard({ user }) {
         <Col xs={24} md={12} xl={6}>
           <SummaryCard
             icon={<ArrowRightLeft size={20} />}
-            title="Tien cho phe duyet"
-            subtitle="Ung luong va nop tien dang cho manager"
+            title="Tiền chờ phê duyệt"
+            subtitle="Ứng lương và nộp tiền đang chờ manager"
             value={formatCurrency(overview?.workflow?.pending_advances_amount || 0)}
             accent="#BA1A1A"
           />
@@ -541,8 +541,8 @@ export default function ManagerDashboard({ user }) {
           <PageContainer>
             <CardSection>
               <QueueHeader
-                title="Hang doi phe duyet"
-                description="Xu ly cac quyet dinh tai chinh can manager xac nhan de quy trinh tiep tuc khong bi dung."
+                title="Hàng đợi phê duyệt"
+                description="Xử lý các quyết định tài chính cần manager xác nhận để quy trình tiếp tục không bị đứng."
               />
             </CardSection>
             <div style={{ padding: "0 24px 24px" }}>
@@ -550,13 +550,13 @@ export default function ManagerDashboard({ user }) {
                 type="info"
                 showIcon
                 style={{ marginBottom: 16, borderRadius: 12 }}
-                message="Luong cong viec hop tac"
-                description="Tai xe gui yeu cau, manager phe duyet, sau do ke toan va dieu phoi tiep tuc xu ly. Cac bang ben duoi duoc dong bo real-time khi co thay doi."
+                message="Luồng công việc hợp tác"
+                description="Tài xế gửi yêu cầu, manager phê duyệt, sau đó kế toán và điều phối tiếp tục xử lý. Các bảng bên dưới được đồng bộ real-time khi có thay đổi."
               />
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
                 <div>
                   <QueueHeader
-                    title="Ung luong"
+                    title="Ứng lương"
                     description="Driver request -> Manager approve -> Accountant disburse"
                     extra={<Text type="secondary">{salaryAdvances.filter((item) => item.status === "pending").length} pending</Text>}
                   />
@@ -567,15 +567,15 @@ export default function ManagerDashboard({ user }) {
                     columns={advanceColumns}
                     dataSource={salaryAdvances}
                     pagination={{ pageSize: 5 }}
-                    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Khong co yeu cau ung luong." /> }}
+                    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có yêu cầu ứng lương." /> }}
                     scroll={{ x: "max-content" }}
                   />
                 </div>
 
                 <div>
                   <QueueHeader
-                    title="Nop tien cong no"
-                    description="Xac nhan tai xe da nop tien ve cong ty hay yeu cau bo sung."
+                    title="Nộp tiền công nợ"
+                    description="Xác nhận tài xế đã nộp tiền về công ty hay yêu cầu bổ sung."
                     extra={<Text type="secondary">{debtRepayments.length} pending</Text>}
                   />
                   <Table
@@ -585,7 +585,7 @@ export default function ManagerDashboard({ user }) {
                     columns={repaymentColumns}
                     dataSource={debtRepayments}
                     pagination={{ pageSize: 5 }}
-                    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Khong co yeu cau nop tien." /> }}
+                    locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có yêu cầu nộp tiền." /> }}
                     scroll={{ x: "max-content" }}
                   />
                 </div>
@@ -600,14 +600,14 @@ export default function ManagerDashboard({ user }) {
               <CardSection>
                 <QueueHeader
                   title="Receipt Requests"
-                  description="Theo doi nhung yeu cau phieu thu coordinator dang can xu ly."
+                  description="Theo dõi những yêu cầu phiếu thu coordinator đang cần xử lý."
                 />
               </CardSection>
               <div style={{ padding: "0 24px 24px" }}>
                 <List
                   loading={loading}
                   dataSource={receiptRequests.slice(0, 6)}
-                  locale={{ emptyText: "Khong co yeu cau phieu thu." }}
+                  locale={{ emptyText: "Không có yêu cầu phiếu thu." }}
                   renderItem={(item) => (
                     <List.Item style={{ paddingInline: 0 }}>
                       <List.Item.Meta
@@ -621,8 +621,8 @@ export default function ManagerDashboard({ user }) {
                         }
                         description={
                           <Space direction="vertical" size={2}>
-                            <Text>{item.driver_name || "Chua co tai xe"} {"->"} {item.customer_name || "Khach le"}</Text>
-                            <Text type="secondary">{item.cargo_name || "Khong co ten hang"} {"|"} {formatCurrency(item.receipt_amount)}</Text>
+                            <Text>{item.driver_name || "Chưa có tài xế"} {"->"} {item.customer_name || "Khách lẻ"}</Text>
+                            <Text type="secondary">{item.cargo_name || "Không có tên hàng"} {"|"} {formatCurrency(item.receipt_amount)}</Text>
                           </Space>
                         }
                       />
@@ -636,32 +636,32 @@ export default function ManagerDashboard({ user }) {
               <CardSection>
                 <QueueHeader
                   title="Company Setup"
-                  description="Thong tin ngan hang va lien he duoc driver va doi tac su dung xuyen suot trong quy trinh."
+                  description="Thông tin ngân hàng và liên hệ được driver và đối tác sử dụng xuyên suốt trong quy trình."
                 />
               </CardSection>
               <div style={{ padding: "0 24px 24px" }}>
                 <Form form={companyForm} layout="vertical">
-                  <Form.Item label="Ten cong ty" name="company_name">
-                    <Input placeholder="Cong ty Van tai..." />
+                  <Form.Item label="Tên công ty" name="company_name">
+                    <Input placeholder="Công ty Vận tải..." />
                   </Form.Item>
                   <Form.Item label="Hotline" name="hotline">
                     <Input placeholder="090..." />
                   </Form.Item>
-                  <Form.Item label="Ngan hang" name="bank_name">
+                  <Form.Item label="Ngân hàng" name="bank_name">
                     <Input placeholder="VCB, ACB..." />
                   </Form.Item>
-                  <Form.Item label="So tai khoan" name="bank_account_number">
+                  <Form.Item label="Số tài khoản" name="bank_account_number">
                     <Input placeholder="123456789" />
                   </Form.Item>
-                  <Form.Item label="Chu tai khoan" name="bank_account_name">
-                    <Input placeholder="Cong ty / Dai dien" />
+                  <Form.Item label="Chủ tài khoản" name="bank_account_name">
+                    <Input placeholder="Công ty / Đại diện" />
                   </Form.Item>
                   <Space style={{ width: "100%", justifyContent: "space-between" }}>
                     <Text type="secondary">
-                      {companyInfo?.updated_at ? `Cap nhat lan cuoi: ${new Date(companyInfo.updated_at).toLocaleString("vi-VN")}` : "Chua co ban ghi cong ty."}
+                      {companyInfo?.updated_at ? `Cập nhật lần cuối: ${new Date(companyInfo.updated_at).toLocaleString("vi-VN")}` : "Chưa có bản ghi công ty."}
                     </Text>
                     <Button type="primary" loading={savingCompany} onClick={handleSaveCompany}>
-                      Luu thay doi
+                      Lưu thay đổi
                     </Button>
                   </Space>
                 </Form>
@@ -682,21 +682,21 @@ export default function ManagerDashboard({ user }) {
               <Space>
                 <Building2 size={18} color={C.primary} />
                 <Title level={4} style={{ margin: 0 }}>
-                  Tong quan tai chinh
+                  Tổng quan tài chính
                 </Title>
               </Space>
               <Row gutter={16}>
                 <Col span={12}>
-                  <Statistic title="Tong doanh thu" value={Number(finance?.total_revenue || 0)} suffix="đ" formatter={(value) => currency.format(Number(value || 0))} />
+                  <Statistic title="Tổng doanh thu" value={Number(finance?.total_revenue || 0)} suffix="đ" formatter={(value) => currency.format(Number(value || 0))} />
                 </Col>
                 <Col span={12}>
-                  <Statistic title="Thuc thu" value={Number(finance?.total_collected || 0)} suffix="đ" formatter={(value) => currency.format(Number(value || 0))} />
+                  <Statistic title="Thực thu" value={Number(finance?.total_collected || 0)} suffix="đ" formatter={(value) => currency.format(Number(value || 0))} />
                 </Col>
               </Row>
               <Descriptions size="small" column={1} bordered>
-                <Descriptions.Item label="Don chua thu du">{finance?.pending_payments_count || 0}</Descriptions.Item>
-                <Descriptions.Item label="Cong no can theo doi">{formatCurrency(finance?.total_receivables)}</Descriptions.Item>
-                <Descriptions.Item label="Tien ung luong dang cho">{formatCurrency(overview?.workflow?.pending_advances_amount)}</Descriptions.Item>
+                <Descriptions.Item label="Đơn chưa thu đủ">{finance?.pending_payments_count || 0}</Descriptions.Item>
+                <Descriptions.Item label="Công nợ cần theo dõi">{formatCurrency(finance?.total_receivables)}</Descriptions.Item>
+                <Descriptions.Item label="Tiền ứng lương đang chờ">{formatCurrency(overview?.workflow?.pending_advances_amount)}</Descriptions.Item>
               </Descriptions>
             </Space>
           </Card>
@@ -712,7 +712,7 @@ export default function ManagerDashboard({ user }) {
               <Space>
                 <ClipboardList size={18} color={C.primary} />
                 <Title level={4} style={{ margin: 0 }}>
-                  Phan bo vai tro
+                  Phân bổ vai trò
                 </Title>
               </Space>
               <Row gutter={[12, 12]}>
@@ -722,7 +722,7 @@ export default function ManagerDashboard({ user }) {
                 <Col span={12}><QueuePill count={overview?.workforce?.driver_count || 0} label="driver" tone="orange" /></Col>
               </Row>
               <Text style={{ color: C.onSurfaceVariant }}>
-                Dung cac tab Nguoi dung va Quan ly xe de can thiep chi tiet, con bang nay giup manager nhin nhanh muc tai nguyen dang phan bo cho van hanh.
+                Dùng các tab Người dùng và Quản lý xe để can thiệp chi tiết, còn bảng này giúp manager nhìn nhanh mức tài nguyên đang phân bổ cho vận hành.
               </Text>
             </Space>
           </Card>

@@ -26,14 +26,14 @@ class AdminError extends Error {
 const createAdminError = (message, status = 400) => new AdminError(message, status);
 
 const normalizeUserId = (userId) => normalizePositiveInteger(userId, {
-    fieldLabel: 'ID nguoi dung',
+    fieldLabel: 'ID người dùng',
     errorFactory: createAdminError,
 });
 
 const normalizeManagerRole = (role) => normalizeRole(role, { errorFactory: createAdminError });
 
 const normalizeFullName = (fullName) => normalizeRequiredText(fullName, {
-    fieldLabel: 'Ho ten',
+    fieldLabel: 'Họ tên',
     errorFactory: createAdminError,
 });
 
@@ -44,17 +44,17 @@ const normalizeUserGender = (gender) => normalizeGender(gender, { errorFactory: 
 const normalizeUserDob = (dob) => normalizeDob(dob, { errorFactory: createAdminError });
 
 const normalizeHometown = (city) => normalizeOptionalText(city, {
-    fieldLabel: 'Que quan',
+    fieldLabel: 'Quê quán',
     errorFactory: createAdminError,
 });
 
 const normalizeAddress = (address) => normalizeOptionalText(address, {
-    fieldLabel: 'Dia chi',
+    fieldLabel: 'Địa chỉ',
     errorFactory: createAdminError,
 });
 
 const normalizeCountry = (country) => normalizeOptionalText(country, {
-    fieldLabel: 'Quoc gia',
+    fieldLabel: 'Quốc gia',
     errorFactory: createAdminError,
 }) || 'VN';
 
@@ -63,12 +63,12 @@ const normalizeUserNationalId = (nationalId) => normalizeNationalId(nationalId, 
 });
 
 const normalizeUserTaxCode = (taxCode) => normalizeOptionalText(taxCode, {
-    fieldLabel: 'Ma so thue',
+    fieldLabel: 'Mã số thuế',
     errorFactory: createAdminError,
 });
 
 const normalizeEmergencyContactName = (value) => normalizeOptionalText(value, {
-    fieldLabel: 'Nguoi lien he khan cap',
+    fieldLabel: 'Người liên hệ khẩn cấp',
     errorFactory: createAdminError,
 });
 
@@ -77,14 +77,14 @@ const normalizeEmergencyContactPhone = (value) => normalizePhone(value, {
 });
 
 const normalizeUserNotes = (value) => normalizeOptionalText(value, {
-    fieldLabel: 'Ghi chu',
+    fieldLabel: 'Ghi chú',
     errorFactory: createAdminError,
 });
 
 const ensureRoleExists = async (role) => {
     const roleId = await profileRepository.getRoleIdByName(role);
     if (!roleId) {
-        throw new AdminError('Vai tro khong hop le.', 400);
+        throw new AdminError('Vai trò không hợp lệ.', 400);
     }
     return roleId;
 };
@@ -92,14 +92,14 @@ const ensureRoleExists = async (role) => {
 const ensureUserExists = async (userId) => {
     const existingUser = await profileRepository.getProfileById(userId);
     if (!existingUser) {
-        throw new AdminError('Nguoi dung khong ton tai.', 404);
+        throw new AdminError('Người dùng không tồn tại.', 404);
     }
     return existingUser;
 };
 
 const ensureUserCanBeManaged = (user, action) => {
     if (isProtectedUserRole(user?.role)) {
-        throw new AdminError(`Khong the ${action} tai khoan ${String(user.role).toLowerCase()}.`, 403);
+        throw new AdminError(`Không thể ${action} tài khoản ${String(user.role).toLowerCase()}.`, 403);
     }
 };
 
@@ -110,7 +110,7 @@ const getAllUsers = async () => {
 const createUser = async (email, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes) => {
     const password = '123123';
     if (!email || !role) {
-        throw new AdminError('Thieu thong tin bat buoc (email, role).', 400);
+        throw new AdminError('Thiếu thông tin bắt buộc (email, role).', 400);
     }
 
     const normalizedFullName = normalizeFullName(full_name || '');
@@ -130,7 +130,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
 
     const existingAccount = await profileRepository.getAccountByEmail(email);
     if (existingAccount) {
-        throw new AdminError('Email da ton tai.', 409);
+        throw new AdminError('Email đã tồn tại.', 409);
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -163,7 +163,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
         return newId;
     } catch (err) {
         if (err.code === '23505') {
-            throw new AdminError('So dien thoai hoac Email da ton tai.', 409);
+            throw new AdminError('Số điện thoại hoặc Email đã tồn tại.', 409);
         }
         throw err;
     }
@@ -186,7 +186,7 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
     const normalizedNotes = normalizeUserNotes(notes);
 
     const existingUser = await ensureUserExists(normalizedUserId);
-    ensureUserCanBeManaged(existingUser, 'cap nhat');
+    ensureUserCanBeManaged(existingUser, 'cập nhật');
 
     const roleId = await ensureRoleExists(normalizedRole);
 
@@ -216,7 +216,7 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
         });
     } catch (err) {
         if (err.code === '23505') {
-            throw new AdminError('So dien thoai da ton tai.', 409);
+            throw new AdminError('Số điện thoại đã tồn tại.', 409);
         }
         throw err;
     }
@@ -231,11 +231,11 @@ const toggleUserStatus = async (userId, is_active, currentUserId) => {
     });
 
     if (normalizedUserId === normalizedCurrentUserId) {
-        throw new AdminError('Khong the tu khoa tai khoan cua chinh minh.', 400);
+        throw new AdminError('Không thể tự khóa tài khoản của chính mình.', 400);
     }
 
     const existingUser = await ensureUserExists(normalizedUserId);
-    ensureUserCanBeManaged(existingUser, normalizedStatus ? 'mo khoa' : 'khoa');
+    ensureUserCanBeManaged(existingUser, normalizedStatus ? 'mở khóa' : 'khóa');
 
     if (existingUser.is_active === normalizedStatus) {
         return {

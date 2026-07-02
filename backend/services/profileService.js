@@ -46,7 +46,7 @@ const generateVerificationCode = () => {
 
 const getMyProfile = async (userId) => {
     const profile = await profileRepository.getFullProfile(userId);
-    if (!profile) throw new Error('Khong tim thay ho so');
+    if (!profile) throw new Error('Không tìm thấy hồ sơ');
     return profile;
 };
 
@@ -56,27 +56,27 @@ const updateMyProfile = async (userId, data) => {
 };
 
 const updateAvatar = async (userId, avatarUrl) => {
-    if (!avatarUrl) throw new Error('URL anh dai dien khong hop le');
+    if (!avatarUrl) throw new Error('URL ảnh đại diện không hợp lệ');
     return profileRepository.updateAvatar(userId, avatarUrl);
 };
 
 const changePassword = async (userId, { currentPassword, newPassword } = {}) => {
     if (!currentPassword || !newPassword) {
-        throw new Error('Mat khau hien tai va mat khau moi la bat buoc');
+        throw new Error('Mật khẩu hiện tại và mật khẩu mới là bắt buộc');
     }
     if (newPassword.length < 6) {
-        throw new Error('Mat khau moi phai co it nhat 6 ky tu');
+        throw new Error('Mật khẩu mới phải có ít nhất 6 ký tự');
     }
 
     const accountResult = await pool.query(
         `SELECT password_hash FROM accounts WHERE id = $1`,
         [userId],
     );
-    if (!accountResult.rows[0]) throw new Error('Khong tim thay tai khoan');
+    if (!accountResult.rows[0]) throw new Error('Không tìm thấy tài khoản');
 
     const { password_hash } = accountResult.rows[0];
     const valid = await bcrypt.compare(currentPassword, password_hash);
-    if (!valid) throw new Error('Mat khau hien tai khong dung');
+    if (!valid) throw new Error('Mật khẩu hiện tại không đúng');
 
     const newHash = await bcrypt.hash(newPassword, 10);
     await pool.query(
@@ -84,19 +84,19 @@ const changePassword = async (userId, { currentPassword, newPassword } = {}) => 
         [newHash, userId],
     );
 
-    return { message: 'Doi mat khau thanh cong' };
+    return { message: 'Đổi mật khẩu thành công' };
 };
 
 const sendEmailChangeCode = async (userId) => {
     const profile = await profileRepository.getFullProfile(userId);
     if (!profile?.email) {
-        throw new Error('Khong tim thay email hien tai');
+        throw new Error('Không tìm thấy email hiện tại');
     }
 
     const existingVerification = emailVerificationStore.get(String(userId));
     if (existingVerification?.cooldownUntil && existingVerification.cooldownUntil > Date.now()) {
         const retryAfterSeconds = Math.ceil((existingVerification.cooldownUntil - Date.now()) / 1000);
-        const cooldownError = new Error(`Vui long cho ${retryAfterSeconds} giay truoc khi yeu cau ma moi`);
+        const cooldownError = new Error(`Vui lòng chờ ${retryAfterSeconds} giây trước khi yêu cầu mã mới`);
         cooldownError.retry_after_seconds = retryAfterSeconds;
         throw cooldownError;
     }
@@ -113,7 +113,7 @@ const sendEmailChangeCode = async (userId) => {
 
     await emailService.sendEmailChangeVerificationCode(profile.email, profile.full_name, code);
     return {
-        message: 'Da gui ma xac nhan toi email hien tai',
+        message: 'Đã gửi mã xác nhận tới email hiện tại',
         expires_in_seconds: Math.floor(EMAIL_CODE_TTL_MS / 1000),
         retry_after_seconds: Math.floor(EMAIL_CODE_RESEND_COOLDOWN_MS / 1000),
     };
@@ -121,58 +121,58 @@ const sendEmailChangeCode = async (userId) => {
 
 const verifyEmailChangeCode = async (userId, { code, newEmail } = {}) => {
     if (!code || typeof code !== 'string' || code.trim().length !== 6) {
-        throw new Error('Ma xac nhan khong hop le');
+        throw new Error('Mã xác nhận không hợp lệ');
     }
 
     const normalizedNewEmail = normalizeEmail(newEmail);
     const verification = emailVerificationStore.get(String(userId));
     if (!verification) {
-        throw new Error('Khong tim thay yeu cau xac nhan. Vui long gui lai ma');
+        throw new Error('Không tìm thấy yêu cầu xác nhận. Vui lòng gửi lại mã');
     }
 
     if (verification.expiresAt < Date.now()) {
         emailVerificationStore.delete(String(userId));
-        throw new Error('Ma xac nhan da het han');
+        throw new Error('Mã xác nhận đã hết hạn');
     }
 
     const submittedHash = crypto.createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
     if (submittedHash !== verification.codeHash) {
-        throw new Error('Ma xac nhan khong dung');
+        throw new Error('Mã xác nhận không đúng');
     }
 
     const currentProfile = await profileRepository.getFullProfile(userId);
     if (!currentProfile) {
-        throw new Error('Khong tim thay ho so');
+        throw new Error('Không tìm thấy hồ sơ');
     }
 
     if (normalizedNewEmail === String(currentProfile.email).trim().toLowerCase()) {
         emailVerificationStore.delete(String(userId));
-        return { message: 'Email khong thay doi', email: normalizedNewEmail };
+        return { message: 'Email không thay đổi', email: normalizedNewEmail };
     }
 
     const existingAccount = await profileRepository.getAccountByEmail(normalizedNewEmail);
     if (existingAccount && Number(existingAccount.id) !== Number(userId)) {
-        throw new Error('Email da ton tai');
+        throw new Error('Email đã tồn tại');
     }
 
     const updated = await profileRepository.updateAccountEmail(userId, normalizedNewEmail);
     emailVerificationStore.delete(String(userId));
 
     return {
-        message: 'Cap nhat email thanh cong',
+        message: 'Cập nhật email thành công',
         email: updated?.email || normalizedNewEmail,
     };
 };
 
 const registerDeviceToken = async (userId, { fcmToken, platform } = {}) => {
-    if (!fcmToken || !fcmToken.trim()) throw new Error('fcmToken la bat buoc');
+    if (!fcmToken || !fcmToken.trim()) throw new Error('fcmToken là bắt buộc');
     const allowedPlatforms = ['android', 'ios', 'web'];
     const normalizedPlatform = platform && allowedPlatforms.includes(platform) ? platform : 'android';
 
     const fcmService = require('./fcmService');
     fcmService.registerToken(userId, fcmToken.trim(), normalizedPlatform);
 
-    return { message: 'Dang ky thiet bi thanh cong', platform: normalizedPlatform };
+    return { message: 'Đăng ký thiết bị thành công', platform: normalizedPlatform };
 };
 
 module.exports = {

@@ -16,7 +16,7 @@ const selectOrderProjection = `
         o.total_estimated_price,
         o.total_estimated_price AS estimated_price,
         o.partner_name,
-        o.total_actual_price,
+        COALESCE(actual_totals.total_actual_price, 0) AS total_actual_price,
         o.derived_status,
         o.derived_status AS order_status,
         os.status,
@@ -68,6 +68,12 @@ const selectOrderProjection = `
 
     LEFT JOIN profiles d ON d.id = sc.owner_driver_id
     LEFT JOIN vehicles v ON v.id = sc.vehicle_id
+
+    LEFT JOIN LATERAL (
+        SELECT SUM(s_actual.actual_price) AS total_actual_price
+        FROM order_shipments s_actual
+        WHERE s_actual.order_id = o.id
+    ) actual_totals ON TRUE
 
     LEFT JOIN LATERAL (
         SELECT json_agg(
@@ -302,7 +308,7 @@ const validateVehicleShipmentAssignment = async (
     { vehicleId, driverId, excludeShipmentId = null },
 ) => {
     if (!vehicleId || !driverId) {
-        throw new Error('Xe phai co tai xe duoc gan truoc khi dieu phoi chuyen');
+        throw new Error('Xe phải có tài xế được gán trước khi điều phối chuyến');
     }
 
     const vehicleResult = await client.query(
@@ -319,14 +325,14 @@ const validateVehicleShipmentAssignment = async (
         [vehicleId, driverId],
     );
     const vehicle = vehicleResult.rows[0];
-    if (!vehicle) throw new Error('Xe khong ton tai');
+    if (!vehicle) throw new Error('Xe không tồn tại');
 
     if (vehicle.status !== 'active') {
-        throw new Error(`Xe ${vehicle.plate_number} hien khong san sang cho dieu phoi (trang thai: ${vehicle.status})`);
+        throw new Error(`Xe ${vehicle.plate_number} hiện không sẵn sàng cho điều phối (trạng thái: ${vehicle.status})`);
     }
 
     if (Number(vehicle.assigned_driver_id) !== Number(driverId) || Number(vehicle.driver_vehicle_id) !== Number(vehicleId)) {
-        throw new Error(`Tai xe chua duoc gan hop le voi xe ${vehicle.plate_number}`);
+        throw new Error(`Tài xế chưa được gán hợp lệ với xe ${vehicle.plate_number}`);
     }
 
     const activeVehicleShipment = await client.query(
@@ -340,7 +346,7 @@ const validateVehicleShipmentAssignment = async (
         [vehicleId, ACTIVE_STATUSES, excludeShipmentId],
     );
     if (activeVehicleShipment.rows[0]) {
-        throw new Error(`Xe ${vehicle.plate_number} dang co chuyen dang hoat dong`);
+        throw new Error(`Xe ${vehicle.plate_number} đang có chuyến đang hoạt động`);
     }
 
     const activeDriverShipment = await client.query(
@@ -354,7 +360,7 @@ const validateVehicleShipmentAssignment = async (
         [driverId, ACTIVE_STATUSES, excludeShipmentId],
     );
     if (activeDriverShipment.rows[0]) {
-        throw new Error('Tai xe dang co chuyen dang hoat dong');
+        throw new Error('Tài xế đang có chuyến đang hoạt động');
     }
 
     const openVehicleMaintenance = await client.query(
@@ -366,7 +372,7 @@ const validateVehicleShipmentAssignment = async (
         [vehicleId],
     );
     if (openVehicleMaintenance.rows[0]) {
-        throw new Error(`Xe ${vehicle.plate_number} dang trong bao tri`);
+        throw new Error(`Xe ${vehicle.plate_number} đang trong bảo trì`);
     }
 
     const openDriverMaintenance = await client.query(
@@ -379,7 +385,7 @@ const validateVehicleShipmentAssignment = async (
         [driverId, vehicleId],
     );
     if (openDriverMaintenance.rows[0]) {
-        throw new Error('Tai xe dang phu trach bao tri xe khac');
+        throw new Error('Tài xế đang phụ trách bảo trì xe khác');
     }
 
     return true;
@@ -422,7 +428,6 @@ const listCoordinatorVehicleGroups = async () => {
          FROM vehicle_groups vg
          LEFT JOIN vehicles v ON v.vehicle_group_id = vg.id
             AND v.status = 'active'
-            AND v.assigned_driver_id IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1
                 FROM order_shipments os
@@ -726,8 +731,8 @@ const createOrderWithMultipleShipments = async ({
     //Tạo và lấy dữ liệu hàng order vừa ghi
     const orderResult = await client.query(
         `INSERT INTO orders
-            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at, partner_name, total_actual_price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11, $12)
+            (customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, vehicle_group_id, total_estimated_price, notes, prepaid_amount, created_at, partner_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, NOW()), $11)
          RETURNING *`,
         [
             orderData.customer_id,
@@ -741,7 +746,6 @@ const createOrderWithMultipleShipments = async ({
             orderData.prepaid_amount || 0,
             orderData.created_at || null,
             orderData.partner_name || null,
-            orderData.total_actual_price || 0,
         ],
     );
 
@@ -855,7 +859,6 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
         arrived_at,
         date,
         partner_name,
-        total_actual_price,
         prepaid_amount,
     } = payload;
 
@@ -878,8 +881,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                  total_estimated_price = COALESCE($4, total_estimated_price),
                  notes = $5,
                  partner_name = COALESCE($7, partner_name),
-                 total_actual_price = COALESCE($8, total_actual_price),
-                 prepaid_amount = COALESCE($9, prepaid_amount),
+                 prepaid_amount = COALESCE($8, prepaid_amount),
                  updated_at = NOW()
              WHERE id = $1
              RETURNING *`,
@@ -891,7 +893,6 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 orderNotes,
                 customer?.id ?? null,
                 partner_name !== undefined ? partner_name : null,
-                total_actual_price !== undefined ? total_actual_price : 0,
                 prepaid_amount,
             ],
         );
@@ -924,7 +925,7 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                             || Number(existing.vehicle_id || 0) !== Number(shipmentData.vehicle_id || 0)
                         )
                     ) {
-                        throw new Error(`Khong the doi tai xe hoac xe cua chuyen dang o trang thai ${existing.status}`);
+                        throw new Error(`Không thể đổi tài xế hoặc xe của chuyến đang ở trạng thái ${existing.status}`);
                     }
 
                     const nextStatus = shipmentData.owner_driver_id && shipmentData.vehicle_id && existing.status === SHIPMENT_STATUS.AVAILABLE

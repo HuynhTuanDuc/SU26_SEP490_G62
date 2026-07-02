@@ -101,7 +101,7 @@ export default function PartnerManagement({ user }) {
       setPartners(data.partners || []);
       setSummary(data.summary || {});
     } catch (error) {
-      message.error(error.message || "Khong the tai danh sach doi tac.");
+      message.error(error.message || "Không thể tải danh sách đối tác.");
     } finally {
       setLoading(false);
     }
@@ -151,10 +151,10 @@ export default function PartnerManagement({ user }) {
       setSaving(true);
       if (editingPartner) {
         await updateManagerPartner(editingPartner.id, values);
-        message.success("Da cap nhat doi tac.");
+        message.success("Đã cập nhật đối tác.");
       } else {
         await createManagerPartner(values);
-        message.success("Da tao doi tac moi.");
+        message.success("Đã tạo đối tác mới.");
       }
       setModalOpen(false);
       setEditingPartner(null);
@@ -162,7 +162,7 @@ export default function PartnerManagement({ user }) {
       await loadPartners();
     } catch (error) {
       if (error?.errorFields) return;
-      message.error(error.message || "Khong the luu doi tac.");
+      message.error(error.message || "Không thể lưu đối tác.");
     } finally {
       setSaving(false);
     }
@@ -177,7 +177,7 @@ export default function PartnerManagement({ user }) {
       setSelectedPartner(data.partner || partner);
       setSelectedPartnerDebts(data.debts || []);
     } catch (error) {
-      message.error(error.message || "Khong the tai cong no doi tac.");
+      message.error(error.message || "Không thể tải công nợ đối tác.");
       setDebtDrawerOpen(false);
     } finally {
       setDebtLoading(false);
@@ -186,7 +186,7 @@ export default function PartnerManagement({ user }) {
 
   const partnerColumns = [
     {
-      title: "Doi tac",
+      title: "Đối tác",
       key: "company",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
@@ -196,50 +196,50 @@ export default function PartnerManagement({ user }) {
       ),
     },
     {
-      title: "Nguoi lien he",
+      title: "Người liên hệ",
       dataIndex: "contact_person",
       key: "contact_person",
-      render: (value) => value || <Text type="secondary">Chua cap nhat</Text>,
+      render: (value) => value || <Text type="secondary">Chưa cập nhật</Text>,
     },
     {
-      title: "Lien he",
+      title: "Liên hệ",
       key: "contact",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Text>{record.phone || "-"}</Text>
-          <Text type="secondary">{record.email || "Khong co email"}</Text>
-          <Text type="secondary">{record.tax_code || "Chua co MST"}</Text>
+          <Text type="secondary">{record.email || "Không có email"}</Text>
+          <Text type="secondary">{record.tax_code || "Chưa có MST"}</Text>
         </Space>
       ),
     },
     {
-      title: "Cong no",
+      title: "Công nợ",
       key: "debt",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Text strong style={{ color: Number(record.total_remaining || 0) > 0 ? C.error : C.success }}>
             {formatCurrency(record.total_remaining)}
           </Text>
-          <Text type="secondary">{record.debt_count || 0} khoan no</Text>
+          <Text type="secondary">{record.debt_count || 0} khoản nợ</Text>
         </Space>
       ),
     },
     {
-      title: "Trang thai",
+      title: "Trạng thái",
       key: "status",
       render: (_, record) => (
         Number(record.total_remaining || 0) > 0
-          ? <Tag color="red">CO CONG NO</Tag>
-          : <Tag color="green">KHONG NO</Tag>
+          ? <Tag color="red">CÓ CÔNG NỢ</Tag>
+          : <Tag color="green">KHÔNG NỢ</Tag>
       ),
     },
     {
-      title: "Thao tac",
+      title: "Thao tác",
       key: "actions",
       render: (_, record) => (
         <Space>
           <Button size="small" onClick={() => openEditModal(record)}>
-            Sua
+            Sửa
           </Button>
           <Button
             type="primary"
@@ -248,7 +248,7 @@ export default function PartnerManagement({ user }) {
             disabled={Number(record.debt_count || 0) === 0}
             onClick={() => openDebtDrawer(record)}
           >
-            Xem cong no
+            Xem công nợ
           </Button>
         </Space>
       ),
@@ -257,7 +257,7 @@ export default function PartnerManagement({ user }) {
 
   const debtColumns = [
     {
-      title: "Don/Chuyen",
+      title: "Đơn/Chuyến",
       key: "refs",
       render: (_, record) => (
         <Space direction="vertical" size={0}>
@@ -267,45 +267,45 @@ export default function PartnerManagement({ user }) {
       ),
     },
     {
-      title: "Khach hang",
+      title: "Khách hàng",
       key: "customer",
-      render: (_, record) => record.customer_company || record.customer_name || <Text type="secondary">Khong co</Text>,
+      render: (_, record) => record.customer_company || record.customer_name || <Text type="secondary">Không có</Text>,
     },
     {
-      title: "Hang hoa",
+      title: "Hàng hóa",
       dataIndex: "cargo_name",
       key: "cargo_name",
-      render: (value) => value || <Text type="secondary">Khong co</Text>,
+      render: (value) => value || <Text type="secondary">Không có</Text>,
     },
     {
-      title: "Tong no",
+      title: "Tổng nợ",
       dataIndex: "total_amount",
       key: "total_amount",
       render: (value) => formatCurrency(value),
     },
     {
-      title: "Da thu",
+      title: "Đã thu",
       dataIndex: "paid_amount",
       key: "paid_amount",
       render: (value) => <Text style={{ color: C.success }}>{formatCurrency(value)}</Text>,
     },
     {
-      title: "Con lai",
+      title: "Còn lại",
       dataIndex: "remaining",
       key: "remaining",
       render: (value) => <Text strong style={{ color: Number(value || 0) > 0 ? C.error : C.success }}>{formatCurrency(value)}</Text>,
     },
     {
-      title: "Trang thai",
+      title: "Trạng thái",
       dataIndex: "status",
       key: "status",
       render: (value) => <Tag color={debtStatusColors[value] || "default"}>{String(value || "").toUpperCase()}</Tag>,
     },
     {
-      title: "Han",
+      title: "Hạn",
       dataIndex: "due_date",
       key: "due_date",
-      render: (value) => value ? new Date(value).toLocaleDateString("vi-VN") : <Text type="secondary">Khong co</Text>,
+      render: (value) => value ? new Date(value).toLocaleDateString("vi-VN") : <Text type="secondary">Không có</Text>,
     },
   ];
 
@@ -317,27 +317,27 @@ export default function PartnerManagement({ user }) {
         <Col xs={24} md={8}>
           <PartnerStatCard
             icon={<Building2 size={20} />}
-            title="Tong doi tac"
+            title="Tổng đối tác"
             value={summary.total_partners || 0}
-            subtitle="Danh ba doi tac manager dang theo doi"
+            subtitle="Danh bạ đối tác manager đang theo dõi"
             accent="#3B4FD8"
           />
         </Col>
         <Col xs={24} md={8}>
           <PartnerStatCard
             icon={<FileSearch size={20} />}
-            title="Doi tac co cong no"
+            title="Đối tác có công nợ"
             value={summary.partners_with_debt || 0}
-            subtitle="Chi hien thi khi doi tac thuc su con no"
+            subtitle="Chỉ hiển thị khi đối tác thực sự còn nợ"
             accent="#B76E00"
           />
         </Col>
         <Col xs={24} md={8}>
           <PartnerStatCard
             icon={<Wallet size={20} />}
-            title="Tong con phai thu"
+            title="Tổng còn phải thu"
             value={formatCurrency(totalRemaining)}
-            subtitle="Tong gia tri cong no partner hien co"
+            subtitle="Tổng giá trị công nợ partner hiện có"
             accent="#BA1A1A"
           />
         </Col>
@@ -348,24 +348,24 @@ export default function PartnerManagement({ user }) {
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
             <div>
               <Title level={4} style={{ margin: 0, color: C.onSurface }}>
-                Danh sach doi tac
+                Danh sách đối tác
               </Title>
               <Text style={{ color: C.onSurfaceVariant }}>
-                Quan ly thong tin doi tac va xem cong no neu doi tac dang con phai thanh toan.
+                Quản lý thông tin đối tác và xem công nợ nếu đối tác đang còn phải thanh toán.
               </Text>
             </div>
             <Space wrap>
               <Input
-                placeholder="Tim theo ten cong ty, nguoi lien he..."
+                placeholder="Tìm theo tên công ty, người liên hệ..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 onPressEnter={() => loadPartners(search)}
                 style={{ width: 280 }}
                 allowClear
               />
-              <Button onClick={() => loadPartners(search)}>Tim</Button>
+              <Button onClick={() => loadPartners(search)}>Tìm</Button>
               <Button type="primary" icon={<Plus size={16} />} onClick={openCreateModal}>
-                Them doi tac
+                Thêm đối tác
               </Button>
             </Space>
           </div>
@@ -379,7 +379,7 @@ export default function PartnerManagement({ user }) {
             dataSource={partners}
             pagination={{ pageSize: 10 }}
             locale={{
-              emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chua co doi tac nao." />,
+              emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có đối tác nào." />,
             }}
             scroll={{ x: "max-content" }}
           />
@@ -388,9 +388,9 @@ export default function PartnerManagement({ user }) {
 
       <Modal
         open={modalOpen}
-        title={editingPartner ? "Cap nhat doi tac" : "Them doi tac"}
-        okText={editingPartner ? "Luu thay doi" : "Tao doi tac"}
-        cancelText="Huy"
+        title={editingPartner ? "Cập nhật đối tác" : "Thêm đối tác"}
+        okText={editingPartner ? "Lưu thay đổi" : "Tạo đối tác"}
+        cancelText="Hủy"
         onCancel={() => {
           setModalOpen(false);
           setEditingPartner(null);
@@ -411,26 +411,26 @@ export default function PartnerManagement({ user }) {
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Ten cong ty"
+                label="Tên công ty"
                 name="company_name"
-                rules={[{ required: true, message: "Vui long nhap ten doi tac" }]}
+                rules={[{ required: true, message: "Vui lòng nhập tên đối tác" }]}
               >
-                <Input placeholder="Cong ty ABC" />
+                <Input placeholder="Công ty ABC" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Ten viet tat" name="short_name">
+              <Form.Item label="Tên viết tắt" name="short_name">
                 <Input placeholder="ABC Logistics" />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="Nguoi lien he" name="contact_person">
+              <Form.Item label="Người liên hệ" name="contact_person">
                 <Input placeholder="Nguyen Van A" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="So dien thoai" name="phone">
+              <Form.Item label="Số điện thoại" name="phone">
                 <Input placeholder="090..." />
               </Form.Item>
             </Col>
@@ -441,46 +441,46 @@ export default function PartnerManagement({ user }) {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Han thanh toan (ngay)" name="payment_term_days">
+              <Form.Item label="Hạn thanh toán (ngày)" name="payment_term_days">
                 <Input type="number" min={0} placeholder="15 / 30 / 45" />
               </Form.Item>
             </Col>
 
             <Col xs={24}>
-              <Form.Item label="Dia chi" name="address">
+              <Form.Item label="Địa chỉ" name="address">
                 <Input.TextArea rows={2} />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="Ma so thue" name="tax_code">
+              <Form.Item label="Mã số thuế" name="tax_code">
                 <Input placeholder="0312345678" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="So dang ky kinh doanh" name="business_registration_number">
+              <Form.Item label="Số đăng ký kinh doanh" name="business_registration_number">
                 <Input placeholder="0312345678-001" />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="Ngan hang" name="bank_name">
+              <Form.Item label="Ngân hàng" name="bank_name">
                 <Input placeholder="Vietcombank" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="So tai khoan" name="bank_account_number">
+              <Form.Item label="Số tài khoản" name="bank_account_number">
                 <Input placeholder="001122334455" />
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
-              <Form.Item label="Chu tai khoan" name="bank_account_name">
+              <Form.Item label="Chủ tài khoản" name="bank_account_name">
                 <Input placeholder="TEN DOI TAC" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Ghi chu" name="notes">
+              <Form.Item label="Ghi chú" name="notes">
                 <Input.TextArea rows={3} />
               </Form.Item>
             </Col>
@@ -491,7 +491,7 @@ export default function PartnerManagement({ user }) {
       <Drawer
         open={debtDrawerOpen}
         width={920}
-        title={selectedPartner ? `Cong no doi tac: ${selectedPartner.company_name}` : "Cong no doi tac"}
+        title={selectedPartner ? `Công nợ đối tác: ${selectedPartner.company_name}` : "Công nợ đối tác"}
         onClose={() => {
           setDebtDrawerOpen(false);
           setSelectedPartner(null);
@@ -501,33 +501,33 @@ export default function PartnerManagement({ user }) {
         {selectedPartner ? (
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <Descriptions bordered column={2} size="small">
-              <Descriptions.Item label="Ten viet tat">{selectedPartner.short_name || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Nguoi lien he">{selectedPartner.contact_person || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="So dien thoai">{selectedPartner.phone || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Email">{selectedPartner.email || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Ma so thue">{selectedPartner.tax_code || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="DKKD">{selectedPartner.business_registration_number || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Han thanh toan">{selectedPartner.payment_term_days ? `${selectedPartner.payment_term_days} ngay` : "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Ngan hang">{selectedPartner.bank_name || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="So tai khoan">{selectedPartner.bank_account_number || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Chu tai khoan">{selectedPartner.bank_account_name || "Chua cap nhat"}</Descriptions.Item>
-              <Descriptions.Item label="Dia chi">{selectedPartner.address || "Chua cap nhat"}</Descriptions.Item>
+              <Descriptions.Item label="Tên viết tắt">{selectedPartner.short_name || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Người liên hệ">{selectedPartner.contact_person || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Số điện thoại">{selectedPartner.phone || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Email">{selectedPartner.email || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Mã số thuế">{selectedPartner.tax_code || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="DKKD">{selectedPartner.business_registration_number || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Hạn thanh toán">{selectedPartner.payment_term_days ? `${selectedPartner.payment_term_days} ngày` : "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Ngân hàng">{selectedPartner.bank_name || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Số tài khoản">{selectedPartner.bank_account_number || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Chủ tài khoản">{selectedPartner.bank_account_name || "Chưa cập nhật"}</Descriptions.Item>
+              <Descriptions.Item label="Địa chỉ">{selectedPartner.address || "Chưa cập nhật"}</Descriptions.Item>
             </Descriptions>
 
             <Row gutter={[16, 16]}>
               <Col span={8}>
-                <Statistic title="So khoan no" value={selectedPartnerDebts.length} />
+                <Statistic title="Số khoản nợ" value={selectedPartnerDebts.length} />
               </Col>
               <Col span={8}>
                 <Statistic
-                  title="Tong no"
+                  title="Tổng nợ"
                   value={selectedPartnerDebts.reduce((sum, item) => sum + Number(item.total_amount || 0), 0)}
                   formatter={(value) => formatCurrency(value)}
                 />
               </Col>
               <Col span={8}>
                 <Statistic
-                  title="Con lai"
+                  title="Còn lại"
                   value={selectedPartnerDebts.reduce((sum, item) => sum + Number(item.remaining || 0), 0)}
                   formatter={(value) => formatCurrency(value)}
                 />
@@ -541,7 +541,7 @@ export default function PartnerManagement({ user }) {
               dataSource={selectedPartnerDebts}
               pagination={{ pageSize: 6 }}
               locale={{
-                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Doi tac nay hien khong co cong no." />,
+                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Đối tác này hiện không có công nợ." />,
               }}
               scroll={{ x: "max-content" }}
             />

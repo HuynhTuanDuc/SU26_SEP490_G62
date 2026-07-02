@@ -46,11 +46,11 @@ const listSalaryAdvances = async ({ status, limit } = {}) => {
 
 const approveSalaryAdvance = async (advanceId, managerId) => {
     const advance = await managerRepository.getSalaryAdvanceById(advanceId);
-    if (!advance) throw new Error('Yeu cau ung luong khong ton tai');
-    if (advance.status !== 'pending') throw new Error('Yeu cau ung luong nay da duoc xu ly');
+    if (!advance) throw new Error('Yêu cầu ứng lương không tồn tại');
+    if (advance.status !== 'pending') throw new Error('Yêu cầu ứng lương này đã được xử lý');
 
     const updated = await managerRepository.approveSalaryAdvance(advanceId, managerId);
-    if (!updated) throw new Error('Khong the cap nhat yeu cau ung luong');
+    if (!updated) throw new Error('Không thể cập nhật yêu cầu ứng lương');
 
     broadcastWorkflowChange('salary_advances', 'approved', {
         requestId: updated.id,
@@ -58,8 +58,8 @@ const approveSalaryAdvance = async (advanceId, managerId) => {
     });
 
     notificationService.createForUser(updated.driver_id, {
-        title: 'Yeu cau ung luong da duoc duyet',
-        message: `Yeu cau ung luong thang ${updated.request_month}/${updated.request_year} da duoc manager phe duyet.`,
+        title: 'Yêu cầu ứng lương đã được duyệt',
+        message: `Yêu cầu ứng lương tháng ${updated.request_month}/${updated.request_year} đã được manager phê duyệt.`,
         type: 'SALARY_ADVANCE_APPROVED',
         entityType: 'salary_advance',
         entityId: updated.id,
@@ -70,11 +70,11 @@ const approveSalaryAdvance = async (advanceId, managerId) => {
 
 const rejectSalaryAdvance = async (advanceId, managerId, reason) => {
     const advance = await managerRepository.getSalaryAdvanceById(advanceId);
-    if (!advance) throw new Error('Yeu cau ung luong khong ton tai');
-    if (advance.status !== 'pending') throw new Error('Yeu cau ung luong nay da duoc xu ly');
+    if (!advance) throw new Error('Yêu cầu ứng lương không tồn tại');
+    if (advance.status !== 'pending') throw new Error('Yêu cầu ứng lương này đã được xử lý');
 
     const updated = await managerRepository.rejectSalaryAdvance(advanceId, managerId, reason?.trim() || null);
-    if (!updated) throw new Error('Khong the cap nhat yeu cau ung luong');
+    if (!updated) throw new Error('Không thể cập nhật yêu cầu ứng lương');
 
     broadcastWorkflowChange('salary_advances', 'rejected', {
         requestId: updated.id,
@@ -82,10 +82,10 @@ const rejectSalaryAdvance = async (advanceId, managerId, reason) => {
     });
 
     notificationService.createForUser(updated.driver_id, {
-        title: 'Yeu cau ung luong bi tu choi',
+        title: 'Yêu cầu ứng lương bị từ chối',
         message: updated.reject_reason
-            ? `Manager da tu choi yeu cau ung luong: ${updated.reject_reason}`
-            : 'Manager da tu choi yeu cau ung luong cua ban.',
+            ? `Manager đã từ chối yêu cầu ứng lương: ${updated.reject_reason}`
+            : 'Manager đã từ chối yêu cầu ứng lương của bạn.',
         type: 'SALARY_ADVANCE_REJECTED',
         entityType: 'salary_advance',
         entityId: updated.id,
@@ -127,14 +127,14 @@ const getReceiptRequests = async (query = {}) => {
 
 const normalizePartnerPayload = (payload = {}) => {
     const companyName = String(payload.company_name || '').trim();
-    if (!companyName) throw new Error('Ten doi tac la bat buoc');
+    if (!companyName) throw new Error('Tên đối tác là bắt buộc');
 
     const rawPaymentTermDays = payload.payment_term_days;
     let paymentTermDays = null;
     if (!(rawPaymentTermDays === undefined || rawPaymentTermDays === null || rawPaymentTermDays === '')) {
         paymentTermDays = Number(rawPaymentTermDays);
         if (!Number.isInteger(paymentTermDays) || paymentTermDays < 0 || paymentTermDays > 365) {
-            throw new Error('Han thanh toan khong hop le');
+            throw new Error('Hạn thanh toán không hợp lệ');
         }
     }
 
@@ -181,10 +181,10 @@ const createPartner = async (payload) => {
 
 const updatePartner = async (partnerId, payload) => {
     const existing = await managerRepository.getPartnerById(partnerId);
-    if (!existing) throw new Error('Doi tac khong ton tai');
+    if (!existing) throw new Error('Đối tác không tồn tại');
 
     const partner = await managerRepository.updatePartner(partnerId, normalizePartnerPayload(payload));
-    if (!partner) throw new Error('Khong the cap nhat doi tac');
+    if (!partner) throw new Error('Không thể cập nhật đối tác');
 
     broadcastPartnerChange('updated', { partnerId: partner.id });
     return partner;
@@ -192,7 +192,7 @@ const updatePartner = async (partnerId, payload) => {
 
 const getPartnerDebtDetails = async (partnerId) => {
     const existing = await managerRepository.getPartnerById(partnerId);
-    if (!existing) throw new Error('Doi tac khong ton tai');
+    if (!existing) throw new Error('Đối tác không tồn tại');
 
     const debts = await managerRepository.getPartnerDebtDetails(partnerId);
     return {

@@ -203,7 +203,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0,
                 CURRENT_DATE + INTERVAL '30 days', $5,
-                'Tai xe da thu nhung chua mang tien ve cong ty',
+                'Tài xế đã thu nhưng chưa mang tiền về công ty',
                 $6, NOW(), NOW())`,
             [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
@@ -218,7 +218,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('customer', NULL, $1, NULL, $2, $3, $4, 0,
                 CURRENT_DATE + INTERVAL '30 days', $5,
-                'Khach chua thanh toan', $6, NOW(), NOW())`,
+                'Khách chưa thanh toán', $6, NOW(), NOW())`,
             [customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
         await client.query(
@@ -238,7 +238,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('partner', NULL, NULL, $1, $2, $3, $4, 0,
                 CURRENT_DATE + INTERVAL '30 days', $5,
-                'Doi tac chua thanh toan', $6, NOW(), NOW())`,
+                'Đối tác chưa thanh toán', $6, NOW(), NOW())`,
             [partnerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
         );
     }
@@ -275,10 +275,10 @@ const createOrderWithShipments = async (orderData) => {
         `INSERT INTO orders (
             customer_id, created_by, updated_by,
             cargo_name, payment_type,
-            total_estimated_price, total_actual_price, prepaid_amount,
+            total_estimated_price, prepaid_amount,
             derived_status, notes, created_at, updated_at
         )
-         VALUES ($1, $2, $2, $3, $4, $5, $5, $6, 'completed', $7, NOW(), NOW())
+         VALUES ($1, $2, $2, $3, $4, $5, $6, 'completed', $7, NOW(), NOW())
          RETURNING *`,
         [
             customerId,

@@ -34,11 +34,11 @@ const createUser = async (req, res) => {
             address, country, national_id, tax_code,
             emergency_contact_name, emergency_contact_phone, notes,
         );
-        res.status(201).json({ message: 'Tao nguoi dung thanh cong.', id: newId });
+        res.status(201).json({ message: 'Tạo người dùng thành công.', id: newId });
     } catch (err) {
         console.error('Error creating user:', err);
         const status = err.status || 500;
-        const errorMsg = err.status ? err.message : 'Loi may chu.';
+        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
         res.status(status).json({ error: errorMsg, details: err.message });
     }
 };
@@ -66,11 +66,11 @@ const updateUser = async (req, res) => {
             address, country, national_id, tax_code,
             emergency_contact_name, emergency_contact_phone, notes,
         );
-        res.json({ message: 'Cap nhat thanh cong.' });
+        res.json({ message: 'Cập nhật thành công.' });
     } catch (err) {
         console.error('Error updating user:', err);
         const status = err.status || 500;
-        const errorMsg = err.status ? err.message : 'Loi may chu.';
+        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
         res.status(status).json({ error: errorMsg, details: err.message });
     }
 };
@@ -82,16 +82,16 @@ const toggleUserStatus = async (req, res) => {
         const currentUserId = req.user.userId;
 
         const result = await adminService.toggleUserStatus(userId, is_active, currentUserId);
-        const action = is_active ? 'mo khoa' : 'khoa';
+        const action = is_active ? 'mở khóa' : 'khóa';
         const message = result.changed
-            ? `Da ${action} tai khoan.`
-            : `Tai khoan da o trang thai ${is_active ? 'hoat dong' : 'da khoa'}.`;
+            ? `Đã ${action} tài khoản.`
+            : `Tài khoản đã ở trạng thái ${is_active ? 'hoạt động' : 'đã khóa'}.`;
 
         res.json({ message, user: result });
     } catch (err) {
         console.error('Error toggling user status:', err);
         const status = err.status || 500;
-        res.status(status).json({ error: err.status ? err.message : 'Loi may chu', details: err.message });
+        res.status(status).json({ error: err.status ? err.message : 'Lỗi máy chủ', details: err.message });
     }
 };
 
