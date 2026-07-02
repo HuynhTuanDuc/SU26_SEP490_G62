@@ -232,14 +232,14 @@ WHERE company_name = 'FastFreight Vietnam';
 
 -- =============================================================================
 -- SECTION 10: BASE ORDERS (open + completed)
--- vehicle_group_id lưu trên orders, KHÔNG phải order_shipments
+-- vehicle_group_id lưu trên order_shipments (mỗi chuyến tự quyết định nhóm xe)
 -- =============================================================================
 
 -- Order 1: available trong trip pool
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                    payment_type, vehicle_group_id, derived_status, notes)
+                    payment_type, derived_status, notes)
 SELECT c.id, p.id, 'Electronics Package', 50.0, 500000, 'cash',
-       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Fragile - Handle with care'
+       'open', 'Fragile - Handle with care'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654321'
@@ -248,9 +248,9 @@ LIMIT 1;
 
 -- Order 2: đã hoàn thành — driver history
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                    payment_type, vehicle_group_id, derived_status, notes)
+                    payment_type, derived_status, notes)
 SELECT c.id, p.id, 'Furniture Set', 200.0, 1500000, 'bank_transfer',
-       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'completed', 'Large furniture item'
+       'completed', 'Large furniture item'
 FROM customers c
 JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
 WHERE c.phone = '0987654322'
@@ -262,8 +262,8 @@ LIMIT 1;
 -- =============================================================================
 
 -- Shipment 1: available
-INSERT INTO order_shipments (order_id, shipment_index, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 1, o.cargo_weight_kg, o.total_estimated_price, 'available'
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_weight_kg, estimated_price, status)
+SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), o.cargo_weight_kg, o.total_estimated_price, 'available'
 FROM orders o
 WHERE o.cargo_name = 'Electronics Package'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
@@ -281,9 +281,9 @@ WHERE o.cargo_name = 'Electronics Package' AND os.shipment_index = 1
   AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
 
 -- Shipment 2: completed — driver1
-INSERT INTO order_shipments (order_id, shipment_index, cargo_weight_kg, estimated_price,
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_weight_kg, estimated_price,
                               status, claimed_at, completed_at)
-SELECT o.id, 1, o.cargo_weight_kg, o.total_estimated_price, 'completed',
+SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), o.cargo_weight_kg, o.total_estimated_price, 'completed',
        NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day'
 FROM orders o
 WHERE o.cargo_name = 'Furniture Set'
@@ -416,12 +416,12 @@ BEGIN
     ) THEN
         INSERT INTO orders (
             customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, payment_type, vehicle_group_id,
+            total_estimated_price, payment_type,
             derived_status, notes
         )
         VALUES (
             v_customer_id, v_coordinator_id, 'Receipt Pending Demo: Showroom Cabinets', 180.0,
-            220000, 'cash', v_vehicle_group_id,
+            220000, 'cash',
             'completed', 'Completed shipment waiting for coordinator receipt publishing'
         )
         RETURNING id INTO v_order_id;
@@ -436,12 +436,12 @@ BEGIN
         SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
     ) THEN
         INSERT INTO order_shipments (
-            order_id, shipment_index,
+            order_id, shipment_index, vehicle_group_id,
             cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
             status, claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
         )
         VALUES (
-            v_order_id, 1,
+            v_order_id, 1, v_vehicle_group_id,
             'Showroom Cabinets', 180.0, 220000, 22.0,
             'completed',
             NOW() - INTERVAL '30 hours',
@@ -461,6 +461,7 @@ BEGIN
         UPDATE order_shipments
         SET cargo_name = 'Showroom Cabinets',
             cargo_weight_kg = 180.0,
+            vehicle_group_id = v_vehicle_group_id,
             estimated_price = 220000,
             estimated_distance_km = 22.0,
             status = 'completed',
@@ -568,12 +569,12 @@ BEGIN
     ) THEN
         INSERT INTO orders (
             customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, payment_type, vehicle_group_id,
+            total_estimated_price, payment_type,
             derived_status, notes
         )
         VALUES (
             v_customer_id, v_coordinator_id, 'Receipt Approved Demo: Construction AC Units', 320.0,
-            v_estimated_km * v_price_per_km, 'bank_transfer', v_vehicle_group_id,
+            v_estimated_km * v_price_per_km, 'bank_transfer',
             'completed', 'Coordinator already published receipt based on driver actual km'
         )
         RETURNING id INTO v_order_id;
@@ -585,7 +586,6 @@ BEGIN
 
         UPDATE orders
         SET total_estimated_price = v_estimated_km * v_price_per_km,
-            vehicle_group_id = v_vehicle_group_id,
             payment_type = 'bank_transfer',
             derived_status = 'completed',
             notes = 'Coordinator already published receipt based on driver actual km'
@@ -596,13 +596,13 @@ BEGIN
         SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
     ) THEN
         INSERT INTO order_shipments (
-            order_id, shipment_index,
+            order_id, shipment_index, vehicle_group_id,
             cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
             actual_distance_km, actual_price, status,
             claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
         )
         VALUES (
-            v_order_id, 1,
+            v_order_id, 1, v_vehicle_group_id,
             'Construction AC Units', 320.0, v_estimated_km * v_price_per_km, v_estimated_km,
             v_actual_km, v_actual_income, 'completed',
             NOW() - INTERVAL '18 hours',
@@ -622,6 +622,7 @@ BEGIN
         UPDATE order_shipments
         SET cargo_name = 'Construction AC Units',
             cargo_weight_kg = 320.0,
+            vehicle_group_id = v_vehicle_group_id,
             estimated_price = v_estimated_km * v_price_per_km,
             estimated_distance_km = v_estimated_km,
             actual_distance_km = v_actual_km,
@@ -739,9 +740,9 @@ END $$;
 -- =============================================================================
 
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
-                    total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
+                    total_estimated_price, payment_type, derived_status, notes)
 SELECT c.id, p.id, 'Multi-Trip: Hàng điện tử 3 chuyến', 150.0, 2100000, 'bank_transfer',
-       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', '3 chuyến giao cho 3 điểm khác nhau'
+       'open', '3 chuyến giao cho 3 điểm khác nhau'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654322'
@@ -750,8 +751,8 @@ WHERE c.phone = '0987654322'
 LIMIT 1;
 
 -- Trip 1 / 3
-INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 1, 'Laptop Dell', 50.0, 700000, 'available'
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg, estimated_price, status)
+SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Laptop Dell', 50.0, 700000, 'available'
 FROM orders o WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
 
@@ -768,8 +769,8 @@ WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment
   AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
 
 -- Trip 2 / 3
-INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 2, 'Màn hình Samsung', 60.0, 700000, 'available'
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg, estimated_price, status)
+SELECT o.id, 2, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Màn hình Samsung', 60.0, 700000, 'available'
 FROM orders o WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 2);
 
@@ -786,8 +787,8 @@ WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment
   AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
 
 -- Trip 3 / 3
-INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 3, 'Server rack', 40.0, 700000, 'available'
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg, estimated_price, status)
+SELECT o.id, 3, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Server rack', 40.0, 700000, 'available'
 FROM orders o WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến'
   AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 3);
 
@@ -808,9 +809,9 @@ WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment
 -- =============================================================================
 
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
-                    total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
+                    total_estimated_price, payment_type, derived_status, notes)
 SELECT c.id, p.id, 'Arrived Test: Giao ngay hôm nay', 80.0, 650000, 'cash',
-       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Driver đã đến điểm giao, chờ xác nhận'
+       'open', 'Driver đã đến điểm giao, chờ xác nhận'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654321'
@@ -818,10 +819,10 @@ WHERE c.phone = '0987654321'
   AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Arrived Test: Giao ngay hôm nay')
 LIMIT 1;
 
-INSERT INTO order_shipments (order_id, shipment_index,
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id,
                               cargo_name, cargo_weight_kg, estimated_price,
                               status, claimed_at, picking_at, transit_at, arrived_at)
-SELECT o.id, 1,
+SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
        'Đồ gia dụng', 80.0, 650000,
        'arrived',
        NOW() - INTERVAL '4 hours',
@@ -863,9 +864,9 @@ WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay' AND os.shipment_index = 
 -- =============================================================================
 
 INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
-                    total_estimated_price, payment_type, vehicle_group_id, derived_status, notes)
+                    total_estimated_price, payment_type, derived_status, notes)
 SELECT c.id, p.id, 'Failed Test: Khách từ chối nhận', 120.0, 500000, 'cash',
-       (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'open', 'Khách báo bận, không ra nhận hàng'
+       'open', 'Khách báo bận, không ra nhận hàng'
 FROM customers c, profiles p
 JOIN accounts a ON a.id = p.id
 WHERE c.phone = '0987654324'
@@ -873,11 +874,11 @@ WHERE c.phone = '0987654324'
   AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Failed Test: Khách từ chối nhận')
 LIMIT 1;
 
-INSERT INTO order_shipments (order_id, shipment_index,
+INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id,
                               cargo_name, cargo_weight_kg, estimated_price,
                               status, cancel_reason,
                               claimed_at, picking_at, transit_at, arrived_at, failed_at)
-SELECT o.id, 1,
+SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
        'Thực phẩm đông lạnh', 120.0, 500000,
        'failed', 'Khách từ chối nhận hàng, không liên lạc được',
        NOW() - INTERVAL '6 hours',
@@ -949,11 +950,11 @@ BEGIN
         INSERT INTO orders (
             customer_id, created_by, cargo_name, cargo_weight_kg,
             total_estimated_price, payment_type,
-            vehicle_group_id, derived_status, notes
+            derived_status, notes
         )
         VALUES (
             v_customer_id, v_coord_id, 'Driver Debt Demo: Cash Collected Office Supplies', 95.0,
-            1500000, 'cash', v_group_id, 'completed',
+            1500000, 'cash', 'completed',
             'Dedicated cash-collected demo for driver debt and remittance flow'
         )
         RETURNING id INTO v_order_id;
@@ -968,13 +969,13 @@ BEGIN
         SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
     ) THEN
         INSERT INTO order_shipments (
-            order_id, shipment_index,
+            order_id, shipment_index, vehicle_group_id,
             cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
             actual_distance_km, actual_price, status,
             claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
         )
         VALUES (
-            v_order_id, 1,
+            v_order_id, 1, v_group_id,
             'Office Supplies', 95.0, 1500000, 150.0,
             150.0, 1500000, 'completed',
             NOW() - INTERVAL '3 days',
@@ -1256,16 +1257,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jan-01: Thiet bi van phong') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust2, v_coord_id, 'Hist-Jan-01: Thiet bi van phong', 80.0, 1200000,
-                'bank_transfer', v_vg_small, 'completed', 'Historical order Jan 2026',
+                'bank_transfer', 'completed', 'Historical order Jan 2026',
                 TIMESTAMPTZ '2026-01-08 08:00:00+07', TIMESTAMPTZ '2026-01-08 17:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at, notes)
-        VALUES (v_oid, 1, 'Thiet bi van phong', 80.0, 1200000, 1200000, 40.0, 41.2, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'Thiet bi van phong', 80.0, 1200000, 1200000, 40.0, 41.2, 'completed',
                 '2026-01-08 08:30:00+07', '2026-01-08 09:00:00+07', '2026-01-08 10:00:00+07',
                 '2026-01-08 12:00:00+07', '2026-01-08 13:00:00+07', 'Completed Jan 2026')
         RETURNING id INTO v_sid;
@@ -1287,16 +1288,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jan-02: Do noi that') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust3, v_coord_id, 'Hist-Jan-02: Do noi that', 180.0, 2200000,
-                'cash', v_vg_small, 'completed', 'Historical order Jan 2026',
+                'cash', 'completed', 'Historical order Jan 2026',
                 TIMESTAMPTZ '2026-01-15 08:00:00+07', TIMESTAMPTZ '2026-01-15 18:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Do noi that', 180.0, 2200000, 2200000, 55.0, 56.5, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'Do noi that', 180.0, 2200000, 2200000, 55.0, 56.5, 'completed',
                 '2026-01-15 08:30:00+07', '2026-01-15 09:00:00+07', '2026-01-15 11:00:00+07',
                 '2026-01-15 14:00:00+07', '2026-01-15 15:00:00+07')
         RETURNING id INTO v_sid;
@@ -1321,16 +1322,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Feb-01: Hang xay dung') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust5, v_coord_id, 'Hist-Feb-01: Hang xay dung', 2500.0, 3500000,
-                'bank_transfer', v_vg_medium, 'completed', 'Historical order Feb 2026',
+                'bank_transfer', 'completed', 'Historical order Feb 2026',
                 TIMESTAMPTZ '2026-02-05 08:00:00+07', TIMESTAMPTZ '2026-02-05 18:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Hang xay dung', 2500.0, 3500000, 3500000, 70.0, 72.0, 'completed',
+        VALUES (v_oid, 1, v_vg_medium, 'Hang xay dung', 2500.0, 3500000, 3500000, 70.0, 72.0, 'completed',
                 '2026-02-05 08:30:00+07', '2026-02-05 09:30:00+07', '2026-02-05 11:30:00+07',
                 '2026-02-05 15:00:00+07', '2026-02-05 16:00:00+07')
         RETURNING id INTO v_sid;
@@ -1352,16 +1353,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Feb-02: Linh kien dien tu') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust2, v_coord_id, 'Hist-Feb-02: Linh kien dien tu', 45.0, 900000,
-                'bank_transfer', v_vg_small, 'completed', 'Historical order Feb 2026',
+                'bank_transfer', 'completed', 'Historical order Feb 2026',
                 TIMESTAMPTZ '2026-02-20 08:00:00+07', TIMESTAMPTZ '2026-02-20 14:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Linh kien dien tu', 45.0, 900000, 900000, 30.0, 31.5, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'Linh kien dien tu', 45.0, 900000, 900000, 30.0, 31.5, 'completed',
                 '2026-02-20 08:30:00+07', '2026-02-20 09:00:00+07', '2026-02-20 10:00:00+07',
                 '2026-02-20 12:00:00+07', '2026-02-20 13:00:00+07')
         RETURNING id INTO v_sid;
@@ -1383,16 +1384,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Mar-01: May moc cong nghiep') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust4, v_coord_id, 'Hist-Mar-01: May moc cong nghiep', 1800.0, 4500000,
-                'cash', v_vg_medium, 'completed', 'Historical order Mar 2026',
+                'cash', 'completed', 'Historical order Mar 2026',
                 TIMESTAMPTZ '2026-03-10 07:00:00+07', TIMESTAMPTZ '2026-03-10 18:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'May moc cong nghiep', 1800.0, 4500000, 4500000, 90.0, 92.5, 'completed',
+        VALUES (v_oid, 1, v_vg_medium, 'May moc cong nghiep', 1800.0, 4500000, 4500000, 90.0, 92.5, 'completed',
                 '2026-03-10 07:30:00+07', '2026-03-10 08:30:00+07', '2026-03-10 11:00:00+07',
                 '2026-03-10 15:00:00+07', '2026-03-10 16:00:00+07')
         RETURNING id INTO v_sid;
@@ -1417,16 +1418,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Mar-02: Hang tiet kiem') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust2, v_coord_id, 'Hist-Mar-02: Hang tiet kiem', 60.0, 750000,
-                'client_credit', v_vg_small, 'completed', 'Ghi no khach hang thang 3',
+                'client_credit', 'completed', 'Ghi no khach hang thang 3',
                 TIMESTAMPTZ '2026-03-22 08:00:00+07', TIMESTAMPTZ '2026-03-22 16:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Hang tiet kiem', 60.0, 750000, 750000, 25.0, 25.5, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'Hang tiet kiem', 60.0, 750000, 750000, 25.0, 25.5, 'completed',
                 '2026-03-22 08:30:00+07', '2026-03-22 09:00:00+07', '2026-03-22 10:00:00+07',
                 '2026-03-22 12:00:00+07', '2026-03-22 13:00:00+07')
         RETURNING id INTO v_sid;
@@ -1444,16 +1445,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Apr-01: Thuc pham dong lanh') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust1, v_coord_id, 'Hist-Apr-01: Thuc pham dong lanh', 120.0, 1800000,
-                'bank_transfer', v_vg_small, 'completed', 'Historical order Apr 2026',
+                'bank_transfer', 'completed', 'Historical order Apr 2026',
                 TIMESTAMPTZ '2026-04-03 07:00:00+07', TIMESTAMPTZ '2026-04-03 16:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Thuc pham dong lanh', 120.0, 1800000, 1800000, 45.0, 46.0, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'Thuc pham dong lanh', 120.0, 1800000, 1800000, 45.0, 46.0, 'completed',
                 '2026-04-03 07:30:00+07', '2026-04-03 08:00:00+07', '2026-04-03 10:00:00+07',
                 '2026-04-03 13:00:00+07', '2026-04-03 14:00:00+07')
         RETURNING id INTO v_sid;
@@ -1475,16 +1476,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Apr-02: Hang hoa xuat khau') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust4, v_coord_id, 'Hist-Apr-02: Hang hoa xuat khau', 500.0, 5500000,
-                'client_credit', v_vg_medium, 'completed', 'Ghi no khach hang thang 4',
+                'client_credit', 'completed', 'Ghi no khach hang thang 4',
                 TIMESTAMPTZ '2026-04-18 07:00:00+07', TIMESTAMPTZ '2026-04-18 18:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Hang hoa xuat khau', 500.0, 5500000, 5500000, 110.0, 112.0, 'completed',
+        VALUES (v_oid, 1, v_vg_medium, 'Hang hoa xuat khau', 500.0, 5500000, 5500000, 110.0, 112.0, 'completed',
                 '2026-04-18 07:30:00+07', '2026-04-18 08:30:00+07', '2026-04-18 11:00:00+07',
                 '2026-04-18 16:00:00+07', '2026-04-18 17:00:00+07')
         RETURNING id INTO v_sid;
@@ -1502,16 +1503,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-May-01: Phu tung o to') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust5, v_coord_id, 'Hist-May-01: Phu tung o to', 300.0, 3200000,
-                'bank_transfer', v_vg_medium, 'completed', 'Historical order May 2026',
+                'bank_transfer', 'completed', 'Historical order May 2026',
                 TIMESTAMPTZ '2026-05-06 07:00:00+07', TIMESTAMPTZ '2026-05-06 17:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Phu tung o to', 300.0, 3200000, 3200000, 64.0, 65.0, 'completed',
+        VALUES (v_oid, 1, v_vg_medium, 'Phu tung o to', 300.0, 3200000, 3200000, 64.0, 65.0, 'completed',
                 '2026-05-06 07:30:00+07', '2026-05-06 08:30:00+07', '2026-05-06 10:30:00+07',
                 '2026-05-06 14:00:00+07', '2026-05-06 15:00:00+07')
         RETURNING id INTO v_sid;
@@ -1533,16 +1534,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-May-02: San pham nhua') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust3, v_coord_id, 'Hist-May-02: San pham nhua', 90.0, 1100000,
-                'cash', v_vg_small, 'completed', 'Historical order May 2026',
+                'cash', 'completed', 'Historical order May 2026',
                 TIMESTAMPTZ '2026-05-20 08:00:00+07', TIMESTAMPTZ '2026-05-20 16:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'San pham nhua', 90.0, 1100000, 1100000, 36.0, 37.0, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'San pham nhua', 90.0, 1100000, 1100000, 36.0, 37.0, 'completed',
                 '2026-05-20 08:30:00+07', '2026-05-20 09:00:00+07', '2026-05-20 10:30:00+07',
                 '2026-05-20 13:00:00+07', '2026-05-20 14:00:00+07')
         RETURNING id INTO v_sid;
@@ -1567,16 +1568,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jun-01: Thiet bi y te') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust2, v_coord_id, 'Hist-Jun-01: Thiet bi y te', 55.0, 1050000,
-                'bank_transfer', v_vg_small, 'completed', 'Historical order Jun 2026',
+                'bank_transfer', 'completed', 'Historical order Jun 2026',
                 TIMESTAMPTZ '2026-06-03 08:00:00+07', TIMESTAMPTZ '2026-06-03 16:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Thiet bi y te', 55.0, 1050000, 1050000, 35.0, 35.5, 'completed',
+        VALUES (v_oid, 1, v_vg_small, 'Thiet bi y te', 55.0, 1050000, 1050000, 35.0, 35.5, 'completed',
                 '2026-06-03 08:30:00+07', '2026-06-03 09:00:00+07', '2026-06-03 10:30:00+07',
                 '2026-06-03 13:00:00+07', '2026-06-03 14:00:00+07')
         RETURNING id INTO v_sid;
@@ -1598,16 +1599,16 @@ BEGIN
     -- -------------------------------------------------------
     IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jun-02: Nguyen lieu san xuat') THEN
         INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, vehicle_group_id, derived_status, notes, created_at, updated_at)
+                            payment_type, derived_status, notes, created_at, updated_at)
         VALUES (v_cust5, v_coord_id, 'Hist-Jun-02: Nguyen lieu san xuat', 3000.0, 6000000,
-                'client_credit', v_vg_medium, 'completed', 'Ghi no Sunrise Manufacturing thang 6',
+                'client_credit', 'completed', 'Ghi no Sunrise Manufacturing thang 6',
                 TIMESTAMPTZ '2026-06-15 07:00:00+07', TIMESTAMPTZ '2026-06-15 19:00:00+07')
         RETURNING id INTO v_oid;
 
-        INSERT INTO order_shipments (order_id, shipment_index, cargo_name, cargo_weight_kg,
+        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
                                      estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
                                      claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, 'Nguyen lieu san xuat', 3000.0, 6000000, 6000000, 120.0, 122.5, 'completed',
+        VALUES (v_oid, 1, v_vg_medium, 'Nguyen lieu san xuat', 3000.0, 6000000, 6000000, 120.0, 122.5, 'completed',
                 '2026-06-15 07:30:00+07', '2026-06-15 08:30:00+07', '2026-06-15 11:00:00+07',
                 '2026-06-15 16:00:00+07', '2026-06-15 17:00:00+07')
         RETURNING id INTO v_sid;

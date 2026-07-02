@@ -305,7 +305,6 @@ const importExcel = async (userId, fileBuffer) => {
           delivery_address: deliveryAddress,
           estimated_price: fare || 0,
           payment_type: 'cash',
-          vehicle_group_id: finalVehicleGroupId,
           customer_name: customerName,
           customer_phone: customerPhone,
           notes,
@@ -313,6 +312,7 @@ const importExcel = async (userId, fileBuffer) => {
         shipmentData: {
           owner_driver_id: finalDriverId,
           vehicle_id: finalVehicleId,
+          vehicle_group_id: finalVehicleGroupId,
           pickup_address: pickupAddress,
           delivery_address: deliveryAddress,
           cargo_name: route || `${pickupAddress} - ${deliveryAddress}`,
@@ -417,9 +417,8 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
          LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
          LEFT JOIN vehicles v ON v.id = sc.vehicle_id
          LEFT JOIN profiles p ON p.id = sc.owner_driver_id
-         LEFT JOIN orders o ON o.id = os.order_id
          LEFT JOIN vehicle_groups vg_vehicle ON vg_vehicle.id = v.vehicle_group_id
-         LEFT JOIN vehicle_groups vg_order ON vg_order.id = o.vehicle_group_id
+         LEFT JOIN vehicle_groups vg_order ON vg_order.id = os.vehicle_group_id
          WHERE os.order_id = $1
          ORDER BY os.shipment_index ASC`,
         [orderId],
@@ -689,7 +688,7 @@ const getReceiptRequests = async ({
             LEFT JOIN v_shipment_current sc_revenue ON sc_revenue.shipment_id = os_revenue.id
             LEFT JOIN vehicles v_revenue ON v_revenue.id = sc_revenue.vehicle_id
             LEFT JOIN vehicle_groups vg_vehicle_revenue ON vg_vehicle_revenue.id = v_revenue.vehicle_group_id
-            LEFT JOIN vehicle_groups vg_order_revenue ON vg_order_revenue.id = o.vehicle_group_id
+            LEFT JOIN vehicle_groups vg_order_revenue ON vg_order_revenue.id = os_revenue.vehicle_group_id
             WHERE os_revenue.order_id = rr.order_id
          ) revenue_summary ON TRUE
          LEFT JOIN LATERAL (

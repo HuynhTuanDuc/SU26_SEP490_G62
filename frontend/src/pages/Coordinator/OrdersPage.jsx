@@ -189,13 +189,6 @@ const OrdersPage = forwardRef(function OrdersPage({ search, refreshKey }, ref) {
     }
 
     form.trips.forEach((trip, index) => {
-      if (!String(trip.vehicle_group_id || "").trim()) {
-        nextErrors[`trip_${index}_vehicle_group_id`] = "Vui lòng chọn nhóm xe.";
-      }
-      if (!String(trip.plate || "").trim()) {
-        nextErrors[`trip_${index}_plate`] = "Vui lòng chọn BKS.";
-      }
-
       const normalizedDistance = normalizeDistanceText(trip.distance);
       if (!normalizedDistance) {
         nextErrors[`trip_${index}_distance`] = "Quãng đường là bắt buộc.";

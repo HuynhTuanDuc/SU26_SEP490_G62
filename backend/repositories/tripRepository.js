@@ -42,7 +42,6 @@ const getDriverVehicleGroupId = async (driverId) => {
 const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = null } = {}) => {
     const offset = (page - 1) * limit;
 
-    // vehicle_group_id đã bị xoá khỏi order_shipments — lookup qua orders
     const rowsWhere  = vehicleGroupId
         ? `WHERE os.status = 'available' AND sc.owner_driver_id IS NULL AND vg.id = $3`
         : `WHERE os.status = 'available' AND sc.owner_driver_id IS NULL`;
@@ -76,7 +75,7 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
                 vg.max_load_weight_kg
              FROM order_shipments os
              JOIN orders o          ON o.id = os.order_id
-             JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
+             JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
              ${CURRENT_JOIN}
              ${rowsWhere}
              ORDER BY os.created_at ASC
@@ -87,7 +86,7 @@ const getAvailableShipments = async ({ page = 1, limit = 5, vehicleGroupId = nul
             `SELECT COUNT(*)::int AS total
              FROM order_shipments os
              JOIN orders o ON o.id = os.order_id
-             JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
+             JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
              ${CURRENT_JOIN}
              ${countWhere}`,
             countParams,
@@ -800,7 +799,7 @@ const getAvailableShipmentDetail = async (shipmentId) => {
              WHERE os2.order_id = os.order_id) AS total_order_legs
          FROM order_shipments os
          JOIN orders o          ON o.id = os.order_id
-         JOIN vehicle_groups vg ON vg.id = o.vehicle_group_id
+         JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
          ${CURRENT_JOIN}
          WHERE os.id = $1
            AND os.status = 'available'
@@ -840,7 +839,7 @@ const getAvailableOrderDetail = async (orderId) => {
             vg.name AS vehicle_group_name
          FROM order_shipments os
          JOIN orders o2         ON o2.id = os.order_id
-         JOIN vehicle_groups vg ON vg.id = o2.vehicle_group_id
+         JOIN vehicle_groups vg ON vg.id = os.vehicle_group_id
          ${CURRENT_JOIN}
          WHERE os.order_id = $1
            AND os.status = 'available'
