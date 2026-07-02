@@ -56,29 +56,62 @@
 
 /**
  * @swagger
- * /api/orders/import-excel:
+ * /api/orders/{id}/request-receipt:
  *   post:
  *     tags: [Orders]
- *     summary: Import nhiều orders từ file Excel
+ *     summary: >
+ *       Driver gửi actual_km sau khi COMPLETED shipment (Driver only).
+ *       Driver không phải là is_final_shipment: chỉ lưu actual_km.
+ *       Driver là is_final_shipment của đơn cash: lưu actual_km và tạo
+ *       order_receipt_requests (status pending) cho coordinator duyệt (BR-008A/B, mục 14).
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: order_id
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [file]
+ *             required: [shipment_id]
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *                 description: File .xlsx theo template
+ *               shipment_id: { type: integer }
+ *               actual_km:   { type: number, example: 42.5 }
  *     responses:
  *       200:
- *         description: Kết quả import (success_count, failed_rows)
+ *         description: Đã lưu actual_km (không phải final shipment cash) — receipt_request_created false
+ *       201:
+ *         description: Đã lưu actual_km và tạo order_receipt_requests — receipt_request_created true
+ *       403:
+ *         description: Driver không có quyền trên shipment này
+ *       409:
+ *         description: Order đã có yêu cầu phiếu thu (BR-018)
  *       422:
- *         description: File không đúng định dạng
+ *         description: Shipment chưa COMPLETED hoặc thiếu dữ liệu bắt buộc
+ */
+
+/**
+ * @swagger
+ * /api/orders/{id}/receipt-request:
+ *   get:
+ *     tags: [Orders]
+ *     summary: Trạng thái yêu cầu phiếu thu của order (Driver only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: >
+ *           request (object|null) — status: pending | processing | approved | rejected
  */
 
 /**
@@ -118,4 +151,21 @@
  *         description: Không tìm thấy order
  *       422:
  *         description: Dữ liệu không hợp lệ
+ *   delete:
+ *     tags: [Orders]
+ *     summary: Hủy order (Coordinator / Admin)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Đã hủy order
+ *       404:
+ *         description: Không tìm thấy order
+ *       422:
+ *         description: Không thể hủy order đã có trip đang chạy
  */

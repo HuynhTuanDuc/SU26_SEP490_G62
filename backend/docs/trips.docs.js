@@ -215,39 +215,6 @@
 
 /**
  * @swagger
- * /api/trips/{id}/cancel-delivery:
- *   post:
- *     tags: [Trips]
- *     summary: Báo không thể giao hàng (ARRIVED → CANCELLED) — cần lý do
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [reason]
- *             properties:
- *               reason:
- *                 type: string
- *                 example: Khách không có mặt, không liên lạc được
- *     responses:
- *       200:
- *         description: Đã ghi nhận, driver vẫn active để xác nhận trả hàng
- *       400:
- *         description: Thiếu lý do
- *       422:
- *         description: Trip không ở trạng thái ARRIVED
- */
-
-/**
- * @swagger
  * /api/trips/{id}/release:
  *   post:
  *     tags: [Trips]
@@ -446,6 +413,102 @@
  *     responses:
  *       200:
  *         description: total_collected, remaining, payment_status
+ */
+
+/**
+ * @swagger
+ * /api/trips/{id}/payments/{paymentId}:
+ *   patch:
+ *     tags: [Trips]
+ *     summary: Sửa ghi nhận thanh toán tiền mặt (TH2) — amount và/hoặc ảnh biên lai
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: paymentId
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [amount]
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 example: 1600000
+ *               receipt:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh biên lai mới (tuỳ chọn, giữ ảnh cũ nếu không gửi)
+ *     responses:
+ *       200:
+ *         description: Cập nhật thành công
+ *       400:
+ *         description: Thiếu amount hoặc ID không hợp lệ
+ *       403:
+ *         description: Không phải payment của driver này
+ *       404:
+ *         description: Không tìm thấy payment
+ */
+
+/**
+ * @swagger
+ * /api/trips/pending-receipt:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Đơn cash đã COMPLETED nhưng driver cuối chưa gửi yêu cầu phiếu thu (banner nhắc trên home)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: order (object) hoặc null nếu không có đơn nào đang chờ
+ */
+
+/**
+ * @swagger
+ * /api/trips/receipts:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Danh sách phiếu thu đã được coordinator tạo cho các đơn của driver
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 50 }
+ *     responses:
+ *       200:
+ *         description: Danh sách phiếu thu (shipment_receipts)
+ */
+
+/**
+ * @swagger
+ * /api/trips/receipts/{receiptId}:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Chi tiết phiếu thu — dùng để show cho khách hàng xem
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: receiptId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Chi tiết phiếu thu
+ *       403:
+ *         description: Phiếu thu không thuộc về driver này
  */
 
 /**
