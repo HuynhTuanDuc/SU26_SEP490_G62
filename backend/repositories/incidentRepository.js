@@ -281,3 +281,4 @@ const getCoordinatorIncidents = async ({ status = null, search = '' } = {}) => {
         updateIncidentStatus,
         updateIncidentResolution,
     };
+}
