@@ -117,14 +117,6 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
                         </View>
 
                         <XStack alignItems="center" gap={6}>
-                            {/* Payment type badge (chỉ khi approved) */}
-                            {item.request_status === 'approved' && item.payment_type ? (
-                                <View style={[styles.badge, { backgroundColor: `${paymentColor}18` }]}>
-                                    <Text fontSize={10} fontWeight="700" color={paymentColor}>
-                                        {PAYMENT_LABEL[item.payment_type]}
-                                    </Text>
-                                </View>
-                            ) : null}
                             <Text fontSize={11} color={appTheme.colors.textMuted}>
                                 {fmtDate(item.collected_at)}
                             </Text>
