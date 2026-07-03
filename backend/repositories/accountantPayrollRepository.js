@@ -1,4 +1,4 @@
-const pool = require('../../config/database');
+﻿const pool = require('../config/database');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -280,7 +280,7 @@ const confirmPayroll = async (payrollId, accountantId) => {
         RETURNING *
     `, [payrollId, accountantId]);
 
-    if (!row) throw new Error('Không tìm thấy phiếu lương hoặc trạng thái không hợp lệ (cần reviewed)');
+    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y phiáº¿u lÆ°Æ¡ng hoáº·c tráº¡ng thÃ¡i khÃ´ng há»£p lá»‡ (cáº§n reviewed)');
     return row;
 };
 
@@ -296,7 +296,7 @@ const markPayrollPaid = async (payrollId, accountantId) => {
         RETURNING *
     `, [payrollId, accountantId]);
 
-    if (!row) throw new Error('Không tìm thấy phiếu lương hoặc trạng thái không hợp lệ (cần approved)');
+    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y phiáº¿u lÆ°Æ¡ng hoáº·c tráº¡ng thÃ¡i khÃ´ng há»£p lá»‡ (cáº§n approved)');
     return row;
 };
 
@@ -345,7 +345,7 @@ const disburseAdvance = async (advanceId, accountantId, { notes = null } = {}) =
         RETURNING *
     `, [advanceId, accountantId]);
 
-    if (!row) throw new Error('Không tìm thấy yêu cầu ứng lương hoặc chưa được manager duyệt');
+    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y yÃªu cáº§u á»©ng lÆ°Æ¡ng hoáº·c chÆ°a Ä‘Æ°á»£c manager duyá»‡t');
     return row;
 };
 
@@ -358,3 +358,4 @@ module.exports = {
     getSalaryAdvances,
     disburseAdvance,
 };
+

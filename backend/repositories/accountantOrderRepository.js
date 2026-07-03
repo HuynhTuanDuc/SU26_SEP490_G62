@@ -1,5 +1,5 @@
-const pool = require('../../config/database');
-const { insertAssignmentHistory } = require('../tripRepository');
+﻿const pool = require('../config/database');
+const { insertAssignmentHistory } = require('./tripRepository');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
@@ -8,7 +8,7 @@ const trimToNull = (value) => {
 
 const buildOrderNotes = (orderData) => {
     const segments = [];
-    if (orderData.order_date) segments.push(`Ngày đơn: ${orderData.order_date}`);
+    if (orderData.order_date) segments.push(`NgÃ y Ä‘Æ¡n: ${orderData.order_date}`);
     if (trimToNull(orderData.notes)) segments.push(trimToNull(orderData.notes));
     return segments.filter(Boolean).join(' | ') || null;
 };
@@ -186,7 +186,7 @@ const insertDebtForShipment = async (client, {
         && ['cash', 'bank_transfer'].includes(normalizedPaymentType)
     ) {
         if (!driverId) {
-            throw new Error('Không thể tạo công nợ tài xế khi chuyến chưa có tài xế.');
+            throw new Error('KhÃ´ng thá»ƒ táº¡o cÃ´ng ná»£ tÃ i xáº¿ khi chuyáº¿n chÆ°a cÃ³ tÃ i xáº¿.');
         }
         await client.query(
             `INSERT INTO debts (
@@ -196,7 +196,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
-                'Tài xế đã thu nhưng chưa mang tiền về công ty',
+                'TÃ i xáº¿ Ä‘Ã£ thu nhÆ°ng chÆ°a mang tiá»n vá» cÃ´ng ty',
                 $5, NOW(), NOW())`,
             [driverId, orderId, shipmentId, actualPrice, createdByUserId]
         );
@@ -210,7 +210,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
-                'Khách chưa thanh toán', $5, NOW(), NOW())`,
+                'KhÃ¡ch chÆ°a thanh toÃ¡n', $5, NOW(), NOW())`,
             [customerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     } else if (partnerId && normalizedPaymentType === 'partner') {
@@ -223,7 +223,7 @@ const insertDebtForShipment = async (client, {
             )
              VALUES ('partner', NULL, NULL, $1, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
-                'Đối tác chưa thanh toán', $5, NOW(), NOW())`,
+                'Äá»‘i tÃ¡c chÆ°a thanh toÃ¡n', $5, NOW(), NOW())`,
             [partnerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     }
@@ -611,7 +611,7 @@ const updateOrder = async (orderId, orderData) => {
         }
 
         const orderNotes = [
-            orderData.order_date ? `Ngày đơn: ${orderData.order_date}` : null,
+            orderData.order_date ? `NgÃ y Ä‘Æ¡n: ${orderData.order_date}` : null,
             orderData.notes,
         ].filter(Boolean).join(' | ') || null;
 
@@ -651,3 +651,4 @@ module.exports = {
     createOrderWithShipments,
     updateOrder,
 };
+

@@ -1,4 +1,4 @@
-const pool = require('../../config/database');
+﻿const pool = require('../config/database');
 
 const buildDebtStatus = (paidAmount, totalAmount) => {
     if (!totalAmount || totalAmount === 0) return 'paid';
@@ -382,3 +382,4 @@ const getDebtsByCustomerIds = async (customerIds) => {
 };
 
 module.exports = { getAllDebts, getDebtStats, getDebtsGroupedByPerson, getDebtsByPerson, getDebtsByCustomerIds };
+
