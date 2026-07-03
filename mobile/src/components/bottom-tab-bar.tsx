@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { HouseLine, ChartBar, Clock, Receipt, Money, GearSix } from "phosphor-react-native";
+import { HouseLine, Clock, Receipt, Money, GearSix } from "phosphor-react-native";
 import { appTheme } from "@/theme/app-theme";
 import { AppText } from "./app-text";
 
@@ -18,7 +18,6 @@ type TabConfig = {
 
 const TABS: TabConfig[] = [
   { key: "index",    label: "Trang chủ", Icon: HouseLine },
-  { key: "kpi",      label: "KPI",       Icon: ChartBar  },
   { key: "history",  label: "Lịch sử",   Icon: Clock     },
   { key: "receipts", label: "Phiếu thu", Icon: Receipt   },
   { key: "payroll",  label: "Lương",     Icon: Money     },

@@ -1,5 +1,5 @@
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, View } from 'react-native';
-import { Camera, Car, ChevronRight, LogOut, Settings, Shield, User, Wrench } from 'lucide-react-native';
+import { Camera, Car, ChevronRight, LogOut, Settings, Shield, User } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Text, XStack, YStack } from 'tamagui';
@@ -146,9 +146,6 @@ export function ProfileScreen() {
                         </XStack>
                         <MenuRow icon={<Car size={17} color={appTheme.colors.primary} />}
                             label="Xe của tôi" onPress={() => router.push('/vehicle')} />
-                        <XStack height={1} backgroundColor={appTheme.colors.border} marginLeft={64} />
-                        <MenuRow icon={<Wrench size={17} color={appTheme.colors.warning} />}
-                            label="Bảo dưỡng xe" onPress={() => router.push('/maintenance')} />
                     </YStack>
 
                     {/* Hệ thống */}

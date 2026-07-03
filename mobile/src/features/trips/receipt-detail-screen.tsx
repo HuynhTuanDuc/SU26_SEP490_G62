@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
-    Alert, Image, Modal, ScrollView, StyleSheet,
-    TextInput, TouchableOpacity, View,
+    Alert, Image, KeyboardAvoidingView, Modal, Platform,
+    ScrollView, StyleSheet, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import {
-    Bank, Camera, CaretDown, CaretRight, CheckCircle,
-    CurrencyDollar, MapPin, Money, PencilSimple,
-    Receipt, Truck, User, Warning, X,
+    Bank, Buildings, Camera, Car, CaretDown, CaretRight, CheckCircle,
+    CurrencyDollar, MapPin, MapPinLine, Money, Package,
+    PencilSimple, Phone, Receipt, Ruler, Scales,
+    Truck, User, UserCircle, Warning, X,
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -79,7 +80,7 @@ function AccordionSection({
                     <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} flex={1}>
                         {title}
                     </Text>
-                    {badge ? (
+                    {badge && !open ? (
                         <View style={styles.badge}>
                             <Text fontSize={11} fontWeight="700" color={appTheme.colors.primary}>{badge}</Text>
                         </View>
@@ -96,13 +97,18 @@ function AccordionSection({
 
 // ─── Info row ─────────────────────────────────────────────────────────────────
 
-function Row({ label, value, bold }: { label: string; value?: string | null; bold?: boolean }) {
+function Row({ label, value, bold, icon }: {
+    label: string; value?: string | null; bold?: boolean; icon?: React.ReactNode;
+}) {
     if (!value) return null;
     return (
-        <XStack justifyContent="space-between" alignItems="flex-start" gap={12} paddingVertical={4}>
-            <Text fontSize={12} color={appTheme.colors.textMuted} flex={1}>{label}</Text>
+        <XStack alignItems="flex-start" gap={8} paddingVertical={5}>
+            <XStack alignItems="center" gap={5} width={120}>
+                {icon ? <View style={{ width: 16, alignItems: 'center' }}>{icon}</View> : <View style={{ width: 16 }} />}
+                <Text fontSize={12} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>{label}</Text>
+            </XStack>
             <Text fontSize={12} fontWeight={bold ? '700' : '400'} color={appTheme.colors.text}
-                flex={2} textAlign="right" numberOfLines={3}>
+                flex={1} textAlign="right" numberOfLines={3}>
                 {value}
             </Text>
         </XStack>
@@ -213,46 +219,54 @@ function ExpenseEditModal({
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalBox}>
-                    <XStack justifyContent="space-between" alignItems="center" marginBottom={16}>
-                        <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                            Sửa — {EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}
-                        </Text>
-                        <TouchableOpacity onPress={onClose}><X size={20} color={appTheme.colors.textMuted} /></TouchableOpacity>
-                    </XStack>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalBox}>
+                        <XStack justifyContent="space-between" alignItems="center" marginBottom={16}>
+                            <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                                Sửa — {EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}
+                            </Text>
+                            <TouchableOpacity onPress={onClose}><X size={20} color={appTheme.colors.textMuted} /></TouchableOpacity>
+                        </XStack>
 
-                    <Text fontSize={12} color={appTheme.colors.textMuted} marginBottom={6}>Số tiền (VNĐ)</Text>
-                    <TextInput style={styles.textInput} value={amount} onChangeText={setAmount}
-                        keyboardType="numeric" placeholder="Nhập số tiền" />
+                        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                            <Text fontSize={12} color={appTheme.colors.textMuted} marginBottom={6}>Số tiền (VNĐ)</Text>
+                            <TextInput style={styles.textInput} value={amount} onChangeText={setAmount}
+                                keyboardType="numeric" placeholder="Nhập số tiền" />
 
-                    <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>Ghi chú</Text>
-                    <TextInput style={[styles.textInput, { minHeight: 56 }]} value={description}
-                        onChangeText={setDescription} placeholder="Mô tả (không bắt buộc)" multiline />
+                            <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>Ghi chú</Text>
+                            <TextInput style={[styles.textInput, { minHeight: 56 }]} value={description}
+                                onChangeText={setDescription} placeholder="Mô tả (không bắt buộc)" multiline />
 
-                    <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>
-                        Ảnh chứng từ {photoUri ? '(mới)' : '(giữ nguyên nếu không chụp)'}
-                    </Text>
-                    {photoUri
-                        ? <Image source={{ uri: photoUri }} style={styles.modalPreview} resizeMode="cover" />
-                        : null}
-                    <TouchableOpacity style={styles.camBtn} onPress={takePhoto}>
-                        <Camera size={15} color={appTheme.colors.primary} weight="fill" />
-                        <Text fontSize={13} color={appTheme.colors.primary} marginLeft={6}>
-                            {photoUri ? 'Chụp lại' : 'Chụp ảnh mới'}
-                        </Text>
-                    </TouchableOpacity>
+                            <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>
+                                Ảnh chứng từ {photoUri ? '(mới)' : '(giữ nguyên nếu không chụp)'}
+                            </Text>
+                            {photoUri
+                                ? <Image source={{ uri: photoUri }} style={styles.modalPreview} resizeMode="cover" />
+                                : null}
+                            <TouchableOpacity style={styles.camBtn} onPress={takePhoto}>
+                                <Camera size={15} color={appTheme.colors.primary} weight="fill" />
+                                <Text fontSize={13} color={appTheme.colors.primary} marginLeft={6}>
+                                    {photoUri ? 'Chụp lại' : 'Chụp ảnh mới'}
+                                </Text>
+                            </TouchableOpacity>
 
-                    <TouchableOpacity
-                        style={[styles.saveBtn, saving && { opacity: 0.5 }]}
-                        onPress={save} disabled={saving}
-                    >
-                        <Text fontSize={14} fontWeight="900" color="#fff">
-                            {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
-                        </Text>
-                    </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.saveBtn, saving && { opacity: 0.5 }]}
+                                onPress={save} disabled={saving}
+                            >
+                                <Text fontSize={14} fontWeight="900" color="#fff">
+                                    {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
+                                </Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </View>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
@@ -344,6 +358,7 @@ export function ReceiptDetailScreen() {
 
     const [selected,     setSelected]     = useState<CollectionType | null>(null);
     const [proofUri,     setProofUri]     = useState<string | null>(null);
+    const [cashAmount,   setCashAmount]   = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [editExpense,  setEditExpense]  = useState<ExpenseItem | null>(null);
@@ -361,6 +376,10 @@ export function ReceiptDetailScreen() {
                     const hint = data.order_payment_type;
                     if (hint === 'cash' || hint === 'cash_collected') setSelected('cash_collected');
                     else if (hint === 'bank_transfer' || hint === 'qr_transfer') setSelected('bank_transfer');
+                    // pre-fill với tổng dự kiến (cước + chi phí)
+                    const expenses = data.expenses ?? [];
+                    const expTotal = expenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
+                    setCashAmount(String(Number(data.amount) + expTotal));
                 }
             })
             .catch(err => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
@@ -378,12 +397,29 @@ export function ReceiptDetailScreen() {
 
     const handleSubmitCollection = async () => {
         if (!selected || !receipt) return;
-        if ((selected === 'cash_collected' || selected === 'bank_transfer') && !proofUri) {
-            Alert.alert('Thiếu ảnh', 'Vui lòng chụp ảnh xác minh.');
+        if (selected === 'cash_collected') {
+            if (!cashAmount || Number(cashAmount) <= 0) {
+                Alert.alert('Thiếu thông tin', 'Vui lòng nhập số tiền nhận từ khách.');
+                return;
+            }
+            if (!proofUri) {
+                Alert.alert('Thiếu ảnh', 'Vui lòng chụp ảnh xác minh tiền mặt.');
+                return;
+            }
+        }
+        if (selected === 'bank_transfer' && !proofUri) {
+            Alert.alert('Thiếu ảnh', 'Vui lòng chụp ảnh xác minh chuyển khoản.');
             return;
         }
+
+        const expectedTotal = Number(receipt.amount) + totalExpenses;
+        const actualCash    = Number(cashAmount);
+        const diffNote      = selected === 'cash_collected' && actualCash !== expectedTotal
+            ? `\nChênh lệch: ${(actualCash - expectedTotal).toLocaleString('vi-VN')}₫`
+            : '';
+
         const msg: Record<CollectionType, string> = {
-            cash_collected: 'Xác nhận khách đã trả tiền mặt cho bạn?\nSẽ tạo công nợ cho bạn.',
+            cash_collected: `Xác nhận khách đã trả ${Number(cashAmount).toLocaleString('vi-VN')}₫ tiền mặt?${diffNote}\nSẽ tạo công nợ cho bạn.`,
             bank_transfer:  'Xác nhận khách đã chuyển khoản về công ty?',
             client_credit:  'Xác nhận khách chưa thanh toán?\nSẽ tạo công nợ cho khách hàng.',
         };
@@ -396,6 +432,9 @@ export function ReceiptDetailScreen() {
                         const targetId = receipt.actual_receipt_id ?? receipt.receipt_id;
                         const fd = new FormData();
                         fd.append('payment_type', selected);
+                        if (selected === 'cash_collected') {
+                            fd.append('notes', `Tiền nhận thực tế: ${Number(cashAmount).toLocaleString('vi-VN')}₫${diffNote}`);
+                        }
                         if (proofUri) {
                             const name = proofUri.split('/').pop() ?? 'proof.jpg';
                             fd.append('proof', { uri: proofUri, name, type: 'image/jpeg' } as any);
@@ -539,11 +578,26 @@ export function ReceiptDetailScreen() {
                     {/* ── Amount hero ─────────────────────────────────────── */}
                     <View style={styles.amountBox}>
                         <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted} letterSpacing={1}>
-                            SỐ TIỀN
+                            TỔNG THU
                         </Text>
-                        <Text fontSize={32} fontWeight="900" color={appTheme.colors.primary} marginTop={2}>
-                            {fmtMoney(receipt.amount)}
+                        <Text fontSize={36} fontWeight="900" color={appTheme.colors.primary} marginTop={2}>
+                            {fmtMoney(Number(receipt.amount) + totalExpenses)}
                         </Text>
+
+                        {/* Breakdown nếu có chi phí phát sinh */}
+                        {totalExpenses > 0 ? (
+                            <View style={styles.amountBreakdown}>
+                                <XStack justifyContent="space-between" paddingVertical={3}>
+                                    <Text fontSize={11} color={appTheme.colors.textMuted}>Cước vận chuyển</Text>
+                                    <Text fontSize={11} color={appTheme.colors.text}>{fmtMoney(receipt.amount)}</Text>
+                                </XStack>
+                                <XStack justifyContent="space-between" paddingVertical={3}>
+                                    <Text fontSize={11} color={appTheme.colors.textMuted}>Chi phí phát sinh</Text>
+                                    <Text fontSize={11} color={appTheme.colors.primary}>+{fmtMoney(totalExpenses)}</Text>
+                                </XStack>
+                            </View>
+                        ) : null}
+
                         <View style={[
                             styles.statusChip,
                             alreadyRecorded
@@ -573,29 +627,43 @@ export function ReceiptDetailScreen() {
                         title="Khách hàng"
                         badge={receipt.customer_name ?? undefined}
                     >
-                        <Row label="Tên"        value={receipt.customer_name} bold />
-                        <Row label="Công ty"    value={receipt.customer_company} />
-                        <Row label="Điện thoại" value={receipt.customer_phone} />
-                        <Row label="Địa chỉ"   value={receipt.customer_address} />
+                        <Row icon={<User size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Tên" value={receipt.customer_name} bold />
+                        <Row icon={<Buildings size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Công ty" value={receipt.customer_company} />
+                        <Row icon={<Phone size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Điện thoại" value={receipt.customer_phone} />
+                        <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Địa chỉ" value={receipt.customer_address} />
                     </AccordionSection>
 
                     <View style={styles.divider} />
 
                     {/* ── Accordion: Đơn hàng + chi phí ───────────────────── */}
                     <AccordionSection
-                        icon={<MapPin size={15} color={appTheme.colors.primary} weight="fill" />}
+                        icon={<Package size={15} color={appTheme.colors.primary} weight="fill" />}
                         title={`Đơn hàng #${receipt.order_id}`}
                         badge={receipt.cargo_name ?? undefined}
                         defaultOpen
                     >
-                        <Row label="Hàng hóa"       value={receipt.cargo_name} bold />
-                        {receipt.cargo_weight_kg
-                            ? <Row label="Khối lượng" value={`${receipt.cargo_weight_kg} kg`} /> : null}
-                        <Row label="Điểm lấy hàng"  value={receipt.pickup_address} />
-                        <Row label="Điểm giao hàng" value={receipt.delivery_address} />
-                        {kmDisplay ? <Row label="Quãng đường" value={kmDisplay} /> : null}
-                        <Row label="Đơn giá thực"   value={receipt.actual_price ? fmtMoney(receipt.actual_price) : null} />
-                        <Row label="Đơn giá ước"    value={!receipt.actual_price && receipt.estimated_price ? fmtMoney(receipt.estimated_price) : null} />
+                        <Row icon={<Package size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Hàng hóa" value={receipt.cargo_name} bold />
+                        {receipt.cargo_weight_kg ? (
+                            <Row icon={<Scales size={13} color={appTheme.colors.primary} weight="fill" />}
+                                label="Khối lượng" value={`${receipt.cargo_weight_kg} kg`} />
+                        ) : null}
+                        <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Điểm lấy hàng" value={receipt.pickup_address} />
+                        <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Điểm giao hàng" value={receipt.delivery_address} />
+                        {kmDisplay ? (
+                            <Row icon={<Ruler size={13} color={appTheme.colors.primary} weight="fill" />}
+                                label="Quãng đường" value={kmDisplay} />
+                        ) : null}
+                        <Row icon={<CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Đơn giá thực" value={receipt.actual_price ? fmtMoney(receipt.actual_price) : null} />
+                        <Row icon={<CurrencyDollar size={13} color={appTheme.colors.textMuted} weight="fill" />}
+                            label="Đơn giá ước" value={!receipt.actual_price && receipt.estimated_price ? fmtMoney(receipt.estimated_price) : null} />
 
                         {/* Chi phí phát sinh */}
                         <View style={styles.expenseBlock}>
@@ -639,10 +707,14 @@ export function ReceiptDetailScreen() {
                         title="Tài xế & xe"
                         badge={receipt.plate_number ?? undefined}
                     >
-                        <Row label="Tài xế"     value={receipt.driver_name} bold />
-                        <Row label="Điện thoại" value={receipt.driver_phone} />
-                        <Row label="Biển số"    value={receipt.plate_number} />
-                        <Row label="Phụ trách"  value={receipt.coordinator_name} />
+                        <Row icon={<User size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Tài xế" value={receipt.driver_name} bold />
+                        <Row icon={<Phone size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Điện thoại" value={receipt.driver_phone} />
+                        <Row icon={<Car size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Biển số" value={receipt.plate_number} />
+                        <Row icon={<UserCircle size={13} color={appTheme.colors.primary} weight="fill" />}
+                            label="Phụ trách" value={receipt.coordinator_name} />
                     </AccordionSection>
 
                     {receipt.notes ? (
@@ -725,6 +797,39 @@ export function ReceiptDetailScreen() {
                             onPress={() => { setSelected('client_credit'); setProofUri(null); }}
                         />
 
+                        {/* Input số tiền nhận từ khách (chỉ cash_collected) */}
+                        {selected === 'cash_collected' ? (
+                            <YStack gap={6} marginTop={6}
+                                style={{ borderWidth: 1.5, borderColor: appTheme.colors.success + '60',
+                                    borderRadius: 12, padding: 12, backgroundColor: appTheme.colors.successSoft }}>
+                                <XStack alignItems="center" gap={6}>
+                                    <Money size={15} color={appTheme.colors.success} weight="fill" />
+                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.successText}>
+                                        Số tiền nhận từ khách *
+                                    </Text>
+                                </XStack>
+                                <TextInput
+                                    style={[styles.textInput, { fontSize: 18, fontWeight: '700',
+                                        color: appTheme.colors.text, borderColor: appTheme.colors.success + '80' }]}
+                                    value={cashAmount}
+                                    onChangeText={v => setCashAmount(v.replace(/[^0-9]/g, ''))}
+                                    keyboardType="numeric"
+                                    placeholder="0"
+                                    placeholderTextColor={appTheme.colors.textMuted}
+                                />
+                                {cashAmount && Number(cashAmount) !== (Number(receipt?.amount) + totalExpenses) ? (
+                                    <XStack alignItems="center" gap={4}>
+                                        <Warning size={12} color={appTheme.colors.warningText} weight="fill" />
+                                        <Text fontSize={11} color={appTheme.colors.warningText}>
+                                            Khác tổng dự kiến{' '}
+                                            {(Number(receipt?.amount) + totalExpenses).toLocaleString('vi-VN')}₫
+                                            {' '}(chênh {(Number(cashAmount) - Number(receipt?.amount) - totalExpenses).toLocaleString('vi-VN')}₫)
+                                        </Text>
+                                    </XStack>
+                                ) : null}
+                            </YStack>
+                        ) : null}
+
                         {needsProof ? (
                             <YStack gap={10} marginTop={6}>
                                 <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>Ảnh xác minh *</Text>
@@ -749,9 +854,13 @@ export function ReceiptDetailScreen() {
 
                         {selected ? (
                             <TouchableOpacity
-                                style={[styles.saveBtn, (isSubmitting || (needsProof && !proofUri)) && { opacity: 0.45 }]}
+                                style={[styles.saveBtn, (isSubmitting
+                                    || (selected === 'cash_collected' && (!cashAmount || Number(cashAmount) <= 0))
+                                    || (needsProof && !proofUri)) && { opacity: 0.45 }]}
                                 onPress={handleSubmitCollection}
-                                disabled={isSubmitting || (needsProof && !proofUri)}
+                                disabled={isSubmitting
+                                    || (selected === 'cash_collected' && (!cashAmount || Number(cashAmount) <= 0))
+                                    || (needsProof && !proofUri)}
                             >
                                 <CheckCircle size={18} color="#fff" weight="fill" />
                                 <Text fontSize={14} fontWeight="900" color="#fff" marginLeft={8}>
@@ -791,6 +900,11 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     amountBox:      { alignItems: 'center', paddingVertical: 18, gap: 6 },
+    amountBreakdown: {
+        width: '100%', backgroundColor: `${appTheme.colors.primary}08`,
+        borderRadius: 10, paddingHorizontal: 14, paddingVertical: 4,
+        borderWidth: 1, borderColor: `${appTheme.colors.border}`,
+    },
     statusChip:     { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, marginTop: 2 },
     divider:        { height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 },
     statusBanner:   { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1.5, overflow: 'hidden' },
