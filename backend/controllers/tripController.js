@@ -1,6 +1,7 @@
-const tripService    = require('../services/tripService');
-const stopRepository = require('../repositories/stopRepository');
-const tripRepository = require('../repositories/tripRepository');
+const tripService     = require('../services/tripService');
+const expenseService  = require('../services/expenseService');
+const stopRepository  = require('../repositories/stopRepository');
+const tripRepository  = require('../repositories/tripRepository');
 
 // GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
@@ -365,9 +366,26 @@ const getDriverReceiptDetail = async (req, res) => {
         const receiptId = Number(req.params.receiptId);
         if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
         const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
-        res.json({ receipt });
+        // Kèm expenses của shipment (đã verify quyền qua receipt)
+        const expenses = receipt.shipment_id
+            ? await expenseService.getExpensesByShipment(receipt.shipment_id)
+            : [];
+        res.json({ receipt: { ...receipt, expenses } });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+const resubmitReceiptRequest = async (req, res) => {
+    try {
+        const orrId = Number(req.params.orrId);
+        if (!orrId) return res.status(400).json({ error: 'ID yêu cầu không hợp lệ' });
+        const { driver_notes } = req.body;
+        await tripService.resubmitReceiptRequest(orrId, req.user.userId, driver_notes ?? null);
+        res.json({ message: 'Đã gửi lại yêu cầu tạo phiếu thu' });
+    } catch (err) {
+        const code = err.message.includes('không tìm thấy') ? 404 : 500;
         res.status(code).json({ error: err.message });
     }
 };
@@ -423,4 +441,5 @@ module.exports = {
     getDriverReceipts,
     getDriverReceiptDetail,
     recordReceiptCollection,
+    resubmitReceiptRequest,
 };

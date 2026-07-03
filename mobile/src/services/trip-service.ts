@@ -105,8 +105,20 @@ export const tripService = {
         ),
 
     recordReceiptCollection: (receiptId: number, formData: FormData) =>
-        apiClient.postForm<{ collection_type: string; amount: number; recorded: boolean }>(
+        apiClient.postForm<{ message: string }>(
             `/api/trips/receipts/${receiptId}/record-collection`,
+            formData,
+        ),
+
+    resubmitReceiptRequest: (orrId: number, driverNotes?: string) =>
+        apiClient.post<{ message: string }>(
+            `/api/trips/receipt-request/${orrId}/resubmit`,
+            { driver_notes: driverNotes ?? null },
+        ),
+
+    updateExpense: (expenseId: number, formData: FormData) =>
+        apiClient.patchForm<{ message: string }>(
+            `/api/expenses/${expenseId}`,
             formData,
         ),
 

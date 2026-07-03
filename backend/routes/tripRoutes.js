@@ -107,6 +107,9 @@ router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder
 router.get('/receipts',            driverOnly, tripController.getDriverReceipts);
 router.get('/receipts/:receiptId', driverOnly, tripController.getDriverReceiptDetail);
 
+// Driver gửi lại yêu cầu tạo phiếu thu sau khi bị coordinator từ chối
+router.post('/receipt-request/:orrId/resubmit', driverOnly, tripController.resubmitReceiptRequest);
+
 // Driver ghi nhận cách khách thanh toán sau khi có phiếu thu
 // Body: { payment_type: 'cash_collected' | 'bank_transfer' | 'client_credit', notes? }
 // File: proof / image / photo (bắt buộc với cash_collected và bank_transfer)

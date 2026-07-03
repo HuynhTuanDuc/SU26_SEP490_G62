@@ -45,4 +45,43 @@ const getShipmentExpenses = async (shipmentId) => {
     return result.rows;
 };
 
-module.exports = { createExpense, addExpenseAttachment, getShipmentExpenses };
+const updateExpense = async (expenseId, driverId, { expenseType, amount, description, fileUrl }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const check = await client.query(
+            `SELECT id FROM expenses WHERE id = $1 AND created_by = $2`,
+            [expenseId, driverId],
+        );
+        if (!check.rows[0]) throw new Error('Không tìm thấy chi phí hoặc bạn không có quyền chỉnh sửa');
+
+        await client.query(
+            `UPDATE expenses
+             SET expense_type = COALESCE($1, expense_type),
+                 amount       = COALESCE($2, amount),
+                 description  = COALESCE($3, description),
+                 updated_by   = $4,
+                 updated_at   = NOW()
+             WHERE id = $5`,
+            [expenseType ?? null, amount ? Number(amount) : null, description ?? null, driverId, expenseId],
+        );
+
+        if (fileUrl) {
+            await client.query(`DELETE FROM expense_attachments WHERE expense_id = $1`, [expenseId]);
+            await client.query(
+                `INSERT INTO expense_attachments (expense_id, file_url) VALUES ($1, $2)`,
+                [expenseId, fileUrl],
+            );
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+module.exports = { createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense };

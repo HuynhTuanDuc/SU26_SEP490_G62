@@ -476,6 +476,10 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     return tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes });
 };
 
+const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
+    return tripRepository.resubmitReceiptRequest(orrId, driverId, driverNotes);
+};
+
 module.exports = {
     getTripPool,
     getActiveTrip,
@@ -497,4 +501,5 @@ module.exports = {
     getDriverReceipts,
     getDriverReceiptDetail,
     recordReceiptCollection,
+    resubmitReceiptRequest,
 };

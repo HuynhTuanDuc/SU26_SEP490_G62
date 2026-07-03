@@ -1,13 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-    Alert, Image, Platform, ScrollView, StyleSheet,
-    TouchableOpacity, View,
+    Alert, Image, Modal, ScrollView, StyleSheet,
+    TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import {
-    Bank, Camera, CheckCircle,
-    MapPin, Money, Receipt, Ruler, Truck, User, Warning,
+    Bank, Camera, CaretDown, CaretRight, CheckCircle,
+    CurrencyDollar, MapPin, Money, PencilSimple,
+    Receipt, Truck, User, Warning, X,
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -16,25 +17,22 @@ import { AppText }               from '@/components/app-text';
 import { ReceiptDetailSkeleton } from '@/components/skeleton';
 import { appTheme }              from '@/theme/app-theme';
 import { tripService }           from '@/services/trip-service';
-import type { CompanyInfo, DriverReceiptDetail, PaymentType } from '@/types/trip';
+import type { CompanyInfo, DriverReceiptDetail, ExpenseItem, PaymentType } from '@/types/trip';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CollectionType = 'cash_collected' | 'bank_transfer' | 'client_credit';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const fmtMoney = (v: string | number | null | undefined) => {
-    if (v === null || v === undefined || Number(v) === 0) return '—';
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
-};
-
-const fmtDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleString('vi-VN', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-    });
+const EXPENSE_TYPE_LABEL: Record<string, string> = {
+    fuel:         'Xăng dầu',
+    toll:         'Phí đường bộ',
+    parking:      'Phí đỗ xe',
+    repair:       'Sửa chữa',
+    maintenance:  'Bảo dưỡng',
+    depreciation: 'Khấu hao',
+    other:        'Khác',
 };
 
 const PAYMENT_LABEL: Record<PaymentType, string> = {
@@ -44,126 +42,293 @@ const PAYMENT_LABEL: Record<PaymentType, string> = {
     qr_transfer:    'QR / Ví điện tử',
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function Divider() {
-    return <View style={styles.divider} />;
+const fmtMoney = (v: string | number | null | undefined) => {
+    if (v === null || v === undefined || Number(v) === 0) return '—';
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
+};
+
+const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleString('vi-VN', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+
+// ─── Accordion section ────────────────────────────────────────────────────────
+
+function AccordionSection({
+    icon, title, badge, defaultOpen = false, children,
+}: {
+    icon: React.ReactNode;
+    title: string;
+    badge?: string;
+    defaultOpen?: boolean;
+    children: React.ReactNode;
+}) {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <View style={styles.accordion}>
+            <TouchableOpacity
+                style={styles.accordionHeader}
+                onPress={() => setOpen(v => !v)}
+                activeOpacity={0.7}
+            >
+                <XStack alignItems="center" gap={8} flex={1}>
+                    {icon}
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} flex={1}>
+                        {title}
+                    </Text>
+                    {badge ? (
+                        <View style={styles.badge}>
+                            <Text fontSize={11} fontWeight="700" color={appTheme.colors.primary}>{badge}</Text>
+                        </View>
+                    ) : null}
+                </XStack>
+                {open
+                    ? <CaretDown size={14} color={appTheme.colors.textMuted} weight="bold" />
+                    : <CaretRight size={14} color={appTheme.colors.textMuted} weight="bold" />}
+            </TouchableOpacity>
+            {open ? <View style={styles.accordionBody}>{children}</View> : null}
+        </View>
+    );
 }
 
-function Row({ label, value, bold }: { label: string; value: string | null | undefined; bold?: boolean }) {
+// ─── Info row ─────────────────────────────────────────────────────────────────
+
+function Row({ label, value, bold }: { label: string; value?: string | null; bold?: boolean }) {
     if (!value) return null;
     return (
-        <XStack justifyContent="space-between" alignItems="flex-start" gap={12} paddingVertical={3}>
+        <XStack justifyContent="space-between" alignItems="flex-start" gap={12} paddingVertical={4}>
             <Text fontSize={12} color={appTheme.colors.textMuted} flex={1}>{label}</Text>
-            <Text
-                fontSize={12} fontWeight={bold ? '700' : '400'}
-                color={appTheme.colors.text} flex={2} textAlign="right" numberOfLines={3}
-            >
+            <Text fontSize={12} fontWeight={bold ? '700' : '400'} color={appTheme.colors.text}
+                flex={2} textAlign="right" numberOfLines={3}>
                 {value}
             </Text>
         </XStack>
     );
 }
 
-// Button khách thanh toán
+// ─── Expense row (inside order accordion) ────────────────────────────────────
+
+function ExpenseRow({ expense, onEdit }: { expense: ExpenseItem; onEdit: () => void }) {
+    const [showPhotos, setShowPhotos] = useState(false);
+    return (
+        <View style={styles.expenseRow}>
+            <XStack justifyContent="space-between" alignItems="center">
+                <YStack flex={1} gap={1}>
+                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                        {EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}
+                    </Text>
+                    {expense.description ? (
+                        <Text fontSize={11} color={appTheme.colors.textMuted} numberOfLines={1}>
+                            {expense.description}
+                        </Text>
+                    ) : null}
+                </YStack>
+                <XStack alignItems="center" gap={8}>
+                    <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
+                        {fmtMoney(expense.amount)}
+                    </Text>
+                    {expense.receipt_urls.length > 0 ? (
+                        <TouchableOpacity onPress={() => setShowPhotos(v => !v)} style={styles.photoBtn}>
+                            <Camera size={13} color={appTheme.colors.textMuted} weight="fill" />
+                            <Text fontSize={10} color={appTheme.colors.textMuted} marginLeft={2}>
+                                {expense.receipt_urls.length}
+                            </Text>
+                        </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity onPress={onEdit} style={styles.editChip}>
+                        <PencilSimple size={12} color={appTheme.colors.primary} weight="fill" />
+                    </TouchableOpacity>
+                </XStack>
+            </XStack>
+
+            {showPhotos && expense.receipt_urls.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                    <XStack gap={8}>
+                        {expense.receipt_urls.map((url, i) => (
+                            <Image key={i} source={{ uri: url }} style={styles.expenseThumb} resizeMode="cover" />
+                        ))}
+                    </XStack>
+                </ScrollView>
+            ) : null}
+        </View>
+    );
+}
+
+// ─── Expense edit modal ───────────────────────────────────────────────────────
+
+function ExpenseEditModal({
+    expense, visible, onClose, onSaved,
+}: {
+    expense: ExpenseItem | null;
+    visible: boolean;
+    onClose: () => void;
+    onSaved: () => void;
+}) {
+    const [amount,      setAmount]      = useState('');
+    const [description, setDescription] = useState('');
+    const [photoUri,    setPhotoUri]    = useState<string | null>(null);
+    const [saving,      setSaving]      = useState(false);
+
+    useEffect(() => {
+        if (expense) {
+            setAmount(expense.amount);
+            setDescription(expense.description ?? '');
+            setPhotoUri(null);
+        }
+    }, [expense]);
+
+    const takePhoto = async () => {
+        const { status } = await requestCameraPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Từ chối', 'Cần quyền camera.'); return; }
+        const result = await launchCameraAsync({ mediaTypes: MediaTypeOptions.Images, quality: 0.8 });
+        if (!result.canceled) setPhotoUri(result.assets[0]?.uri ?? null);
+    };
+
+    const save = async () => {
+        if (!expense) return;
+        if (!amount || Number(amount) <= 0) { Alert.alert('Lỗi', 'Số tiền phải lớn hơn 0'); return; }
+        setSaving(true);
+        try {
+            const fd = new FormData();
+            fd.append('amount', amount);
+            if (description) fd.append('description', description);
+            if (photoUri) {
+                const name = photoUri.split('/').pop() ?? 'receipt.jpg';
+                fd.append('receipt', { uri: photoUri, name, type: 'image/jpeg' } as any);
+            }
+            await tripService.updateExpense(expense.id, fd);
+            onSaved();
+            onClose();
+        } catch (err: any) {
+            Alert.alert('Lỗi', err?.message ?? 'Không thể cập nhật chi phí');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!expense) return null;
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <View style={styles.modalOverlay}>
+                <View style={styles.modalBox}>
+                    <XStack justifyContent="space-between" alignItems="center" marginBottom={16}>
+                        <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
+                            Sửa — {EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}
+                        </Text>
+                        <TouchableOpacity onPress={onClose}><X size={20} color={appTheme.colors.textMuted} /></TouchableOpacity>
+                    </XStack>
+
+                    <Text fontSize={12} color={appTheme.colors.textMuted} marginBottom={6}>Số tiền (VNĐ)</Text>
+                    <TextInput style={styles.textInput} value={amount} onChangeText={setAmount}
+                        keyboardType="numeric" placeholder="Nhập số tiền" />
+
+                    <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>Ghi chú</Text>
+                    <TextInput style={[styles.textInput, { minHeight: 56 }]} value={description}
+                        onChangeText={setDescription} placeholder="Mô tả (không bắt buộc)" multiline />
+
+                    <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>
+                        Ảnh chứng từ {photoUri ? '(mới)' : '(giữ nguyên nếu không chụp)'}
+                    </Text>
+                    {photoUri
+                        ? <Image source={{ uri: photoUri }} style={styles.modalPreview} resizeMode="cover" />
+                        : null}
+                    <TouchableOpacity style={styles.camBtn} onPress={takePhoto}>
+                        <Camera size={15} color={appTheme.colors.primary} weight="fill" />
+                        <Text fontSize={13} color={appTheme.colors.primary} marginLeft={6}>
+                            {photoUri ? 'Chụp lại' : 'Chụp ảnh mới'}
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.saveBtn, saving && { opacity: 0.5 }]}
+                        onPress={save} disabled={saving}
+                    >
+                        <Text fontSize={14} fontWeight="900" color="#fff">
+                            {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+}
+
+// ─── Payment option button ────────────────────────────────────────────────────
+
 function PaymentOptionBtn({
     label, description, icon, color, selected, onPress,
 }: {
-    label: string;
-    description: string;
-    icon: React.ReactNode;
-    color: string;
-    selected: boolean;
-    onPress: () => void;
+    label: string; description: string; icon: React.ReactNode;
+    color: string; selected: boolean; onPress: () => void;
 }) {
     return (
         <TouchableOpacity
             onPress={onPress}
-            style={[
-                styles.optionBtn,
-                selected && { borderColor: color, backgroundColor: `${color}12` },
-            ]}
+            style={[styles.optionBtn, selected && { borderColor: color, backgroundColor: `${color}10` }]}
         >
-            <XStack alignItems="center" gap={12}>
-                <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>
-                    {icon}
-                </View>
-                <YStack flex={1} gap={2}>
+            <XStack alignItems="center" gap={10}>
+                <View style={[styles.optionIcon, { backgroundColor: `${color}18` }]}>{icon}</View>
+                <YStack flex={1} gap={1}>
                     <Text fontSize={13} fontWeight="700" color={selected ? color : appTheme.colors.text}>
                         {label}
                     </Text>
-                    <Text fontSize={11} color={appTheme.colors.textMuted} numberOfLines={2}>
-                        {description}
-                    </Text>
+                    <Text fontSize={11} color={appTheme.colors.textMuted} numberOfLines={2}>{description}</Text>
                 </YStack>
-                <View style={[
-                    styles.optionRadio,
-                    selected && { borderColor: color, backgroundColor: color },
-                ]} />
+                <View style={[styles.radioCircle, selected && { borderColor: color, backgroundColor: color }]} />
             </XStack>
         </TouchableOpacity>
     );
 }
 
-// Banner sau khi đã ghi nhận
-function RecordedBanner({ paymentType, hasDriverDebt, hasCustomerDebt }: {
-    paymentType: PaymentType;
-    hasDriverDebt: boolean;
-    hasCustomerDebt: boolean;
-}) {
-    if (paymentType === 'cash_collected') {
-        return (
-            <View style={[styles.statusBanner, { borderColor: hasDriverDebt ? appTheme.colors.warningBorder : appTheme.colors.successBorder }]}>
-                <XStack alignItems="center" gap={10} padding={14}>
-                    {hasDriverDebt ? (
-                        <Warning size={18} color={appTheme.colors.warningText} weight="fill" />
-                    ) : (
-                        <CheckCircle size={18} color={appTheme.colors.success} weight="fill" />
-                    )}
-                    <YStack flex={1} gap={2}>
-                        <Text fontSize={13} fontWeight="900" color={hasDriverDebt ? appTheme.colors.warningText : appTheme.colors.success}>
-                            {hasDriverDebt ? 'Bạn đang có công nợ từ chuyến này' : 'Công nợ đã được thanh toán'}
-                        </Text>
-                        {hasDriverDebt ? (
-                            <Text fontSize={11} color={appTheme.colors.warningText} opacity={0.85}>
-                                Tiền mặt đã ghi nhận — vui lòng nộp về công ty.
-                            </Text>
-                        ) : null}
-                    </YStack>
-                </XStack>
-            </View>
-        );
-    }
+// ─── Recorded / debt banner ───────────────────────────────────────────────────
 
-    if (paymentType === 'bank_transfer') {
-        return (
-            <View style={[styles.statusBanner, { borderColor: appTheme.colors.successBorder }]}>
-                <XStack alignItems="center" gap={10} padding={14}>
-                    <CheckCircle size={18} color={appTheme.colors.success} weight="fill" />
-                    <YStack flex={1} gap={2}>
-                        <Text fontSize={13} fontWeight="900" color={appTheme.colors.success}>Chuyển khoản về công ty</Text>
-                        <Text fontSize={11} color={appTheme.colors.textMuted}>Đã ghi nhận — không phát sinh công nợ.</Text>
-                    </YStack>
-                </XStack>
-            </View>
-        );
-    }
-
-    if (paymentType === 'client_credit') {
-        return (
-            <View style={[styles.statusBanner, { borderColor: '#FF6B6B' }]}>
-                <XStack alignItems="center" gap={10} padding={14}>
-                    <Warning size={18} color="#E53E3E" weight="fill" />
-                    <YStack flex={1} gap={2}>
-                        <Text fontSize={13} fontWeight="900" color="#E53E3E">Khách đang nợ công ty</Text>
-                        <Text fontSize={11} color={appTheme.colors.textMuted}>Đã tạo công nợ khách hàng.</Text>
-                    </YStack>
-                </XStack>
-            </View>
-        );
-    }
-
-    return null;
+function RecordedBanner({ pt, hasDriverDebt }: { pt: PaymentType; hasDriverDebt: boolean }) {
+    const configs = {
+        cash_collected: {
+            color:  hasDriverDebt ? appTheme.colors.warningText : appTheme.colors.success,
+            bg:     hasDriverDebt ? appTheme.colors.warningSoft  : appTheme.colors.successSoft,
+            bc:     hasDriverDebt ? appTheme.colors.warningBorder : appTheme.colors.successBorder,
+            icon:   hasDriverDebt
+                ? <Warning size={18} color={appTheme.colors.warningText} weight="fill" />
+                : <CheckCircle size={18} color={appTheme.colors.success} weight="fill" />,
+            title:  hasDriverDebt ? 'Bạn đang có công nợ từ chuyến này' : 'Công nợ đã được thanh toán',
+            sub:    hasDriverDebt ? 'Tiền mặt đã ghi nhận — vui lòng nộp về công ty.' : null,
+        },
+        bank_transfer: {
+            color: appTheme.colors.success, bg: appTheme.colors.successSoft,
+            bc: appTheme.colors.successBorder,
+            icon: <CheckCircle size={18} color={appTheme.colors.success} weight="fill" />,
+            title: 'Chuyển khoản về công ty — đã ghi nhận', sub: null,
+        },
+        client_credit: {
+            color: '#E53E3E', bg: '#FEF2F2', bc: '#FCA5A5',
+            icon: <Warning size={18} color="#E53E3E" weight="fill" />,
+            title: 'Khách đang nợ công ty', sub: 'Đã tạo công nợ khách hàng.',
+        },
+        qr_transfer: {
+            color: appTheme.colors.success, bg: appTheme.colors.successSoft,
+            bc: appTheme.colors.successBorder,
+            icon: <CheckCircle size={18} color={appTheme.colors.success} weight="fill" />,
+            title: 'QR / Ví điện tử — đã ghi nhận', sub: null,
+        },
+    };
+    const c = configs[pt];
+    if (!c) return null;
+    return (
+        <View style={[styles.statusBanner, { borderColor: c.bc, backgroundColor: c.bg }]}>
+            <XStack alignItems="center" gap={10} padding={14}>
+                {c.icon}
+                <YStack flex={1} gap={2}>
+                    <Text fontSize={13} fontWeight="900" color={c.color}>{c.title}</Text>
+                    {c.sub ? <Text fontSize={11} color={c.color} opacity={0.85}>{c.sub}</Text> : null}
+                </YStack>
+            </XStack>
+        </View>
+    );
 }
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -172,91 +337,74 @@ export function ReceiptDetailScreen() {
     const { receiptId } = useLocalSearchParams<{ receiptId: string }>();
     const id = Number(receiptId);
 
-    const [receipt,        setReceipt]        = useState<DriverReceiptDetail | null>(null);
-    const [companyInfo,    setCompanyInfo]     = useState<CompanyInfo | null>(null);
-    const [isLoading,      setIsLoading]       = useState(true);
-    const [error,          setError]           = useState<string | null>(null);
+    const [receipt,      setReceipt]      = useState<DriverReceiptDetail | null>(null);
+    const [companyInfo,  setCompanyInfo]  = useState<CompanyInfo | null>(null);
+    const [isLoading,    setIsLoading]    = useState(true);
+    const [error,        setError]        = useState<string | null>(null);
 
-    // 3-button state
-    const [selected,       setSelected]        = useState<CollectionType | null>(null);
-    const [proofUri,       setProofUri]        = useState<string | null>(null);
-    const [isSubmitting,   setIsSubmitting]    = useState(false);
+    const [selected,     setSelected]     = useState<CollectionType | null>(null);
+    const [proofUri,     setProofUri]     = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const [editExpense,  setEditExpense]  = useState<ExpenseItem | null>(null);
+    const [resubmitting, setResubmitting] = useState(false);
+    const [driverNote,   setDriverNote]   = useState('');
 
     const load = () => {
-        if (!id) { setError('ID phiếu thu không hợp lệ'); setIsLoading(false); return; }
+        if (!id) { setError('ID không hợp lệ'); setIsLoading(false); return; }
         setIsLoading(true);
-        Promise.all([
-            tripService.getDriverReceiptDetail(id),
-            tripService.getCompanyInfo(),
-        ])
+        Promise.all([tripService.getDriverReceiptDetail(id), tripService.getCompanyInfo()])
             .then(([{ receipt: data }, { info }]) => {
                 setReceipt(data);
                 setCompanyInfo(info);
-                // Pre-select dựa vào order_payment_type
                 if (!data.payment_type) {
                     const hint = data.order_payment_type;
                     if (hint === 'cash' || hint === 'cash_collected') setSelected('cash_collected');
                     else if (hint === 'bank_transfer' || hint === 'qr_transfer') setSelected('bank_transfer');
                 }
             })
-            .catch((err) => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
+            .catch(err => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
             .finally(() => setIsLoading(false));
     };
 
     useEffect(() => { load(); }, [id]);
 
-    const takePhoto = async () => {
+    const takeProofPhoto = async () => {
         const { status } = await requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Từ chối', 'Cần quyền truy cập camera để chụp ảnh xác minh.');
-            return;
-        }
-        const result = await launchCameraAsync({
-            mediaTypes: MediaTypeOptions.Images,
-            allowsEditing: false,
-            quality: 0.8,
-        });
-        if (!result.canceled && result.assets[0]) {
-            setProofUri(result.assets[0].uri);
-        }
+        if (status !== 'granted') { Alert.alert('Từ chối', 'Cần quyền camera.'); return; }
+        const result = await launchCameraAsync({ mediaTypes: MediaTypeOptions.Images, quality: 0.8 });
+        if (!result.canceled && result.assets[0]) setProofUri(result.assets[0].uri);
     };
 
-    const handleSubmit = async () => {
+    const handleSubmitCollection = async () => {
         if (!selected || !receipt) return;
-
         if ((selected === 'cash_collected' || selected === 'bank_transfer') && !proofUri) {
-            Alert.alert('Thiếu ảnh', 'Vui lòng chụp ảnh xác minh thanh toán.');
+            Alert.alert('Thiếu ảnh', 'Vui lòng chụp ảnh xác minh.');
             return;
         }
-
-        const confirmMsg: Record<CollectionType, string> = {
-            cash_collected: 'Xác nhận khách đã trả tiền mặt cho bạn?\nCông nợ sẽ được tạo và bạn cần nộp lại công ty.',
+        const msg: Record<CollectionType, string> = {
+            cash_collected: 'Xác nhận khách đã trả tiền mặt cho bạn?\nSẽ tạo công nợ cho bạn.',
             bank_transfer:  'Xác nhận khách đã chuyển khoản về công ty?',
             client_credit:  'Xác nhận khách chưa thanh toán?\nSẽ tạo công nợ cho khách hàng.',
         };
-
-        Alert.alert('Xác nhận', confirmMsg[selected], [
+        Alert.alert('Xác nhận', msg[selected], [
             { text: 'Huỷ', style: 'cancel' },
             {
-                text: 'Đồng ý', style: 'default',
-                onPress: async () => {
+                text: 'Đồng ý', onPress: async () => {
                     setIsSubmitting(true);
                     try {
                         const targetId = receipt.actual_receipt_id ?? receipt.receipt_id;
-                        const formData = new FormData();
-                        formData.append('payment_type', selected);
-
+                        const fd = new FormData();
+                        fd.append('payment_type', selected);
                         if (proofUri) {
-                            const filename = proofUri.split('/').pop() ?? 'proof.jpg';
-                            const type = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                            formData.append('proof', { uri: proofUri, name: filename, type } as any);
+                            const name = proofUri.split('/').pop() ?? 'proof.jpg';
+                            fd.append('proof', { uri: proofUri, name, type: 'image/jpeg' } as any);
                         }
-
-                        await tripService.recordReceiptCollection(targetId, formData);
-                        await load();
+                        await tripService.recordReceiptCollection(targetId, fd);
                         setProofUri(null);
+                        load();
                     } catch (err: any) {
-                        Alert.alert('Lỗi', err?.message ?? 'Không thể ghi nhận thanh toán. Vui lòng thử lại.');
+                        Alert.alert('Lỗi', err?.message ?? 'Thử lại.');
                     } finally {
                         setIsSubmitting(false);
                     }
@@ -265,19 +413,30 @@ export function ReceiptDetailScreen() {
         ]);
     };
 
+    const handleResubmit = async () => {
+        if (!receipt) return;
+        setResubmitting(true);
+        try {
+            await tripService.resubmitReceiptRequest(receipt.orr_id, driverNote.trim() || undefined);
+            setDriverNote('');
+            load();
+        } catch (err: any) {
+            Alert.alert('Lỗi', err?.message ?? 'Không thể gửi lại yêu cầu.');
+        } finally {
+            setResubmitting(false);
+        }
+    };
+
     // ── Render loading / error ────────────────────────────────────────────────
 
     if (isLoading) {
         return (
             <View style={{ flex: 1, backgroundColor: '#F0F4FF' }}>
                 <ScreenHeader title="Phiếu thu" showBack />
-                <ScrollView showsVerticalScrollIndicator={false}>
-                    <ReceiptDetailSkeleton />
-                </ScrollView>
+                <ScrollView showsVerticalScrollIndicator={false}><ReceiptDetailSkeleton /></ScrollView>
             </View>
         );
     }
-
     if (error || !receipt) {
         return (
             <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
@@ -291,14 +450,16 @@ export function ReceiptDetailScreen() {
         );
     }
 
-    const alreadyRecorded = receipt.payment_type !== null;
-    const kmDisplay = receipt.actual_distance_km
+    const isApproved      = receipt.request_status === 'approved';
+    const isRejected      = receipt.request_status === 'rejected';
+    const alreadyRecorded = isApproved && receipt.payment_type !== null;
+    const needsProof      = selected === 'cash_collected' || selected === 'bank_transfer';
+    const totalExpenses   = receipt.expenses.reduce((s, e) => s + Number(e.amount), 0);
+    const kmDisplay       = receipt.actual_distance_km
         ? `${Number(receipt.actual_distance_km).toLocaleString('vi-VN')} km`
         : receipt.estimated_distance_km
             ? `${Number(receipt.estimated_distance_km).toLocaleString('vi-VN')} km (ước tính)`
             : null;
-
-    const needsProof = selected === 'cash_collected' || selected === 'bank_transfer';
 
     return (
         <View style={{ flex: 1, backgroundColor: '#F0F4FF' }}>
@@ -306,175 +467,232 @@ export function ReceiptDetailScreen() {
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-                {/* ── Receipt card ─────────────────────────────────────────── */}
-                <View style={styles.receiptCard}>
+                {/* ── Rejection banner ──────────────────────────────────── */}
+                {isRejected ? (
+                    <View style={[styles.statusBanner, { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' }]}>
+                        <YStack padding={14} gap={10}>
+                            <XStack alignItems="center" gap={8}>
+                                <Warning size={18} color="#E53E3E" weight="fill" />
+                                <Text fontSize={14} fontWeight="900" color="#E53E3E">Yêu cầu đã bị từ chối</Text>
+                            </XStack>
 
-                    {/* Header */}
-                    <YStack alignItems="center" gap={6} paddingBottom={16}>
+                            {receipt.rejection_reason ? (
+                                <View style={styles.reasonBox}>
+                                    <Text fontSize={11} fontWeight="700" color="#7F1D1D" marginBottom={2}>
+                                        Lý do từ chối:
+                                    </Text>
+                                    <Text fontSize={12} color="#7F1D1D" lineHeight={18}>
+                                        {receipt.rejection_reason}
+                                    </Text>
+                                </View>
+                            ) : null}
+
+                            <Text fontSize={12} color={appTheme.colors.textMuted} lineHeight={18}>
+                                Hãy kiểm tra lại chi phí phát sinh bên dưới, cập nhật nếu cần, sau đó gửi lại.
+                            </Text>
+
+                            {/* Driver note trước khi gửi lại */}
+                            <YStack gap={6}>
+                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                                    Ghi chú cập nhật (không bắt buộc)
+                                </Text>
+                                <TextInput
+                                    style={styles.noteInput}
+                                    value={driverNote}
+                                    onChangeText={setDriverNote}
+                                    placeholder="Giải thích thay đổi hoặc bổ sung thông tin..."
+                                    placeholderTextColor={appTheme.colors.textMuted}
+                                    multiline
+                                    numberOfLines={3}
+                                    textAlignVertical="top"
+                                />
+                            </YStack>
+
+                            <TouchableOpacity
+                                style={[styles.resubmitBtn, resubmitting && { opacity: 0.5 }]}
+                                onPress={handleResubmit} disabled={resubmitting}
+                            >
+                                <Text fontSize={13} fontWeight="900" color="#fff">
+                                    {resubmitting ? 'Đang gửi...' : 'Gửi lại yêu cầu tạo phiếu thu'}
+                                </Text>
+                            </TouchableOpacity>
+                        </YStack>
+                    </View>
+                ) : null}
+
+                {/* ── Main receipt card ─────────────────────────────────── */}
+                <View style={styles.card}>
+
+                    {/* ── Header ──────────────────────────────────────────── */}
+                    <YStack alignItems="center" gap={4} paddingBottom={16}>
                         <View style={styles.receiptIconWrap}>
-                            <Receipt size={32} color={appTheme.colors.primary} weight="fill" />
+                            <Receipt size={28} color={appTheme.colors.primary} weight="fill" />
                         </View>
-                        <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted} letterSpacing={2}>
+                        <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted} letterSpacing={2}>
                             PHIẾU THU VẬN CHUYỂN
                         </Text>
-                        <Text fontSize={13} color={appTheme.colors.textMuted}>
+                        <Text fontSize={12} color={appTheme.colors.textMuted}>
                             #{String(receipt.receipt_id).padStart(6, '0')} · {fmtDate(receipt.collected_at)}
                         </Text>
                     </YStack>
 
-                    <Divider />
-
-                    {/* Amount */}
-                    <YStack alignItems="center" paddingVertical={20} gap={6}>
-                        <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted} letterSpacing={1}>
-                            SỐ TIỀN THANH TOÁN
+                    {/* ── Amount hero ─────────────────────────────────────── */}
+                    <View style={styles.amountBox}>
+                        <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted} letterSpacing={1}>
+                            SỐ TIỀN
                         </Text>
-                        <Text fontSize={34} fontWeight="900" color={appTheme.colors.primary}>
+                        <Text fontSize={32} fontWeight="900" color={appTheme.colors.primary} marginTop={2}>
                             {fmtMoney(receipt.amount)}
                         </Text>
-                        {alreadyRecorded ? (
-                            <View style={[styles.paymentBadge, { backgroundColor: `${appTheme.colors.success}18` }]}>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.success}>
-                                    {PAYMENT_LABEL[receipt.payment_type!] ?? receipt.payment_type}
-                                </Text>
-                            </View>
-                        ) : (
-                            <View style={[styles.paymentBadge, { backgroundColor: `${appTheme.colors.warning}18` }]}>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.warning}>
-                                    Chưa xác nhận thanh toán
-                                </Text>
-                            </View>
-                        )}
-                    </YStack>
-
-                    <Divider />
-
-                    {/* Customer */}
-                    <YStack gap={6} paddingVertical={14}>
-                        <XStack gap={6} alignItems="center" paddingBottom={4}>
-                            <User size={14} color={appTheme.colors.primary} weight="fill" />
-                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary} letterSpacing={0.5}>
-                                KHÁCH HÀNG
+                        <View style={[
+                            styles.statusChip,
+                            alreadyRecorded
+                                ? { backgroundColor: `${appTheme.colors.success}18` }
+                                : isRejected
+                                    ? { backgroundColor: '#FEF2F2' }
+                                    : { backgroundColor: `${appTheme.colors.warning}18` },
+                        ]}>
+                            <Text fontSize={11} fontWeight="700" color={
+                                alreadyRecorded ? appTheme.colors.success
+                                    : isRejected ? '#E53E3E'
+                                    : appTheme.colors.warning
+                            }>
+                                {alreadyRecorded
+                                    ? (PAYMENT_LABEL[receipt.payment_type!] ?? receipt.payment_type)
+                                    : isRejected ? 'Yêu cầu bị từ chối'
+                                    : 'Chưa xác nhận thanh toán'}
                             </Text>
-                        </XStack>
+                        </View>
+                    </View>
+
+                    <View style={styles.divider} />
+
+                    {/* ── Accordion: Khách hàng ────────────────────────────── */}
+                    <AccordionSection
+                        icon={<User size={15} color={appTheme.colors.primary} weight="fill" />}
+                        title="Khách hàng"
+                        badge={receipt.customer_name ?? undefined}
+                    >
                         <Row label="Tên"        value={receipt.customer_name} bold />
                         <Row label="Công ty"    value={receipt.customer_company} />
                         <Row label="Điện thoại" value={receipt.customer_phone} />
                         <Row label="Địa chỉ"   value={receipt.customer_address} />
-                    </YStack>
+                    </AccordionSection>
 
-                    <Divider />
+                    <View style={styles.divider} />
 
-                    {/* Order + route */}
-                    <YStack gap={6} paddingVertical={14}>
-                        <XStack gap={6} alignItems="center" paddingBottom={4}>
-                            <MapPin size={14} color={appTheme.colors.primary} weight="fill" />
-                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary} letterSpacing={0.5}>
-                                ĐƠN HÀNG #{receipt.order_id}
-                            </Text>
-                        </XStack>
+                    {/* ── Accordion: Đơn hàng + chi phí ───────────────────── */}
+                    <AccordionSection
+                        icon={<MapPin size={15} color={appTheme.colors.primary} weight="fill" />}
+                        title={`Đơn hàng #${receipt.order_id}`}
+                        badge={receipt.cargo_name ?? undefined}
+                        defaultOpen
+                    >
                         <Row label="Hàng hóa"       value={receipt.cargo_name} bold />
-                        {receipt.cargo_weight_kg ? (
-                            <Row label="Khối lượng" value={`${receipt.cargo_weight_kg} kg`} />
-                        ) : null}
+                        {receipt.cargo_weight_kg
+                            ? <Row label="Khối lượng" value={`${receipt.cargo_weight_kg} kg`} /> : null}
                         <Row label="Điểm lấy hàng"  value={receipt.pickup_address} />
                         <Row label="Điểm giao hàng" value={receipt.delivery_address} />
-                        {kmDisplay ? (
-                            <XStack justifyContent="space-between" alignItems="center" paddingVertical={3}>
-                                <XStack gap={4} alignItems="center">
-                                    <Ruler size={12} color={appTheme.colors.textMuted} />
-                                    <Text fontSize={12} color={appTheme.colors.textMuted}>Quãng đường</Text>
+                        {kmDisplay ? <Row label="Quãng đường" value={kmDisplay} /> : null}
+                        <Row label="Đơn giá thực"   value={receipt.actual_price ? fmtMoney(receipt.actual_price) : null} />
+                        <Row label="Đơn giá ước"    value={!receipt.actual_price && receipt.estimated_price ? fmtMoney(receipt.estimated_price) : null} />
+
+                        {/* Chi phí phát sinh */}
+                        <View style={styles.expenseBlock}>
+                            <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
+                                <XStack gap={5} alignItems="center">
+                                    <CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />
+                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                                        Chi phí phát sinh
+                                    </Text>
                                 </XStack>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>{kmDisplay}</Text>
+                                {totalExpenses > 0 ? (
+                                    <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
+                                        {fmtMoney(totalExpenses)}
+                                    </Text>
+                                ) : null}
                             </XStack>
-                        ) : null}
-                    </YStack>
 
-                    <Divider />
+                            {receipt.expenses.length === 0 ? (
+                                <Text fontSize={11} color={appTheme.colors.textMuted} textAlign="center" paddingVertical={6}>
+                                    Không có chi phí phát sinh
+                                </Text>
+                            ) : (
+                                <YStack gap={8}>
+                                    {receipt.expenses.map(exp => (
+                                        <ExpenseRow
+                                            key={exp.id}
+                                            expense={exp}
+                                            onEdit={() => setEditExpense(exp)}
+                                        />
+                                    ))}
+                                </YStack>
+                            )}
+                        </View>
+                    </AccordionSection>
 
-                    {/* Vehicle + driver */}
-                    <YStack gap={6} paddingVertical={14}>
-                        <XStack gap={6} alignItems="center" paddingBottom={4}>
-                            <Truck size={14} color={appTheme.colors.primary} weight="fill" />
-                            <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary} letterSpacing={0.5}>
-                                TÀI XẾ & XE
-                            </Text>
-                        </XStack>
+                    <View style={styles.divider} />
+
+                    {/* ── Accordion: Tài xế & xe ───────────────────────────── */}
+                    <AccordionSection
+                        icon={<Truck size={15} color={appTheme.colors.primary} weight="fill" />}
+                        title="Tài xế & xe"
+                        badge={receipt.plate_number ?? undefined}
+                    >
                         <Row label="Tài xế"     value={receipt.driver_name} bold />
                         <Row label="Điện thoại" value={receipt.driver_phone} />
                         <Row label="Biển số"    value={receipt.plate_number} />
                         <Row label="Phụ trách"  value={receipt.coordinator_name} />
-                    </YStack>
+                    </AccordionSection>
 
                     {receipt.notes ? (
                         <>
-                            <Divider />
-                            <YStack gap={4} paddingVertical={12}>
+                            <View style={styles.divider} />
+                            <YStack gap={4} paddingVertical={10} paddingHorizontal={2}>
                                 <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>GHI CHÚ</Text>
                                 <Text fontSize={12} color={appTheme.colors.text} lineHeight={18}>{receipt.notes}</Text>
                             </YStack>
                         </>
                     ) : null}
 
-                    {/* QR bank — luôn hiển thị để driver show cho khách */}
+                    {/* ── QR bank (luôn hiển thị) ──────────────────────────── */}
                     {companyInfo?.bank_qr_url ? (
                         <>
-                            <Divider />
-                            <YStack paddingVertical={14} gap={10} alignItems="center">
-                                <XStack gap={6} alignItems="center" alignSelf="flex-start">
-                                    <Bank size={14} color={appTheme.colors.primary} weight="fill" />
-                                    <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary} letterSpacing={0.5}>
-                                        QR CHUYỂN KHOẢN CÔNG TY
-                                    </Text>
-                                </XStack>
-                                <Image
-                                    source={{ uri: companyInfo.bank_qr_url }}
-                                    style={styles.qrImage}
-                                    resizeMode="contain"
-                                />
-                                <YStack gap={4} width="100%">
+                            <View style={styles.divider} />
+                            <AccordionSection
+                                icon={<Bank size={15} color={appTheme.colors.primary} weight="fill" />}
+                                title="QR chuyển khoản công ty"
+                            >
+                                <YStack gap={8} alignItems="center">
+                                    <Image source={{ uri: companyInfo.bank_qr_url }} style={styles.qrImage} resizeMode="contain" />
                                     {companyInfo.bank_account_name ? (
-                                        <XStack justifyContent="space-between">
-                                            <Text fontSize={12} color={appTheme.colors.textMuted}>Tên TK</Text>
-                                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>{companyInfo.bank_account_name}</Text>
-                                        </XStack>
+                                        <Row label="Tên TK" value={companyInfo.bank_account_name} />
                                     ) : null}
                                     {companyInfo.bank_account_number ? (
-                                        <XStack justifyContent="space-between">
-                                            <Text fontSize={12} color={appTheme.colors.textMuted}>Số TK</Text>
-                                            <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>{companyInfo.bank_account_number}</Text>
-                                        </XStack>
+                                        <Row label="Số TK" value={companyInfo.bank_account_number} bold />
                                     ) : null}
                                     {companyInfo.bank_name ? (
-                                        <XStack justifyContent="space-between">
-                                            <Text fontSize={12} color={appTheme.colors.textMuted}>Ngân hàng</Text>
-                                            <Text fontSize={12} color={appTheme.colors.text}>{companyInfo.bank_name}</Text>
-                                        </XStack>
+                                        <Row label="Ngân hàng" value={companyInfo.bank_name} />
                                     ) : null}
                                 </YStack>
-                            </YStack>
+                            </AccordionSection>
                         </>
                     ) : null}
 
-                    <Divider />
-
-                    <View style={styles.footer}>
-                        <Text fontSize={10} color={appTheme.colors.textMuted} textAlign="center">
-                            Phiếu thu hợp lệ — phát hành bởi hệ thống quản lý vận tải
-                        </Text>
-                    </View>
+                    <View style={[styles.divider, { marginTop: 8 }]} />
+                    <Text fontSize={10} color={appTheme.colors.textMuted} textAlign="center" paddingTop={10}>
+                        Phiếu thu hợp lệ — phát hành bởi hệ thống quản lý vận tải
+                    </Text>
                 </View>
 
-                {/* ── Sau khi đã ghi nhận: hiển thị status ───────────────── */}
+                {/* ── Recorded status ───────────────────────────────────────── */}
                 {alreadyRecorded ? (
-                    <RecordedBanner
-                        paymentType={receipt.payment_type!}
-                        hasDriverDebt={receipt.has_driver_debt}
-                        hasCustomerDebt={receipt.has_customer_debt}
-                    />
-                ) : (
-                    /* ── Chưa ghi nhận: 3 button chọn hình thức ──────────── */
-                    <View style={styles.paymentCard}>
+                    <RecordedBanner pt={receipt.payment_type!} hasDriverDebt={receipt.has_driver_debt} />
+                ) : null}
+
+                {/* ── 3-button payment (chỉ khi approved + chưa ghi nhận) ─── */}
+                {isApproved && !alreadyRecorded ? (
+                    <View style={styles.card}>
                         <Text fontSize={14} fontWeight="900" color={appTheme.colors.text} marginBottom={4}>
                             Khách thanh toán thế nào?
                         </Text>
@@ -484,48 +702,43 @@ export function ReceiptDetailScreen() {
 
                         <PaymentOptionBtn
                             label="Khách chuyển khoản về công ty"
-                            description="Khách đã scan QR hoặc chuyển khoản. Cần chụp ảnh xác nhận."
+                            description="Khách scan QR hoặc chuyển khoản. Cần chụp ảnh xác nhận."
                             icon={<Bank size={20} color="#2F80ED" weight="fill" />}
                             color="#2F80ED"
                             selected={selected === 'bank_transfer'}
                             onPress={() => setSelected('bank_transfer')}
                         />
-
                         <PaymentOptionBtn
                             label="Khách trả tiền mặt cho tài"
-                            description="Bạn nhận tiền mặt từ khách. Cần chụp ảnh xác nhận. Sẽ tạo công nợ cho bạn."
+                            description="Bạn nhận tiền mặt từ khách. Cần ảnh. Sẽ tạo công nợ cho bạn."
                             icon={<Money size={20} color={appTheme.colors.success} weight="fill" />}
                             color={appTheme.colors.success}
                             selected={selected === 'cash_collected'}
                             onPress={() => setSelected('cash_collected')}
                         />
-
                         <PaymentOptionBtn
                             label="Khách nợ (chưa thanh toán)"
-                            description="Khách chưa trả. Sẽ tạo công nợ cho khách hàng. Không cần ảnh."
+                            description="Khách chưa trả. Sẽ tạo công nợ cho khách hàng."
                             icon={<Warning size={20} color="#E53E3E" weight="fill" />}
                             color="#E53E3E"
                             selected={selected === 'client_credit'}
                             onPress={() => { setSelected('client_credit'); setProofUri(null); }}
                         />
 
-                        {/* Proof photo (bắt buộc với bank + cash) */}
                         {needsProof ? (
-                            <YStack gap={10} marginTop={8}>
-                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
-                                    Ảnh xác minh thanh toán *
-                                </Text>
+                            <YStack gap={10} marginTop={6}>
+                                <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>Ảnh xác minh *</Text>
                                 {proofUri ? (
-                                    <View style={styles.proofPreviewWrap}>
-                                        <Image source={{ uri: proofUri }} style={styles.proofPreview} resizeMode="cover" />
-                                        <TouchableOpacity style={styles.retakeBtn} onPress={takePhoto}>
-                                            <Camera size={14} color="#fff" weight="fill" />
-                                            <Text fontSize={11} fontWeight="700" color="#fff" marginLeft={4}>Chụp lại</Text>
+                                    <View style={styles.proofWrap}>
+                                        <Image source={{ uri: proofUri }} style={styles.proofImg} resizeMode="cover" />
+                                        <TouchableOpacity style={styles.retakeBtn} onPress={takeProofPhoto}>
+                                            <Camera size={13} color="#fff" weight="fill" />
+                                            <Text fontSize={11} color="#fff" marginLeft={4}>Chụp lại</Text>
                                         </TouchableOpacity>
                                     </View>
                                 ) : (
-                                    <TouchableOpacity style={styles.cameraBtn} onPress={takePhoto}>
-                                        <Camera size={22} color={appTheme.colors.primary} weight="fill" />
+                                    <TouchableOpacity style={styles.camBtn} onPress={takeProofPhoto}>
+                                        <Camera size={20} color={appTheme.colors.primary} weight="fill" />
                                         <Text fontSize={13} fontWeight="700" color={appTheme.colors.primary} marginLeft={8}>
                                             Chụp ảnh xác minh
                                         </Text>
@@ -534,15 +747,10 @@ export function ReceiptDetailScreen() {
                             </YStack>
                         ) : null}
 
-                        {/* Submit */}
                         {selected ? (
                             <TouchableOpacity
-                                style={[
-                                    styles.submitBtn,
-                                    (!proofUri && needsProof) && styles.submitBtnDisabled,
-                                    isSubmitting && styles.submitBtnDisabled,
-                                ]}
-                                onPress={handleSubmit}
+                                style={[styles.saveBtn, (isSubmitting || (needsProof && !proofUri)) && { opacity: 0.45 }]}
+                                onPress={handleSubmitCollection}
                                 disabled={isSubmitting || (needsProof && !proofUri)}
                             >
                                 <CheckCircle size={18} color="#fff" weight="fill" />
@@ -552,9 +760,16 @@ export function ReceiptDetailScreen() {
                             </TouchableOpacity>
                         ) : null}
                     </View>
-                )}
+                ) : null}
 
             </ScrollView>
+
+            <ExpenseEditModal
+                expense={editExpense}
+                visible={editExpense !== null}
+                onClose={() => setEditExpense(null)}
+                onSaved={load}
+            />
         </View>
     );
 }
@@ -562,124 +777,90 @@ export function ReceiptDetailScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-    scroll: {
-        padding: 16,
-        paddingBottom: 40,
-        gap: 12,
-    },
-    center: {
-        flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24,
-    },
-    receiptCard: {
-        backgroundColor: '#fff',
-        borderRadius: 20,
-        padding: 20,
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 6,
+    scroll:         { padding: 16, paddingBottom: 40, gap: 12 },
+    center:         { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+    card:           {
+        backgroundColor: '#fff', borderRadius: 18, padding: 20,
+        shadowColor: '#000', shadowOpacity: 0.07, shadowRadius: 14,
+        shadowOffset: { width: 0, height: 3 }, elevation: 5,
     },
     receiptIconWrap: {
-        width: 64, height: 64, borderRadius: 18,
+        width: 52, height: 52, borderRadius: 14,
         alignItems: 'center', justifyContent: 'center',
-        backgroundColor: `${appTheme.colors.primary}18`,
+        backgroundColor: `${appTheme.colors.primary}15`,
+        marginBottom: 4,
     },
-    divider: {
-        height: 1,
-        backgroundColor: appTheme.colors.border,
-        marginVertical: 2,
+    amountBox:      { alignItems: 'center', paddingVertical: 18, gap: 6 },
+    statusChip:     { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, marginTop: 2 },
+    divider:        { height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 },
+    statusBanner:   { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1.5, overflow: 'hidden' },
+    // Accordion
+    accordion:      { paddingVertical: 2 },
+    accordionHeader: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingVertical: 11, gap: 8,
     },
-    paymentBadge: {
-        paddingHorizontal: 14,
-        paddingVertical: 5,
-        borderRadius: 999,
+    accordionBody:  { paddingBottom: 10, paddingLeft: 4 },
+    badge:          {
+        backgroundColor: `${appTheme.colors.primary}12`,
+        paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, maxWidth: 120,
     },
-    qrImage: {
-        width: 220, height: 220,
-        borderRadius: 12,
-        backgroundColor: '#fff',
+    // Expenses
+    expenseBlock:   {
+        marginTop: 14, paddingTop: 12,
+        borderTopWidth: 1, borderTopColor: appTheme.colors.border, borderStyle: 'dashed',
     },
-    footer: {
-        marginTop: 16,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: appTheme.colors.border,
-        borderStyle: 'dashed',
+    expenseRow:     {
+        backgroundColor: `${appTheme.colors.primary}06`,
+        borderRadius: 10, padding: 10,
+        borderWidth: 1, borderColor: `${appTheme.colors.border}`,
     },
-    // Payment selection card
-    paymentCard: {
-        backgroundColor: '#fff',
-        borderRadius: 20,
-        padding: 20,
-        shadowColor: '#000',
-        shadowOpacity: 0.06,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 4,
-    },
-    optionBtn: {
-        borderWidth: 1.5,
-        borderColor: appTheme.colors.border,
-        borderRadius: 12,
-        padding: 14,
-        marginBottom: 10,
-    },
-    optionIcon: {
-        width: 40, height: 40, borderRadius: 10,
+    expenseThumb:   { width: 90, height: 65, borderRadius: 8 },
+    photoBtn:       { flexDirection: 'row', alignItems: 'center', padding: 4 },
+    editChip:       {
+        width: 28, height: 28, borderRadius: 8,
         alignItems: 'center', justifyContent: 'center',
+        backgroundColor: `${appTheme.colors.primary}15`,
     },
-    optionRadio: {
-        width: 18, height: 18, borderRadius: 9,
-        borderWidth: 2, borderColor: appTheme.colors.border,
+    // QR
+    qrImage:        { width: 200, height: 200, borderRadius: 10, backgroundColor: '#f9f9f9' },
+    // Payment options
+    optionBtn:      {
+        borderWidth: 1.5, borderColor: appTheme.colors.border,
+        borderRadius: 12, padding: 12, marginBottom: 10,
     },
-    cameraBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: appTheme.colors.primary,
-        borderStyle: 'dashed',
-        borderRadius: 12,
-        padding: 14,
+    optionIcon:     { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    radioCircle:    { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: appTheme.colors.border },
+    proofWrap:      { borderRadius: 12, overflow: 'hidden', position: 'relative' },
+    proofImg:       { width: '100%', height: 160, borderRadius: 12 },
+    retakeBtn:      {
+        position: 'absolute', bottom: 8, right: 8,
+        backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 8,
+        paddingHorizontal: 10, paddingVertical: 5,
+        flexDirection: 'row', alignItems: 'center',
     },
-    proofPreviewWrap: {
-        borderRadius: 12,
-        overflow: 'hidden',
-        position: 'relative',
+    reasonBox:      { backgroundColor: '#FEE2E2', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#FECACA' },
+    noteInput:      {
+        borderWidth: 1, borderColor: '#FECACA', borderRadius: 10,
+        padding: 10, fontSize: 13, color: appTheme.colors.text,
+        backgroundColor: '#fff', minHeight: 72, textAlignVertical: 'top',
     },
-    proofPreview: {
-        width: '100%',
-        height: 180,
-        borderRadius: 12,
+    resubmitBtn:    { backgroundColor: '#E53E3E', borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 4 },
+    camBtn:         {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1.5, borderColor: appTheme.colors.primary,
+        borderStyle: 'dashed', borderRadius: 12, padding: 12,
     },
-    retakeBtn: {
-        position: 'absolute',
-        bottom: 8,
-        right: 8,
-        backgroundColor: 'rgba(0,0,0,0.65)',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        flexDirection: 'row',
-        alignItems: 'center',
+    saveBtn:        {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: appTheme.colors.primary, borderRadius: 12, padding: 14, marginTop: 8,
     },
-    submitBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: appTheme.colors.primary,
-        borderRadius: 12,
-        padding: 14,
-        marginTop: 6,
+    // Modal
+    modalOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalBox:       { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
+    textInput:      {
+        borderWidth: 1, borderColor: appTheme.colors.border, borderRadius: 10,
+        padding: 10, fontSize: 14, color: appTheme.colors.text,
     },
-    submitBtnDisabled: {
-        opacity: 0.45,
-    },
-    statusBanner: {
-        backgroundColor: '#fff',
-        borderRadius: 14,
-        borderWidth: 1.5,
-        overflow: 'hidden',
-    },
+    modalPreview:   { width: '100%', height: 130, borderRadius: 10, marginBottom: 8 },
 });
