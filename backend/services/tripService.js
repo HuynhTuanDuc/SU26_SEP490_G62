@@ -467,6 +467,14 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return receipt;
 };
 
+const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes }) => {
+    const VALID = ['cash_collected', 'bank_transfer', 'client_credit'];
+    if (!VALID.includes(paymentType)) throw new Error('Hình thức thanh toán không hợp lệ');
+    if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
+        throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
+    }
+    return tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes });
+};
 
 module.exports = {
     getTripPool,
@@ -488,4 +496,5 @@ module.exports = {
     getPendingReceiptOrder,
     getDriverReceipts,
     getDriverReceiptDetail,
+    recordReceiptCollection,
 };

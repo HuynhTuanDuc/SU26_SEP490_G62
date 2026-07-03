@@ -324,8 +324,11 @@ export type DriverReceiptSummary = {
 };
 
 export type DriverReceiptDetail = DriverReceiptSummary & {
+    actual_receipt_id: number | null;
     shipment_id: number;
     shipment_receipt_id: number | null;
+    order_payment_type: string | null;
+    customer_id: number | null;
     cargo_weight_kg: number | null;
     customer_address: string | null;
     actual_distance_km: string | null;

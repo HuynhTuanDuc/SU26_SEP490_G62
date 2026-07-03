@@ -1029,9 +1029,12 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
 const getDriverReceiptDetail = async (receiptId, driverId) => {
     const COLS = `
             COALESCE(sr.id, orr.id)      AS receipt_id,
+            sr.id                        AS actual_receipt_id,
             orr.requesting_shipment_id   AS shipment_id,
             COALESCE(sr.id, NULL)        AS shipment_receipt_id,
-            COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
+            sr.payment_type              AS payment_type,
+            o.payment_type               AS order_payment_type,
+            o.customer_id                AS customer_id,
             COALESCE(sr.amount,
                 (SELECT GREATEST(
                     COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
@@ -1104,6 +1107,93 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return result.rows[0] ?? null;
 };
 
+const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes }) => {
+    // Tìm shipment_receipts — receiptId có thể là sr.id hoặc orr.id (fallback)
+    const FIND_SQL = `
+        SELECT sr.id AS sr_id, sr.payment_type,
+               orr.requesting_shipment_id AS shipment_id,
+               orr.order_id, orr.driver_id,
+               o.customer_id,
+               COALESCE(sr.amount,
+                   (SELECT GREATEST(
+                       COALESCE(SUM(os2.actual_price),0) - COALESCE(MAX(o2.prepaid_amount),0), 0
+                   ) FROM order_shipments os2
+                    JOIN orders o2 ON o2.id = os2.order_id
+                    WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
+               ) AS amount
+        FROM shipment_receipts sr
+        JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
+        JOIN orders o ON o.id = orr.order_id
+        WHERE (sr.id = $1 OR orr.id = $1)
+          AND orr.driver_id = $2
+        LIMIT 1`;
+
+    const found = await pool.query(FIND_SQL, [receiptId, driverId]);
+    const rec = found.rows[0];
+    if (!rec) throw new Error('Không tìm thấy phiếu thu hoặc bạn không có quyền');
+    if (rec.payment_type !== null) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Cập nhật payment_type lên shipment_receipts
+        await client.query(
+            `UPDATE shipment_receipts SET payment_type = $1 WHERE id = $2`,
+            [paymentType, rec.sr_id],
+        );
+
+        if (paymentType === 'cash_collected') {
+            // Khách trả tiền mặt cho tài → Driver Debt
+            await client.query(
+                `INSERT INTO debts (
+                    debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                    total_amount, due_date, notes, updated_by, created_at, updated_at
+                )
+                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
+                    CURRENT_DATE + INTERVAL '30 days',
+                    'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty',
+                    $1, NOW(), NOW())`,
+                [driverId, rec.order_id, rec.shipment_id, rec.amount],
+            );
+            if (proofUrl) {
+                await client.query(
+                    `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,
+                    [rec.sr_id, proofUrl],
+                );
+            }
+        } else if (paymentType === 'bank_transfer') {
+            // Khách chuyển khoản về công ty → lưu bằng chứng, không tạo debt
+            if (proofUrl) {
+                await client.query(
+                    `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,
+                    [rec.sr_id, proofUrl],
+                );
+            }
+        } else if (paymentType === 'client_credit') {
+            // Khách nợ công ty → Customer Debt
+            await client.query(
+                `INSERT INTO debts (
+                    debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                    total_amount, due_date, notes, updated_by, created_at, updated_at
+                )
+                 VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                    CURRENT_DATE + INTERVAL '30 days',
+                    'Khách hàng chưa thanh toán — ghi nhận công nợ',
+                    $5, NOW(), NOW())`,
+                [rec.customer_id, rec.order_id, rec.shipment_id, rec.amount, driverId],
+            );
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 module.exports = {
     insertAssignmentHistory,
     getDriverVehicleGroupId,
@@ -1133,4 +1223,5 @@ module.exports = {
     getOrderWithShipments,
     getDriverReceipts,
     getDriverReceiptDetail,
+    recordReceiptCollection,
 };

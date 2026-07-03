@@ -923,20 +923,13 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             [coordinatorId, requestId, notes ?? null],
         );
 
-        // Tạo phiếu thu để driver xem trong tab Phiếu thu
+        // Tạo phiếu thu để driver xem — payment_type = NULL cho đến khi driver xác nhận
         const totalAmount = computed.remaining_amount;
         await client.query(
             `INSERT INTO shipment_receipts
                  (shipment_id, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
              VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-            [
-                targetShipment.id,
-                totalAmount,
-                req.driver_id,
-                notes ?? null,
-                requestId,
-                coordinatorId,
-            ],
+            [targetShipment.id, totalAmount, req.driver_id, notes ?? null, requestId, coordinatorId],
         );
 
         await client.query('COMMIT');

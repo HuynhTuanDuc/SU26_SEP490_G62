@@ -372,6 +372,32 @@ const getDriverReceiptDetail = async (req, res) => {
     }
 };
 
+const recordReceiptCollection = async (req, res) => {
+    try {
+        const receiptId = Number(req.params.receiptId);
+        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+
+        const { payment_type, notes } = req.body;
+        if (!payment_type) return res.status(400).json({ error: 'Thiếu hình thức thanh toán' });
+
+        const file = req.files?.proof?.[0] ?? req.files?.image?.[0] ?? req.files?.photo?.[0];
+        const proofUrl = file?.path ?? null;
+
+        await tripService.recordReceiptCollection(receiptId, req.user.userId, {
+            paymentType: payment_type,
+            proofUrl,
+            notes: notes ?? null,
+        });
+
+        res.json({ message: 'Đã ghi nhận thanh toán phiếu thu' });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('Ảnh') ? 422
+            : err.message.includes('đã được ghi nhận') ? 409
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
 
 module.exports = {
     getTripPool,
@@ -396,4 +422,5 @@ module.exports = {
     getPendingReceiptOrder,
     getDriverReceipts,
     getDriverReceiptDetail,
+    recordReceiptCollection,
 };

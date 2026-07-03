@@ -104,9 +104,22 @@ router.patch(
 router.get('/pending-receipt', driverOnly, tripController.getPendingReceiptOrder);
 
 // Phiếu thu (coordinator đã tạo) — driver xem + show cho khách
-router.get('/receipts',                                   driverOnly, tripController.getDriverReceipts);
-router.get('/receipts/:receiptId',                        driverOnly, tripController.getDriverReceiptDetail);
+router.get('/receipts',            driverOnly, tripController.getDriverReceipts);
+router.get('/receipts/:receiptId', driverOnly, tripController.getDriverReceiptDetail);
 
+// Driver ghi nhận cách khách thanh toán sau khi có phiếu thu
+// Body: { payment_type: 'cash_collected' | 'bank_transfer' | 'client_credit', notes? }
+// File: proof / image / photo (bắt buộc với cash_collected và bank_transfer)
+router.post(
+    '/receipts/:receiptId/record-collection',
+    driverOnly,
+    handleUpload(uploadReceiptCollectionProof.fields([
+        { name: 'proof', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+        { name: 'photo', maxCount: 1 },
+    ])),
+    tripController.recordReceiptCollection,
+);
 
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
