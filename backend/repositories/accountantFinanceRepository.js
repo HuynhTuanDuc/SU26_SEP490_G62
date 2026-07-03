@@ -1,4 +1,4 @@
-const pool = require('../../config/database');
+﻿const pool = require('../config/database');
 
 const getFinanceStats = async () => {
 
@@ -36,3 +36,4 @@ const getFinanceStats = async () => {
 module.exports = {
     getFinanceStats,
 };
+

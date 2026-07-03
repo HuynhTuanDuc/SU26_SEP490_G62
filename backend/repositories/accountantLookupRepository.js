@@ -1,4 +1,4 @@
-const pool = require('../../config/database');
+﻿const pool = require('../config/database');
 
 const CACHE_TTL_MS = 30_000;
 let _cache       = null;
@@ -59,3 +59,4 @@ const getVehicleDriverLookup = async (bustCache = false) => {
 const invalidateLookupCache = () => { _cache = null; };
 
 module.exports = { getVehicleDriverLookup, invalidateLookupCache };
+

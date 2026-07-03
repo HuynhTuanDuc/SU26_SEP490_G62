@@ -1,4 +1,4 @@
-const pool = require('../../config/database');
+﻿const pool = require('../config/database');
 
 const getReportOverview = async ({ months = 6 } = {}) => {
     const [
@@ -52,7 +52,7 @@ const _getMonthlyRevenue = async (months) => {
 const _getTopCustomers = async () => {
     const { rows } = await pool.query(`
         SELECT
-            COALESCE(c.full_name, c.company_name, 'Không tên') AS name,
+            COALESCE(c.full_name, c.company_name, 'KhÃ´ng tÃªn') AS name,
             c.phone,
             c.company_name,
             COUNT(DISTINCT o.id)::int                          AS total_orders,
@@ -145,3 +145,4 @@ const _getRevenueByPaymentType = async (months) => {
 };
 
 module.exports = { getReportOverview };
+
