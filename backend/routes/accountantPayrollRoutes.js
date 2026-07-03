@@ -1,6 +1,6 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
-const ctrl = require('../../controllers/accountant/accountantPayrollController');
+const ctrl = require('../controllers/accountantPayrollController');
 
 router.get('/advances',                ctrl.getSalaryAdvances);
 router.patch('/advances/:id/disburse', ctrl.disburseAdvance);

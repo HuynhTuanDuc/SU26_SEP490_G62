@@ -1,5 +1,5 @@
-const accountantFinanceService = require('../../services/accountant/accountantFinanceService');
-const { sendError } = require('./_validate');
+﻿const accountantFinanceService = require('../services/accountantFinanceService');
+const { sendError } = require('../utils/accountantValidate');
 
 const getFinanceStats = async (_req, res) => {
     try {

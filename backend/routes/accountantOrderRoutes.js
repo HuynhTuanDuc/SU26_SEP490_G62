@@ -1,7 +1,7 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 
-const accountantOrderController = require('../../controllers/accountant/accountantOrderController');
+const accountantOrderController = require('../controllers/accountantOrderController');
 
 router.get('/lookup', accountantOrderController.getVehicleDriverLookup);
 router.get('/', accountantOrderController.getOrders);

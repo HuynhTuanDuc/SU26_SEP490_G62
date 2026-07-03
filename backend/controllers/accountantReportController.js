@@ -1,5 +1,5 @@
-const { getReportOverview } = require('../../repositories/accountant/accountantReportRepository');
-const { sendError, err400 } = require('./_validate');
+﻿const { getReportOverview } = require('../repositories/accountantReportRepository');
+const { sendError, err400 } = require('../utils/accountantValidate');
 
 const getOverview = async (req, res) => {
     try {

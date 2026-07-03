@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { router, useSegments } from 'expo-router';
 
 import { ERROR_MESSAGES } from '@/constants/error-messages';
+import { authEvents } from '@/lib/auth-events';
 import { profileService } from '@/services/profile-service';
 import { tokenStorage } from '@/services/token-storage';
 import type { UserProfile } from '@/types/profile';
@@ -61,6 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw error;
     }
   }, []);
+
+  useEffect(() => {
+    authEvents.register(signOut);
+  }, [signOut]);
 
   useEffect(() => {
     refreshSession().catch(() => {

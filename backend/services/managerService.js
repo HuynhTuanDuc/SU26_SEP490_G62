@@ -1,8 +1,8 @@
-const managerRepository = require('../repositories/managerRepository');
+﻿const managerRepository = require('../repositories/managerRepository');
 const debtService = require('./debtService');
 const companyService = require('./companyService');
 const coordinatorService = require('./coordinatorService');
-const accountantFinanceService = require('./accountant/accountantFinanceService');
+const accountantFinanceService = require('./accountantFinanceService');
 const notificationGateway = require('./notificationGateway');
 const notificationService = require('./notificationService');
 

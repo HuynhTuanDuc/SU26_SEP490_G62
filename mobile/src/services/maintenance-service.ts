@@ -1,7 +1,11 @@
 import { apiClient } from '@/lib/api-client';
 import type { MaintenanceRecord } from '@/types/maintenance';
+import type { Vehicle } from '@/types/vehicle';
 
 export const maintenanceService = {
+    getMyVehicle: (): Promise<{ vehicle: Vehicle }> =>
+        apiClient.get('/api/drivers/me/vehicle'),
+
     getMyMaintenance: (): Promise<{ records: MaintenanceRecord[] }> =>
         apiClient.get('/api/drivers/maintenance'),
 

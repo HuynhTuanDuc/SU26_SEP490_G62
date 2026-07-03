@@ -1,5 +1,5 @@
-const accountantPayrollRepository = require('../../repositories/accountant/accountantPayrollRepository');
-const { posInt, enumVal, validMonth, validYear, sendError, err400 } = require('./_validate');
+﻿const accountantPayrollRepository = require('../repositories/accountantPayrollRepository');
+const { posInt, enumVal, validMonth, validYear, sendError, err400 } = require('../utils/accountantValidate');
 
 const ADVANCE_STATUSES = ['pending', 'approved', 'disbursed', 'rejected'];
 const PAYROLL_STATUSES = ['draft', 'confirmed', 'paid'];

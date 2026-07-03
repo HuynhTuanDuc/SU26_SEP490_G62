@@ -1,6 +1,6 @@
-const accountantOrderRepository = require('../../repositories/accountant/accountantOrderRepository');
-const accountantPaymentRepository = require('../../repositories/accountant/accountantPaymentRepository');
-const accountantLookupRepository = require('../../repositories/accountant/accountantLookupRepository');
+﻿const accountantOrderRepository = require('../repositories/accountantOrderRepository');
+const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
+const accountantLookupRepository = require('../repositories/accountantLookupRepository');
 
 const getOrders = async (filters, page, limit) => {
     return accountantOrderRepository.getAllOrders(filters, page, limit);

@@ -1,5 +1,5 @@
-const accountantDebtRepository = require('../../repositories/accountant/accountantDebtRepository');
-const { posInt, enumVal, pageParams, sendError, err400 } = require('./_validate');
+﻿const accountantDebtRepository = require('../repositories/accountantDebtRepository');
+const { posInt, enumVal, pageParams, sendError, err400 } = require('../utils/accountantValidate');
 
 const DEBT_TYPES   = ['customer', 'driver'];
 const DEBT_STATUSES = ['paid', 'partial', 'unpaid'];

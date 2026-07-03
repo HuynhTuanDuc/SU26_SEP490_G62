@@ -1,5 +1,5 @@
-const accountantPaymentRepository = require('../../repositories/accountant/accountantPaymentRepository');
-const { posInt, posAmount, enumVal, sendError, err400 } = require('./_validate');
+﻿const accountantPaymentRepository = require('../repositories/accountantPaymentRepository');
+const { posInt, posAmount, enumVal, sendError, err400 } = require('../utils/accountantValidate');
 
 const PERSON_TYPES    = ['customer', 'driver'];
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'offset'];

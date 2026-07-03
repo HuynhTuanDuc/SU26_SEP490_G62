@@ -1,5 +1,15 @@
 const driverService = require('../services/driverService');
 
+const getMyVehicle = async (req, res) => {
+    try {
+        const vehicle = await driverService.getDriverVehicle(req.user.userId);
+        if (!vehicle) return res.status(404).json({ error: 'Tài xế chưa được phân công xe' });
+        res.json({ vehicle });
+    } catch (err) {
+        res.status(err.statusCode || 500).json({ error: err.message });
+    }
+};
+
 const getAllDrivers = async (_req, res) => {
     try {
         const drivers = await driverService.getAllDrivers();
@@ -46,4 +56,4 @@ const completeMaintenance = async (req, res) => {
     }
 };
 
-module.exports = { getAllDrivers, listMaintenance, uploadMaintenanceBill, updateMaintenanceCost, completeMaintenance };
+module.exports = { getAllDrivers, getMyVehicle, listMaintenance, uploadMaintenanceBill, updateMaintenanceCost, completeMaintenance };

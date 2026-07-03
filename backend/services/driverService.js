@@ -24,6 +24,8 @@ const buildMaintenanceVerificationMessage = (vehicle) => {
 
 const getAllDrivers = async () => driverRepository.getAllDrivers();
 
+const getDriverVehicle = async (profileId) => driverRepository.getDriverVehicle(profileId);
+
 const listMaintenanceForDriver = async (driverId) => {
     const records = await vehicleManagementRepository.getMaintenanceRecordsForDriver(driverId);
     return records;
@@ -142,6 +144,7 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
 
 module.exports = {
     getAllDrivers,
+    getDriverVehicle,
     listMaintenanceForDriver,
     uploadMaintenanceBill,
     updateMaintenanceCost,

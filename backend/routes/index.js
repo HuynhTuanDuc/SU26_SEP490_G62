@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 
 // Import all route modules
@@ -17,7 +17,7 @@ const payrollRoutes = require('./payrollRoutes');
 const debtRoutes = require('./debtRoutes');
 const vehicleManagementRoutes = require('./vehicleManagementRoutes');
 const leaveRoutes = require('./leaveRoutes');
-const accountantRoutes = require('./accountant/accountantRoutes');
+const accountantRoutes = require('./accountantRoutes');
 const cashCollectionRoutes   = require('./cashCollectionRoutes');
 const companyRoutes          = require('./companyRoutes');
 const managerRoutes          = require('./managerRoutes');

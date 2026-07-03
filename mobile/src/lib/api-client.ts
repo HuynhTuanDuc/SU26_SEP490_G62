@@ -1,9 +1,7 @@
-import { Alert } from 'react-native';
-import { router } from 'expo-router';
-
 import { API_BASE_URL } from '@/constants/api';
 import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { ApiError } from '@/lib/api-error';
+import { authEvents } from '@/lib/auth-events';
 import { tokenStorage } from '@/services/token-storage';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
@@ -15,22 +13,17 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-let isRedirectingToLogin = false;
+let isHandlingUnauthorized = false;
 
 async function handleUnauthorized(): Promise<void> {
-  if (isRedirectingToLogin) return;
-
-  isRedirectingToLogin = true;
-  await tokenStorage.removeToken();
-
-  Alert.alert(
-    'Phiên đăng nhập hết hạn',
-    ERROR_MESSAGES.sessionExpired,
-    [{ text: 'Đăng nhập', onPress: () => { isRedirectingToLogin = false; } }],
-    { cancelable: false },
-  );
-
-  router.replace('/login');
+  if (isHandlingUnauthorized) return;
+  isHandlingUnauthorized = true;
+  try {
+    // AuthProvider.signOut clears token + state → triggers navigation to /login
+    await authEvents.emitUnauthorized();
+  } finally {
+    setTimeout(() => { isHandlingUnauthorized = false; }, 5000);
+  }
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {

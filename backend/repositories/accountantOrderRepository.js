@@ -194,11 +194,11 @@ const insertDebtForShipment = async (client, {
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('driver', $1, NULL, NULL, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
+             VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
+                CURRENT_DATE + INTERVAL '30 days',
                 'Tài xế đã thu nhưng chưa mang tiền về công ty',
-                $6, NOW(), NOW())`,
-            [driverId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+                $5, NOW(), NOW())`,
+            [driverId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     } else if (normalizedPaymentType === 'client_credit') {
 
@@ -208,16 +208,10 @@ const insertDebtForShipment = async (client, {
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('customer', NULL, $1, NULL, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
-                'Khách chưa thanh toán', $6, NOW(), NOW())`,
-            [customerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
-        );
-        await client.query(
-            `UPDATE customers
-             SET current_debt = current_debt + $1, updated_at = NOW()
-             WHERE id = $2`,
-            [actualPrice, customerId]
+             VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                CURRENT_DATE + INTERVAL '30 days',
+                'Khách chưa thanh toán', $5, NOW(), NOW())`,
+            [customerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     } else if (partnerId && normalizedPaymentType === 'partner') {
 
@@ -227,10 +221,10 @@ const insertDebtForShipment = async (client, {
                 total_amount, due_date, notes,
                 updated_by, created_at, updated_at
             )
-             VALUES ('partner', NULL, NULL, $1, $2, $3, $4, 0,
-                CURRENT_DATE + INTERVAL '30 days', $5,
-                'Đối tác chưa thanh toán', $6, NOW(), NOW())`,
-            [partnerId, orderId, shipmentId, actualPrice, debtStatus, createdByUserId]
+             VALUES ('partner', NULL, NULL, $1, $2, $3, $4,
+                CURRENT_DATE + INTERVAL '30 days',
+                'Đối tác chưa thanh toán', $5, NOW(), NOW())`,
+            [partnerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
     }
 
