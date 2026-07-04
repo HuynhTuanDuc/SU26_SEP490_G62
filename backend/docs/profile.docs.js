@@ -10,17 +10,19 @@
  * /api/profile/me:
  *   get:
  *     tags: [Profile]
- *     summary: Lấy hồ sơ cá nhân
+ *     summary: Lấy thông tin hồ sơ cá nhân
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Hồ sơ đầy đủ
- *       404:
- *         description: Không tìm thấy hồ sơ
+ *         description: Thông tin profile đầy đủ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/UserProfile'
  *   patch:
  *     tags: [Profile]
- *     summary: Cập nhật hồ sơ (không thể đổi email)
+ *     summary: Cập nhật thông tin hồ sơ (full_name, phone, ...)
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -31,18 +33,9 @@
  *             properties:
  *               full_name: { type: string }
  *               phone:     { type: string }
- *               dob:       { type: string, format: date, example: "1995-06-15" }
- *               gender:    { type: string, enum: [male, female, other] }
- *               address:   { type: string }
- *               city:      { type: string }
- *               country:   { type: string, example: VN }
  *     responses:
  *       200:
  *         description: Cập nhật thành công
- *       409:
- *         description: Số điện thoại đã tồn tại
- *       422:
- *         description: Dữ liệu không hợp lệ
  */
 
 /**
@@ -66,9 +59,7 @@
  *                 format: binary
  *     responses:
  *       200:
- *         description: URL ảnh mới
- *       422:
- *         description: Thiếu file ảnh
+ *         description: Upload thành công, trả về avatar_url mới
  */
 
 /**
@@ -87,20 +78,62 @@
  *             type: object
  *             required: [currentPassword, newPassword]
  *             properties:
- *               currentPassword:
- *                 type: string
- *                 format: password
- *               newPassword:
- *                 type: string
- *                 format: password
- *                 minLength: 6
+ *               currentPassword: { type: string }
+ *               newPassword:     { type: string, minLength: 6 }
  *     responses:
  *       200:
  *         description: Đổi mật khẩu thành công
  *       401:
  *         description: Mật khẩu hiện tại không đúng
- *       422:
- *         description: Dữ liệu không hợp lệ
+ */
+
+/**
+ * @swagger
+ * /api/profile/me/email/send-code:
+ *   post:
+ *     tags: [Profile]
+ *     summary: Gửi mã xác nhận để đổi email
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newEmail]
+ *             properties:
+ *               newEmail: { type: string }
+ *     responses:
+ *       200:
+ *         description: Đã gửi mã xác nhận về email mới
+ *       409:
+ *         description: Email đã được sử dụng
+ */
+
+/**
+ * @swagger
+ * /api/profile/me/email/verify:
+ *   post:
+ *     tags: [Profile]
+ *     summary: Xác nhận mã và hoàn tất đổi email
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [newEmail, code]
+ *             properties:
+ *               newEmail: { type: string }
+ *               code:     { type: string, example: AB3X7Z }
+ *     responses:
+ *       200:
+ *         description: Email đã được cập nhật thành công
+ *       400:
+ *         description: Mã sai hoặc hết hạn
  */
 
 /**
@@ -108,7 +141,8 @@
  * /api/profile/me/device-token:
  *   post:
  *     tags: [Profile]
- *     summary: Đăng ký / cập nhật Expo Push Token để nhận thông báo (dùng sau khi đăng nhập)
+ *     summary: Đăng ký Expo Push Token để nhận push notification
+ *     description: Gọi sau khi login hoặc khi app khởi động để cập nhật device token.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -124,7 +158,23 @@
  *                 example: ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]
  *     responses:
  *       200:
- *         description: Token đã được lưu
- *       422:
- *         description: Token không hợp lệ
+ *         description: Đã đăng ký device token thành công
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     UserProfile:
+ *       type: object
+ *       properties:
+ *         id:         { type: integer }
+ *         email:      { type: string }
+ *         full_name:  { type: string, nullable: true }
+ *         phone:      { type: string, nullable: true }
+ *         avatar_url: { type: string, nullable: true }
+ *         role:       { type: string, enum: [driver, coordinator, manager, accountant] }
+ *         is_active:  { type: boolean }
+ *         last_login: { type: string, format: date-time, nullable: true }
+ *         created_at: { type: string, format: date-time }
  */

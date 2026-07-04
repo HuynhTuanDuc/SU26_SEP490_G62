@@ -2,7 +2,7 @@
  * @swagger
  * tags:
  *   name: Notifications
- *   description: Thông báo in-app của user hiện tại
+ *   description: Thông báo in-app của user hiện tại (push notification qua Expo)
  */
 
 /**
@@ -10,7 +10,7 @@
  * /api/notifications:
  *   get:
  *     tags: [Notifications]
- *     summary: Danh sách thông báo của user hiện tại
+ *     summary: Danh sách thông báo (mới nhất trước)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -20,9 +20,13 @@
  *       - in: query
  *         name: limit
  *         schema: { type: integer, default: 20 }
+ *       - in: query
+ *         name: unread_only
+ *         schema: { type: boolean }
+ *         description: Chỉ lấy thông báo chưa đọc
  *     responses:
  *       200:
- *         description: Danh sách thông báo (mới nhất trước)
+ *         description: Danh sách notifications kèm unread_count
  */
 
 /**
@@ -30,12 +34,12 @@
  * /api/notifications/read-all:
  *   patch:
  *     tags: [Notifications]
- *     summary: Đánh dấu tất cả thông báo là đã đọc
+ *     summary: Đánh dấu tất cả thông báo đã đọc
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Đã đánh dấu tất cả đã đọc
+ *         description: Đã đánh dấu tất cả là đã đọc
  */
 
 /**
@@ -53,7 +57,7 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Chi tiết thông báo
+ *         description: Chi tiết notification kèm metadata
  *       404:
  *         description: Không tìm thấy
  */
@@ -73,7 +77,5 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Đã đánh dấu đã đọc
- *       404:
- *         description: Không tìm thấy
+ *         description: Đã đánh dấu đọc
  */

@@ -2,7 +2,7 @@
  * @swagger
  * tags:
  *   name: Trips
- *   description: Quản lý chuyến vận chuyển (Driver)
+ *   description: Quản lý chuyến vận chuyển (Driver only)
  */
 
 /**
@@ -10,14 +10,94 @@
  * /api/trips/pool:
  *   get:
  *     tags: [Trips]
- *     summary: Danh sách chuyến có sẵn theo nhóm xe của driver
+ *     summary: Danh sách chuyến AVAILABLE theo nhóm xe của driver (Trip Pool)
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 5 }
+ *       - in: query
+ *         name: vehicleGroupId
+ *         schema: { type: integer }
+ *         description: Lọc thêm theo nhóm xe cụ thể (tuỳ chọn)
  *     responses:
  *       200:
  *         description: Mảng trips AVAILABLE thuộc vehicle group của driver
  *       422:
  *         description: Driver chưa được gán xe
+ */
+
+/**
+ * @swagger
+ * /api/trips/pool-shipment/{shipmentId}:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Chi tiết shipment trong pool (chưa được claim)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: shipmentId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Chi tiết shipment bao gồm stops, cargo, route
+ *       404:
+ *         description: Không tìm thấy hoặc đã được claim
+ */
+
+/**
+ * @swagger
+ * /api/trips/pool/{orderId}:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Chi tiết order trong pool (chưa được claim)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Chi tiết order và các shipments kèm theo
+ *       404:
+ *         description: Không tìm thấy
+ */
+
+/**
+ * @swagger
+ * /api/trips/active:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Chuyến đang hoạt động của driver (CLAIMED / PICKING / TRANSIT / ARRIVED / RETURNING)
+ *     description: |
+ *       Trả về trip kèm đầy đủ `stops[]` nhúng sẵn — không cần gọi API stops riêng.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Trip đang active (hoặc null nếu không có chuyến nào)
+ */
+
+/**
+ * @swagger
+ * /api/trips/pending-receipt:
+ *   get:
+ *     tags: [Trips]
+ *     summary: Đơn cash đã COMPLETED nhưng driver cuối chưa gửi yêu cầu phiếu thu
+ *     description: Dùng để hiển thị banner nhắc nhở trên màn hình home.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: order object hoặc null nếu không có đơn nào đang chờ
  */
 
 /**
@@ -38,7 +118,7 @@
  * /api/trips/history:
  *   get:
  *     tags: [Trips]
- *     summary: Lịch sử chuyến của driver (COMPLETED / CANCELLED / FAILED)
+ *     summary: Lịch sử chuyến đã kết thúc (COMPLETED / CANCELLED / FAILED)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -47,10 +127,10 @@
  *         schema: { type: integer, default: 1 }
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 10 }
+ *         schema: { type: integer, default: 20 }
  *     responses:
  *       200:
- *         description: Danh sách chuyến đã kết thúc
+ *         description: Danh sách chuyến đã kết thúc phân trang
  */
 
 /**
@@ -58,7 +138,7 @@
  * /api/trips/orders/{orderId}:
  *   get:
  *     tags: [Trips]
- *     summary: Chi tiết một order theo orderId
+ *     summary: Chi tiết order đã hoàn thành (dùng trong màn hình lịch sử)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -68,62 +148,11 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Chi tiết order
+ *         description: Chi tiết order và các shipments
+ *       403:
+ *         description: Driver không có quyền xem order này
  *       404:
  *         description: Không tìm thấy
- */
-
-/**
- * @swagger
- * /api/trips/pool-shipment/{shipmentId}:
- *   get:
- *     tags: [Trips]
- *     summary: Chi tiết shipment trong pool (chưa được claim)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: shipmentId
- *         required: true
- *         schema: { type: integer }
- *     responses:
- *       200:
- *         description: Chi tiết shipment
- *       404:
- *         description: Không tìm thấy
- */
-
-/**
- * @swagger
- * /api/trips/pool/{orderId}:
- *   get:
- *     tags: [Trips]
- *     summary: Chi tiết order trong pool (chưa được claim)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: orderId
- *         required: true
- *         schema: { type: integer }
- *     responses:
- *       200:
- *         description: Chi tiết order
- *       404:
- *         description: Không tìm thấy
- */
-
-/**
- * @swagger
- * /api/trips/active:
- *   get:
- *     tags: [Trips]
- *     summary: Lấy chuyến đang hoạt động của driver
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Trip đang active hoặc null nếu không có
  */
 
 /**
@@ -131,7 +160,10 @@
  * /api/trips/{id}/claim:
  *   post:
  *     tags: [Trips]
- *     summary: Nhận chuyến (atomic optimistic lock — first commit wins)
+ *     summary: Nhận chuyến từ pool (atomic lock — BR-005/007)
+ *     description: |
+ *       Driver chỉ được có 1 active trip (BR-005).
+ *       Dùng atomic optimistic lock — first commit wins (BR-007).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -139,13 +171,14 @@
  *         name: id
  *         required: true
  *         schema: { type: integer }
+ *         description: shipment_id
  *     responses:
  *       200:
- *         description: Nhận chuyến thành công, trip chuyển sang CLAIMED
+ *         description: Nhận chuyến thành công — trip chuyển sang CLAIMED
  *       409:
  *         description: Chuyến đã được tài xế khác nhận
  *       422:
- *         description: Driver đang có chuyến hoạt động hoặc không đúng nhóm xe
+ *         description: Driver đang có chuyến active hoặc không đúng nhóm xe
  */
 
 /**
@@ -153,7 +186,10 @@
  * /api/trips/{id}/status:
  *   patch:
  *     tags: [Trips]
- *     summary: Cập nhật trạng thái lifecycle (chỉ cho phép tiến về phía trước)
+ *     summary: Cập nhật trạng thái lifecycle (BR-009 — không được bỏ qua trạng thái)
+ *     description: |
+ *       Các transition hợp lệ: CLAIMED→PICKING, TRANSIT→ARRIVED, ARRIVED→RETURNING, TRANSIT→FAILED.
+ *       Dùng endpoint chuyên biệt cho: PICKING→TRANSIT (`start-transit`), ARRIVED→COMPLETED (`complete`), RETURNING→COMPLETED (`return-complete`).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -172,74 +208,14 @@
  *               status:
  *                 type: string
  *                 enum: [picking, transit, arrived, failed, returning]
- *                 example: transit
+ *               reason:
+ *                 type: string
+ *                 description: Lý do (bắt buộc khi status = failed)
  *     responses:
  *       200:
  *         description: Cập nhật trạng thái thành công
  *       422:
- *         description: Transition không hợp lệ (skip / reverse)
- */
-
-/**
- * @swagger
- * /api/trips/{id}/complete:
- *   post:
- *     tags: [Trips]
- *     summary: Hoàn thành chuyến (bắt buộc ít nhất 1 ảnh proof)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     requestBody:
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               proof:
- *                 type: string
- *                 format: binary
- *                 description: Ảnh biên nhận giao hàng (camera only)
- *               receipt:
- *                 type: string
- *                 format: binary
- *     responses:
- *       200:
- *         description: Hoàn thành, trip chuyển sang COMPLETED
- *       422:
- *         description: Thiếu ảnh proof hoặc trip không ở trạng thái ARRIVED
- */
-
-/**
- * @swagger
- * /api/trips/{id}/release:
- *   post:
- *     tags: [Trips]
- *     summary: Hủy chuyến sớm (CLAIMED/PICKING → trả về pool)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *                 example: Xe hỏng đột xuất
- *     responses:
- *       200:
- *         description: Đã hủy, order trở về pool AVAILABLE
- *       422:
- *         description: Không đủ điều kiện hủy (trip đã qua trạng thái PICKING)
+ *         description: Transition không hợp lệ
  */
 
 /**
@@ -247,7 +223,10 @@
  * /api/trips/{id}/start-transit:
  *   post:
  *     tags: [Trips]
- *     summary: Xác nhận đã lấy hàng, bắt đầu vận chuyển — PICKING → TRANSIT (bắt buộc ảnh, BR-013/014)
+ *     summary: Xác nhận lấy hàng — PICKING → TRANSIT (bắt buộc ảnh, BR-013/014)
+ *     description: |
+ *       Nếu trip có pickup stops: gọi sau khi tất cả pickup stops đã COMPLETED.
+ *       Nếu trip không có stops: bắt buộc upload ảnh lấy hàng realtime.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -256,17 +235,15 @@
  *         required: true
  *         schema: { type: integer }
  *     requestBody:
- *       required: true
  *       content:
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [proof]
  *             properties:
  *               proof:
  *                 type: string
  *                 format: binary
- *                 description: Ảnh chụp thực tế khi lấy hàng (camera realtime)
+ *                 description: Ảnh lấy hàng realtime (bắt buộc khi không có pickup stops)
  *     responses:
  *       200:
  *         description: Trip chuyển sang TRANSIT
@@ -276,10 +253,16 @@
 
 /**
  * @swagger
- * /api/trips/{id}/mark-unpaid:
+ * /api/trips/{id}/complete:
  *   post:
  *     tags: [Trips]
- *     summary: Báo khách chưa thanh toán — tạo Customer Debt (TH3)
+ *     summary: Hoàn thành chuyến — ARRIVED → COMPLETED (BR-015/016/017)
+ *     description: |
+ *       Nếu trip có delivery stops: gọi sau khi tất cả delivery stops đã COMPLETED — ảnh không cần gửi lại.
+ *       Nếu trip không có stops: bắt buộc upload ảnh giao hàng realtime (camera only, BR-016/017).
+ *
+ *       Sau COMPLETED, nếu `is_final_shipment = true` và `payment_type = cash`:
+ *       driver tiếp tục nhập `actual_km` và gửi `order_receipt_requests` (BR-008B).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -288,24 +271,23 @@
  *         required: true
  *         schema: { type: integer }
  *     requestBody:
- *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [amount]
  *             properties:
- *               amount:
- *                 type: number
- *                 example: 500000
- *               notes:
+ *               proof:
  *                 type: string
- *                 example: Khách hẹn thanh toán sau
+ *                 format: binary
+ *                 description: Ảnh giao hàng realtime (bắt buộc khi không có delivery stops)
+ *               actual_km:
+ *                 type: number
+ *                 description: Số km thực tế (bắt buộc cho mọi driver)
  *     responses:
  *       200:
- *         description: Đã tạo Customer Debt
- *       400:
- *         description: Số tiền không hợp lệ
+ *         description: Hoàn thành, trip chuyển sang COMPLETED. KPI tính ngay lập tức (BR-030).
+ *       422:
+ *         description: Thiếu ảnh hoặc trip không ở trạng thái ARRIVED
  */
 
 /**
@@ -340,10 +322,10 @@
 
 /**
  * @swagger
- * /api/trips/{id}/payment:
+ * /api/trips/{id}/release:
  *   post:
  *     tags: [Trips]
- *     summary: Ghi nhận khách thanh toán tiền mặt cho driver — tạo Driver Debt (TH2)
+ *     summary: Hủy nhận chuyến sớm (CLAIMED/PICKING → trả về pool AVAILABLE)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -352,31 +334,17 @@
  *         required: true
  *         schema: { type: integer }
  *     requestBody:
- *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
- *             required: [amount, receipt]
  *             properties:
- *               amount:
- *                 type: number
- *                 example: 1500000
- *               paymentMethod:
- *                 type: string
- *                 enum: [cash, bank_transfer]
- *                 default: cash
- *               notes:
- *                 type: string
- *               receipt:
- *                 type: string
- *                 format: binary
- *                 description: Ảnh biên lai (bắt buộc)
+ *               reason: { type: string, example: Xe hỏng đột xuất }
  *     responses:
- *       201:
- *         description: Đã ghi nhận, tạo Driver Debt
+ *       200:
+ *         description: Đã hủy — order trở về pool AVAILABLE
  *       422:
- *         description: Thiếu ảnh hoặc số tiền không hợp lệ
+ *         description: Trip đã qua trạng thái PICKING không thể release
  */
 
 /**
@@ -384,7 +352,7 @@
  * /api/trips/{id}/payments:
  *   get:
  *     tags: [Trips]
- *     summary: Danh sách thanh toán đã ghi nhận cho chuyến
+ *     summary: Danh sách ghi nhận thanh toán tiền mặt của chuyến
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -394,7 +362,7 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Danh sách payment records
+ *         description: Mảng payment records
  */
 
 /**
@@ -402,7 +370,7 @@
  * /api/trips/{id}/payment-summary:
  *   get:
  *     tags: [Trips]
- *     summary: Tổng quan thanh toán của chuyến (tổng thu, còn nợ)
+ *     summary: Tổng quan thanh toán của chuyến
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -420,7 +388,7 @@
  * /api/trips/{id}/payments/{paymentId}:
  *   patch:
  *     tags: [Trips]
- *     summary: Sửa ghi nhận thanh toán tiền mặt (TH2) — amount và/hoặc ảnh biên lai
+ *     summary: Sửa ghi nhận thanh toán tiền mặt — amount và/hoặc ảnh biên lai
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -446,12 +414,10 @@
  *               receipt:
  *                 type: string
  *                 format: binary
- *                 description: Ảnh biên lai mới (tuỳ chọn, giữ ảnh cũ nếu không gửi)
+ *                 description: Ảnh biên lai mới (tuỳ chọn)
  *     responses:
  *       200:
  *         description: Cập nhật thành công
- *       400:
- *         description: Thiếu amount hoặc ID không hợp lệ
  *       403:
  *         description: Không phải payment của driver này
  *       404:
@@ -460,23 +426,10 @@
 
 /**
  * @swagger
- * /api/trips/pending-receipt:
- *   get:
- *     tags: [Trips]
- *     summary: Đơn cash đã COMPLETED nhưng driver cuối chưa gửi yêu cầu phiếu thu (banner nhắc trên home)
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: order (object) hoặc null nếu không có đơn nào đang chờ
- */
-
-/**
- * @swagger
  * /api/trips/receipts:
  *   get:
  *     tags: [Trips]
- *     summary: Danh sách phiếu thu đã được coordinator tạo cho các đơn của driver
+ *     summary: Danh sách phiếu thu coordinator đã tạo cho các đơn của driver
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -488,7 +441,7 @@
  *         schema: { type: integer, default: 20, maximum: 50 }
  *     responses:
  *       200:
- *         description: Danh sách phiếu thu (shipment_receipts)
+ *         description: Danh sách phiếu thu (shipment_receipts) bao gồm total_expenses
  */
 
 /**
@@ -496,7 +449,7 @@
  * /api/trips/receipts/{receiptId}:
  *   get:
  *     tags: [Trips]
- *     summary: Chi tiết phiếu thu — dùng để show cho khách hàng xem
+ *     summary: Chi tiết phiếu thu — dùng để show cho khách hàng, xác nhận thanh toán
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -506,27 +459,95 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Chi tiết phiếu thu
+ *         description: Chi tiết phiếu thu kèm thông tin đơn hàng và chi phí phát sinh
  *       403:
  *         description: Phiếu thu không thuộc về driver này
+ *       404:
+ *         description: Không tìm thấy
  */
 
 /**
  * @swagger
- * /api/trips/{id}/stops:
- *   get:
+ * /api/trips/receipts/{receiptId}/record-collection:
+ *   post:
  *     tags: [Trips]
- *     summary: Danh sách stops của chuyến theo thứ tự (BR-011)
+ *     summary: Driver xác nhận hình thức thanh toán sau khi coordinator tạo phiếu thu
+ *     description: |
+ *       3 hình thức (mục 14 — CLAUDE.md §14/§15):
+ *
+ *       | payment_type | Ảnh | Công nợ |
+ *       |---|---|---|
+ *       | `bank_transfer` | Bắt buộc (screenshot chuyển khoản) | Không tạo debt |
+ *       | `cash_collected` | Bắt buộc (tiền mặt driver nhận) | Tạo Driver Debt |
+ *       | `client_credit` | Không cần | Tạo Customer Debt |
+ *
+ *       Màn hình Receipt Detail luôn hiển thị QR ngân hàng công ty để driver show cho khách.
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: receiptId
  *         required: true
  *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [payment_type]
+ *             properties:
+ *               payment_type:
+ *                 type: string
+ *                 enum: [bank_transfer, cash_collected, client_credit]
+ *               notes:
+ *                 type: string
+ *                 description: Ghi chú tuỳ chọn
+ *               proof:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh xác nhận (bắt buộc với bank_transfer và cash_collected)
  *     responses:
  *       200:
- *         description: Mảng stops với sequence_order, type (PICKUP/DELIVERY), status
+ *         description: Đã ghi nhận hình thức thanh toán, debt được tạo tự động nếu cần
+ *       400:
+ *         description: payment_type không hợp lệ hoặc thiếu ảnh
+ *       409:
+ *         description: Phiếu thu đã được xác nhận trước đó
+ */
+
+/**
+ * @swagger
+ * /api/trips/receipt-request/{orrId}/resubmit:
+ *   post:
+ *     tags: [Trips]
+ *     summary: Driver gửi lại yêu cầu phiếu thu sau khi bị coordinator từ chối
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orrId
+ *         required: true
+ *         schema: { type: integer }
+ *         description: order_receipt_request id
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               actual_km:
+ *                 type: number
+ *                 description: Km thực tế (tuỳ chọn, cập nhật lại nếu có sai sót)
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Yêu cầu đã được gửi lại, status = pending
+ *       400:
+ *         description: Yêu cầu không ở trạng thái rejected
+ *       403:
+ *         description: Không phải yêu cầu của driver này
  */
 
 /**
@@ -534,7 +555,7 @@
  * /api/trips/{id}/stops/{stopId}/arrive:
  *   patch:
  *     tags: [Trips]
- *     summary: Xác nhận đã tới điểm stop
+ *     summary: Xác nhận đã tới điểm stop (Multi-Stop — BR-011)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -542,6 +563,7 @@
  *         name: id
  *         required: true
  *         schema: { type: integer }
+ *         description: shipment_id
  *       - in: path
  *         name: stopId
  *         required: true
@@ -550,7 +572,7 @@
  *       200:
  *         description: Stop chuyển sang arrived
  *       422:
- *         description: Stop trước chưa hoàn thành (BR-011)
+ *         description: Stop trước chưa hoàn thành (BR-011 — thứ tự bắt buộc)
  */
 
 /**
@@ -558,7 +580,9 @@
  * /api/trips/{id}/stops/{stopId}/complete:
  *   patch:
  *     tags: [Trips]
- *     summary: Hoàn thành stop (lấy hàng hoặc giao hàng)
+ *     summary: Hoàn thành stop — lấy hàng (PICKUP) hoặc giao hàng (DELIVERY)
+ *     description: |
+ *       Ảnh là tuỳ chọn cho từng stop — ảnh chính của cả trip được upload khi gọi `start-transit` hoặc `complete`.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -570,6 +594,16 @@
  *         name: stopId
  *         required: true
  *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               proof:
+ *                 type: string
+ *                 format: binary
+ *                 description: Ảnh xác nhận tại điểm stop (tuỳ chọn)
  *     responses:
  *       200:
  *         description: Stop hoàn thành

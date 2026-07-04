@@ -1,24 +1,26 @@
 /**
  * @swagger
  * tags:
- *   - name: Vehicle Management
- *     description: Manager vehicle group and vehicle lifecycle management
+ *   - name: Vehicle Groups
+ *     description: Quản lý nhóm xe (Manager)
+ *   - name: Vehicles
+ *     description: Quản lý xe và vòng đời xe (Manager)
  */
 
 /**
  * @swagger
  * /api/admin/vehicle-groups:
  *   get:
- *     tags: [Vehicle Management]
- *     summary: List vehicle groups
+ *     tags: [Vehicle Groups]
+ *     summary: Danh sách nhóm xe
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Vehicle group list
+ *         description: Mảng vehicle groups
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Create a vehicle group
+ *     tags: [Vehicle Groups]
+ *     summary: Tạo nhóm xe mới
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -27,24 +29,22 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, price_per_km]
+ *             required: [name]
  *             properties:
- *               name: { type: string, example: 1T25 }
- *               description: { type: string, nullable: true }
- *               max_load_weight_kg: { type: number, nullable: true, example: 1250 }
- *               price_per_km: { type: number, example: 18000 }
- *               upgrade_allowed: { type: boolean, example: true }
+ *               name:        { type: string, example: 5m2 }
+ *               description: { type: string }
+ *               max_weight:  { type: number, description: Tải trọng tối đa (kg) }
  *     responses:
  *       201:
- *         description: Vehicle group created
+ *         description: Tạo nhóm xe thành công
  */
 
 /**
  * @swagger
  * /api/admin/vehicle-groups/{id}:
  *   get:
- *     tags: [Vehicle Management]
- *     summary: Get vehicle group detail
+ *     tags: [Vehicle Groups]
+ *     summary: Chi tiết nhóm xe
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -54,12 +54,10 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Vehicle group detail
- *       404:
- *         description: Vehicle group not found
+ *         description: Chi tiết nhóm xe kèm số lượng xe và driver
  *   put:
- *     tags: [Vehicle Management]
- *     summary: Update vehicle group
+ *     tags: [Vehicle Groups]
+ *     summary: Cập nhật nhóm xe
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -68,24 +66,20 @@
  *         required: true
  *         schema: { type: integer }
  *     requestBody:
- *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, price_per_km]
  *             properties:
- *               name: { type: string }
- *               description: { type: string, nullable: true }
- *               max_load_weight_kg: { type: number, nullable: true }
- *               price_per_km: { type: number }
- *               upgrade_allowed: { type: boolean }
+ *               name:        { type: string }
+ *               description: { type: string }
+ *               max_weight:  { type: number }
  *     responses:
  *       200:
- *         description: Vehicle group updated
+ *         description: Cập nhật thành công
  *   delete:
- *     tags: [Vehicle Management]
- *     summary: Hide vehicle group from active lists
+ *     tags: [Vehicle Groups]
+ *     summary: Xóa nhóm xe (chỉ khi không có xe nào thuộc nhóm)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -95,43 +89,38 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Vehicle group hidden
- *       409:
- *         description: Vehicle group cannot be hidden
+ *         description: Xóa thành công
+ *       422:
+ *         description: Nhóm xe đang có xe, không thể xóa
  */
 
 /**
  * @swagger
  * /api/admin/vehicles:
  *   get:
- *     tags: [Vehicle Management]
- *     summary: List vehicles with pagination and filters
+ *     tags: [Vehicles]
+ *     summary: Danh sách xe toàn hệ thống
  *     security:
  *       - bearerAuth: []
  *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string }
+ *       - in: query
+ *         name: vehicle_group_id
+ *         schema: { type: integer }
  *       - in: query
  *         name: page
  *         schema: { type: integer, default: 1 }
  *       - in: query
  *         name: limit
- *         schema: { type: integer, default: 10 }
- *       - in: query
- *         name: search
- *         schema: { type: string }
- *       - in: query
- *         name: status
- *         schema:
- *           type: string
- *           enum: [active, maintenance, broken, retired]
- *       - in: query
- *         name: vehicle_group_id
- *         schema: { type: integer }
+ *         schema: { type: integer, default: 20 }
  *     responses:
  *       200:
- *         description: Vehicle list
+ *         description: Danh sách xe kèm driver và nhóm xe
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Create vehicle
+ *     tags: [Vehicles]
+ *     summary: Thêm xe mới
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -140,47 +129,39 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [plate_number, vehicle_group_id]
+ *             required: [license_plate, vehicle_group_id]
  *             properties:
- *               plate_number: { type: string, example: 51H-12345 }
- *               vehicle_group_id: { type: integer, example: 100000 }
- *               brand: { type: string, nullable: true }
- *               model: { type: string, nullable: true }
- *               load_capacity_kg: { type: number, nullable: true }
- *               manufacture_year: { type: integer, nullable: true }
- *               purchase_date: { type: string, format: date, nullable: true }
- *               assigned_driver_id: { type: integer, nullable: true }
- *               status:
- *                 type: string
- *                 enum: [active]
+ *               license_plate:    { type: string, example: 51F-123.45 }
+ *               vehicle_group_id: { type: integer }
+ *               brand:            { type: string }
+ *               model:            { type: string }
+ *               year:             { type: integer }
  *     responses:
  *       201:
- *         description: Vehicle created
+ *         description: Thêm xe thành công
+ *       409:
+ *         description: Biển số đã tồn tại
  */
 
 /**
  * @swagger
  * /api/admin/vehicles/driver-options:
  *   get:
- *     tags: [Vehicle Management]
- *     summary: List drivers available for vehicle assignment and maintenance selection
+ *     tags: [Vehicles]
+ *     summary: Danh sách driver chưa được gán xe (để dùng trong form phân công)
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: vehicle_id
- *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Driver options with current assignment info, active shipment flags, and maintenance eligibility
+ *         description: Mảng driver chưa có xe
  */
 
 /**
  * @swagger
  * /api/admin/vehicles/{id}:
  *   get:
- *     tags: [Vehicle Management]
- *     summary: Get vehicle detail
+ *     tags: [Vehicles]
+ *     summary: Chi tiết xe
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -190,12 +171,10 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Vehicle detail
- *       404:
- *         description: Vehicle not found
+ *         description: Chi tiết xe kèm driver và lịch sử bảo dưỡng
  *   put:
- *     tags: [Vehicle Management]
- *     summary: Update vehicle master data
+ *     tags: [Vehicles]
+ *     summary: Cập nhật thông tin xe
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -204,27 +183,16 @@
  *         required: true
  *         schema: { type: integer }
  *     requestBody:
- *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [plate_number, vehicle_group_id]
- *             properties:
- *               plate_number: { type: string }
- *               vehicle_group_id: { type: integer }
- *               brand: { type: string, nullable: true }
- *               model: { type: string, nullable: true }
- *               load_capacity_kg: { type: number, nullable: true }
- *               manufacture_year: { type: integer, nullable: true }
- *               purchase_date: { type: string, format: date, nullable: true }
- *               assigned_driver_id: { type: integer, nullable: true }
  *     responses:
  *       200:
- *         description: Vehicle updated
+ *         description: Cập nhật thành công
  *   delete:
- *     tags: [Vehicle Management]
- *     summary: Compatibility alias for retiring a vehicle
+ *     tags: [Vehicles]
+ *     summary: Xóa xe (chỉ khi xe đang inactive / retired)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -234,49 +202,128 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Vehicle retired
+ *         description: Xóa thành công
  */
 
 /**
  * @swagger
  * /api/admin/vehicles/{id}/send-to-maintenance:
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Create maintenance record and move active or broken vehicle to maintenance
+ *     tags: [Vehicles]
+ *     summary: Đưa xe vào bảo dưỡng (Coordinator / Manager — mục 19)
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes: { type: string }
+ *     responses:
+ *       200:
+ *         description: Xe chuyển sang trạng thái in_maintenance
+ */
+
+/**
+ * @swagger
  * /api/admin/vehicles/{id}/verify-maintenance:
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Verify completed maintenance and move vehicle to active
+ *     tags: [Vehicles]
+ *     summary: Xác nhận bảo dưỡng hoàn tất — xe sẵn sàng hoạt động
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Xe chuyển về trạng thái active
+ */
+
+/**
+ * @swagger
  * /api/admin/vehicles/{id}/mark-broken:
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Create vehicle breakdown incident and move vehicle to broken
+ *     tags: [Vehicles]
+ *     summary: Đánh dấu xe hỏng (sau sự cố vehicle_breakdown — BR-024)
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes: { type: string, example: Hỏng hộp số tại QL1A km 45 }
+ *     responses:
+ *       200:
+ *         description: Xe chuyển sang trạng thái broken
+ */
+
+/**
+ * @swagger
  * /api/admin/vehicles/{id}/restore:
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Resolve vehicle breakdown incident and move vehicle to active
+ *     tags: [Vehicles]
+ *     summary: Khôi phục xe về active (sau khi sửa chữa xong)
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Xe chuyển về trạng thái active
+ */
+
+/**
+ * @swagger
  * /api/admin/vehicles/{id}/retire:
  *   post:
- *     tags: [Vehicle Management]
- *     summary: Retire vehicle permanently from future operations
+ *     tags: [Vehicles]
+ *     summary: Thanh lý / nghỉ hưu xe — trạng thái cuối (không thể hoàn tác)
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               notes: { type: string }
+ *     responses:
+ *       200:
+ *         description: Xe chuyển sang trạng thái retired
+ *       422:
+ *         description: Xe đang có driver active hoặc trip active
  */
 
 /**
  * @swagger
  * /api/admin/vehicles/{id}/status:
  *   patch:
- *     tags: [Vehicle Management]
- *     summary: Compatibility endpoint that maps valid status transitions to lifecycle actions
+ *     tags: [Vehicles]
+ *     summary: Cập nhật trạng thái xe trực tiếp (admin override)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -294,20 +341,18 @@
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [active, maintenance, broken, retired]
+ *                 enum: [active, inactive, in_maintenance, broken, retired]
  *     responses:
  *       200:
- *         description: Lifecycle action applied
- *       409:
- *         description: Invalid transition
+ *         description: Cập nhật thành công
  */
 
 /**
  * @swagger
  * /api/admin/vehicles/{id}/driver-assignment:
  *   patch:
- *     tags: [Vehicle Management]
- *     summary: Assign driver to active vehicle, or unassign driver from active, maintenance, or broken vehicle
+ *     tags: [Vehicles]
+ *     summary: Phân công / hủy phân công driver cho xe
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -322,10 +367,13 @@
  *           schema:
  *             type: object
  *             properties:
- *               assigned_driver_id:
+ *               driver_id:
  *                 type: integer
  *                 nullable: true
+ *                 description: ID profile driver để phân công, null để hủy phân công
  *     responses:
  *       200:
- *         description: Vehicle assignment updated
+ *         description: Phân công thành công
+ *       422:
+ *         description: Driver đã được phân công xe khác
  */
