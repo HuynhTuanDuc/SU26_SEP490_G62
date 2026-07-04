@@ -10,7 +10,6 @@ let pool;
 let teardown;
 let app;
 let driverToken;
-let accountantToken;
 let uninstallCloudinaryMock;
 
 describe('Debt Routes API Tests (L3)', () => {
@@ -24,8 +23,7 @@ describe('Debt Routes API Tests (L3)', () => {
         app.use(express.json());
         app.use('/api/debts', debtRoutes);
 
-        driverToken     = signAccessToken({ userId: 1, email: 'driver@test.com', role: 'driver' });
-        accountantToken = signAccessToken({ userId: 2, email: 'acc@test.com', role: 'accountant' });
+        driverToken = signAccessToken({ userId: 1, email: 'driver@test.com', role: 'driver' });
     });
 
     after(async () => {
@@ -85,19 +83,10 @@ describe('Debt Routes API Tests (L3)', () => {
         assert.strictEqual(Number(res.body.payment.amount), 300000);
     });
 
-    it('GET /api/debts/repayments/pending as a driver -> 403 (financeRoles guard)', async () => {
-        const res = await request(app).get('/api/debts/repayments/pending').set('Authorization', `Bearer ${driverToken}`);
-        assert.strictEqual(res.status, 403);
-    });
-
-    it('GET /api/debts/repayments/pending as accountant -> 200 empty list (no pending repayments yet)', async () => {
-        const res = await request(app).get('/api/debts/repayments/pending').set('Authorization', `Bearer ${accountantToken}`);
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.repayments.length, 0);
-    });
-
-    it('PATCH /api/debts/repayments/:id/confirm as a driver -> 403', async () => {
-        const res = await request(app).patch('/api/debts/repayments/1/confirm').set('Authorization', `Bearer ${driverToken}`);
-        assert.strictEqual(res.status, 403);
-    });
+    // NOTE: GET /repayments/pending, PATCH /repayments/:id/confirm, PATCH /repayments/:id/reject
+    // (the accountant/manager-facing financeRoles endpoints) were removed from debtRoutes.js in
+    // commit c5875fe "fix dead code(api error)" — no frontend caller referenced them. The
+    // service-layer logic (debtService.getPendingRepayments/confirmRepayment/rejectRepayment)
+    // still exists and is covered at L2 (backend/test/debt/debtService.integration.test.js),
+    // but is no longer reachable via HTTP.
 });

@@ -207,47 +207,12 @@ describe('Trip Routes API Tests (L3)', () => {
         assert.strictEqual(res.body.trip.status, 'completed');
     });
 
-    describe('POST /api/trips/:id/payment — TH2 cash payment (driver thu hộ)', () => {
-        it('without amount -> 400', async () => {
-            await request(app).post('/api/trips/1/claim').set('Authorization', `Bearer ${driverToken}`);
-
-            const res = await request(app)
-                .post('/api/trips/1/payment')
-                .set('Authorization', `Bearer ${driverToken}`);
-
-            assert.strictEqual(res.status, 400);
-        });
-
-        it('with amount + receipt file -> 201, creates the payment (BR-018, Cloudinary mocked)', async () => {
-            // recordDriverCashPayment only allows it once the shipment is transit/arrived —
-            // advance it past claimed/picking first.
-            await request(app).post('/api/trips/1/claim').set('Authorization', `Bearer ${driverToken}`);
-            await request(app).patch('/api/trips/1/status').set('Authorization', `Bearer ${driverToken}`).send({ status: 'picking' });
-            await request(app)
-                .post('/api/trips/1/start-transit')
-                .set('Authorization', `Bearer ${driverToken}`)
-                .attach('proof', Buffer.from('fake-image-bytes'), { filename: 'proof.jpg', contentType: 'image/jpeg' });
-
-            const res = await request(app)
-                .post('/api/trips/1/payment')
-                .set('Authorization', `Bearer ${driverToken}`)
-                .field('amount', '300000')
-                .attach('receipt', Buffer.from('fake-image-bytes'), { filename: 'receipt.jpg', contentType: 'image/jpeg' });
-
-            assert.strictEqual(res.status, 201);
-            assert.strictEqual(Number(res.body.payment.amount), 300000);
-        });
-
-        it('by a driver who does not own the trip -> 4xx', async () => {
-            await request(app).post('/api/trips/1/claim').set('Authorization', `Bearer ${driverToken}`);
-
-            const res = await request(app)
-                .post('/api/trips/1/payment')
-                .set('Authorization', `Bearer ${otherDriverToken}`)
-                .field('amount', '300000')
-                .attach('receipt', Buffer.from('fake-image-bytes'), { filename: 'receipt.jpg', contentType: 'image/jpeg' });
-
-            assert.ok(res.status >= 400 && res.status < 500);
-        });
-    });
+    // NOTE: POST /api/trips/:id/payment (TH2 direct driver cash payment) and
+    // POST /api/trips/:id/mark-unpaid (TH3) were removed from tripRoutes.js in commit
+    // c5875fe "fix dead code(api error)" — no frontend/mobile caller referenced them
+    // (mobile/src/hooks/use-record-payment.ts and use-mark-unpaid.ts were deleted in the same
+    // commit). The service-layer logic (paymentService.recordDriverCashPayment/
+    // updateCashPayment, tripService.markUnpaid) still exists and is covered at L1/L2, but is
+    // no longer reachable via HTTP — the receipt-request + record-collection flow
+    // (POST /receipts/:receiptId/record-collection, tested above) is the current path.
 });

@@ -9,7 +9,6 @@ let pool;
 let teardown;
 let app;
 let driverToken;
-let coordinatorToken;
 
 describe('Kpi Routes API Tests (L3)', () => {
     before(async () => {
@@ -21,8 +20,7 @@ describe('Kpi Routes API Tests (L3)', () => {
         app.use(express.json());
         app.use('/api/kpi', kpiRoutes);
 
-        driverToken      = signAccessToken({ userId: 1, email: 'driver@test.com', role: 'driver' });
-        coordinatorToken = signAccessToken({ userId: 2, email: 'coord@test.com', role: 'coordinator' });
+        driverToken = signAccessToken({ userId: 1, email: 'driver@test.com', role: 'driver' });
     });
 
     after(async () => {
@@ -75,28 +73,10 @@ describe('Kpi Routes API Tests (L3)', () => {
         assert.strictEqual(res.body.vehicle_group_name, '5m2');
     });
 
-    it('GET /api/kpi/all as a driver -> 403 (staffOnly guard)', async () => {
-        const res = await request(app)
-            .get('/api/kpi/all')
-            .set('Authorization', `Bearer ${driverToken}`);
-
-        assert.strictEqual(res.status, 403);
-    });
-
-    it('GET /api/kpi/all as a coordinator -> 200', async () => {
-        const res = await request(app)
-            .get('/api/kpi/all?month=10&year=2024')
-            .set('Authorization', `Bearer ${coordinatorToken}`);
-
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body.kpi.length, 1);
-    });
-
-    it('GET /api/kpi/driver/:driverId as coordinator -> 200', async () => {
-        const res = await request(app)
-            .get('/api/kpi/driver/1?month=10&year=2024')
-            .set('Authorization', `Bearer ${coordinatorToken}`);
-
-        assert.strictEqual(res.status, 200);
-    });
+    // NOTE: GET /all (staffOnly), GET /driver/:driverId (financeStaff), POST /recalculate
+    // (staffOnly) — the coordinator/manager/accountant-facing KPI endpoints — were removed
+    // from kpiRoutes.js in commit c5875fe "fix dead code(api error)" — no frontend caller
+    // referenced them. The service-layer logic (kpiService.getAllDriversKPI/getDriverKPIById,
+    // kpiRepository.recalculateDriverKPI) still exists and is covered at L1/L2, but is no
+    // longer reachable via HTTP.
 });
