@@ -1,5 +1,6 @@
 const tripRepository     = require('../repositories/tripRepository');
 const paymentRepository  = require('../repositories/paymentRepository');
+const stopRepository     = require('../repositories/stopRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');

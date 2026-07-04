@@ -13,9 +13,9 @@
     "build:android": "eas build -p android --profile preview",
     "build:ios": "eas build -p ios --profile preview",
     "build:all": "eas build --profile preview",
-    "test": "jest",
+    "test": "jest --forceExit",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage --forceExit"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -63,6 +63,7 @@
     "jest-expo": "~54.0.17",
     "jest-html-reporters": "^3.1.7",
     "react-test-renderer": "^19.1.0",
+    "test-renderer": "^1.2.0",
     "typescript": "~5.9.2"
   },
   "private": true,
@@ -76,7 +77,6 @@
       "./jest.setup.js"
     ],
     "moduleNameMapper": {
-      "^test-renderer$": "<rootDir>/node_modules/react-test-renderer",
       "^@/(.*)$": "<rootDir>/src/$1"
     },
     "transformIgnorePatterns": [

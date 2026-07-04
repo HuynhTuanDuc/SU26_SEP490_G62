@@ -59,6 +59,13 @@ describe('Admin Service', () => {
                 gender: null,
                 dob: null,
                 city: null,
+                address: null,
+                country: 'VN',
+                national_id: null,
+                tax_code: null,
+                emergency_contact_name: null,
+                emergency_contact_phone: null,
+                notes: null,
             });
             assert.strictEqual(updateArgs[2], 2);
         });
@@ -77,34 +84,41 @@ describe('Admin Service', () => {
                 gender: null,
                 dob: null,
                 city: null,
+                address: null,
+                country: 'VN',
+                national_id: null,
+                tax_code: null,
+                emergency_contact_name: null,
+                emergency_contact_phone: null,
+                notes: null,
             });
         });
 
         it('throws 400 when userId is invalid', async () => {
             await assert.rejects(
                 () => adminService.updateUser('abc', 'Updated', '0987654321', 'manager'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'ID nguoi dung khong hop le.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'ID người dùng không hợp lệ.',
             );
         });
 
         it('throws 400 when role is missing', async () => {
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '0987654321', undefined),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai tro khong hop le.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai trò không hợp lệ.',
             );
         });
 
         it('throws 400 when full_name is blank', async () => {
             await assert.rejects(
                 () => adminService.updateUser(1, '   ', '0987654321', 'manager'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Ho ten khong duoc de trong.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Họ tên không được để trống.',
             );
         });
 
         it('throws 400 when phone is invalid', async () => {
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '12-34', 'manager'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'So dien thoai khong hop le.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Số điện thoại không hợp lệ.',
             );
         });
 
@@ -113,7 +127,7 @@ describe('Admin Service', () => {
 
             await assert.rejects(
                 () => adminService.updateUser(999, 'Updated', '0987654321', 'manager'),
-                (err) => err instanceof AdminError && err.status === 404 && err.message === 'Nguoi dung khong ton tai.',
+                (err) => err instanceof AdminError && err.status === 404 && err.message === 'Người dùng không tồn tại.',
             );
         });
 
@@ -122,7 +136,7 @@ describe('Admin Service', () => {
 
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '0987654321', 'driver'),
-                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Khong the cap nhat tai khoan manager.',
+                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Không thể cập nhật tài khoản manager.',
             );
         });
 
@@ -132,7 +146,7 @@ describe('Admin Service', () => {
 
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '0987654321', 'ghost'),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai tro khong hop le.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Vai trò không hợp lệ.',
             );
         });
 
@@ -147,7 +161,7 @@ describe('Admin Service', () => {
 
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '0987654321', 'manager'),
-                (err) => err instanceof AdminError && err.status === 409 && err.message === 'So dien thoai da ton tai.',
+                (err) => err instanceof AdminError && err.status === 409 && err.message === 'Số điện thoại đã tồn tại.',
             );
         });
     });
@@ -177,14 +191,14 @@ describe('Admin Service', () => {
         it('prevents locking self', async () => {
             await assert.rejects(
                 () => adminService.toggleUserStatus(1, false, 1),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Khong the tu khoa tai khoan cua chinh minh.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'Không thể tự khóa tài khoản của chính mình.',
             );
         });
 
         it('rejects non-boolean is_active', async () => {
             await assert.rejects(
                 () => adminService.toggleUserStatus(2, 'false', 1),
-                (err) => err instanceof AdminError && err.status === 400 && err.message === 'is_active khong hop le.',
+                (err) => err instanceof AdminError && err.status === 400 && err.message === 'is_active không hợp lệ.',
             );
         });
 
@@ -193,7 +207,7 @@ describe('Admin Service', () => {
 
             await assert.rejects(
                 () => adminService.toggleUserStatus(2, false, 1),
-                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Khong the khoa tai khoan manager.',
+                (err) => err instanceof AdminError && err.status === 403 && err.message === 'Không thể khóa tài khoản manager.',
             );
         });
     });

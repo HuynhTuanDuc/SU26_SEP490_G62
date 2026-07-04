@@ -38,14 +38,39 @@ const profileRepositoryStub = {
     },
 };
 
+// authService.js verifies Google credentials via `new OAuth2Client(...).verifyIdToken(...)`
+// (google-auth-library SDK), not via raw fetch — stub the SDK instead of global.fetch.
+const googleClientStub = {
+    verifyIdToken: async () => {
+        throw new Error('verifyIdToken was not configured for this test');
+    },
+};
+
+class OAuth2ClientStub {
+    constructor() {}
+    verifyIdToken(...args) {
+        return googleClientStub.verifyIdToken(...args);
+    }
+}
+
+const googleAuthLibraryStub = { OAuth2Client: OAuth2ClientStub };
+
+// issueSession() persists a refresh token row via the real pool on success — stub it out
+// so successful-login tests don't need a live Postgres connection.
+const poolStub = {
+    query: async () => ({ rows: [] }),
+};
+
 Module._load = function patchedLoad(request, parent, isMain) {
     if (request === 'jsonwebtoken') return jwtStub;
     if (request === 'bcryptjs') return bcryptStub;
+    if (request === 'google-auth-library') return googleAuthLibraryStub;
     if (request === '../repositories/profileRepository') return profileRepositoryStub;
+    if (request === '../config/database') return poolStub;
     return originalLoad.call(this, request, parent, isMain);
 };
 
-const authService = require('../services/authService');
+const authService = require('../../services/authService');
 
 Module._load = originalLoad;
 
@@ -55,6 +80,7 @@ const original = {
     updateLastLogin: profileRepositoryStub.updateLastLogin,
     compare: bcryptStub.compare,
     sign: jwtStub.sign,
+    verifyIdToken: googleClientStub.verifyIdToken,
 };
 
 const restoreMocks = () => {
@@ -63,6 +89,7 @@ const restoreMocks = () => {
     profileRepositoryStub.updateLastLogin = original.updateLastLogin;
     bcryptStub.compare = original.compare;
     jwtStub.sign = original.sign;
+    googleClientStub.verifyIdToken = original.verifyIdToken;
     global.fetch = originalFetch;
 };
 
@@ -238,9 +265,8 @@ test('loginWithGoogle rejects missing credential', async () => {
 });
 
 test('loginWithGoogle rejects non-matching Google audience', async () => {
-    global.fetch = async () => ({
-        ok: true,
-        json: async () => ({
+    googleClientStub.verifyIdToken = async () => ({
+        getPayload: () => ({
             aud: 'unexpected-client-id',
             email: 'user@example.com',
             email_verified: 'true',
@@ -254,9 +280,8 @@ test('loginWithGoogle rejects non-matching Google audience', async () => {
 });
 
 test('loginWithGoogle rejects unverified Google email', async () => {
-    global.fetch = async () => ({
-        ok: true,
-        json: async () => ({
+    googleClientStub.verifyIdToken = async () => ({
+        getPayload: () => ({
             aud: process.env.GG_CLIENT_ID,
             email: 'user@example.com',
             email_verified: 'false',
@@ -270,9 +295,8 @@ test('loginWithGoogle rejects unverified Google email', async () => {
 });
 
 test('loginWithGoogle rejects Google accounts that are not provisioned internally', async () => {
-    global.fetch = async () => ({
-        ok: true,
-        json: async () => ({
+    googleClientStub.verifyIdToken = async () => ({
+        getPayload: () => ({
             aud: process.env.GG_CLIENT_ID,
             email: 'new-user@example.com',
             email_verified: 'true',
@@ -288,9 +312,8 @@ test('loginWithGoogle rejects Google accounts that are not provisioned internall
 
 test('loginWithGoogle signs in an existing internal user', async () => {
     const calls = [];
-    global.fetch = async () => ({
-        ok: true,
-        json: async () => ({
+    googleClientStub.verifyIdToken = async () => ({
+        getPayload: () => ({
             aud: process.env.GG_CLIENT_ID,
             email: 'User@Example.com',
             email_verified: 'true',

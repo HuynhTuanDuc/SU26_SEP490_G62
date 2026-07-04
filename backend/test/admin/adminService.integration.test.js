@@ -47,6 +47,11 @@ describe('Admin Service Integration Tests', () => {
                 address VARCHAR(255),
                 city VARCHAR(100),
                 country VARCHAR(100),
+                national_id VARCHAR(50),
+                tax_code VARCHAR(50),
+                emergency_contact_name VARCHAR(255),
+                emergency_contact_phone VARCHAR(20),
+                notes TEXT,
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
@@ -91,11 +96,15 @@ describe('Admin Service Integration Tests', () => {
         mock.restoreAll();
     });
 
-    it('updates both profile and account role successfully', async () => {
-        await adminService.updateUser(1, '  Updated Name  ', ' 0944444444 ', 'manager');
+    // Target user id=3 ('User One', role 'user') on purpose — id=1/2 hold protected roles
+    // (admin/manager) and ensureUserCanBeManaged() rejects editing those accounts (BR added
+    // after this suite was originally written).
 
-        const profile = await pool.query('SELECT full_name, phone, role_id FROM profiles WHERE id = 1');
-        const account = await pool.query('SELECT role_id FROM accounts WHERE id = 1');
+    it('updates both profile and account role successfully', async () => {
+        await adminService.updateUser(3, '  Updated Name  ', ' 0944444444 ', 'manager');
+
+        const profile = await pool.query('SELECT full_name, phone, role_id FROM profiles WHERE id = 3');
+        const account = await pool.query('SELECT role_id FROM accounts WHERE id = 3');
 
         assert.strictEqual(profile.rows[0].full_name, 'Updated Name');
         assert.strictEqual(profile.rows[0].phone, '0944444444');
@@ -112,23 +121,23 @@ describe('Admin Service Integration Tests', () => {
 
     it('rejects update when phone already exists and keeps original data', async () => {
         await assert.rejects(
-            () => adminService.updateUser(1, 'Updated Name', '0911111111', 'manager'),
+            () => adminService.updateUser(3, 'Updated Name', '0933333333', 'manager'),
             (err) => err.status === 409 && err.message === 'Số điện thoại đã tồn tại.',
         );
 
-        const profile = await pool.query('SELECT full_name, phone, role_id FROM profiles WHERE id = 1');
-        const account = await pool.query('SELECT role_id FROM accounts WHERE id = 1');
+        const profile = await pool.query('SELECT full_name, phone, role_id FROM profiles WHERE id = 3');
+        const account = await pool.query('SELECT role_id FROM accounts WHERE id = 3');
 
-        assert.strictEqual(profile.rows[0].full_name, 'Admin One');
-        assert.strictEqual(profile.rows[0].phone, '0900000000');
-        assert.strictEqual(profile.rows[0].role_id, 1);
-        assert.strictEqual(account.rows[0].role_id, 1);
+        assert.strictEqual(profile.rows[0].full_name, 'User One');
+        assert.strictEqual(profile.rows[0].phone, '0922222222');
+        assert.strictEqual(profile.rows[0].role_id, 3);
+        assert.strictEqual(account.rows[0].role_id, 3);
     });
 
     it('allows clearing phone number', async () => {
-        await adminService.updateUser(1, 'Updated Name', '   ', 'manager');
+        await adminService.updateUser(3, 'Updated Name', '   ', 'manager');
 
-        const profile = await pool.query('SELECT phone FROM profiles WHERE id = 1');
+        const profile = await pool.query('SELECT phone FROM profiles WHERE id = 3');
         assert.strictEqual(profile.rows[0].phone, null);
     });
 

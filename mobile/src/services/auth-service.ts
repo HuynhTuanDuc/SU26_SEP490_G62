@@ -6,10 +6,11 @@ import type { LoginRequest, LoginResponse } from '@/types/auth';
 
 const validateDriver = async (result: LoginResponse) => {
   if (result.user.role !== 'driver') {
-    await tokenStorage.removeToken();
+    await tokenStorage.clearAll();
     throw new ApiError(ERROR_MESSAGES.driverOnly, 403);
   }
   await tokenStorage.setToken(result.token);
+  if (result.refreshToken) await tokenStorage.setRefreshToken(result.refreshToken);
   return result;
 };
 

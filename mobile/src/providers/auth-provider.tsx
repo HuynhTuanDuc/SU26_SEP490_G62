@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
 
   const signOut = useCallback(async () => {
-    await tokenStorage.removeToken();
+    await tokenStorage.clearAll();
     setProfile(null);
     setStatus('unauthenticated');
     router.replace('/login');
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus('authenticated');
       return nextProfile;
     } catch (error) {
-      await tokenStorage.removeToken();
+      await tokenStorage.clearAll();
       setProfile(null);
       setStatus('unauthenticated');
       throw error;

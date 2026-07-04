@@ -51,7 +51,7 @@ describe('Driver Service', () => {
         assert.deepStrictEqual(notificationService.createForUsers.mock.calls[0].arguments[0], [5, 8]);
         assert.strictEqual(
             notificationService.createForUsers.mock.calls[0].arguments[1].message,
-            'Tai xe da hoan tat bao duong xe 51A-12345. Vui long kiem tra hoa don va xac nhan.',
+            'Tài xế đã hoàn tất bảo dưỡng xe 51A-12345. Vui lòng kiểm tra hóa đơn và xác nhận.',
         );
     });
 });
