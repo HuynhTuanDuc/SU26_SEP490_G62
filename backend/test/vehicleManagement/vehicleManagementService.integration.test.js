@@ -205,15 +205,18 @@ describe('Vehicle Management Service Integration Tests (L2)', () => {
         assert.strictEqual(dbGroup.rows[0].name, 'Group G Updated');
     });
 
-    it('L2-VM-08 [Happy Path]: deleteVehicleGroup - should remove group from db', async () => {
+    it('L2-VM-08 [Happy Path]: deleteVehicleGroup - should soft-delete group (status=hidden), not remove the row', async () => {
+        // Real implementation is a soft delete: UPDATE vehicle_groups SET status = 'hidden'
+        // (see vehicleManagementRepository.deleteVehicleGroup) — the row is kept for history.
         const group = await vehicleManagementService.createVehicleGroup({
             name: 'Group H', price_per_km: 10000
         });
 
         await vehicleManagementService.deleteVehicleGroup(group.id);
 
-        const dbGroup = await pool.query('SELECT * FROM vehicle_groups WHERE id = $1', [group.id]);
-        assert.strictEqual(dbGroup.rows.length, 0);
+        const dbGroup = await pool.query('SELECT status FROM vehicle_groups WHERE id = $1', [group.id]);
+        assert.strictEqual(dbGroup.rows.length, 1);
+        assert.strictEqual(dbGroup.rows[0].status, 'hidden');
     });
 
     it('L2-VM-09 [Happy Path]: updateVehicle - should update vehicle properties', async () => {
@@ -260,8 +263,8 @@ describe('Vehicle Management Service Integration Tests (L2)', () => {
             maintenance_record_id: recordId, bill_pics: ['url1'], performed_by: 2
         });
 
-        // Set cost to allow verification
-        await pool.query('UPDATE maintenance_records SET total_cost = 50000 WHERE id = $1', [recordId]);
+        // Set cost to allow verification (real column is "cost", not "total_cost")
+        await pool.query('UPDATE maintenance_records SET cost = 50000 WHERE id = $1', [recordId]);
 
         // Verify
         const verifiedVehicle = await vehicleManagementService.verifyMaintenance(vehicle.id, 1, {
@@ -269,8 +272,10 @@ describe('Vehicle Management Service Integration Tests (L2)', () => {
         });
 
         assert.strictEqual(verifiedVehicle.status, 'active');
+        // verifyMaintenanceRecordAndSetStatus sets the record to 'completed', not 'verified'
+        // (maintenance_records.status only allows open/pending_verification/completed)
         const dbRecord = await pool.query('SELECT status FROM maintenance_records WHERE id = $1', [recordId]);
-        assert.strictEqual(dbRecord.rows[0].status, 'verified');
+        assert.strictEqual(dbRecord.rows[0].status, 'completed');
     });
 
     it('L2-VM-12 [Lifecycle]: restoreVehicle - broken -> active', async () => {

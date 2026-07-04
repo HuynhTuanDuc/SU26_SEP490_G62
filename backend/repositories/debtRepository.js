@@ -189,7 +189,7 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
         );
 
         await client.query('COMMIT');
-        return { paymentId, debtId: pay.debt_id, driverId: pay.driver_id, newPaid, newStatus };
+        return { paymentId, debtId: pay.debt_id, driverId: pay.driver_id };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

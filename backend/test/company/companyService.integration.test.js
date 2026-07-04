@@ -31,9 +31,11 @@ describe('Company Service Integration Tests (L2)', () => {
     });
 
     beforeEach(async () => {
-        await pool.query('TRUNCATE company_info, roles, accounts RESTART IDENTITY CASCADE');
+        await pool.query('TRUNCATE company_info, profiles, roles, accounts RESTART IDENTITY CASCADE');
         await pool.query(`INSERT INTO roles (id, name) VALUES (1, 'manager') ON CONFLICT DO NOTHING`);
         await pool.query(`INSERT INTO accounts (id, email, password_hash, role_id) VALUES (1, 'manager@test.com', 'hash', 1) ON CONFLICT DO NOTHING`);
+        // company_info.updated_by references profiles(id), not accounts(id) directly
+        await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (1, 'Manager', 1) ON CONFLICT DO NOTHING`);
     });
 
     it('should insert and get company info', async () => {
