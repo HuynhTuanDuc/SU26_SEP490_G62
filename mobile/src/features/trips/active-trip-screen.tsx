@@ -28,6 +28,7 @@ import { useToast, useAppAlert, useConfirm } from '@/providers/ui-provider';
 import type { ActiveTrip, Expense, TripStatus, TripStop } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL, NEXT_ACTIONS } from '@/types/trip';
 
+import { tripService }      from '@/services/trip-service';
 import { CameraModal }      from './components/camera-modal';
 import { ExpenseFormModal }  from './components/expense-form-modal';
 import { PhotoCaptureCard }  from './components/photo-capture-card';
@@ -101,49 +102,59 @@ function CollapsibleSection({
     );
 }
 
-// ─── Compact route row ────────────────────────────────────────────────────────
+// ─── Route display ────────────────────────────────────────────────────────────
 
-function RouteRow({ pickup, delivery, isReturning }: {
+function RouteRow({ stops, pickup, delivery, isReturning }: {
+    stops: TripStop[];
     pickup: string;
     delivery: string;
     isReturning?: boolean;
 }) {
+    // Khi có stops: hiển thị từng stop theo thứ tự
+    // Khi không có stops: fallback về 2 địa chỉ tổng
+    const items: { label: string; address: string; isPickup: boolean }[] =
+        stops.length > 0
+            ? stops.map(s => ({
+                label: s.stop_type === 'pickup' ? 'ĐIỂM LẤY' : 'ĐIỂM GIAO',
+                address: s.address,
+                isPickup: s.stop_type === 'pickup',
+            }))
+            : isReturning
+                ? [{ label: 'ĐIỂM TRẢ HÀNG VỀ', address: pickup, isPickup: true }]
+                : [
+                    { label: 'ĐIỂM LẤY', address: pickup, isPickup: true },
+                    { label: 'ĐIỂM GIAO', address: delivery, isPickup: false },
+                  ];
+
     return (
         <YStack
             borderRadius={appTheme.radius.lg} borderWidth={1}
             borderColor={appTheme.colors.border} backgroundColor={appTheme.colors.surface}
             paddingHorizontal={14} paddingVertical={12} gap={8}
         >
-            <XStack alignItems="flex-start" gap={10}>
-                <View style={[s.routeDot, { backgroundColor: appTheme.colors.successSoft, borderColor: appTheme.colors.success }]}>
-                    <MapPin size={11} color={appTheme.colors.success} />
-                </View>
-                <YStack flex={1}>
-                    <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted}>
-                        {isReturning ? 'ĐIỂM TRẢ HÀNG VỀ' : 'ĐIỂM LẤY'}
-                    </Text>
-                    <Text fontSize={13} color={appTheme.colors.text} lineHeight={18} numberOfLines={2}>
-                        {pickup}
-                    </Text>
-                </YStack>
-            </XStack>
-
-            {!isReturning ? (
-                <>
-                    <View style={s.routeLine} />
-                    <XStack alignItems="flex-start" gap={10}>
-                        <View style={[s.routeDot, { backgroundColor: appTheme.colors.primarySoft, borderColor: appTheme.colors.primary }]}>
-                            <MapPin size={11} color={appTheme.colors.primary} />
+            {items.map((item, idx) => (
+                <View key={idx}>
+                    {idx > 0 ? <View style={s.routeLine} /> : null}
+                    <XStack alignItems="flex-start" gap={10} marginTop={idx > 0 ? 8 : 0}>
+                        <View style={[
+                            s.routeDot,
+                            item.isPickup
+                                ? { backgroundColor: appTheme.colors.successSoft, borderColor: appTheme.colors.success }
+                                : { backgroundColor: appTheme.colors.primarySoft, borderColor: appTheme.colors.primary },
+                        ]}>
+                            <MapPin size={11} color={item.isPickup ? appTheme.colors.success : appTheme.colors.primary} />
                         </View>
                         <YStack flex={1}>
-                            <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted}>ĐIỂM GIAO</Text>
+                            <Text fontSize={10} fontWeight="700" color={appTheme.colors.textMuted}>
+                                {item.label}
+                            </Text>
                             <Text fontSize={13} color={appTheme.colors.text} lineHeight={18} numberOfLines={2}>
-                                {delivery}
+                                {item.address}
                             </Text>
                         </YStack>
                     </XStack>
-                </>
-            ) : null}
+                </View>
+            ))}
         </YStack>
     );
 }
@@ -204,73 +215,251 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
 
 // ─── Stops section ────────────────────────────────────────────────────────────
 
-// Derive stop visual state từ trip status khi DB chưa có timestamp
-function deriveStopState(
-    stop: TripStop,
-    tripStatus: TripStatus,
-): 'completed' | 'active' | 'pending' {
+function deriveStopState(stop: TripStop): 'completed' | 'active' | 'pending' {
     if (stop.completed_at) return 'completed';
     if (stop.arrived_at)   return 'active';
-
-    if (stop.stop_type === 'pickup') {
-        const pickupDone: TripStatus[] = ['transit', 'arrived', 'completed', 'failed', 'returning'];
-        if (pickupDone.includes(tripStatus)) return 'completed';
-        if (tripStatus === 'picking')        return 'active';
-    }
-    if (stop.stop_type === 'delivery') {
-        if (tripStatus === 'completed') return 'completed';
-        if (tripStatus === 'arrived')   return 'active';
-    }
     return 'pending';
 }
 
-function StopsSection({ stops, tripStatus }: { stops: TripStop[]; tripStatus: TripStatus }) {
-    if (!stops || stops.length === 0) return null;
-    const done = stops.filter(s => deriveStopState(s, tripStatus) === 'completed').length;
+function StopCard({
+    stop,
+    isActionable,
+    photoUri,
+    onOpenCamera,
+    onClearPhoto,
+    onArrive,
+    onComplete,
+    isArriving,
+    isCompleting,
+}: {
+    stop: TripStop;
+    isActionable: boolean;
+    photoUri: string | null;
+    onOpenCamera: () => void;
+    onClearPhoto: () => void;
+    onArrive: () => void;
+    onComplete: () => void;
+    isArriving: boolean;
+    isCompleting: boolean;
+}) {
+    const state = deriveStopState(stop);
+    const isPickup = stop.stop_type === 'pickup';
+
+    const dotColor =
+        state === 'completed' ? appTheme.colors.success :
+        state === 'active'    ? appTheme.colors.warning :
+        isActionable          ? appTheme.colors.primary :
+                                appTheme.colors.border;
+
+    const borderColor =
+        state === 'completed' ? appTheme.colors.successSoft :
+        state === 'active'    ? appTheme.colors.warningBorder :
+        isActionable          ? appTheme.colors.primaryMuted :
+                                appTheme.colors.border;
+
+    const bgColor =
+        state === 'completed' ? appTheme.colors.successSoft :
+        state === 'active'    ? appTheme.colors.warningSoft :
+        isActionable          ? appTheme.colors.primarySoft :
+                                appTheme.colors.surface;
+
+    const statusText =
+        state === 'completed' ? 'Hoàn thành' :
+        state === 'active'    ? 'Đang thực hiện' :
+        isActionable          ? 'Đến lượt — nhấn để tiếp tục' :
+                                'Chờ điểm trước hoàn thành';
+
+    const statusColor =
+        state === 'completed' ? appTheme.colors.success :
+        state === 'active'    ? appTheme.colors.warning :
+        isActionable          ? appTheme.colors.primary :
+                                appTheme.colors.textMuted;
 
     return (
-        <CollapsibleSection label="Điểm dừng" badge={`${done}/${stops.length}`} defaultOpen>
-            <YStack gap={10}>
-                {stops.map((stop) => {
-                    const state = deriveStopState(stop, tripStatus);
-                    const dotColor =
-                        state === 'completed' ? appTheme.colors.success :
-                        state === 'active'    ? appTheme.colors.warning :
-                                                appTheme.colors.border;
-                    return (
-                        <XStack key={stop.id} gap={10} alignItems="flex-start">
-                            <YStack alignItems="center" gap={2} paddingTop={2}>
-                                <View style={[s.stopDot, { backgroundColor: dotColor }]} />
-                                <Text fontSize={9} fontWeight="900" color={
-                                    stop.stop_type === 'pickup'
-                                        ? appTheme.colors.success
-                                        : appTheme.colors.primary
-                                }>
-                                    {stop.stop_type === 'pickup' ? 'LẤY' : 'GIAO'}
-                                </Text>
-                            </YStack>
-                            <YStack flex={1} gap={2}>
-                                <Text fontSize={12} color={appTheme.colors.text} numberOfLines={2}>
-                                    {stop.address}
-                                </Text>
-                                {stop.contact_name ? (
-                                    <Text fontSize={11} color={appTheme.colors.textMuted}>
-                                        {stop.contact_name}{stop.contact_phone ? ` · ${stop.contact_phone}` : ''}
-                                    </Text>
-                                ) : null}
-                                {state === 'completed' ? (
-                                    <Text fontSize={10} fontWeight="700" color={appTheme.colors.success}>✓ Hoàn thành</Text>
-                                ) : state === 'active' ? (
-                                    <Text fontSize={10} fontWeight="700" color={appTheme.colors.warning}>• Đang thực hiện</Text>
-                                ) : (
-                                    <Text fontSize={10} color={appTheme.colors.textMuted}>Chờ đến lượt</Text>
-                                )}
-                            </YStack>
-                        </XStack>
-                    );
-                })}
-            </YStack>
-        </CollapsibleSection>
+        <YStack
+            borderRadius={10} borderWidth={1}
+            borderColor={borderColor}
+            backgroundColor={bgColor}
+            padding={12} gap={8}
+        >
+            <XStack gap={10} alignItems="flex-start">
+                <YStack alignItems="center" gap={2} paddingTop={2}>
+                    <View style={[s.stopDot, { backgroundColor: dotColor }]} />
+                    <Text fontSize={9} fontWeight="900" color={isPickup ? appTheme.colors.success : appTheme.colors.primary}>
+                        {isPickup ? 'LẤY' : 'GIAO'}
+                    </Text>
+                </YStack>
+                <YStack flex={1} gap={2}>
+                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text} numberOfLines={2}>
+                        {stop.address}
+                    </Text>
+                    {stop.contact_name ? (
+                        <Text fontSize={11} color={appTheme.colors.textMuted}>
+                            {stop.contact_name}{stop.contact_phone ? ` · ${stop.contact_phone}` : ''}
+                        </Text>
+                    ) : null}
+                    <Text fontSize={10} fontWeight="700" color={statusColor}>{statusText}</Text>
+                </YStack>
+            </XStack>
+
+            {isActionable && state !== 'completed' ? (
+                <YStack gap={8} paddingTop={4}
+                    borderTopWidth={1} borderTopColor={appTheme.colors.border}>
+                    {state === 'pending' ? (
+                        <LifecycleActionButton
+                            label={isArriving ? 'Đang cập nhật...' : `Đã đến điểm ${isPickup ? 'lấy' : 'giao'}`}
+                            tone="secondary"
+                            onPress={onArrive}
+                            isLoading={isArriving}
+                            icon={<MapPin size={15} color="#fff" />}
+                        />
+                    ) : null}
+                    {state === 'active' ? (
+                        <>
+                            <PhotoCaptureCard
+                                label={`Ảnh ${isPickup ? 'lấy hàng' : 'giao hàng'}`}
+                                sublabel={`Chụp tại điểm ${isPickup ? 'lấy' : 'giao'} (bắt buộc)`}
+                                uri={photoUri}
+                                required
+                                onCapture={onOpenCamera}
+                                onDelete={onClearPhoto}
+                            />
+                            <LifecycleActionButton
+                                label={isCompleting ? 'Đang tải ảnh...' : `Xác nhận ${isPickup ? 'lấy hàng' : 'giao hàng'}`}
+                                tone="primary"
+                                onPress={onComplete}
+                                isLoading={isCompleting}
+                                disabled={!photoUri}
+                                icon={<CheckCircle size={15} color={photoUri ? '#fff' : appTheme.colors.textMuted} />}
+                            />
+                        </>
+                    ) : null}
+                </YStack>
+            ) : null}
+        </YStack>
+    );
+}
+
+function StopsSection({
+    stops,
+    tripId,
+    tripStatus,
+    onStopUpdated,
+}: {
+    stops: TripStop[];
+    tripId: number;
+    tripStatus: TripStatus;
+    onStopUpdated: () => void;
+}) {
+    const { showToast } = useToast();
+    const [permission, requestPermission] = useCameraPermissions();
+    const [photoUris,    setPhotoUris]   = useState<Record<number, string | null>>({});
+    const [cameraStopId, setCameraStopId] = useState<number | null>(null);
+    const [arrivals,     setArrivals]    = useState<Record<number, boolean>>({});
+    const [completions,  setCompletions] = useState<Record<number, boolean>>({});
+
+    // Optimistic overrides: applied on top of props to prevent stale-state flicker
+    // between API success and parent refresh completing.
+    const [optimistic, setOptimistic] = useState<Record<number, Partial<TripStop>>>({});
+
+    if (!stops.length) return null;
+
+    // Merge DB data with local optimistic overrides
+    const effectiveStops = stops.map(s => ({ ...s, ...(optimistic[s.id] ?? {}) }));
+    const done = effectiveStops.filter(s => deriveStopState(s) === 'completed').length;
+
+    // A stop is actionable only when ALL prior stops (by index) are completed
+    const isStopActionable = (stop: TripStop, allStops: TripStop[]) => {
+        if (stop.completed_at) return false;
+        const prior = allStops.filter(s => s.stop_index < stop.stop_index);
+        if (!prior.every(s => !!s.completed_at)) return false;
+        if (stop.stop_type === 'pickup')   return tripStatus === 'picking';
+        if (stop.stop_type === 'delivery') return tripStatus === 'arrived';
+        return false;
+    };
+
+    const openCameraForStop = async (stopId: number) => {
+        if (!permission?.granted) {
+            const res = await requestPermission();
+            if (!res.granted) return;
+        }
+        setCameraStopId(stopId);
+    };
+
+    const handleArrive = async (stop: TripStop) => {
+        setArrivals(prev => ({ ...prev, [stop.id]: true }));
+        try {
+            await tripService.arriveAtStop(tripId, stop.id);
+            // Optimistically mark as arrived immediately so UI stays consistent before refresh
+            setOptimistic(prev => ({
+                ...prev,
+                [stop.id]: { arrived_at: new Date().toISOString() },
+            }));
+            showToast({ type: 'success', message: `Đã đến điểm ${stop.stop_type === 'pickup' ? 'lấy' : 'giao'}`, duration: 1500 });
+            onStopUpdated();
+        } catch (e: unknown) {
+            showToast({ type: 'error', message: e instanceof Error ? e.message : 'Lỗi', duration: 2000 });
+        } finally {
+            setArrivals(prev => ({ ...prev, [stop.id]: false }));
+        }
+    };
+
+    const handleComplete = async (stop: TripStop) => {
+        const uri = photoUris[stop.id] ?? null;
+        if (!uri) return;
+        setCompletions(prev => ({ ...prev, [stop.id]: true }));
+        try {
+            await tripService.completeStop(tripId, stop.id, uri);
+            // Optimistically mark as completed immediately
+            setOptimistic(prev => ({
+                ...prev,
+                [stop.id]: { arrived_at: stop.arrived_at ?? new Date().toISOString(), completed_at: new Date().toISOString() },
+            }));
+            showToast({ type: 'success', message: `Đã hoàn thành điểm ${stop.stop_type === 'pickup' ? 'lấy' : 'giao'}`, duration: 1500 });
+            setPhotoUris(prev => ({ ...prev, [stop.id]: null }));
+            onStopUpdated();
+        } catch (e: unknown) {
+            showToast({ type: 'error', message: e instanceof Error ? e.message : 'Lỗi', duration: 2000 });
+        } finally {
+            setCompletions(prev => ({ ...prev, [stop.id]: false }));
+        }
+    };
+
+    return (
+        <>
+            <CollapsibleSection label="Điểm dừng" badge={`${done}/${effectiveStops.length}`} defaultOpen>
+                <YStack gap={10}>
+                    {effectiveStops.map((stop) => (
+                        <StopCard
+                            key={stop.id}
+                            stop={stop}
+                            isActionable={isStopActionable(stop, effectiveStops)}
+                            photoUri={photoUris[stop.id] ?? null}
+                            onOpenCamera={() => void openCameraForStop(stop.id)}
+                            onClearPhoto={() => setPhotoUris(prev => ({ ...prev, [stop.id]: null }))}
+                            onArrive={() => void handleArrive(stop)}
+                            onComplete={() => void handleComplete(stop)}
+                            isArriving={!!arrivals[stop.id]}
+                            isCompleting={!!completions[stop.id]}
+                        />
+                    ))}
+                </YStack>
+            </CollapsibleSection>
+
+            <CameraModal
+                visible={cameraStopId !== null}
+                label={
+                    cameraStopId !== null && effectiveStops.find(s => s.id === cameraStopId)?.stop_type === 'pickup'
+                        ? 'Chụp ảnh lấy hàng'
+                        : 'Chụp ảnh giao hàng'
+                }
+                onCapture={(uri) => {
+                    if (cameraStopId !== null) setPhotoUris(prev => ({ ...prev, [cameraStopId]: uri }));
+                    setCameraStopId(null);
+                }}
+                onClose={() => setCameraStopId(null)}
+            />
+        </>
     );
 }
 
@@ -373,7 +562,36 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
     useEffect(() => { void loadExpenses(); }, [loadExpenses]);
 
-    const isWorking     = lifecycleLoading || completingProof || submittingLoad || completingReturn || releaseLoading;
+    // Handlers cho multi-stop flow: gọi transit/complete không cần ảnh (proof đã capture per-stop)
+    const [transitingViaStops, setTransitingViaStops]     = useState(false);
+    const [completingViaStops, setCompletingViaStops]     = useState(false);
+
+    const handleStartTransitViaStops = async () => {
+        setTransitingViaStops(true);
+        try {
+            await tripService.submitLoadingProof(trip.id, new FormData());
+            showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển', duration: 2500 });
+            refresh();
+        } catch (e: unknown) {
+            showToast({ type: 'error', message: e instanceof Error ? e.message : 'Lỗi', duration: 2000 });
+        } finally {
+            setTransitingViaStops(false);
+        }
+    };
+
+    const handleCompleteTripViaStops = async () => {
+        setCompletingViaStops(true);
+        try {
+            await tripService.completeWithProof(trip.id, new FormData());
+            setJustCompleted(true);
+        } catch (e: unknown) {
+            showToast({ type: 'error', message: e instanceof Error ? e.message : 'Lỗi', duration: 2000 });
+        } finally {
+            setCompletingViaStops(false);
+        }
+    };
+
+    const isWorking     = lifecycleLoading || completingProof || submittingLoad || completingReturn || releaseLoading || transitingViaStops || completingViaStops;
     const nextAction    = NEXT_ACTIONS[trip.status as TripStatus];
     const accent        = STATUS_ACCENT[trip.status as TripStatus];
     const banner        = STATUS_BANNER[trip.status as TripStatus];
@@ -382,6 +600,20 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const isReturning   = trip.status === 'returning';
     const isReleasable  = trip.status === 'claimed' || trip.status === 'picking';
     const canAddExpense   = EXPENSE_ALLOWED_STATUSES.includes(trip.status as TripStatus);
+
+    // Multi-stop awareness
+    const stops              = trip.stops ?? [];
+    const pickupStops        = stops.filter(s => s.stop_type === 'pickup');
+    const deliveryStops      = stops.filter(s => s.stop_type === 'delivery');
+    const allPickupsDone     = pickupStops.length === 0 || pickupStops.every(s => !!s.completed_at);
+    const allDeliveriesDone  = deliveryStops.length === 0 || deliveryStops.every(s => !!s.completed_at);
+
+    // Khi có stops: proof đã chụp per-stop → chỉ cần button xác nhận, không chụp lại
+    // Khi không có stops: giữ flow chụp ảnh truyền thống
+    const showLoadingProof   = isPicking  && allPickupsDone  && pickupStops.length === 0;
+    const showDeliveryProof  = isArrived  && allDeliveriesDone && deliveryStops.length === 0;
+    const showStartTransitBtn  = isPicking  && allPickupsDone  && pickupStops.length > 0;
+    const showCompleteTripBtn  = isArrived  && allDeliveriesDone && deliveryStops.length > 0;
 
     // Mọi tài đều thấy nút này sau khi COMPLETED để nhập km (tài cuối cash còn tạo phiếu thu)
     const canRequestReceipt = trip.status === 'completed';
@@ -450,6 +682,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
                 {/* ── Route ── */}
                 <RouteRow
+                    stops={stops}
                     pickup={trip.pickup_address}
                     delivery={trip.delivery_address}
                     isReturning={isReturning}
@@ -498,8 +731,13 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     ) : null}
                 </CollapsibleSection>
 
-                {/* ── Stops (collapsible) – Item 4 ── */}
-                <StopsSection stops={trip.stops ?? []} tripStatus={trip.status as TripStatus} />
+                {/* ── Stops (collapsible) – mỗi stop có action riêng ── */}
+                <StopsSection
+                    stops={stops}
+                    tripId={trip.id}
+                    tripStatus={trip.status as TripStatus}
+                    onStopUpdated={refresh}
+                />
 
                 {/* ── Expenses (collapsible) ── */}
                 <CollapsibleSection label="Chi phí phát sinh" badge={expenseBadge}>
@@ -510,15 +748,17 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     />
                 </CollapsibleSection>
 
-                {/* ── Loading proof section (PICKING) – Item 1 ── */}
-                {isPicking ? (
+                {/* ── Loading proof (PICKING, sau khi tất cả pickup stops xong) ── */}
+                {showLoadingProof ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.successSoft}
                         backgroundColor={appTheme.colors.surface}
                         padding={14} gap={10}
                     >
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
-                            ẢNH XÁC NHẬN LẤY HÀNG (BẮT BUỘC)
+                            {pickupStops.length > 0
+                                ? `ĐÃ LẤY HÀNG TẠI ${pickupStops.length} ĐIỂM — XÁC NHẬN BẮT ĐẦU VẬN CHUYỂN`
+                                : 'ẢNH XÁC NHẬN LẤY HÀNG (BẮT BUỘC)'}
                         </Text>
                         <PhotoCaptureCard
                             label="Ảnh lấy hàng"
@@ -539,15 +779,36 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                     </YStack>
                 ) : null}
 
-                {/* ── Delivery proof section (ARRIVED) — chỉ ảnh xác nhận giao hàng ── */}
-                {isArrived ? (
+                {/* ── Bắt đầu vận chuyển (PICKING + có pickup stops đã xong — không cần chụp lại) ── */}
+                {showStartTransitBtn ? (
                     <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
                         borderColor={appTheme.colors.successSoft}
                         backgroundColor={appTheme.colors.surface}
                         padding={14} gap={10}
                     >
                         <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
-                            ẢNH XÁC NHẬN GIAO HÀNG (BẮT BUỘC)
+                            {`ĐÃ LẤY HÀNG TẠI ${pickupStops.length} ĐIỂM — SẴN SÀNG VẬN CHUYỂN`}
+                        </Text>
+                        <LifecycleActionButton
+                            label={transitingViaStops ? 'Đang xử lý...' : 'Bắt đầu vận chuyển'}
+                            tone="primary"
+                            onPress={() => void handleStartTransitViaStops()}
+                            isLoading={transitingViaStops}
+                        />
+                    </YStack>
+                ) : null}
+
+                {/* ── Delivery proof (ARRIVED, sau khi tất cả delivery stops xong) ── */}
+                {showDeliveryProof ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.successSoft}
+                        backgroundColor={appTheme.colors.surface}
+                        padding={14} gap={10}
+                    >
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
+                            {deliveryStops.length > 0
+                                ? `ĐÃ GIAO HÀNG TẠI ${deliveryStops.length} ĐIỂM — XÁC NHẬN HOÀN THÀNH CHUYẾN`
+                                : 'ẢNH XÁC NHẬN GIAO HÀNG (BẮT BUỘC)'}
                         </Text>
                         <PhotoCaptureCard
                             label="Ảnh xác nhận giao hàng"
@@ -566,6 +827,25 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
                             isLoading={completingProof}
                             disabled={!proofUri}
                             icon={<CheckCircle size={17} color={proofUri ? '#fff' : appTheme.colors.textMuted} />}
+                        />
+                    </YStack>
+                ) : null}
+
+                {/* ── Hoàn thành chuyến (ARRIVED + có delivery stops đã xong — không cần chụp lại) ── */}
+                {showCompleteTripBtn ? (
+                    <YStack borderRadius={appTheme.radius.lg} borderWidth={1}
+                        borderColor={appTheme.colors.successSoft}
+                        backgroundColor={appTheme.colors.surface}
+                        padding={14} gap={10}
+                    >
+                        <Text fontSize={12} fontWeight="900" color={appTheme.colors.textMuted}>
+                            {`ĐÃ GIAO HÀNG TẠI ${deliveryStops.length} ĐIỂM — XÁC NHẬN HOÀN THÀNH CHUYẾN`}
+                        </Text>
+                        <LifecycleActionButton
+                            label={completingViaStops ? 'Đang xử lý...' : 'Hoàn thành chuyến'}
+                            tone="primary"
+                            onPress={() => void handleCompleteTripViaStops()}
+                            isLoading={completingViaStops}
                         />
                     </YStack>
                 ) : null}

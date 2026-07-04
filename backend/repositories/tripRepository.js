@@ -991,8 +991,10 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
     // để hiển thị cả dữ liệu cũ (approve trước khi có INSERT receipt) lẫn dữ liệu mới
     const result = await pool.query(
         `SELECT
-            COALESCE(sr.id, orr.id)                       AS receipt_id,
-            ${RECEIPT_PAYMENT_TYPE_SQL}                  AS payment_type,
+            COALESCE(sr.id, orr.id)                                           AS receipt_id,
+            orr.id                                                             AS orr_id,
+            orr.status                                                         AS request_status,
+            ${RECEIPT_PAYMENT_TYPE_SQL}                                       AS payment_type,
             COALESCE(sr.amount,
                 (SELECT GREATEST(
                     COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
@@ -1001,21 +1003,24 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
                  FROM order_shipments os2
                  WHERE os2.order_id = orr.order_id
                    AND os2.actual_price IS NOT NULL)
-            )                                             AS amount,
-            COALESCE(sr.collected_at, orr.processed_at)  AS collected_at,
-            COALESCE(sr.notes, orr.coordinator_notes)     AS notes,
-            o.id                                          AS order_id,
+            )                                                                  AS amount,
+            COALESCE(sr.collected_at, orr.processed_at, orr.requested_at)    AS collected_at,
+            COALESCE(sr.notes, orr.coordinator_notes)                         AS notes,
+            orr.coordinator_notes                                              AS rejection_reason,
+            o.id                                                               AS order_id,
             o.cargo_name,
-            c.full_name                                   AS customer_name,
-            c.company_name                                AS customer_company,
-            c.phone                                       AS customer_phone
+            c.full_name                                                        AS customer_name,
+            c.company_name                                                     AS customer_company,
+            c.phone                                                            AS customer_phone,
+            (SELECT COALESCE(SUM(e.amount), 0)
+             FROM expenses e
+             WHERE e.shipment_id = orr.requesting_shipment_id)::text          AS total_expenses
          FROM order_receipt_requests orr
          JOIN orders o                   ON o.id  = orr.order_id
          LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
          LEFT JOIN customers c           ON c.id  = o.customer_id
          WHERE orr.driver_id = $1
-           AND orr.status = 'approved'
-         ORDER BY COALESCE(sr.collected_at, orr.processed_at) DESC
+         ORDER BY COALESCE(sr.collected_at, orr.processed_at, orr.requested_at) DESC
          LIMIT $2 OFFSET $3`,
         [driverId, limit, offset],
     );
@@ -1029,9 +1034,16 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
 const getDriverReceiptDetail = async (receiptId, driverId) => {
     const COLS = `
             COALESCE(sr.id, orr.id)      AS receipt_id,
+            sr.id                        AS actual_receipt_id,
+            orr.id                       AS orr_id,
+            orr.status                   AS request_status,
+            orr.coordinator_notes        AS rejection_reason,
+            orr.driver_notes             AS driver_notes,
             orr.requesting_shipment_id   AS shipment_id,
             COALESCE(sr.id, NULL)        AS shipment_receipt_id,
-            COALESCE(sr.payment_type, o.payment_type, 'cash_collected') AS payment_type,
+            sr.payment_type              AS payment_type,
+            o.payment_type               AS order_payment_type,
+            o.customer_id                AS customer_id,
             COALESCE(sr.amount,
                 (SELECT GREATEST(
                     COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
@@ -1098,10 +1110,111 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
          LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
          ${JOINS}
          LEFT JOIN profiles p_coord      ON p_coord.id  = orr.processed_by
-         WHERE orr.id = $1 AND orr.driver_id = $2 AND orr.status = 'approved'`,
+         WHERE orr.id = $1 AND orr.driver_id = $2`,
         [receiptId, driverId],
     );
     return result.rows[0] ?? null;
+};
+
+const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
+    const result = await pool.query(
+        `UPDATE order_receipt_requests
+         SET status = 'pending', driver_notes = $3, requested_at = NOW()
+         WHERE id = $1 AND driver_id = $2 AND status = 'rejected'
+         RETURNING id`,
+        [orrId, driverId, driverNotes ?? null],
+    );
+    if (!result.rows[0]) throw new Error('Không tìm thấy yêu cầu hoặc yêu cầu chưa bị từ chối');
+    return result.rows[0];
+};
+
+const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes }) => {
+    // Tìm shipment_receipts — receiptId có thể là sr.id hoặc orr.id (fallback)
+    const FIND_SQL = `
+        SELECT sr.id AS sr_id, sr.payment_type,
+               orr.requesting_shipment_id AS shipment_id,
+               orr.order_id, orr.driver_id,
+               o.customer_id,
+               COALESCE(sr.amount,
+                   (SELECT GREATEST(
+                       COALESCE(SUM(os2.actual_price),0) - COALESCE(MAX(o2.prepaid_amount),0), 0
+                   ) FROM order_shipments os2
+                    JOIN orders o2 ON o2.id = os2.order_id
+                    WHERE os2.order_id = orr.order_id AND os2.actual_price IS NOT NULL)
+               ) AS amount
+        FROM shipment_receipts sr
+        JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
+        JOIN orders o ON o.id = orr.order_id
+        WHERE (sr.id = $1 OR orr.id = $1)
+          AND orr.driver_id = $2
+        LIMIT 1`;
+
+    const found = await pool.query(FIND_SQL, [receiptId, driverId]);
+    const rec = found.rows[0];
+    if (!rec) throw new Error('Không tìm thấy phiếu thu hoặc bạn không có quyền');
+    if (rec.payment_type !== null) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Cập nhật payment_type lên shipment_receipts
+        await client.query(
+            `UPDATE shipment_receipts SET payment_type = $1 WHERE id = $2`,
+            [paymentType, rec.sr_id],
+        );
+
+        if (paymentType === 'cash_collected') {
+            // Khách trả tiền mặt cho tài → Driver Debt
+            const debtNote = notes
+                ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
+                : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
+            await client.query(
+                `INSERT INTO debts (
+                    debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                    total_amount, due_date, notes, updated_by, created_at, updated_at
+                )
+                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
+                    CURRENT_DATE + INTERVAL '30 days',
+                    $5, $1, NOW(), NOW())`,
+                [driverId, rec.order_id, rec.shipment_id, rec.amount, debtNote],
+            );
+            if (proofUrl) {
+                await client.query(
+                    `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,
+                    [rec.sr_id, proofUrl],
+                );
+            }
+        } else if (paymentType === 'bank_transfer') {
+            // Khách chuyển khoản về công ty → lưu bằng chứng, không tạo debt
+            if (proofUrl) {
+                await client.query(
+                    `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,
+                    [rec.sr_id, proofUrl],
+                );
+            }
+        } else if (paymentType === 'client_credit') {
+            // Khách nợ công ty → Customer Debt
+            await client.query(
+                `INSERT INTO debts (
+                    debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                    total_amount, due_date, notes, updated_by, created_at, updated_at
+                )
+                 VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                    CURRENT_DATE + INTERVAL '30 days',
+                    'Khách hàng chưa thanh toán — ghi nhận công nợ',
+                    $5, NOW(), NOW())`,
+                [rec.customer_id, rec.order_id, rec.shipment_id, rec.amount, driverId],
+            );
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
 module.exports = {
@@ -1133,4 +1246,6 @@ module.exports = {
     getOrderWithShipments,
     getDriverReceipts,
     getDriverReceiptDetail,
+    resubmitReceiptRequest,
+    recordReceiptCollection,
 };

@@ -312,10 +312,14 @@ export type PaymentType = 'cash_collected' | 'bank_transfer' | 'client_credit' |
 
 export type DriverReceiptSummary = {
     receipt_id: number;
+    orr_id: number;
+    request_status: ReceiptRequestStatus;
     payment_type: PaymentType | null;
     amount: string;
+    total_expenses: string;
     collected_at: string;
     notes: string | null;
+    rejection_reason: string | null;
     order_id: number;
     cargo_name: string | null;
     customer_name: string | null;
@@ -323,9 +327,26 @@ export type DriverReceiptSummary = {
     customer_phone: string | null;
 };
 
+export type ExpenseItem = {
+    id: number;
+    expense_type: string;
+    amount: string;
+    description: string | null;
+    expense_date: string;
+    created_at: string;
+    receipt_urls: string[];
+};
+
 export type DriverReceiptDetail = DriverReceiptSummary & {
+    actual_receipt_id: number | null;
+    orr_id: number;
+    request_status: string;
+    rejection_reason: string | null;
+    driver_notes: string | null;
     shipment_id: number;
     shipment_receipt_id: number | null;
+    order_payment_type: string | null;
+    customer_id: number | null;
     cargo_weight_kg: number | null;
     customer_address: string | null;
     actual_distance_km: string | null;
@@ -340,6 +361,7 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     has_customer_debt: boolean;
     pickup_address: string | null;
     delivery_address: string | null;
+    expenses: ExpenseItem[];
 };
 
 export type CompanyInfo = {

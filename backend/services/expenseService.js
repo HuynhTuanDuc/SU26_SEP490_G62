@@ -42,4 +42,15 @@ const getShipmentExpenses = async (shipmentId, driverId) => {
     return expenseRepository.getShipmentExpenses(shipmentId);
 };
 
-module.exports = { createExpense, getShipmentExpenses };
+// Dùng khi đã verify quyền từ context khác (receipt detail)
+const getExpensesByShipment = async (shipmentId) => {
+    return expenseRepository.getShipmentExpenses(shipmentId);
+};
+
+const updateExpense = async (driverId, expenseId, { expenseType, amount, description, fileUrl }) => {
+    if (expenseType && !ALLOWED_EXPENSE_TYPES.includes(expenseType)) throw new Error('Loại chi phí không hợp lệ');
+    if (amount !== undefined && Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
+    return expenseRepository.updateExpense(expenseId, driverId, { expenseType, amount, description, fileUrl });
+};
+
+module.exports = { createExpense, getShipmentExpenses, getExpensesByShipment, updateExpense };

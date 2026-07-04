@@ -1205,7 +1205,7 @@ SET company_name        = 'SEP490 Van Tai Logistics',
     bank_name           = 'Vietcombank',
     bank_account_number = '0011004433001',
     bank_account_name   = 'CONG TY TNHH SEP490 VAN TAI LOGISTICS',
-    bank_qr_url         = 'https://res.cloudinary.com/demo/image/upload/qr-placeholder.png',
+    bank_qr_url         = 'https://printgo.vn/uploads/media/790919/tao-ma-qr-code-san-pham-1_1620927223.jpg',
     updated_at          = NOW()
 WHERE id = 1;
 
