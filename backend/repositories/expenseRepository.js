@@ -50,11 +50,18 @@ const updateExpense = async (expenseId, driverId, { expenseType, amount, descrip
     try {
         await client.query('BEGIN');
 
+        // Chỉ cho sửa khi yêu cầu phiếu thu liên quan đang ở trạng thái 'rejected'
         const check = await client.query(
-            `SELECT id FROM expenses WHERE id = $1 AND created_by = $2`,
+            `SELECT e.id
+             FROM expenses e
+             JOIN order_receipt_requests orr ON orr.requesting_shipment_id = e.shipment_id
+             WHERE e.id = $1
+               AND e.created_by = $2
+               AND orr.driver_id = $2
+               AND orr.status = 'rejected'`,
             [expenseId, driverId],
         );
-        if (!check.rows[0]) throw new Error('Không tìm thấy chi phí hoặc bạn không có quyền chỉnh sửa');
+        if (!check.rows[0]) throw new Error('Chỉ được sửa chi phí khi yêu cầu phiếu thu bị từ chối');
 
         await client.query(
             `UPDATE expenses

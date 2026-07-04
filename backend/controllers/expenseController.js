@@ -58,7 +58,7 @@ const updateExpense = async (req, res) => {
         });
         res.json({ message: 'Đã cập nhật chi phí' });
     } catch (err) {
-        const status = err.message.includes('quyền') ? 403
+        const status = err.message.includes('quyền') || err.message.includes('từ chối') ? 403
             : err.message.includes('không hợp lệ') || err.message.includes('lớn hơn') ? 400
             : 500;
         res.status(status).json({ error: err.message });

@@ -3,6 +3,7 @@ import {
     Alert, Image, KeyboardAvoidingView, Modal, Platform,
     ScrollView, StyleSheet, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { useMoneyInput } from '@/hooks/use-money-input';
 import { useLocalSearchParams } from 'expo-router';
 import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import {
@@ -117,7 +118,7 @@ function Row({ label, value, bold, icon }: {
 
 // ─── Expense row (inside order accordion) ────────────────────────────────────
 
-function ExpenseRow({ expense, onEdit }: { expense: ExpenseItem; onEdit: () => void }) {
+function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit: () => void; canEdit: boolean }) {
     const [showPhotos, setShowPhotos] = useState(false);
     return (
         <View style={styles.expenseRow}>
@@ -144,9 +145,9 @@ function ExpenseRow({ expense, onEdit }: { expense: ExpenseItem; onEdit: () => v
                             </Text>
                         </TouchableOpacity>
                     ) : null}
-                    <TouchableOpacity onPress={onEdit} style={styles.editChip}>
+                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip}>
                         <PencilSimple size={12} color={appTheme.colors.primary} weight="fill" />
-                    </TouchableOpacity>
+                    </TouchableOpacity> : null}
                 </XStack>
             </XStack>
 
@@ -358,7 +359,7 @@ export function ReceiptDetailScreen() {
 
     const [selected,     setSelected]     = useState<CollectionType | null>(null);
     const [proofUri,     setProofUri]     = useState<string | null>(null);
-    const [cashAmount,   setCashAmount]   = useState('');
+    const { displayValue: cashDisplay, rawValue: cashAmount, onChangeText: onCashChange, setValue: setCashValue } = useMoneyInput();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [editExpense,  setEditExpense]  = useState<ExpenseItem | null>(null);
@@ -379,7 +380,7 @@ export function ReceiptDetailScreen() {
                     // pre-fill với tổng dự kiến (cước + chi phí)
                     const expenses = data.expenses ?? [];
                     const expTotal = expenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
-                    setCashAmount(String(Number(data.amount) + expTotal));
+                    setCashValue(Number(data.amount) + expTotal);
                 }
             })
             .catch(err => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
@@ -398,7 +399,7 @@ export function ReceiptDetailScreen() {
     const handleSubmitCollection = async () => {
         if (!selected || !receipt) return;
         if (selected === 'cash_collected') {
-            if (!cashAmount || Number(cashAmount) <= 0) {
+            if (!cashAmount || cashAmount <= 0) {
                 Alert.alert('Thiếu thông tin', 'Vui lòng nhập số tiền nhận từ khách.');
                 return;
             }
@@ -413,13 +414,13 @@ export function ReceiptDetailScreen() {
         }
 
         const expectedTotal = Number(receipt.amount) + totalExpenses;
-        const actualCash    = Number(cashAmount);
+        const actualCash    = cashAmount;
         const diffNote      = selected === 'cash_collected' && actualCash !== expectedTotal
             ? `\nChênh lệch: ${(actualCash - expectedTotal).toLocaleString('vi-VN')}₫`
             : '';
 
         const msg: Record<CollectionType, string> = {
-            cash_collected: `Xác nhận khách đã trả ${Number(cashAmount).toLocaleString('vi-VN')}₫ tiền mặt?${diffNote}\nSẽ tạo công nợ cho bạn.`,
+            cash_collected: `Xác nhận khách đã trả ${cashAmount.toLocaleString('vi-VN')}₫ tiền mặt?${diffNote}\nSẽ tạo công nợ cho bạn.`,
             bank_transfer:  'Xác nhận khách đã chuyển khoản về công ty?',
             client_credit:  'Xác nhận khách chưa thanh toán?\nSẽ tạo công nợ cho khách hàng.',
         };
@@ -433,7 +434,7 @@ export function ReceiptDetailScreen() {
                         const fd = new FormData();
                         fd.append('payment_type', selected);
                         if (selected === 'cash_collected') {
-                            fd.append('notes', `Tiền nhận thực tế: ${Number(cashAmount).toLocaleString('vi-VN')}₫${diffNote}`);
+                            fd.append('notes', `Tiền nhận thực tế: ${cashAmount.toLocaleString('vi-VN')}₫${diffNote}`);
                         }
                         if (proofUri) {
                             const name = proofUri.split('/').pop() ?? 'proof.jpg';
@@ -504,7 +505,13 @@ export function ReceiptDetailScreen() {
         <View style={{ flex: 1, backgroundColor: '#F0F4FF' }}>
             <ScreenHeader title="Phiếu thu" showBack />
 
-            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+            >
+            <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled">
 
                 {/* ── Rejection banner ──────────────────────────────────── */}
                 {isRejected ? (
@@ -691,6 +698,7 @@ export function ReceiptDetailScreen() {
                                         <ExpenseRow
                                             key={exp.id}
                                             expense={exp}
+                                            canEdit={isRejected}
                                             onEdit={() => setEditExpense(exp)}
                                         />
                                     ))}
@@ -811,19 +819,19 @@ export function ReceiptDetailScreen() {
                                 <TextInput
                                     style={[styles.textInput, { fontSize: 18, fontWeight: '700',
                                         color: appTheme.colors.text, borderColor: appTheme.colors.success + '80' }]}
-                                    value={cashAmount}
-                                    onChangeText={v => setCashAmount(v.replace(/[^0-9]/g, ''))}
+                                    value={cashDisplay}
+                                    onChangeText={onCashChange}
                                     keyboardType="numeric"
                                     placeholder="0"
                                     placeholderTextColor={appTheme.colors.textMuted}
                                 />
-                                {cashAmount && Number(cashAmount) !== (Number(receipt?.amount) + totalExpenses) ? (
+                                {cashAmount > 0 && cashAmount !== (Number(receipt?.amount) + totalExpenses) ? (
                                     <XStack alignItems="center" gap={4}>
                                         <Warning size={12} color={appTheme.colors.warningText} weight="fill" />
                                         <Text fontSize={11} color={appTheme.colors.warningText}>
                                             Khác tổng dự kiến{' '}
                                             {(Number(receipt?.amount) + totalExpenses).toLocaleString('vi-VN')}₫
-                                            {' '}(chênh {(Number(cashAmount) - Number(receipt?.amount) - totalExpenses).toLocaleString('vi-VN')}₫)
+                                            {' '}(chênh {(cashAmount - Number(receipt?.amount) - totalExpenses).toLocaleString('vi-VN')}₫)
                                         </Text>
                                     </XStack>
                                 ) : null}
@@ -855,11 +863,11 @@ export function ReceiptDetailScreen() {
                         {selected ? (
                             <TouchableOpacity
                                 style={[styles.saveBtn, (isSubmitting
-                                    || (selected === 'cash_collected' && (!cashAmount || Number(cashAmount) <= 0))
+                                    || (selected === 'cash_collected' && cashAmount <= 0)
                                     || (needsProof && !proofUri)) && { opacity: 0.45 }]}
                                 onPress={handleSubmitCollection}
                                 disabled={isSubmitting
-                                    || (selected === 'cash_collected' && (!cashAmount || Number(cashAmount) <= 0))
+                                    || (selected === 'cash_collected' && cashAmount <= 0)
                                     || (needsProof && !proofUri)}
                             >
                                 <CheckCircle size={18} color="#fff" weight="fill" />
@@ -872,6 +880,7 @@ export function ReceiptDetailScreen() {
                 ) : null}
 
             </ScrollView>
+            </KeyboardAvoidingView>
 
             <ExpenseEditModal
                 expense={editExpense}

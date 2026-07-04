@@ -79,9 +79,16 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
                         <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>
                             Đơn #{item.order_id}
                         </Text>
-                        <Text fontSize={15} fontWeight="900" color={statusCfg.color}>
-                            {fmtMoney(item.amount)}
-                        </Text>
+                        <YStack alignItems="flex-end" gap={1}>
+                            <Text fontSize={15} fontWeight="900" color={statusCfg.color}>
+                                {fmtMoney(Number(item.amount) + Number(item.total_expenses ?? 0))}
+                            </Text>
+                            {Number(item.total_expenses) > 0 ? (
+                                <Text fontSize={10} color={appTheme.colors.textMuted}>
+                                    {fmtMoney(item.amount)} + {fmtMoney(item.total_expenses)} CP
+                                </Text>
+                            ) : null}
+                        </YStack>
                     </XStack>
 
                     {item.cargo_name ? (

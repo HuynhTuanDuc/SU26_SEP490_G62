@@ -286,7 +286,11 @@ const completeStop = async (req, res) => {
         const prevDone = await stopRepository.isPreviousStopDone(stopId, shipmentId);
         if (!prevDone) return res.status(422).json({ error: 'Phải hoàn thành stop trước (BR-011)' });
 
-        const stop = await stopRepository.markStopCompleted(stopId, shipmentId, req.body.proof_url ?? null);
+        const proofUrl = req.files?.['proof']?.[0]?.path
+            ?? req.files?.['image']?.[0]?.path
+            ?? req.body.proof_url
+            ?? null;
+        const stop = await stopRepository.markStopCompleted(stopId, shipmentId, proofUrl);
         if (!stop) return res.status(409).json({ error: 'Stop không tồn tại hoặc đã hoàn thành' });
         res.json({ message: 'Đã hoàn thành điểm dừng', stop });
     } catch (err) {

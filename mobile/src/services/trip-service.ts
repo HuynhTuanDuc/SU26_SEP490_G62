@@ -65,6 +65,24 @@ export const tripService = {
     getOrderDetail: (orderId: number) =>
         apiClient.get<import('@/types/trip').OrderDetailResponse>(`/api/trips/orders/${orderId}`),
 
+    arriveAtStop: (shipmentId: number, stopId: number) =>
+        apiClient.patch<{ message: string; stop: import('@/types/trip').TripStop }>(
+            `/api/trips/${shipmentId}/stops/${stopId}/arrive`, {},
+        ),
+
+    completeStop: (shipmentId: number, stopId: number, photoUri?: string) => {
+        if (photoUri) {
+            const fd = new FormData();
+            fd.append('proof', { uri: photoUri, name: 'proof.jpg', type: 'image/jpeg' } as unknown as Blob);
+            return apiClient.patchForm<{ message: string; stop: import('@/types/trip').TripStop }>(
+                `/api/trips/${shipmentId}/stops/${stopId}/complete`, fd,
+            );
+        }
+        return apiClient.patch<{ message: string; stop: import('@/types/trip').TripStop }>(
+            `/api/trips/${shipmentId}/stops/${stopId}/complete`, {},
+        );
+    },
+
     getShipmentExpenses: (shipmentId: number) =>
         apiClient.get<import('@/types/trip').ExpenseListResponse>(`/api/expenses/shipment/${shipmentId}`),
 

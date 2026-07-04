@@ -316,6 +316,7 @@ export type DriverReceiptSummary = {
     request_status: ReceiptRequestStatus;
     payment_type: PaymentType | null;
     amount: string;
+    total_expenses: string;
     collected_at: string;
     notes: string | null;
     rejection_reason: string | null;

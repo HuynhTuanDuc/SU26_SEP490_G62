@@ -1011,7 +1011,10 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
             o.cargo_name,
             c.full_name                                                        AS customer_name,
             c.company_name                                                     AS customer_company,
-            c.phone                                                            AS customer_phone
+            c.phone                                                            AS customer_phone,
+            (SELECT COALESCE(SUM(e.amount), 0)
+             FROM expenses e
+             WHERE e.shipment_id = orr.requesting_shipment_id)::text          AS total_expenses
          FROM order_receipt_requests orr
          JOIN orders o                   ON o.id  = orr.order_id
          LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
@@ -1163,6 +1166,9 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
 
         if (paymentType === 'cash_collected') {
             // Khách trả tiền mặt cho tài → Driver Debt
+            const debtNote = notes
+                ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
+                : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
             await client.query(
                 `INSERT INTO debts (
                     debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
@@ -1170,9 +1176,8 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 )
                  VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
                     CURRENT_DATE + INTERVAL '30 days',
-                    'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty',
-                    $1, NOW(), NOW())`,
-                [driverId, rec.order_id, rec.shipment_id, rec.amount],
+                    $5, $1, NOW(), NOW())`,
+                [driverId, rec.order_id, rec.shipment_id, rec.amount, debtNote],
             );
             if (proofUrl) {
                 await client.query(

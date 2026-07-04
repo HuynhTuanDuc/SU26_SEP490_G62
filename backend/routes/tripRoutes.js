@@ -127,6 +127,14 @@ router.post(
 // Multi-Stop: xem + xác nhận từng stop (BR-011)
 router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
 router.patch('/:id/stops/:stopId/arrive',   driverOnly, tripController.arriveAtStop);
-router.patch('/:id/stops/:stopId/complete', driverOnly, tripController.completeStop);
+router.patch(
+    '/:id/stops/:stopId/complete',
+    driverOnly,
+    handleUpload(uploadProof.fields([
+        { name: 'proof', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+    ])),
+    tripController.completeStop,
+);
 
 module.exports = router;

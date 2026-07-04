@@ -172,17 +172,21 @@ const releaseTrip = async (tripId, driverId, reason) => {
 };
 
 // ARRIVED → COMPLETED: driver xác nhận giao hàng thành công
-// Bắt buộc 2 ảnh:
-//   proofFileUrl   — ảnh xác nhận giao hàng (BR-015/016/017)
-//   receiptFileUrl — ảnh biên lai/hóa đơn có chữ ký khách
+// proofFileUrl bắt buộc TRỪ KHI chuyến có delivery stops — proof đã được lưu per-stop
 const completeTrip = async (tripId, driverId, proofFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền hoàn thành chuyến này');
     if (trip.status !== SHIPMENT_STATUS.ARRIVED) throw new Error('Chuyến phải ở trạng thái "arrived" để hoàn thành');
-    if (!proofFileUrl) throw new Error('Ảnh xác nhận giao hàng là bắt buộc (BR-015)');
 
-    await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
+    const allStops = await stopRepository.getStopsByShipment(tripId);
+    const deliveryStops = allStops.filter(s => s.stop_type === 'delivery');
+    const allDeliveryStopsDone = deliveryStops.length > 0 && deliveryStops.every(s => s.completed_at);
+
+    // Bỏ bắt buộc ảnh khi đã có delivery stops hoàn thành (proof đã capture per-stop)
+    if (!proofFileUrl && !allDeliveryStopsDone) throw new Error('Ảnh xác nhận giao hàng là bắt buộc (BR-015)');
+
+    if (proofFileUrl) await tripRepository.saveDeliveryProof(tripId, driverId, proofFileUrl);
 
     await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.COMPLETED);
 
@@ -222,14 +226,20 @@ const completeTrip = async (tripId, driverId, proofFileUrl) => {
 };
 
 // PICKING → TRANSIT with mandatory loading proof (BR-013/014)
+// proofFileUrl bắt buộc TRỪ KHI chuyến có pickup stops — proof đã được lưu per-stop
 const startTransit = async (tripId, driverId, proofFileUrl) => {
     const trip = await tripRepository.getTripById(tripId);
     if (!trip) throw new Error('Chuyến không tồn tại');
     if (Number(trip.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền cập nhật chuyến này');
     if (trip.status !== SHIPMENT_STATUS.PICKING) throw new Error('Chuyến phải ở trạng thái "picking" để xác nhận lấy hàng');
-    if (!proofFileUrl) throw new Error('Ảnh xác nhận lấy hàng là bắt buộc (BR-013)');
 
-    await tripRepository.saveLoadingProof(tripId, driverId, proofFileUrl);
+    const allStops = await stopRepository.getStopsByShipment(tripId);
+    const pickupStops = allStops.filter(s => s.stop_type === 'pickup');
+    const allPickupStopsDone = pickupStops.length > 0 && pickupStops.every(s => s.completed_at);
+
+    if (!proofFileUrl && !allPickupStopsDone) throw new Error('Ảnh xác nhận lấy hàng là bắt buộc (BR-013)');
+
+    if (proofFileUrl) await tripRepository.saveLoadingProof(tripId, driverId, proofFileUrl);
 
     const updatedTrip = await tripRepository.updateTripStatus(tripId, SHIPMENT_STATUS.TRANSIT);
 
