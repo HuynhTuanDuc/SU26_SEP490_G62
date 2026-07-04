@@ -478,13 +478,13 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return receipt;
 };
 
-const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes }) => {
+const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
     const VALID = ['cash_collected', 'bank_transfer', 'client_credit'];
     if (!VALID.includes(paymentType)) throw new Error('Hình thức thanh toán không hợp lệ');
     if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
         throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
     }
-    return tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes });
+    return tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount });
 };
 
 const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {

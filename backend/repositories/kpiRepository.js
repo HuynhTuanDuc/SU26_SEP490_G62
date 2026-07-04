@@ -33,7 +33,7 @@ const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
             (br_kpi.conditions_json->>'min_revenue')::text      AS kpi_bonus_threshold,
             CASE
                 WHEN br_kpi.id IS NOT NULL
-                     AND k.total_revenue >= (br_kpi.conditions_json->>'min_revenue')::numeric
+                     AND k.total_revenue > (br_kpi.conditions_json->>'min_revenue')::numeric
                 THEN TRUE ELSE FALSE
             END                                                 AS kpi_bonus_achieved,
 

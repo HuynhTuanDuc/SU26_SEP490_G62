@@ -44,15 +44,18 @@ const getDriverPayrolls = async (driverId, { month = null, year = null } = {}) =
 const createSalaryAdvance = async ({ driverId, amount, reason, requestMonth, requestYear }) => {
     // Một tháng chỉ được có 1 request đang pending/approved
     const existing = await pool.query(
-        `SELECT id FROM salary_advances
+        `SELECT COALESCE(SUM(amount), 0) AS active_total
+         FROM salary_advances
          WHERE driver_id = $1
            AND request_month = $2
            AND request_year  = $3
-           AND status IN ('pending','approved')
-         LIMIT 1`,
+           AND status IN ('pending','approved','paid')`,
         [driverId, requestMonth, requestYear],
     );
-    if (existing.rows.length > 0) {
+    const activeTotal = Number(existing.rows[0]?.active_total ?? 0);
+    if (activeTotal + Number(amount) > MAX_ADVANCE_AMOUNT) {
+        const remaining = Math.max(0, MAX_ADVANCE_AMOUNT - activeTotal);
+        throw new Error(`Tong tien ung luong trong thang khong duoc vuot qua ${MAX_ADVANCE_AMOUNT.toLocaleString('vi-VN')}d. Con co the ung: ${remaining.toLocaleString('vi-VN')}d`);
         throw new Error('Đã có yêu cầu ứng lương đang chờ xử lý trong tháng này');
     }
 
@@ -91,6 +94,15 @@ const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
 const PHONE_ALLOWANCE        = 200_000;
 const MAX_ADVANCE_AMOUNT     = 5_000_000;
 
+const getMonthsOfServiceAtPeriodEnd = (hireDateValue, month, year) => {
+    const hireDate = new Date(hireDateValue);
+    const periodEnd = new Date(Number(year), Number(month), 0);
+    let months = (periodEnd.getFullYear() - hireDate.getFullYear()) * 12
+        + (periodEnd.getMonth() - hireDate.getMonth());
+    if (periodEnd.getDate() < hireDate.getDate()) months -= 1;
+    return Math.max(0, months);
+};
+
 const getPayrollEstimate = async (driverId, { month, year }) => {
     await revenueAllocationRepository.ensureRevenueAllocationTable();
 
@@ -103,10 +115,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     if (!driverRes.rows[0]) throw new Error('Driver không tồn tại');
     const { hire_date, revenue_share_percent } = driverRes.rows[0];
 
-    const hireDate = new Date(hire_date);
-    const now = new Date();
-    const monthsOfService = (now.getFullYear() - hireDate.getFullYear()) * 12
-        + (now.getMonth() - hireDate.getMonth());
+    const monthsOfService = getMonthsOfServiceAtPeriodEnd(hire_date, month, year);
     const baseSalary = monthsOfService >= 12 ? 9_000_000 : 8_000_000;
 
     // 2. Số ngày nghỉ không lương tháng này
@@ -154,7 +163,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const revenuePct   = Number(revenue_share_percent ?? 15);
     const revenueBonus = totalRevenue * (revenuePct / 100);
 
-    const kpiBonus = (kpi.kpi_bonus_reward && kpi.kpi_threshold && totalRevenue >= Number(kpi.kpi_threshold))
+    const kpiBonus = (kpi.kpi_bonus_reward && kpi.kpi_threshold && totalRevenue > Number(kpi.kpi_threshold))
         ? Number(kpi.kpi_bonus_reward) : 0;
     const topDriverBonus = (Number(kpi.revenue_rank) === 1 && kpi.top_driver_reward)
         ? Number(kpi.top_driver_reward) : 0;
@@ -164,7 +173,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         `SELECT COALESCE(SUM(amount), 0) AS advance_total
          FROM salary_advances
          WHERE driver_id = $1 AND request_month = $2 AND request_year = $3
-           AND status IN ('approved','paid')`,
+           AND status = 'paid'`,
         [driverId, month, year],
     );
     const advanceDeduction = Number(advRes.rows[0].advance_total ?? 0);

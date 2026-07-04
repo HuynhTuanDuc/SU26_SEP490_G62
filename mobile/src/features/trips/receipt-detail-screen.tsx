@@ -434,6 +434,7 @@ export function ReceiptDetailScreen() {
                         const fd = new FormData();
                         fd.append('payment_type', selected);
                         if (selected === 'cash_collected') {
+                            fd.append('collected_amount', String(cashAmount));
                             fd.append('notes', `Tiền nhận thực tế: ${cashAmount.toLocaleString('vi-VN')}₫${diffNote}`);
                         }
                         if (proofUri) {
@@ -826,12 +827,21 @@ export function ReceiptDetailScreen() {
                                     placeholderTextColor={appTheme.colors.textMuted}
                                 />
                                 {cashAmount > 0 && cashAmount !== (Number(receipt?.amount) + totalExpenses) ? (
-                                    <XStack alignItems="center" gap={4}>
-                                        <Warning size={12} color={appTheme.colors.warningText} weight="fill" />
-                                        <Text fontSize={11} color={appTheme.colors.warningText}>
-                                            Khác tổng dự kiến{' '}
-                                            {(Number(receipt?.amount) + totalExpenses).toLocaleString('vi-VN')}₫
-                                            {' '}(chênh {(cashAmount - Number(receipt?.amount) - totalExpenses).toLocaleString('vi-VN')}₫)
+                                    <XStack alignItems="flex-start" gap={4}>
+                                        <Warning size={12} color={
+                                            cashAmount > (Number(receipt?.amount) + totalExpenses)
+                                                ? appTheme.colors.primary
+                                                : appTheme.colors.warningText
+                                        } weight="fill" style={{ marginTop: 1 }} />
+                                        <Text fontSize={11} color={
+                                            cashAmount > (Number(receipt?.amount) + totalExpenses)
+                                                ? appTheme.colors.primary
+                                                : appTheme.colors.warningText
+                                        } flex={1}>
+                                            {cashAmount > (Number(receipt?.amount) + totalExpenses)
+                                                ? `Thừa ${(cashAmount - Number(receipt?.amount) - totalExpenses).toLocaleString('vi-VN')}₫ — sẽ tự động trừ vào nợ cũ của khách`
+                                                : `Thiếu ${(Number(receipt?.amount) + totalExpenses - cashAmount).toLocaleString('vi-VN')}₫ so với tổng dự kiến`
+                                            }
                                         </Text>
                                     </XStack>
                                 ) : null}

@@ -25,6 +25,9 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
+  getCustomerDebt: (orderId) =>
+    apiRequest(`${BASE}/orders/${orderId}/customer-debt`),
+
   getPayments: (orderId) =>
     apiRequest(`${BASE}/orders/${orderId}/payments`),
 

@@ -136,63 +136,182 @@ const previewAllocation = async (personType, personId, amount) => {
     };
 };
 
-const recordPayment = async (orderId, paymentData) => {
+/**
+ * Ghi nhận thanh toán từ khách với phân bổ ưu tiên:
+ *   1. Trả đơn hiện tại (orderId) trước
+ *   2. Phần thừa → các đơn khác cũ nhất → mới nhất
+ *
+ * Ví dụ: nợ cũ 10tr, đơn mới 500k, khách trả 5tr5
+ *   → đơn mới cleared 500k → 5tr phân bổ vào nợ cũ → còn 5tr
+ */
+const recordPaymentWithOverflow = async (orderId, paymentData) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Guard: check customer debt state before proceeding
-        const { rows: [debtState] } = await client.query(
-            `SELECT
-                COUNT(d.id)::int                                                          AS debt_count,
-                COALESCE(SUM(d.total_amount), 0)                                          AS total_amount,
-                COALESCE(SUM(dp_agg.paid), 0)                                             AS paid_amount
-             FROM debts d
-             LEFT JOIN (
-                 SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
-                 FROM debt_payments GROUP BY debt_id
-             ) dp_agg ON dp_agg.debt_id = d.id
-             WHERE d.order_id = $1 AND d.debt_type = 'customer'`,
+        // 1. Validate order, lấy customer_id
+        const { rows: [order] } = await client.query(
+            `SELECT id, customer_id FROM orders WHERE id = $1`,
             [orderId]
         );
+        if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);
+        if (!order.customer_id) throw new Error('Đơn hàng không gắn khách hàng');
 
-        if (Number(debtState.debt_count) === 0) {
-            throw new Error('Đơn hàng không có công nợ khách hàng. Kiểm tra hình thức thanh toán (chuyển khoản trực tiếp không cần ghi nhận thêm).');
-        }
+        const customerId = order.customer_id;
 
-        const remaining = Number(debtState.total_amount) - Number(debtState.paid_amount);
-        if (remaining <= 0.01) {
-            throw new Error('Khách hàng đã thanh toán đủ, không thể ghi nhận thêm.');
-        }
+        // 2. Đảm bảo đơn hiện tại có debt entry (tạo nếu chưa có)
+        await _ensureCustomerDebt(client, orderId, paymentData.createdBy);
 
-        const debtId = await _ensureCustomerDebt(client, orderId, paymentData.createdBy);
-
-        const { rows: [debt] } = await client.query(
-            `SELECT d.id, d.total_amount, d.customer_id,
-                    COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount
+        // 3. Khoá và load TẤT CẢ công nợ chưa thanh toán của khách
+        const { rows: debts } = await client.query(
+            `SELECT
+                d.id                                                                       AS debt_id,
+                d.order_id,
+                d.total_amount,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)         AS paid_amount,
+                GREATEST(0,
+                    d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+                )                                                                          AS remaining
              FROM debts d
              LEFT JOIN debt_payments dp ON dp.debt_id = d.id
-             WHERE d.id = $1
-             GROUP BY d.id, d.total_amount, d.customer_id`,
-            [debtId]
+             WHERE d.customer_id = $1
+               AND d.debt_type = 'customer'
+             GROUP BY d.id, d.order_id, d.total_amount
+             HAVING GREATEST(0,
+                d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+             ) > 0.01
+             ORDER BY d.created_at ASC, d.id ASC
+             FOR UPDATE OF d`,
+            [customerId]
         );
 
-        const result = await _applyPaymentToDebt(client, {
-            debt,
-            amount:    paymentData.amount,
-            method:    paymentData.paymentMethod,
-            createdBy: paymentData.createdBy,
-            notes:     paymentData.notes,
-        });
+        if (debts.length === 0) {
+            throw new Error('Khách hàng không có công nợ nào cần thanh toán.');
+        }
+
+        const totalRemaining  = debts.reduce((s, d) => s + Number(d.remaining), 0);
+        const requestedAmount = Number(paymentData.amount);
+
+        if (requestedAmount > totalRemaining + 0.01) {
+            throw new Error(
+                `Số tiền thanh toán (${Math.round(requestedAmount).toLocaleString('vi-VN')}đ) vượt quá tổng công nợ khách hàng (${Math.round(totalRemaining).toLocaleString('vi-VN')}đ).`
+            );
+        }
+
+        // 4. Sắp xếp ưu tiên: đơn hiện tại trước, các đơn khác cũ → mới
+        const currentDebt = debts.filter((d) => d.order_id === orderId);
+        const otherDebts  = debts.filter((d) => d.order_id !== orderId); // đã sorted ASC từ query
+        const orderedDebts = [...currentDebt, ...otherDebts];
+
+        // 5. Phân phối theo thứ tự ưu tiên
+        let remaining   = requestedAmount;
+        const debtIds   = [];
+        const allocAmts = [];
+        const allocations = [];
+
+        for (const debt of orderedDebts) {
+            if (remaining < 0.01) break;
+            const alloc = Math.min(remaining, Number(debt.remaining));
+            if (alloc < 0.01) continue;
+
+            const newPaid = Number(debt.paid_amount) + alloc;
+            debtIds.push(Number(debt.debt_id));
+            allocAmts.push(alloc);
+            allocations.push({
+                debtId:          Number(debt.debt_id),
+                orderId:         debt.order_id,
+                isCurrentOrder:  debt.order_id === orderId,
+                allocated:       alloc,
+                newStatus:       _debtStatus(newPaid, Number(debt.total_amount)),
+            });
+            remaining -= alloc;
+        }
+
+        // 6. Bulk insert payment records (1 round-trip)
+        const { rows: payments } = await client.query(
+            `INSERT INTO debt_payments
+                (debt_id, amount, payment_method, status,
+                 paid_at, confirmed_at, confirmed_by, created_by, notes)
+             SELECT unnest($1::int[]), unnest($2::numeric[]),
+                    $3, 'confirmed', NOW(), NOW(), $4, $4, $5
+             RETURNING id, debt_id, amount`,
+            [
+                debtIds, allocAmts,
+                paymentData.paymentMethod || 'cash',
+                paymentData.createdBy,
+                paymentData.notes || null,
+            ]
+        );
 
         await client.query('COMMIT');
-        return { ...result, debtId };
+        return {
+            totalAllocated:      requestedAmount,
+            totalRemainingAfter: Math.max(0, Math.round((totalRemaining - requestedAmount) * 100) / 100),
+            payments,
+            allocations,
+            spreadAcrossOrders:  allocations.length > 1,
+        };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
     } finally {
         client.release();
     }
+};
+
+/**
+ * Trả về tổng công nợ còn lại của khách hàng liên quan đến đơn orderId.
+ * Dùng để frontend hiển thị context trước khi ghi nhận thanh toán.
+ */
+const getCustomerDebtSummary = async (orderId) => {
+    const { rows: [order] } = await pool.query(
+        `SELECT o.customer_id,
+                COALESCE(c.company_name, c.full_name) AS customer_name
+         FROM orders o
+         LEFT JOIN customers c ON c.id = o.customer_id
+         WHERE o.id = $1`,
+        [orderId]
+    );
+    if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);
+    if (!order.customer_id) {
+        return { customerId: null, customerName: null, totalOutstanding: 0, debts: [] };
+    }
+
+    const { rows } = await pool.query(
+        `SELECT
+            d.id                                                                       AS debt_id,
+            d.order_id,
+            d.total_amount,
+            COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)         AS paid_amount,
+            GREATEST(0,
+                d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+            )                                                                          AS remaining
+         FROM debts d
+         LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+         WHERE d.customer_id = $1
+           AND d.debt_type = 'customer'
+         GROUP BY d.id, d.order_id, d.total_amount
+         HAVING GREATEST(0,
+            d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+         ) > 0.01
+         ORDER BY d.created_at ASC, d.id ASC`,
+        [order.customer_id]
+    );
+
+    const totalOutstanding = rows.reduce((s, d) => s + Number(d.remaining), 0);
+
+    return {
+        customerId:      order.customer_id,
+        customerName:    order.customer_name,
+        totalOutstanding,
+        debts: rows.map((d) => ({
+            debtId:      Number(d.debt_id),
+            orderId:     d.order_id,
+            totalAmount: Number(d.total_amount),
+            paidAmount:  Number(d.paid_amount),
+            remaining:   Number(d.remaining),
+        })),
+    };
 };
 
 const recordPaymentByDebt = async (debtId, paymentData) => {
@@ -481,7 +600,8 @@ const getPaymentHistoryByPerson = async (personType, personId) => {
 
 module.exports = {
     getPaymentsByOrderId,
-    recordPayment,
+    recordPaymentWithOverflow,
+    getCustomerDebtSummary,
     confirmDriverPayment,
     previewAllocation,
     allocatePayment,
