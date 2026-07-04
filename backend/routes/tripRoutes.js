@@ -44,10 +44,6 @@ router.post(
     tripController.startTransit,
 );
 
-// ITEM 2: TH3 — Driver báo khách chưa trả tiền → tạo Customer Debt
-// Body: { amount, notes? }
-router.post('/:id/mark-unpaid', driverOnly, tripController.markUnpaid);
-
 // ITEM 5: RETURNING → COMPLETED (hoàn hàng) — ảnh không bắt buộc
 // Field: 'proof' | 'image'
 router.post(
@@ -73,18 +69,6 @@ router.post(
     tripController.completeTrip,
 );
 
-// TH2: Ghi nhận khách trả tiền mặt cho driver → tạo driver debt
-// Field: 'receipt' | 'image' | 'photo'
-router.post(
-    '/:id/payment',
-    driverOnly,
-    handleUpload(uploadPaymentReceipt.fields([
-        { name: 'receipt', maxCount: 1 },
-        { name: 'image',   maxCount: 1 },
-        { name: 'photo',   maxCount: 1 },
-    ])),
-    paymentController.recordCashPayment,
-);
 router.get('/:id/payments',        driverOnly, paymentController.getShipmentPayments);
 router.get('/:id/payment-summary', driverOnly, paymentController.getPaymentSummary);
 
@@ -124,8 +108,7 @@ router.post(
     tripController.recordReceiptCollection,
 );
 
-// Multi-Stop: xem + xác nhận từng stop (BR-011)
-router.get('/:id/stops', driverOnly, tripController.getShipmentStops);
+// Multi-Stop: xác nhận từng stop (BR-011)
 router.patch('/:id/stops/:stopId/arrive',   driverOnly, tripController.arriveAtStop);
 router.patch(
     '/:id/stops/:stopId/complete',

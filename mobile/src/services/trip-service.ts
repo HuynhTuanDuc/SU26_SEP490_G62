@@ -1,7 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 import type {
     ActiveTripResponse,
-    CancelDeliveryResponse,
     ClaimTripResponse,
     CompleteTripResponse,
     ReleaseTripResponse,
@@ -43,15 +42,6 @@ export const tripService = {
     // RETURNING → COMPLETED: hoàn hàng với ảnh tuỳ chọn
     returnComplete: (tripId: number, formData: FormData) =>
         apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, formData),
-
-    markUnpaid: (tripId: number, amount: number, notes?: string) =>
-        apiClient.post<{ message: string; debt: object }>(`/api/trips/${tripId}/mark-unpaid`, { amount, notes }),
-
-    recordPayment: (tripId: number, formData: FormData) =>
-        apiClient.postForm<{ message: string; payment: object; debt: object }>(`/api/trips/${tripId}/payment`, formData),
-
-    cancelDelivery: (tripId: number, reason: string) =>
-        apiClient.post<CancelDeliveryResponse>(`/api/trips/${tripId}/cancel-delivery`, { reason }),
 
     releaseTrip: (tripId: number, reason?: string) =>
         apiClient.post<ReleaseTripResponse>(`/api/trips/${tripId}/release`, { reason }),

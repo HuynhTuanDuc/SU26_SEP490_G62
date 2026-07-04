@@ -24,16 +24,4 @@ const updateCompanyInfo = async (req, res) => {
     }
 };
 
-// POST /api/company/bank-qr — manager only, multipart field: 'qr'
-const uploadBankQr = async (req, res) => {
-    try {
-        const file = req.file;
-        if (!file) return res.status(400).json({ error: 'Thiếu file ảnh QR (field: qr)' });
-        const info = await companyService.uploadBankQr(file.path, req.user.userId);
-        res.json({ info });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-module.exports = { getCompanyInfo, updateCompanyInfo, uploadBankQr };
+module.exports = { getCompanyInfo, updateCompanyInfo };

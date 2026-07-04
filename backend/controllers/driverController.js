@@ -38,15 +38,6 @@ const uploadMaintenanceBill = async (req, res) => {
     }
 };
 
-const updateMaintenanceCost = async (req, res) => {
-    try {
-        const result = await driverService.updateMaintenanceCost(req.user.userId, req.params.vehicleId, req.body.cost);
-        res.json({ message: 'Cost updated', ...result });
-    } catch (err) {
-        res.status(err.statusCode || 500).json({ error: err.message });
-    }
-};
-
 const completeMaintenance = async (req, res) => {
     try {
         const result = await driverService.completeMaintenance(req.user.userId, req.params.vehicleId, req.body);
@@ -56,4 +47,4 @@ const completeMaintenance = async (req, res) => {
     }
 };
 
-module.exports = { getAllDrivers, getMyVehicle, listMaintenance, uploadMaintenanceBill, updateMaintenanceCost, completeMaintenance };
+module.exports = { getAllDrivers, getMyVehicle, listMaintenance, uploadMaintenanceBill, completeMaintenance };

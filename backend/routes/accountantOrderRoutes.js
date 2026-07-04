@@ -6,7 +6,6 @@ const accountantOrderController = require('../controllers/accountantOrderControl
 router.get('/lookup', accountantOrderController.getVehicleDriverLookup);
 router.get('/', accountantOrderController.getOrders);
 router.post('/', accountantOrderController.createOrder);
-router.post('/import', accountantOrderController.importOrders);
 router.get('/:id/shipments', accountantOrderController.getShipments);
 router.put('/:id', accountantOrderController.updateOrder);
 router.post('/:id/shipments/:shipmentId/driver-payment', accountantOrderController.confirmDriverPayment);
