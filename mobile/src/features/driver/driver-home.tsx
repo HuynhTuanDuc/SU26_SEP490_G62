@@ -1,8 +1,8 @@
 import { useCallback, useEffect } from 'react';
 import {
     AlertOctagon, Banknote, Bell, CalendarOff,
-    FileText, Package, PackageCheck,
-    TriangleAlert, Truck,
+    ChartBar, FileText, Package, PackageCheck,
+    TriangleAlert, Truck, Wrench,
 } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -240,11 +240,25 @@ export function DriverHomeScreen() {
             iconBg: appTheme.colors.dangerSoft,
         },
         {
+            route: '/kpi',
+            icon: <ChartBar size={24} color="#7C3AED" />,
+            label: 'KPI của tôi',
+            sub: 'Doanh thu, chuyến, sự cố',
+            iconBg: '#F5F3FF',
+        },
+        {
+            route: '/maintenance',
+            icon: <Wrench size={24} color={appTheme.colors.warning} />,
+            label: 'Bảo dưỡng xe',
+            sub: 'Lịch bảo dưỡng & lịch sử',
+            iconBg: appTheme.colors.warningSoft,
+        },
+        {
             route: '/leave',
-            icon: <CalendarOff size={24} color={appTheme.colors.warning} />,
+            icon: <CalendarOff size={24} color="#0891B2" />,
             label: 'Nghỉ phép',
             sub: 'Đăng ký ngày nghỉ',
-            iconBg: appTheme.colors.warningSoft,
+            iconBg: '#ECFEFF',
         },
         {
             route: '/report-incident',
@@ -257,29 +271,24 @@ export function DriverHomeScreen() {
     ];
 
     return (
-        <>
+        <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <StatusBar style="dark" />
-            <ScrollView
-                flex={1}
-                backgroundColor={appTheme.colors.background}
-                contentContainerStyle={{
-                    flexGrow: 1,
-                    paddingHorizontal: appTheme.spacing.screenX,
-                    paddingTop: insets.top + 8,
-                    paddingBottom: appTheme.spacing.screenBottom,
-                    gap: 20,
-                }}
-            >
-                {/* Header */}
-                <XStack alignItems="center" justifyContent="space-between">
+
+            {/* ── Fixed white header ── */}
+            <View style={[s.topHeader, { paddingTop: insets.top }]}>
+                <XStack
+                    alignItems="center"
+                    justifyContent="space-between"
+                    paddingHorizontal={appTheme.spacing.screenX}
+                    paddingVertical={12}
+                >
                     <YStack gap={2}>
                         <Text fontSize={13} color={appTheme.colors.textMuted}>Xin chào</Text>
-                        <Text fontSize={24} lineHeight={30} fontWeight="900" color={appTheme.colors.text}>
+                        <Text fontSize={22} lineHeight={28} fontWeight="900" color={appTheme.colors.text}>
                             {displayName}
                         </Text>
                     </YStack>
 
-                    {/* Notification bell */}
                     <Pressable
                         onPress={() => router.push('/notifications')}
                         style={s.bellBtn}
@@ -294,7 +303,19 @@ export function DriverHomeScreen() {
                         ) : null}
                     </Pressable>
                 </XStack>
+            </View>
 
+            <ScrollView
+                style={{ flex: 1 }}
+                backgroundColor={appTheme.colors.background}
+                contentContainerStyle={{
+                    flexGrow: 1,
+                    paddingHorizontal: appTheme.spacing.screenX,
+                    paddingTop: 16,
+                    paddingBottom: appTheme.spacing.screenBottom,
+                    gap: 20,
+                }}
+            >
                 {/* Active trip */}
                 <ActiveTripBanner
                     trip={activeTrip}
@@ -387,13 +408,23 @@ export function DriverHomeScreen() {
                 </YStack>
 
             </ScrollView>
-        </>
+        </View>
     );
 }
 
 const GRID_CARD_SIZE = '47%' as const;
 
 const s = StyleSheet.create({
+    topHeader: {
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: appTheme.colors.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+        elevation: 3,
+    },
     bellBtn: {
         width: 46,
         height: 46,

@@ -1,6 +1,7 @@
-const tripService    = require('../services/tripService');
-const stopRepository = require('../repositories/stopRepository');
-const tripRepository = require('../repositories/tripRepository');
+const tripService     = require('../services/tripService');
+const expenseService  = require('../services/expenseService');
+const stopRepository  = require('../repositories/stopRepository');
+const tripRepository  = require('../repositories/tripRepository');
 
 // GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
@@ -285,7 +286,11 @@ const completeStop = async (req, res) => {
         const prevDone = await stopRepository.isPreviousStopDone(stopId, shipmentId);
         if (!prevDone) return res.status(422).json({ error: 'Phải hoàn thành stop trước (BR-011)' });
 
-        const stop = await stopRepository.markStopCompleted(stopId, shipmentId, req.body.proof_url ?? null);
+        const proofUrl = req.files?.['proof']?.[0]?.path
+            ?? req.files?.['image']?.[0]?.path
+            ?? req.body.proof_url
+            ?? null;
+        const stop = await stopRepository.markStopCompleted(stopId, shipmentId, proofUrl);
         if (!stop) return res.status(409).json({ error: 'Stop không tồn tại hoặc đã hoàn thành' });
         res.json({ message: 'Đã hoàn thành điểm dừng', stop });
     } catch (err) {
@@ -365,13 +370,56 @@ const getDriverReceiptDetail = async (req, res) => {
         const receiptId = Number(req.params.receiptId);
         if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
         const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
-        res.json({ receipt });
+        // Kèm expenses của shipment (đã verify quyền qua receipt)
+        const expenses = receipt.shipment_id
+            ? await expenseService.getExpensesByShipment(receipt.shipment_id)
+            : [];
+        res.json({ receipt: { ...receipt, expenses } });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403 : 500;
         res.status(code).json({ error: err.message });
     }
 };
 
+const resubmitReceiptRequest = async (req, res) => {
+    try {
+        const orrId = Number(req.params.orrId);
+        if (!orrId) return res.status(400).json({ error: 'ID yêu cầu không hợp lệ' });
+        const { driver_notes } = req.body;
+        await tripService.resubmitReceiptRequest(orrId, req.user.userId, driver_notes ?? null);
+        res.json({ message: 'Đã gửi lại yêu cầu tạo phiếu thu' });
+    } catch (err) {
+        const code = err.message.includes('không tìm thấy') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+const recordReceiptCollection = async (req, res) => {
+    try {
+        const receiptId = Number(req.params.receiptId);
+        if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
+
+        const { payment_type, notes } = req.body;
+        if (!payment_type) return res.status(400).json({ error: 'Thiếu hình thức thanh toán' });
+
+        const file = req.files?.proof?.[0] ?? req.files?.image?.[0] ?? req.files?.photo?.[0];
+        const proofUrl = file?.path ?? null;
+
+        await tripService.recordReceiptCollection(receiptId, req.user.userId, {
+            paymentType: payment_type,
+            proofUrl,
+            notes: notes ?? null,
+        });
+
+        res.json({ message: 'Đã ghi nhận thanh toán phiếu thu' });
+    } catch (err) {
+        const code = err.message.includes('không có quyền') ? 403
+            : err.message.includes('Ảnh') ? 422
+            : err.message.includes('đã được ghi nhận') ? 409
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
 
 module.exports = {
     getTripPool,
@@ -396,4 +444,6 @@ module.exports = {
     getPendingReceiptOrder,
     getDriverReceipts,
     getDriverReceiptDetail,
+    recordReceiptCollection,
+    resubmitReceiptRequest,
 };

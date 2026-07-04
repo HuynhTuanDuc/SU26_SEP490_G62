@@ -45,4 +45,50 @@ const getShipmentExpenses = async (shipmentId) => {
     return result.rows;
 };
 
-module.exports = { createExpense, addExpenseAttachment, getShipmentExpenses };
+const updateExpense = async (expenseId, driverId, { expenseType, amount, description, fileUrl }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Chỉ cho sửa khi yêu cầu phiếu thu liên quan đang ở trạng thái 'rejected'
+        const check = await client.query(
+            `SELECT e.id
+             FROM expenses e
+             JOIN order_receipt_requests orr ON orr.requesting_shipment_id = e.shipment_id
+             WHERE e.id = $1
+               AND e.created_by = $2
+               AND orr.driver_id = $2
+               AND orr.status = 'rejected'`,
+            [expenseId, driverId],
+        );
+        if (!check.rows[0]) throw new Error('Chỉ được sửa chi phí khi yêu cầu phiếu thu bị từ chối');
+
+        await client.query(
+            `UPDATE expenses
+             SET expense_type = COALESCE($1, expense_type),
+                 amount       = COALESCE($2, amount),
+                 description  = COALESCE($3, description),
+                 updated_by   = $4,
+                 updated_at   = NOW()
+             WHERE id = $5`,
+            [expenseType ?? null, amount ? Number(amount) : null, description ?? null, driverId, expenseId],
+        );
+
+        if (fileUrl) {
+            await client.query(`DELETE FROM expense_attachments WHERE expense_id = $1`, [expenseId]);
+            await client.query(
+                `INSERT INTO expense_attachments (expense_id, file_url) VALUES ($1, $2)`,
+                [expenseId, fileUrl],
+            );
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+module.exports = { createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense };

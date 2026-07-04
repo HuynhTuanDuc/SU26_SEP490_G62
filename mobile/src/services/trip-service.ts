@@ -65,6 +65,24 @@ export const tripService = {
     getOrderDetail: (orderId: number) =>
         apiClient.get<import('@/types/trip').OrderDetailResponse>(`/api/trips/orders/${orderId}`),
 
+    arriveAtStop: (shipmentId: number, stopId: number) =>
+        apiClient.patch<{ message: string; stop: import('@/types/trip').TripStop }>(
+            `/api/trips/${shipmentId}/stops/${stopId}/arrive`, {},
+        ),
+
+    completeStop: (shipmentId: number, stopId: number, photoUri?: string) => {
+        if (photoUri) {
+            const fd = new FormData();
+            fd.append('proof', { uri: photoUri, name: 'proof.jpg', type: 'image/jpeg' } as unknown as Blob);
+            return apiClient.patchForm<{ message: string; stop: import('@/types/trip').TripStop }>(
+                `/api/trips/${shipmentId}/stops/${stopId}/complete`, fd,
+            );
+        }
+        return apiClient.patch<{ message: string; stop: import('@/types/trip').TripStop }>(
+            `/api/trips/${shipmentId}/stops/${stopId}/complete`, {},
+        );
+    },
+
     getShipmentExpenses: (shipmentId: number) =>
         apiClient.get<import('@/types/trip').ExpenseListResponse>(`/api/expenses/shipment/${shipmentId}`),
 
@@ -105,8 +123,20 @@ export const tripService = {
         ),
 
     recordReceiptCollection: (receiptId: number, formData: FormData) =>
-        apiClient.postForm<{ collection_type: string; amount: number; recorded: boolean }>(
+        apiClient.postForm<{ message: string }>(
             `/api/trips/receipts/${receiptId}/record-collection`,
+            formData,
+        ),
+
+    resubmitReceiptRequest: (orrId: number, driverNotes?: string) =>
+        apiClient.post<{ message: string }>(
+            `/api/trips/receipt-request/${orrId}/resubmit`,
+            { driver_notes: driverNotes ?? null },
+        ),
+
+    updateExpense: (expenseId: number, formData: FormData) =>
+        apiClient.patchForm<{ message: string }>(
+            `/api/expenses/${expenseId}`,
             formData,
         ),
 

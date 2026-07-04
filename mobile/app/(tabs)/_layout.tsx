@@ -8,7 +8,6 @@ export default function TabLayout() {
             screenOptions={{ headerShown: false }}
         >
             <Tabs.Screen name="index" />
-            <Tabs.Screen name="kpi" />
             <Tabs.Screen name="history" />
             <Tabs.Screen name="receipts" />
             <Tabs.Screen name="payroll" />
