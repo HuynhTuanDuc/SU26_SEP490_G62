@@ -15,7 +15,9 @@ const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
 const passwordResetStore = new Map();
 const AUTH_COOKIE_NAME = 'auth_token';
 const REFRESH_COOKIE_NAME = 'refresh_token';
-const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+// Dev/test: 8h để tiện dùng Swagger; production giữ 15m hoặc override qua env
+const ACCESS_TOKEN_EXPIRES_IN  = process.env.JWT_ACCESS_EXPIRES_IN
+    || (process.env.NODE_ENV === 'production' ? '15m' : '8h');
 const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS || (7 * 24 * 60 * 60 * 1000));
 
