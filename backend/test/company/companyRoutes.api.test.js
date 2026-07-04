@@ -4,19 +4,16 @@ const express = require('express');
 const request = require('supertest');
 const { setupTestDb } = require('../helpers/testDb');
 const { signAccessToken } = require('../helpers/authToken');
-const { installCloudinaryMock } = require('../helpers/cloudinaryMock');
 
 let pool;
 let teardown;
 let app;
 let driverToken;
 let managerToken;
-let uninstallCloudinaryMock;
 
 describe('Company Routes API Tests (L3)', () => {
     before(async () => {
         process.env.JWT_SECRET = process.env.JWT_SECRET || 'TEST_SECRET';
-        uninstallCloudinaryMock = installCloudinaryMock();
         ({ pool, teardown } = await setupTestDb());
 
         const companyRoutes = require('../../routes/companyRoutes');
@@ -30,7 +27,6 @@ describe('Company Routes API Tests (L3)', () => {
 
     after(async () => {
         await teardown();
-        uninstallCloudinaryMock();
     });
 
     beforeEach(async () => {
@@ -81,21 +77,7 @@ describe('Company Routes API Tests (L3)', () => {
         assert.strictEqual(row.rows[0].company_name, 'G62 Logistics');
     });
 
-    it('POST /api/company/bank-qr without a file -> 400', async () => {
-        const res = await request(app)
-            .post('/api/company/bank-qr')
-            .set('Authorization', `Bearer ${managerToken}`);
-
-        assert.strictEqual(res.status, 400);
-    });
-
-    it('POST /api/company/bank-qr WITH a file -> 200, sets bank_qr_url (Cloudinary mocked)', async () => {
-        const res = await request(app)
-            .post('/api/company/bank-qr')
-            .set('Authorization', `Bearer ${managerToken}`)
-            .attach('qr', Buffer.from('fake-image-bytes'), { filename: 'qr.jpg', contentType: 'image/jpeg' });
-
-        assert.strictEqual(res.status, 200);
-        assert.ok(res.body.info.bank_qr_url);
-    });
+    // NOTE: POST /bank-qr (manager-only QR upload) was removed from companyRoutes.js in commit
+    // c5875fe "fix dead code(api error)" — no frontend caller referenced it. The service-layer
+    // logic (companyService.uploadBankQr) still exists but is no longer reachable via HTTP.
 });
