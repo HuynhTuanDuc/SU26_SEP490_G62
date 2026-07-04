@@ -34,7 +34,11 @@ const getPaymentsByOrderId = async (orderId) => {
 };
 
 const recordPayment = async (orderId, paymentData) => {
-    return accountantPaymentRepository.recordPayment(orderId, paymentData);
+    return accountantPaymentRepository.recordPaymentWithOverflow(orderId, paymentData);
+};
+
+const getCustomerDebtSummary = async (orderId) => {
+    return accountantPaymentRepository.getCustomerDebtSummary(orderId);
 };
 
 const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paymentMethod, confirmedBy) => {
@@ -56,6 +60,7 @@ module.exports = {
     importOrders,
     getPaymentsByOrderId,
     recordPayment,
+    getCustomerDebtSummary,
     confirmDriverPayment,
     getVehicleDriverLookup,
     updateOrder,

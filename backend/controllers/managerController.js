@@ -1,4 +1,5 @@
 const managerService = require('../services/managerService');
+const accountantPayrollRepository = require('../repositories/accountantPayrollRepository');
 
 const parseId = (value, label) => {
     const parsed = Number(value);
@@ -134,6 +135,38 @@ const getPartnerDebtDetails = async (req, res) => {
     }
 };
 
+const PAYROLL_STATUSES = ['pending', 'reviewed', 'approved', 'paid'];
+
+const getPayrolls = async (req, res) => {
+    try {
+        const { status, search } = req.query;
+        const now   = new Date();
+        const month = Number(req.query.month) || now.getMonth() + 1;
+        const year  = Number(req.query.year)  || now.getFullYear();
+
+        if (status && !PAYROLL_STATUSES.includes(status))
+            return res.status(400).json({ error: 'Trạng thái bảng lương không hợp lệ' });
+
+        const [rows, stats] = await Promise.all([
+            accountantPayrollRepository.getAllPayrolls({ month, year, status: status || null, search: search?.trim() || null }),
+            accountantPayrollRepository.getPayrollStats({ month, year }),
+        ]);
+        res.json({ payrolls: rows, stats, month, year });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const reviewPayroll = async (req, res) => {
+    try {
+        const payrollId = parseId(req.params.id, 'Payroll ID');
+        const row = await accountantPayrollRepository.reviewPayroll(payrollId, req.user.userId);
+        res.json({ message: 'Đã xác nhận bảng lương (reviewed).', payroll: row });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 module.exports = {
     getDashboard,
     getSalaryAdvances,
@@ -147,4 +180,6 @@ module.exports = {
     createPartner,
     updatePartner,
     getPartnerDebtDetails,
+    getPayrolls,
+    reviewPayroll,
 };

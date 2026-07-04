@@ -16,6 +16,9 @@ router.get('/debt-repayments', managerController.getPendingDebtRepayments);
 router.patch('/debt-repayments/:paymentId/confirm', managerController.confirmDebtRepayment);
 router.patch('/debt-repayments/:paymentId/reject', managerController.rejectDebtRepayment);
 
+router.get('/payrolls',              managerController.getPayrolls);
+router.patch('/payrolls/:id/review', managerController.reviewPayroll);
+
 router.get('/receipt-requests', managerController.getReceiptRequests);
 router.get('/partners', managerController.getPartners);
 router.post('/partners', managerController.createPartner);

@@ -9,7 +9,8 @@ router.post('/', accountantOrderController.createOrder);
 router.get('/:id/shipments', accountantOrderController.getShipments);
 router.put('/:id', accountantOrderController.updateOrder);
 router.post('/:id/shipments/:shipmentId/driver-payment', accountantOrderController.confirmDriverPayment);
-router.get('/:id/payments', accountantOrderController.getPayments);
-router.post('/:id/payments', accountantOrderController.createPayment);
+router.get('/:id/customer-debt', accountantOrderController.getCustomerDebt);
+router.get('/:id/payments',      accountantOrderController.getPayments);
+router.post('/:id/payments',     accountantOrderController.createPayment);
 
 module.exports = router;

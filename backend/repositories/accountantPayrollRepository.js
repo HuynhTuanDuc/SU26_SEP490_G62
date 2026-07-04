@@ -8,11 +8,17 @@ const BASE_SALARY_JUNIOR     = 8_000_000;
 const BASE_SALARY_SENIOR     = 9_000_000;
 const WORKING_DAYS_PER_MONTH = 28;
 
+const getMonthsOfServiceAtPeriodEnd = (hireDateValue, month, year) => {
+    const hireDate = new Date(hireDateValue);
+    const periodEnd = new Date(Number(year), Number(month), 0);
+    let months = (periodEnd.getFullYear() - hireDate.getFullYear()) * 12
+               + (periodEnd.getMonth() - hireDate.getMonth());
+    if (periodEnd.getDate() < hireDate.getDate()) months -= 1;
+    return Math.max(0, months);
+};
+
 const _calcDriverPayroll = async (client, driver, month, year) => {
-    const hireDate        = new Date(driver.hire_date);
-    const now             = new Date();
-    const monthsOfService = (now.getFullYear() - hireDate.getFullYear()) * 12
-                          + (now.getMonth() - hireDate.getMonth());
+    const monthsOfService = getMonthsOfServiceAtPeriodEnd(driver.hire_date, month, year);
     const baseSalary      = monthsOfService >= 12 ? BASE_SALARY_SENIOR : BASE_SALARY_JUNIOR;
     const revenuePct      = Number(driver.revenue_share_percent ?? 15);
 
@@ -62,7 +68,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const totalRevenue   = Number(kpi?.total_revenue ?? 0);
     const revenueBonus   = Math.round(totalRevenue * (revenuePct / 100));
     const kpiBonus       = (kpi?.kpi_bonus_reward && kpi?.kpi_threshold
-                           && totalRevenue >= Number(kpi.kpi_threshold))
+                           && totalRevenue > Number(kpi.kpi_threshold))
                          ? Number(kpi.kpi_bonus_reward) : 0;
     const topDriverBonus = (Number(kpi?.revenue_rank) === 1 && kpi?.top_driver_reward)
                          ? Number(kpi.top_driver_reward) : 0;
@@ -72,7 +78,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         FROM salary_advances
         WHERE driver_id = $1
           AND request_month = $2 AND request_year = $3
-          AND status IN ('approved','paid')
+          AND status = 'paid'
     `, [driver.driver_id, month, year]);
     const advanceDeduction = Number(advRow.total ?? 0);
 
@@ -94,7 +100,9 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
     const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus;
-    const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction - absencePenalty;
+    // proRatedBase đã phản ánh ngày nghỉ; DB computed net_salary dùng full baseSalary rồi trừ absence_penalty
+    // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
+    const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction;
 
     const driverDebtDeduction = Math.min(totalDebt, Math.max(0, netBeforeDebt));
 
@@ -272,15 +280,17 @@ const confirmPayroll = async (payrollId, accountantId) => {
     const { rows: [row] } = await pool.query(`
         UPDATE payrolls
         SET status      = 'approved',
+            reviewed_by = COALESCE(reviewed_by, $2),
+            reviewed_at = COALESCE(reviewed_at, NOW()),
             approved_by = $2,
             approved_at = NOW(),
             updated_at  = NOW()
         WHERE id = $1
-          AND status = 'reviewed'
+          AND status IN ('pending', 'reviewed')
         RETURNING *
     `, [payrollId, accountantId]);
 
-    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y phiáº¿u lÆ°Æ¡ng hoáº·c tráº¡ng thÃ¡i khÃ´ng há»£p lá»‡ (cáº§n reviewed)');
+    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y phiáº¿u lÆ°Æ¡ng hoáº·c tráº¡ng thÃ¡i khÃ´ng há»£p lá»‡ (cáº§n pending/reviewed)');
     return row;
 };
 
@@ -349,10 +359,27 @@ const disburseAdvance = async (advanceId, accountantId, { notes = null } = {}) =
     return row;
 };
 
+const reviewPayroll = async (payrollId, managerId) => {
+    const { rows: [row] } = await pool.query(`
+        UPDATE payrolls
+        SET status      = 'reviewed',
+            reviewed_by = $2,
+            reviewed_at = NOW(),
+            updated_at  = NOW()
+        WHERE id = $1
+          AND status = 'pending'
+        RETURNING *
+    `, [payrollId, managerId]);
+
+    if (!row) throw new Error('Không tìm thấy phiếu lương hoặc trạng thái không hợp lệ (cần pending)');
+    return row;
+};
+
 module.exports = {
     getAllPayrolls,
     getPayrollStats,
     calculateAndUpsertPayrolls,
+    reviewPayroll,
     confirmPayroll,
     markPayrollPaid,
     getSalaryAdvances,

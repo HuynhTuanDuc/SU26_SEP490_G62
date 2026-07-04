@@ -26,6 +26,9 @@ const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, re
     if (today.getDate() !== 25) {
         throw new Error('Ứng lương chỉ được thực hiện vào ngày 25 hàng tháng');
     }
+    if (m !== today.getMonth() + 1 || y !== today.getFullYear()) {
+        throw new Error('Chi duoc ung luong cho thang hien tai');
+    }
 
     return payrollRepository.createSalaryAdvance({
         driverId,

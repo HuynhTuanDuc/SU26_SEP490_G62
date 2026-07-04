@@ -7,7 +7,9 @@ import {
   ChevronRight,
   DollarSign,
   FileText,
+  Gift,
   LayoutDashboard,
+  Receipt,
   Settings,
   Truck,
   Users,
@@ -25,12 +27,15 @@ const BORDER = '#C2C6D340';
 
 const MENU_CONFIG = {
   manager: [
-    { key: 'partners', Icon: Building2, label: 'Đối tác' },
+    { key: 'partners',  Icon: Building2,      label: 'Đối tác' },
     { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan' },
-    { key: 'users', Icon: Users, label: 'Người dùng' },
-    { key: 'vehicles', Icon: Car, label: 'Quản lý xe' },
+    { key: 'users',     Icon: Users,           label: 'Người dùng' },
+    { key: 'vehicles',  Icon: Car,             label: 'Quản lý xe' },
     { type: 'divider' },
-    { key: 'settings', Icon: Settings, label: 'Cài đặt', disabled: true },
+    { key: 'payroll',   Icon: Receipt,         label: 'Duyệt lương' },
+    { key: 'bonus',     Icon: Gift,            label: 'Thưởng & Phúc lợi' },
+    { type: 'divider' },
+    { key: 'settings',  Icon: Settings,        label: 'Cài đặt', disabled: true },
   ],
   coordinator: [
     { key: 'orders', Icon: Truck, label: 'Đơn hàng' },
