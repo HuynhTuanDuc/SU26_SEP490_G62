@@ -8,6 +8,7 @@ import { RevenueView } from "./views/RevenueView";
 import { DebtView } from "./views/DebtView";
 import { PayrollView } from "./views/PayrollView";
 import { ReportView } from "./views/ReportView";
+import { BonusView } from "./views/BonusView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
@@ -31,6 +32,11 @@ const VIEW_META = {
   advance: {
     title: "Ứng lương",
     subtitle: "Giải ngân yêu cầu ứng lương đã được manager duyệt",
+    searchPlaceholder: "Tìm tài xế...",
+  },
+  bonus: {
+    title: "Thưởng & Phúc lợi",
+    subtitle: "Chi trả thưởng Tết, sinh nhật, kết hôn, tang gia và thưởng đặc biệt",
     searchPlaceholder: "Tìm tài xế...",
   },
   report: {
@@ -109,6 +115,9 @@ export default function AccountantPage({ user, onLogout }) {
             )}
             {activeView === "advance" && (
               <PayrollView defaultTab="advance" />
+            )}
+            {activeView === "bonus" && (
+              <BonusView search={search} />
             )}
             {activeView === "report" && (
               <ReportView />
