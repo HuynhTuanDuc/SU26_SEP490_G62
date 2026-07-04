@@ -24,9 +24,4 @@ router.get('/:id/payments',                   driverOnly, debtController.getDebt
 router.post('/:id/repayments',                driverOnly, handleUpload(uploadDebtRepayment.single('receipt')), debtController.submitRepayment);
 router.delete('/repayments/:paymentId',       driverOnly, debtController.cancelRepayment);
 
-// Accountant/Manager endpoints
-router.get('/repayments/pending',             financeRoles, debtController.getPendingRepayments);
-router.patch('/repayments/:paymentId/confirm', financeRoles, debtController.confirmRepayment);
-router.patch('/repayments/:paymentId/reject',  financeRoles, debtController.rejectRepayment);
-
 module.exports = router;

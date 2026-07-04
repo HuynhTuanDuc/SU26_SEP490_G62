@@ -92,35 +92,6 @@ const createOrder = async (req, res) => {
     }
 };
 
-const importOrders = async (req, res) => {
-    try {
-        const { orders } = req.body;
-
-        if (!Array.isArray(orders) || orders.length === 0)
-            throw err400('Danh sách đơn nhập không được rỗng.');
-        if (orders.length > 500)
-            throw err400('Mỗi lần nhập tối đa 500 đơn.');
-
-        for (let i = 0; i < orders.length; i++) {
-            const o   = orders[i];
-            const idx = `Đơn dòng ${i + 1}`;
-            if (!o.customer_name?.trim() && !o.customer_id)
-                throw err400(`${idx}: thiếu tên khách hàng.`);
-            if (!Array.isArray(o.shipments) || o.shipments.length === 0)
-                throw err400(`${idx}: cần ít nhất 1 chuyến.`);
-        }
-
-        const imported = await accountantOrderService.importOrders(orders, req.user.userId);
-        res.status(201).json({
-            message: `Nhập thành công ${imported.length} đơn hàng.`,
-            count: imported.length,
-            orders: imported,
-        });
-    } catch (err) {
-        sendError(res, err);
-    }
-};
-
 const getShipments = async (req, res) => {
     try {
         const orderId = posInt(req.params.id, 'Mã đơn hàng');
@@ -220,7 +191,6 @@ module.exports = {
     getShipments,
     getVehicleDriverLookup,
     createOrder,
-    importOrders,
     getPayments,
     createPayment,
     confirmDriverPayment,
