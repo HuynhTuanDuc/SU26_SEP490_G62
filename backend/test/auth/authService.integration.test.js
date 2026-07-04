@@ -48,6 +48,11 @@ describe('Auth Service Integration Tests (L2)', () => {
                 address VARCHAR(255),
                 city VARCHAR(100),
                 country VARCHAR(100),
+                national_id VARCHAR(50),
+                tax_code VARCHAR(50),
+                emergency_contact_name VARCHAR(255),
+                emergency_contact_phone VARCHAR(20),
+                notes TEXT,
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
@@ -113,7 +118,7 @@ describe('Auth Service Integration Tests (L2)', () => {
     it('L2-Auth-04 [Error Path]: login - should throw 403 on locked account', async () => {
         await assert.rejects(
             () => authService.login('locked@test.com', 'password123'),
-            (err) => err.status === 403 && err.message === 'Tài khoản của bạn đã bị khoá.'
+            (err) => err.status === 403 && err.message === 'Tài khoản của bạn đã bị khóa.'
         );
     });
 });

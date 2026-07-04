@@ -31,7 +31,7 @@ describe('Payroll Service Integration Tests (L2)', () => {
     });
 
     beforeEach(async () => {
-        await pool.query('TRUNCATE payroll, salary_advances, drivers, profiles, roles, accounts RESTART IDENTITY CASCADE');
+        await pool.query('TRUNCATE payrolls, salary_advances, drivers, profiles, roles, accounts RESTART IDENTITY CASCADE');
         await pool.query(`INSERT INTO roles (id, name) VALUES (2, 'driver') ON CONFLICT DO NOTHING`);
         await pool.query(`INSERT INTO accounts (id, email, password_hash, role_id) VALUES (1, 'driver@test.com', 'hash', 2) ON CONFLICT DO NOTHING`);
         await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (1, 'Driver', 2) ON CONFLICT DO NOTHING`);

@@ -31,14 +31,22 @@ describe('Expense Service Integration Tests (L2)', () => {
     });
 
     beforeEach(async () => {
-        await pool.query('TRUNCATE expenses, trips, vehicles, vehicle_groups, drivers, profiles, roles, accounts RESTART IDENTITY CASCADE');
+        await pool.query('TRUNCATE expense_attachments, expenses, shipment_assignment_history, order_shipments, orders, vehicles, vehicle_groups, drivers, profiles, roles, accounts RESTART IDENTITY CASCADE');
         await pool.query(`INSERT INTO roles (id, name) VALUES (2, 'driver') ON CONFLICT DO NOTHING`);
         await pool.query(`INSERT INTO accounts (id, email, password_hash, role_id) VALUES (1, 'driver@test.com', 'hash', 2) ON CONFLICT DO NOTHING`);
         await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (1, 'Driver', 2) ON CONFLICT DO NOTHING`);
         await pool.query(`INSERT INTO drivers (profile_id, license_number, hire_date) VALUES (1, 'L123', CURRENT_DATE)`);
-        await pool.query(`INSERT INTO vehicle_groups (id, name) VALUES (1, 'Truck')`);
+        await pool.query(`INSERT INTO vehicle_groups (id, name, price_per_km) VALUES (1, 'Truck', 15000)`);
         await pool.query(`INSERT INTO vehicles (id, plate_number, vehicle_group_id, assigned_driver_id) VALUES (1, '29A', 1, 1)`);
-        await pool.query(`INSERT INTO trips (id, owner_driver_id, vehicle_id, status) VALUES (1, 1, 1, 'transit')`);
+        // Real schema: order_shipments has no owner_driver_id/vehicle_id column directly —
+        // "who currently holds this shipment" comes from the v_shipment_current view, derived
+        // from the latest shipment_assignment_history row (see tripRepository.getTripById).
+        await pool.query(`INSERT INTO orders (id, created_by) VALUES (1, 1)`);
+        await pool.query(`INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, status) VALUES (1, 1, 1, 1, 'transit')`);
+        await pool.query(`
+            INSERT INTO shipment_assignment_history (shipment_id, to_driver_id, to_vehicle_id, changed_by, change_reason)
+            VALUES (1, 1, 1, 1, 'initial_assign')
+        `);
     });
 
     it('should create and retrieve expenses', async () => {

@@ -136,14 +136,18 @@ const getCurrentUser = async (req, res) => {
 
 const refresh = async (req, res) => {
     try {
-        // Refresh is a web/cookie flow; mobile continues using bearer login tokens.
-        const refreshToken = readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME);
+        // Web: cookie HttpOnly; Mobile: gửi refreshToken trong body JSON
+        const refreshToken =
+            readCookieValue(req.headers.cookie, authService.REFRESH_COOKIE_NAME)
+            ?? req.body?.refreshToken
+            ?? null;
         const result = await authService.refreshSession(refreshToken);
         setSessionCookies(res, result.accessToken, result.refreshToken);
 
         res.json({
             message: 'Session refreshed',
             token: result.accessToken ?? result.token,
+            refreshToken: result.refreshToken,   // mobile cần để lưu lại
             user: result.user,
         });
     } catch (err) {

@@ -60,16 +60,17 @@ describe('Leave Service Integration Tests (L2)', () => {
     });
 
     it('should delete future leave but not past leave', async () => {
+        // leaveService.deleteLeave(driverId, leaveId) — driverId comes FIRST (see leaveService.js)
         // Future leave
         const leave1 = await leaveService.createLeave(1, { leaveDate: '2099-01-01', leaveType: 'paid' });
-        const deleted = await leaveService.deleteLeave(leave1.id, 1);
+        const deleted = await leaveService.deleteLeave(1, leave1.id);
         assert.strictEqual(deleted.id, leave1.id);
 
         // Past leave (mocking direct insert to bypass rules for testing)
         await pool.query(`INSERT INTO leave_requests (id, driver_id, leave_date, leave_type, status) VALUES (99, 1, '2000-01-01', 'paid', 'approved')`);
-        
+
         await assert.rejects(
-            leaveService.deleteLeave(99, 1),
+            leaveService.deleteLeave(1, 99),
             /Không thể huỷ đăng ký nghỉ đã qua/
         );
     });
