@@ -2,7 +2,7 @@
  * @swagger
  * tags:
  *   name: Drivers
- *   description: Quản lý tài xế (Coordinator / Admin)
+ *   description: Thông tin tài xế và bảo dưỡng xe
  */
 
 /**
@@ -10,14 +10,29 @@
  * /api/drivers:
  *   get:
  *     tags: [Drivers]
- *     summary: Danh sách tất cả tài xế
+ *     summary: Danh sách tất cả tài xế (Coordinator / Admin)
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Mảng driver profiles
+ *         description: Mảng driver profiles kèm thông tin xe
  *       403:
  *         description: Không có quyền (chỉ Coordinator / Admin)
+ */
+
+/**
+ * @swagger
+ * /api/drivers/me/vehicle:
+ *   get:
+ *     tags: [Drivers]
+ *     summary: Thông tin xe của driver hiện tại (Driver only)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin xe gắn với driver (vehicle_group, license_plate, ...)
+ *       404:
+ *         description: Driver chưa được phân công xe
  */
 
 /**
@@ -25,7 +40,7 @@
  * /api/drivers/maintenance:
  *   get:
  *     tags: [Drivers]
- *     summary: Danh sách bảo dưỡng của xe gắn với driver hiện tại (Driver only)
+ *     summary: Danh sách lịch bảo dưỡng của xe gắn với driver hiện tại (Driver only)
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -57,6 +72,7 @@
  *               bill:
  *                 type: string
  *                 format: binary
+ *                 description: Ảnh hóa đơn bảo dưỡng
  *     responses:
  *       200:
  *         description: Đã upload hóa đơn
@@ -64,39 +80,10 @@
 
 /**
  * @swagger
- * /api/drivers/maintenance/{vehicleId}/cost:
- *   patch:
- *     tags: [Drivers]
- *     summary: Cập nhật chi phí bảo dưỡng thực tế (Driver only)
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: vehicleId
- *         required: true
- *         schema: { type: integer }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [cost]
- *             properties:
- *               cost:
- *                 type: number
- *                 example: 850000
- *     responses:
- *       200:
- *         description: Đã cập nhật chi phí
- */
-
-/**
- * @swagger
  * /api/drivers/maintenance/{vehicleId}/complete:
  *   post:
  *     tags: [Drivers]
- *     summary: Driver báo hoàn tất bảo dưỡng, chờ coordinator xác nhận
+ *     summary: Driver báo hoàn tất bảo dưỡng — chờ coordinator xác nhận
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -106,5 +93,5 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Đánh dấu sẵn sàng để xác nhận (ready for verification)
+ *         description: Đánh dấu ready for verification — coordinator sẽ kiểm tra
  */

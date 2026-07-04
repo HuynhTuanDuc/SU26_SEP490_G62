@@ -1,50 +1,36 @@
 /**
  * @swagger
  * tags:
- *   - name: Leave — Driver
- *     description: Driver đăng ký nghỉ phép. Auto-approved — hệ thống ghi nhận ngay, kế toán dùng để tính ngày công.
+ *   - name: Leave
+ *     description: Driver đăng ký nghỉ phép. Ghi nhận ngay — kế toán dùng để tính ngày công.
  */
 
 /**
  * @swagger
  * /api/leave/me:
  *   get:
- *     tags: [Leave — Driver]
- *     summary: Lịch sử đăng ký nghỉ của driver
+ *     tags: [Leave]
+ *     summary: Danh sách đơn nghỉ phép của driver hiện tại
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: month
- *         schema: { type: integer, minimum: 1, maximum: 12 }
- *         description: Lọc theo tháng (tuỳ chọn)
+ *         name: page
+ *         schema: { type: integer, default: 1 }
  *       - in: query
- *         name: year
- *         schema: { type: integer }
- *         description: Lọc theo năm (tuỳ chọn)
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 leaves:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/LeaveRequest'
+ *         description: Danh sách đơn nghỉ
  */
 
 /**
  * @swagger
  * /api/leave/summary:
  *   get:
- *     tags: [Leave — Driver]
- *     summary: Tổng quan ngày công trong tháng
- *     description: |
- *       Trả về số ngày đi làm thực tế trong tháng:
- *       - `working_days` = 28 − số ngày nghỉ **không lương** đã được approved
- *       - Ngày nghỉ **có lương** (lễ, việc riêng) không trừ vào ngày công
+ *     tags: [Leave]
+ *     summary: Tổng hợp ngày nghỉ theo tháng (dùng cho dashboard)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -58,26 +44,15 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AttendanceSummary'
+ *         description: Số ngày nghỉ đã sử dụng, số ngày còn lại
  */
 
 /**
  * @swagger
  * /api/leave:
  *   post:
- *     tags: [Leave — Driver]
- *     summary: Đăng ký nghỉ (auto-approved — áp dụng ngay)
- *     description: |
- *       Driver đăng ký nghỉ cho một ngày cụ thể.
- *
- *       **Loại nghỉ:**
- *       - `paid` — Hưởng nguyên lương: nghỉ lễ quốc gia (Tết, 30/4, 1/5, 2/9, Giỗ Tổ), kết hôn (3 ngày), tang (3 ngày)
- *       - `unpaid` — Không lương: trừ `(lương cứng / 28)` mỗi ngày vắng mặt
- *
- *       Mỗi driver chỉ được đăng ký **1 lần** cho mỗi ngày (UNIQUE constraint).
+ *     tags: [Leave]
+ *     summary: Đăng ký nghỉ phép (tự động ghi nhận)
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -91,37 +66,26 @@
  *               leaveDate:
  *                 type: string
  *                 format: date
- *                 example: "2026-06-25"
+ *                 example: "2026-07-15"
  *               leaveType:
  *                 type: string
- *                 enum: [paid, unpaid]
- *                 example: unpaid
+ *                 enum: [annual, sick, unpaid, other]
  *               reason:
  *                 type: string
- *                 example: "Việc gia đình"
+ *                 example: Khám bệnh định kỳ
  *     responses:
  *       201:
- *         description: Đăng ký thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string }
- *                 leave:
- *                   $ref: '#/components/schemas/LeaveRequest'
- *       400:
- *         description: Thiếu trường bắt buộc hoặc leaveType không hợp lệ
+ *         description: Đăng ký nghỉ thành công
  *       409:
- *         description: Ngày này đã được đăng ký nghỉ
+ *         description: Đã đăng ký nghỉ ngày này rồi
  */
 
 /**
  * @swagger
  * /api/leave/{id}:
  *   delete:
- *     tags: [Leave — Driver]
- *     summary: Huỷ đăng ký nghỉ (chỉ được huỷ ngày tương lai)
+ *     tags: [Leave]
+ *     summary: Hủy đơn nghỉ phép (chỉ khi ngày nghỉ chưa đến)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -131,36 +95,9 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Huỷ thành công
+ *         description: Hủy đơn thành công
+ *       403:
+ *         description: Không phải đơn của driver này
  *       422:
- *         description: Không thể huỷ — ngày đã qua hoặc không thuộc về driver này
- */
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     LeaveRequest:
- *       type: object
- *       properties:
- *         id:         { type: integer }
- *         leave_date: { type: string, format: date, example: "2026-06-25" }
- *         leave_type:
- *           type: string
- *           enum: [paid, unpaid]
- *           description: "paid: hưởng nguyên lương | unpaid: không lương (trừ ngày công)"
- *         reason:     { type: string, nullable: true }
- *         status:
- *           type: string
- *           enum: [approved, rejected]
- *           default: approved
- *         created_at: { type: string, format: date-time }
- *
- *     AttendanceSummary:
- *       type: object
- *       properties:
- *         total_leaves: { type: string, example: "2", description: "Tổng ngày nghỉ (approved)" }
- *         unpaid_days:  { type: string, example: "1", description: "Số ngày không lương" }
- *         paid_days:    { type: string, example: "1", description: "Số ngày nghỉ có lương" }
- *         working_days: { type: integer, example: 27, description: "28 − unpaid_days (ngày công tính lương)" }
+ *         description: Ngày nghỉ đã qua, không thể hủy
  */

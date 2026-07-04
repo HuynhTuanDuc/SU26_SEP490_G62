@@ -2,7 +2,7 @@
  * @swagger
  * tags:
  *   name: Coordinator
- *   description: Nghiệp vụ điều phối (Coordinator only)
+ *   description: Nghiệp vụ điều phối — tạo phiếu thu, quản lý sự cố, xem driver/xe (Coordinator only)
  */
 
 /**
@@ -23,7 +23,7 @@
  * /api/coordinator/partners:
  *   get:
  *     tags: [Coordinator]
- *     summary: Danh sách đối tác (khách hàng) dùng cho form tạo order
+ *     summary: Danh sách đối tác / khách hàng (dùng cho form tạo order)
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -36,7 +36,7 @@
  * /api/coordinator/incidents:
  *   get:
  *     tags: [Coordinator]
- *     summary: Danh sách sự cố (Incident Management, mục 18)
+ *     summary: Danh sách sự cố (Incident Management — mục 18)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -62,7 +62,7 @@
  * /api/coordinator/receipt-requests:
  *   get:
  *     tags: [Coordinator]
- *     summary: Danh sách yêu cầu tạo phiếu thu từ driver (order_receipt_requests, mục 14)
+ *     summary: Danh sách yêu cầu tạo phiếu thu từ driver (order_receipt_requests — mục 14)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -71,9 +71,6 @@
  *         schema:
  *           type: string
  *           enum: [pending, processing, approved, rejected]
- *       - in: query
- *         name: kind
- *         schema: { type: string, default: all }
  *       - in: query
  *         name: search
  *         schema: { type: string }
@@ -109,9 +106,7 @@
  *         schema: { type: integer }
  *     responses:
  *       200:
- *         description: Chi tiết yêu cầu
- *       400:
- *         description: Request ID không hợp lệ
+ *         description: Chi tiết yêu cầu kèm thông tin đơn hàng và actual_km driver gửi
  *       404:
  *         description: Không tìm thấy
  */
@@ -121,9 +116,12 @@
  * /api/coordinator/receipt-requests/{id}/approve:
  *   post:
  *     tags: [Coordinator]
- *     summary: >
- *       Duyệt yêu cầu, tạo phiếu thu thực tế (shipment_receipts) — BR-019.
- *       Ghi actual_price = amount, actual_distance_km = actual_km driver đã gửi.
+ *     summary: Duyệt yêu cầu — tạo phiếu thu thực tế (BR-019)
+ *     description: |
+ *       Sau khi approve:
+ *       - INSERT shipment_receipts (payment_type = NULL — chờ driver xác nhận hình thức)
+ *       - UPDATE order_shipments SET actual_price = amount, actual_distance_km = actual_km
+ *       - Driver nhận notification và mở Receipt Detail để chọn 1 trong 3 hình thức thanh toán
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -137,28 +135,23 @@
  *         application/json:
  *           schema:
  *             type: object
- *             required: [payment_type, amount]
+ *             required: [amount]
  *             properties:
- *               payment_type:
- *                 type: string
- *                 enum: [cash, bank_transfer, qr_transfer]
  *               amount:
  *                 type: number
  *                 example: 1500000
+ *                 description: Giá thực tế coordinator xác nhận
  *               notes:
  *                 type: string
- *               expenses:
- *                 type: array
- *                 items: { type: object }
  *     responses:
  *       201:
  *         description: Đã tạo phiếu thu thành công
  *       404:
  *         description: Yêu cầu không tồn tại
  *       409:
- *         description: Yêu cầu đã được duyệt hoặc đã bị từ chối
+ *         description: Yêu cầu đã được xử lý trước đó
  *       422:
- *         description: amount không hợp lệ (phải lớn hơn 0)
+ *         description: amount phải lớn hơn 0
  */
 
 /**
@@ -166,7 +159,7 @@
  * /api/coordinator/receipt-requests/{id}/reject:
  *   post:
  *     tags: [Coordinator]
- *     summary: Từ chối yêu cầu tạo phiếu thu (cần lý do)
+ *     summary: Từ chối yêu cầu tạo phiếu thu (driver có thể resubmit)
  *     security:
  *       - bearerAuth: []
  *     parameters:
