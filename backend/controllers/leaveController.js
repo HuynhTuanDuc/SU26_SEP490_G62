@@ -46,7 +46,7 @@ const deleteLeave = async (req, res) => {
         await leaveService.deleteLeave(req.user.userId, id);
         res.json({ message: 'Đã huỷ đăng ký nghỉ' });
     } catch (err) {
-        const code = err.message.includes('không thể huỷ') ? 422 : 400;
+        const code = err.message.toLowerCase().includes('không thể huỷ') ? 422 : 400;
         res.status(code).json({ error: err.message });
     }
 };

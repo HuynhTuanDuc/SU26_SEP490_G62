@@ -22,12 +22,4 @@ router.get('/info', verifyToken, companyController.getCompanyInfo);
 // Chỉ manager cập nhật
 router.put('/info', managerOnly, companyController.updateCompanyInfo);
 
-// Upload ảnh QR ngân hàng
-router.post(
-    '/bank-qr',
-    managerOnly,
-    handleUpload(uploadCompanyQr.single('qr')),
-    companyController.uploadBankQr,
-);
-
 module.exports = router;

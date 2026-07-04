@@ -135,25 +135,6 @@ const startTransit = async (req, res) => {
     }
 };
 
-// POST /api/trips/:id/mark-unpaid — TH3: khách chưa trả tiền → tạo Customer Debt
-// Body: { amount, notes? }
-const markUnpaid = async (req, res) => {
-    try {
-        const tripId = Number(req.params.id);
-        if (!tripId) return res.status(400).json({ error: 'Trip ID không hợp lệ' });
-
-        const { amount, notes } = req.body;
-        const debt = await tripService.markUnpaid(tripId, req.user.userId, { amount, notes });
-        res.status(201).json({ message: 'Đã ghi nhận công nợ khách hàng', debt });
-    } catch (err) {
-        const code = err.message.includes('không có quyền') ? 403
-            : err.message.includes('phải là số') ? 422
-            : err.message.includes('trạng thái') ? 422
-            : 400;
-        res.status(code).json({ error: err.message });
-    }
-};
-
 // POST /api/trips/:id/return-complete — RETURNING → COMPLETED (ảnh không bắt buộc)
 // Field name linh hoạt: 'proof' | 'image'
 const returnComplete = async (req, res) => {
@@ -238,21 +219,6 @@ const getOrderDetail = async (req, res) => {
     }
 };
 
-// GET /api/trips/:id/stops
-const getShipmentStops = async (req, res) => {
-    try {
-        const shipmentId = Number(req.params.id);
-        const trip = await tripRepository.getTripById(shipmentId);
-        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
-        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
-            return res.status(403).json({ error: 'Bạn không có quyền xem stops của chuyến này' });
-        }
-        const stops = await stopRepository.getStopsByShipment(shipmentId);
-        res.json({ stops });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
 
 // PATCH /api/trips/:id/stops/:stopId/arrive
 const arriveAtStop = async (req, res) => {
@@ -427,12 +393,10 @@ module.exports = {
     claimTrip,
     updateStatus,
     releaseTrip,
-    getShipmentStops,
     arriveAtStop,
     completeStop,
     completeTrip,
     startTransit,
-    markUnpaid,
     returnComplete,
     getDriverStats,
     getOrderHistory,

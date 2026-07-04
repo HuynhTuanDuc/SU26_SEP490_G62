@@ -1,5 +1,4 @@
 const authService = require('../services/authService');
-const roleRepository = require('../repositories/roleRepository');
 
 const ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
 const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -164,17 +163,6 @@ const logout = async (req, res) => {
     res.json({ message: 'Logout successful' });
 };
 
-// GET /roles (public endpoint for reference)
-const getAllRoles = async (req, res) => {
-    try {
-        const roles = await roleRepository.getAllRoles();
-        res.json(roles);
-    } catch (err) {
-        console.error('Error fetching roles:', err);
-        res.status(500).json({ error: 'Failed to fetch roles', details: err.message });
-    }
-};
-
 module.exports = {
     login,
     googleLogin,
@@ -184,5 +172,4 @@ module.exports = {
     getCurrentUser,
     refresh,
     logout,
-    getAllRoles,
 };

@@ -18,15 +18,4 @@ const financeStaff   = [verifyToken, requireRole('coordinator', 'manager', 'acco
 router.get('/me',          driverOnly, kpiController.getMyKPI);
 router.get('/leaderboard', driverOnly, kpiController.getLeaderboard);
 
-// ─── Coordinator / Manager routes ─────────────────────────────────────────────
-
-router.get('/all',              staffOnly,    kpiController.getAllDriversKPI);
-
-// ─── Coordinator / Manager / Accountant routes ────────────────────────────────
-
-router.get('/driver/:driverId',  financeStaff, kpiController.getDriverKPIById);
-
-// Force recalculate KPI cho 1 driver (coordinator/manager dùng khi cần sync thủ công)
-router.post('/recalculate',      staffOnly,    kpiController.recalculate);
-
 module.exports = router;

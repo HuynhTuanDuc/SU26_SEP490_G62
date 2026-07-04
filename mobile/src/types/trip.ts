@@ -108,11 +108,6 @@ export type CompleteTripResponse = {
     trip: ActiveTrip;
 };
 
-export type CancelDeliveryResponse = {
-    message: string;
-    trip: ActiveTrip;
-};
-
 export type ReleaseTripResponse = {
     message: string;
     order_id: number;
