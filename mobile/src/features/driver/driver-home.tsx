@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import {
     AlertOctagon, Banknote, Bell, CalendarOff,
-    ChartBar, FileText, Package, PackageCheck,
+    ChartBar, FileText, Gift, Package, PackageCheck,
     TriangleAlert, Truck, Wrench,
 } from 'lucide-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -259,6 +259,13 @@ export function DriverHomeScreen() {
             label: 'Nghỉ phép',
             sub: 'Đăng ký ngày nghỉ',
             iconBg: '#ECFEFF',
+        },
+        {
+            route: '/bonus',
+            icon: <Gift size={24} color="#059669" />,
+            label: 'Thưởng & Phúc lợi',
+            sub: 'Tết, sinh nhật, kết hôn...',
+            iconBg: '#ECFDF5',
         },
         {
             route: '/report-incident',

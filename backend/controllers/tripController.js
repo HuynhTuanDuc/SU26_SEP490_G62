@@ -365,19 +365,29 @@ const recordReceiptCollection = async (req, res) => {
         const receiptId = Number(req.params.receiptId);
         if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
 
-        const { payment_type, notes } = req.body;
+        const { payment_type, notes, collected_amount } = req.body;
         if (!payment_type) return res.status(400).json({ error: 'Thiếu hình thức thanh toán' });
+
+        const collectedAmount = collected_amount ? Number(collected_amount) : null;
+        if (collectedAmount !== null && (isNaN(collectedAmount) || collectedAmount <= 0)) {
+            return res.status(400).json({ error: 'Số tiền nhận từ khách phải lớn hơn 0' });
+        }
 
         const file = req.files?.proof?.[0] ?? req.files?.image?.[0] ?? req.files?.photo?.[0];
         const proofUrl = file?.path ?? null;
 
-        await tripService.recordReceiptCollection(receiptId, req.user.userId, {
+        const result = await tripService.recordReceiptCollection(receiptId, req.user.userId, {
             paymentType: payment_type,
             proofUrl,
             notes: notes ?? null,
+            collectedAmount,
         });
 
-        res.json({ message: 'Đã ghi nhận thanh toán phiếu thu' });
+        const message = result?.excessDistributed
+            ? 'Đã ghi nhận thanh toán — phần thừa tự động phân bổ vào nợ cũ của khách.'
+            : 'Đã ghi nhận thanh toán phiếu thu';
+
+        res.json({ message, excessDistributed: result?.excessDistributed ?? false });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('Ảnh') ? 422

@@ -1128,7 +1128,7 @@ const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
     return result.rows[0];
 };
 
-const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes }) => {
+const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
     // Tìm shipment_receipts — receiptId có thể là sr.id hoặc orr.id (fallback)
     const FIND_SQL = `
         SELECT sr.id AS sr_id, sr.payment_type,
@@ -1154,6 +1154,13 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     if (!rec) throw new Error('Không tìm thấy phiếu thu hoặc bạn không có quyền');
     if (rec.payment_type !== null) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
 
+    const receiptAmount  = Number(rec.amount);
+    // collectedAmount: tổng tiền thực nhận từ khách (chỉ áp dụng cash_collected)
+    // Phải >= receiptAmount; nếu không hợp lệ thì dùng receiptAmount
+    const totalCollected = (collectedAmount && Number(collectedAmount) >= receiptAmount)
+        ? Number(collectedAmount) : receiptAmount;
+    const excessAmount   = Math.max(0, totalCollected - receiptAmount);
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1165,7 +1172,7 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
         );
 
         if (paymentType === 'cash_collected') {
-            // Khách trả tiền mặt cho tài → Driver Debt
+            // Khách trả tiền mặt cho tài → Driver Debt = tổng nhận (bao gồm thừa nếu có)
             const debtNote = notes
                 ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
                 : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
@@ -1177,7 +1184,7 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                  VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
                     CURRENT_DATE + INTERVAL '30 days',
                     $5, $1, NOW(), NOW())`,
-                [driverId, rec.order_id, rec.shipment_id, rec.amount, debtNote],
+                [driverId, rec.order_id, rec.shipment_id, totalCollected, debtNote],
             );
             if (proofUrl) {
                 await client.query(
@@ -1204,11 +1211,63 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                     CURRENT_DATE + INTERVAL '30 days',
                     'Khách hàng chưa thanh toán — ghi nhận công nợ',
                     $5, NOW(), NOW())`,
-                [rec.customer_id, rec.order_id, rec.shipment_id, rec.amount, driverId],
+                [rec.customer_id, rec.order_id, rec.shipment_id, receiptAmount, driverId],
             );
         }
 
+        // Phần thừa → tự động phân bổ vào nợ cũ của khách (oldest → newest)
+        // Áp dụng cho cash_collected khi khách trả thừa để thanh toán nợ cũ
+        if (excessAmount >= 0.01 && rec.customer_id && paymentType === 'cash_collected') {
+            const { rows: oldDebts } = await client.query(
+                `SELECT d.id AS debt_id,
+                        GREATEST(0,
+                            d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+                        ) AS remaining
+                 FROM debts d
+                 LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+                 WHERE d.customer_id = $1
+                   AND d.debt_type = 'customer'
+                   AND d.order_id != $2
+                 GROUP BY d.id, d.total_amount
+                 HAVING GREATEST(0,
+                     d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+                 ) > 0.01
+                 ORDER BY d.created_at ASC, d.id ASC
+                 FOR UPDATE OF d`,
+                [rec.customer_id, rec.order_id],
+            );
+
+            if (oldDebts.length > 0) {
+                let rem       = excessAmount;
+                const ids     = [];
+                const amounts = [];
+                for (const debt of oldDebts) {
+                    if (rem < 0.01) break;
+                    const alloc = Math.min(rem, Number(debt.remaining));
+                    if (alloc < 0.01) continue;
+                    ids.push(Number(debt.debt_id));
+                    amounts.push(alloc);
+                    rem -= alloc;
+                }
+                if (ids.length > 0) {
+                    await client.query(
+                        `INSERT INTO debt_payments
+                             (debt_id, amount, payment_method, status,
+                              paid_at, confirmed_at, confirmed_by, created_by, notes)
+                         SELECT unnest($1::int[]), unnest($2::numeric[]),
+                                'cash', 'confirmed', NOW(), NOW(), $3, $3, $4`,
+                        [
+                            ids, amounts,
+                            driverId,
+                            `Phân bổ tự động từ phiếu thu #${rec.sr_id} — khách trả thừa`,
+                        ],
+                    );
+                }
+            }
+        }
+
         await client.query('COMMIT');
+        return { excessDistributed: excessAmount >= 0.01, excessAmount };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

@@ -362,9 +362,17 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
         )`);
     }
 
+    // debt_status filter is applied as a compound condition across customer + driver debts
     if (filters.debt_status) {
-        params.push(filters.debt_status);
-        conditions.push(`d_agg.debt_status = $${params.length}`);
+        const outstanding = `(GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) + dd_agg.driver_debt_remaining + pending_agg.pending_receipt_amount)`;
+        const received    = `(ship_agg.actual_price - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) - dd_agg.driver_debt_remaining - pending_agg.pending_receipt_amount)`;
+        if (filters.debt_status === 'paid') {
+            conditions.push(`${outstanding} <= 0.01`);
+        } else if (filters.debt_status === 'unpaid') {
+            conditions.push(`${outstanding} > 0.01 AND ${received} <= 0.01`);
+        } else if (filters.debt_status === 'partial') {
+            conditions.push(`${outstanding} > 0.01 AND ${received} > 0.01`);
+        }
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
@@ -372,12 +380,6 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     const lateralJoins = `
         LEFT JOIN LATERAL (
             SELECT
-                CASE
-                    WHEN COUNT(d.id) = 0 THEN 'paid'
-                    WHEN SUM(COALESCE(dp_c.paid, 0)) >= SUM(d.total_amount) - 0.01 THEN 'paid'
-                    WHEN SUM(COALESCE(dp_c.paid, 0)) > 0 THEN 'partial'
-                    ELSE 'unpaid'
-                END AS debt_status,
                 COALESCE(SUM(d.total_amount), 0)          AS debt_total,
                 COALESCE(SUM(COALESCE(dp_c.paid, 0)), 0)  AS debt_paid
             FROM debts d
@@ -410,6 +412,13 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             JOIN order_shipments os ON os.id = e.shipment_id
             WHERE os.order_id = o.id
         ) exp_agg ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(sr.amount), 0) AS pending_receipt_amount
+            FROM shipment_receipts sr
+            JOIN order_receipt_requests rr ON rr.id = sr.order_receipt_request_id
+            WHERE rr.order_id = o.id
+              AND sr.payment_type IS NULL
+        ) pending_agg ON TRUE
     `;
 
     const baseFrom = `
@@ -438,14 +447,28 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             d_agg.debt_total,
             d_agg.debt_paid,
             GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) AS debt_remaining,
-            d_agg.debt_status,
+            -- debt_status: 'paid' only when company received ALL money (customer paid + driver paid to company)
+            CASE
+                WHEN GREATEST(d_agg.debt_total - d_agg.debt_paid, 0)
+                     + dd_agg.driver_debt_remaining
+                     + pending_agg.pending_receipt_amount <= 0.01
+                    THEN 'paid'
+                WHEN ship_agg.actual_price
+                     - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0)
+                     - dd_agg.driver_debt_remaining
+                     - pending_agg.pending_receipt_amount > 0.01
+                    THEN 'partial'
+                ELSE 'unpaid'
+            END AS debt_status,
             ship_agg.shipment_count,
             dd_agg.driver_debt_remaining,
+            pending_agg.pending_receipt_amount,
             exp_agg.total_expenses,
             GREATEST(
                 ship_agg.actual_price
                 - dd_agg.driver_debt_remaining
-                - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0),
+                - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0)
+                - pending_agg.pending_receipt_amount,
                 0
             ) AS company_received
         ${baseFrom}

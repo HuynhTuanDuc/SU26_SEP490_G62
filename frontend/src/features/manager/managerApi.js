@@ -75,3 +75,57 @@ export function updateManagerPartner(id, payload) {
 export function fetchManagerPartnerDebts(id) {
   return apiRequest(`/api/manager/partners/${id}/debts`);
 }
+
+export function fetchManagerPayrolls(params = {}) {
+  const q = new URLSearchParams();
+  if (params.month)  q.set("month",  String(params.month));
+  if (params.year)   q.set("year",   String(params.year));
+  if (params.status) q.set("status", params.status);
+  if (params.search) q.set("search", params.search);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return apiRequest(`/api/manager/payrolls${suffix}`);
+}
+
+export function reviewManagerPayroll(id) {
+  return apiRequest(`/api/manager/payrolls/${id}/review`, { method: "PATCH" });
+}
+
+export function fetchManagerBonuses(params = {}) {
+  const q = new URLSearchParams();
+  if (params.year)   q.set("year",   String(params.year));
+  if (params.type)   q.set("type",   params.type);
+  if (params.status) q.set("status", params.status);
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return apiRequest(`/api/bonuses${suffix}`);
+}
+
+export function fetchManagerBonusStats(year) {
+  return apiRequest(`/api/bonuses/stats?year=${year}`);
+}
+
+export function previewTetBonuses(year) {
+  return apiRequest(`/api/bonuses/tet/preview?year=${year}`);
+}
+
+export function generateTetBonuses(year) {
+  return apiRequest("/api/bonuses/tet/generate", { method: "POST", body: { year } });
+}
+
+export function createManagerBonus(data) {
+  return apiRequest("/api/bonuses", { method: "POST", body: data });
+}
+
+export function approveManagerBonus(id, adjustedAmount) {
+  return apiRequest(`/api/bonuses/${id}/approve`, {
+    method: "PATCH",
+    body: adjustedAmount != null ? { adjusted_amount: adjustedAmount } : {},
+  });
+}
+
+export function rejectManagerBonus(id, reason) {
+  return apiRequest(`/api/bonuses/${id}/reject`, { method: "PATCH", body: { reason } });
+}
+
+export function fetchDriverList() {
+  return apiRequest("/api/admin/users?role=driver&limit=200");
+}

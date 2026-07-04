@@ -6,6 +6,8 @@ import UserList from "../../features/admin/UserList";
 import VehicleList from "../../features/admin/VehicleList";
 import ManagerDashboard from "../../features/manager/ManagerDashboard";
 import PartnerManagement from "../../features/manager/PartnerManagement";
+import ManagerPayrollPage from "../../features/manager/ManagerPayrollPage";
+import ManagerBonusPage from "../../features/manager/ManagerBonusPage";
 import { C } from "../../styles/theme";
 import "../../styles/admin/Admin.css";
 import { saveSession } from "../../services/storage";
@@ -28,17 +30,21 @@ export default function AdminPage({ user, onLogout }) {
   };
 
   const pageTitleMap = {
-    partners: "Quản lý đối tác",
+    partners:  "Quản lý đối tác",
     dashboard: "Tổng quan manager",
-    users: "Quản lý người dùng",
-    vehicles: "Quản lý xe",
+    users:     "Quản lý người dùng",
+    vehicles:  "Quản lý xe",
+    payroll:   "Duyệt lương tài xế",
+    bonus:     "Thưởng & Phúc lợi",
   };
 
   const pageSubtitleMap = {
-    partners: "Quản lý thông tin đối tác và theo dõi công nợ nếu đối tác đang tồn đọng thanh toán.",
+    partners:  "Quản lý thông tin đối tác và theo dõi công nợ nếu đối tác đang tồn đọng thanh toán.",
     dashboard: "Theo dõi phê duyệt, công nợ, phiếu thu và thông tin công ty trên cùng một luồng vận hành.",
-    users: "Quản lý tài khoản, vai trò và trạng thái truy cập.",
-    vehicles: "Theo dõi phương tiện, tài xế được gán và trạng thái bảo trì.",
+    users:     "Quản lý tài khoản, vai trò và trạng thái truy cập.",
+    vehicles:  "Theo dõi phương tiện, tài xế được gán và trạng thái bảo trì.",
+    payroll:   "Xác nhận bảng lương tài xế trước khi kế toán chi trả.",
+    bonus:     "Duyệt thưởng Tết, phúc lợi kết hôn/tang gia/sinh nhật và thưởng đặc biệt.",
   };
 
   return (
@@ -64,10 +70,12 @@ export default function AdminPage({ user, onLogout }) {
             </Text>
           </div>
 
-          {activeTab === "partners" && <PartnerManagement user={currentUser} />}
-          {activeTab === "dashboard" && <ManagerDashboard user={currentUser} />}
-          {activeTab === "users" && <UserList user={currentUser} />}
-          {activeTab === "vehicles" && <VehicleList user={currentUser} />}
+          {activeTab === "partners"  && <PartnerManagement user={currentUser} />}
+          {activeTab === "dashboard" && <ManagerDashboard  user={currentUser} />}
+          {activeTab === "users"     && <UserList           user={currentUser} />}
+          {activeTab === "vehicles"  && <VehicleList        user={currentUser} />}
+          {activeTab === "payroll"   && <ManagerPayrollPage />}
+          {activeTab === "bonus"     && <ManagerBonusPage   />}
         </section>
       </main>
     </div>

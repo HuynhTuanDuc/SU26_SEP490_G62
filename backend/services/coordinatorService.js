@@ -934,6 +934,23 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
         await client.query('COMMIT');
 
+        // Recalculate KPI cho tất cả driver trong đơn sau khi actual_price được chốt (BR-026)
+        const shipmentIds = computed.shipment_breakdown.map((s) => s.shipment_id);
+        if (shipmentIds.length > 0) {
+            pool.query(
+                `SELECT DISTINCT sc.owner_driver_id, os.completed_at
+                 FROM order_shipments os
+                 JOIN v_shipment_current sc ON sc.shipment_id = os.id
+                 WHERE os.id = ANY($1) AND sc.owner_driver_id IS NOT NULL`,
+                [shipmentIds],
+            ).then(({ rows }) => {
+                const kpiService = require('./kpiService');
+                rows.forEach(({ owner_driver_id, completed_at }) => {
+                    kpiService.recalculateAfterCompletion(owner_driver_id, new Date(completed_at || Date.now()));
+                });
+            }).catch(() => {});
+        }
+
         // Notify driver
         const notificationService = require('./notificationService');
         notificationService.createForUser(req.driver_id, {

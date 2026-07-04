@@ -135,6 +135,16 @@ const getPayments = async (req, res) => {
     }
 };
 
+const getCustomerDebt = async (req, res) => {
+    try {
+        const orderId = posInt(req.params.id, 'Mã đơn hàng');
+        const summary = await accountantOrderService.getCustomerDebtSummary(orderId);
+        res.json(summary);
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const createPayment = async (req, res) => {
     try {
         const orderId = posInt(req.params.id, 'Mã đơn hàng');
@@ -142,19 +152,26 @@ const createPayment = async (req, res) => {
 
         const amt = posAmount(amount, 'Số tiền thanh toán');
         enumVal(paymentMethod, PAYMENT_METHODS, 'Hình thức thanh toán');
+        if (notes && String(notes).length > 500)
+            throw err400('Ghi chú không được vượt quá 500 ký tự.');
 
         const result = await accountantOrderService.recordPayment(orderId, {
-            amount: amt,
+            amount:        amt,
             paymentMethod: paymentMethod || 'cash',
-            notes: notes?.trim() || null,
-            createdBy: req.user.userId,
+            notes:         notes?.trim() || null,
+            createdBy:     req.user.userId,
         });
 
+        const message = result.spreadAcrossOrders
+            ? `Đã phân bổ ${Math.round(result.totalAllocated).toLocaleString('vi-VN')}đ vào ${result.allocations.length} đơn hàng.`
+            : 'Ghi nhận thanh toán thành công.';
+
         res.status(201).json({
-            message: 'Ghi nhận thanh toán thành công.',
-            payment:       result.payment,
-            newPaidAmount: result.newPaidAmount,
-            newStatus:     result.newStatus,
+            message,
+            totalAllocated:      result.totalAllocated,
+            totalRemainingAfter: result.totalRemainingAfter,
+            allocations:         result.allocations,
+            spreadAcrossOrders:  result.spreadAcrossOrders,
         });
     } catch (err) {
         sendError(res, err);
@@ -192,6 +209,7 @@ module.exports = {
     getVehicleDriverLookup,
     createOrder,
     getPayments,
+    getCustomerDebt,
     createPayment,
     confirmDriverPayment,
     updateOrder,

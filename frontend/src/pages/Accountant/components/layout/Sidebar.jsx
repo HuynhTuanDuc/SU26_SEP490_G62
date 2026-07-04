@@ -9,6 +9,7 @@ import {
   RiArrowRightSLine,
   RiMenuFoldLine,
   RiMenuUnfoldLine,
+  RiGiftLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
 
@@ -23,8 +24,9 @@ const NAV_GROUPS = [
   {
     label: "Nhân sự",
     items: [
-      { key: "salary",  label: "Bảng lương", icon: RiMoneyDollarCircleLine },
-      { key: "advance", label: "Ứng lương",  icon: RiHandCoinLine },
+      { key: "salary",  label: "Bảng lương",        icon: RiMoneyDollarCircleLine },
+      { key: "advance", label: "Ứng lương",          icon: RiHandCoinLine },
+      { key: "bonus",   label: "Thưởng & Phúc lợi", icon: RiGiftLine },
     ],
   },
   {

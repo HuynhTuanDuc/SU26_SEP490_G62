@@ -22,6 +22,8 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
     : "—";
 
   const debtChip = DEBT_STATUS_CHIP[order.debt_status];
+  const pendingReceiptAmount = Number(order.pending_receipt_amount || 0);
+  const customerDebtRemaining = Number(order.debt_remaining || 0);
 
   return (
     <>
@@ -95,6 +97,11 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
                 TX giữ: <MoneyText amount={order.driver_debt_remaining} />
               </span>
             )}
+            {pendingReceiptAmount > 0 && (
+              <span className="text-[10px] text-blue-600 font-medium">
+                Cho TX xac nhan: <MoneyText amount={pendingReceiptAmount} />
+              </span>
+            )}
           </div>
         </td>
 
@@ -111,17 +118,19 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
             >
               <RiEyeLine size={14} />
             </Button>
-            <Button
-              size="sm"
-              color="primary"
-              variant="flat"
-              isIconOnly
-              title="Ghi nhận thanh toán"
-              className="h-7 w-7 min-w-7"
-              onPress={() => onPayment(order)}
-            >
-              <RiBankCard2Line size={14} />
-            </Button>
+            {customerDebtRemaining > 0 && (
+              <Button
+                size="sm"
+                color="primary"
+                variant="flat"
+                isIconOnly
+                title="Ghi nhận thanh toán"
+                className="h-7 w-7 min-w-7"
+                onPress={() => onPayment(order)}
+              >
+                <RiBankCard2Line size={14} />
+              </Button>
+            )}
           </div>
         </td>
       </tr>

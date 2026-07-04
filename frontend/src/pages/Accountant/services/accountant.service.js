@@ -25,6 +25,9 @@ export const accountantService = {
   getLookup: () =>
     apiRequest(`${BASE}/orders/lookup`),
 
+  getCustomerDebt: (orderId) =>
+    apiRequest(`${BASE}/orders/${orderId}/customer-debt`),
+
   getPayments: (orderId) =>
     apiRequest(`${BASE}/orders/${orderId}/payments`),
 
@@ -90,4 +93,17 @@ export const accountantService = {
       method: "PATCH",
       body: { notes },
     }),
+
+  // ─── Bonus & Welfare ───────────────────────────────────────────────────────
+  getBonuses: (params) =>
+    apiRequest(`/api/bonuses?${new URLSearchParams(params)}`),
+
+  getBonusStats: (year) =>
+    apiRequest(`/api/bonuses/stats${year ? `?year=${year}` : ""}`),
+
+  createBonus: (data) =>
+    apiRequest("/api/bonuses", { method: "POST", body: data }),
+
+  payBonus: (id) =>
+    apiRequest(`/api/bonuses/${id}/pay`, { method: "PATCH" }),
 };
