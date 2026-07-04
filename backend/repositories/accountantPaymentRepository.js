@@ -141,6 +141,30 @@ const recordPayment = async (orderId, paymentData) => {
     try {
         await client.query('BEGIN');
 
+        // Guard: check customer debt state before proceeding
+        const { rows: [debtState] } = await client.query(
+            `SELECT
+                COUNT(d.id)::int                                                          AS debt_count,
+                COALESCE(SUM(d.total_amount), 0)                                          AS total_amount,
+                COALESCE(SUM(dp_agg.paid), 0)                                             AS paid_amount
+             FROM debts d
+             LEFT JOIN (
+                 SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                 FROM debt_payments GROUP BY debt_id
+             ) dp_agg ON dp_agg.debt_id = d.id
+             WHERE d.order_id = $1 AND d.debt_type = 'customer'`,
+            [orderId]
+        );
+
+        if (Number(debtState.debt_count) === 0) {
+            throw new Error('Đơn hàng không có công nợ khách hàng. Kiểm tra hình thức thanh toán (chuyển khoản trực tiếp không cần ghi nhận thêm).');
+        }
+
+        const remaining = Number(debtState.total_amount) - Number(debtState.paid_amount);
+        if (remaining <= 0.01) {
+            throw new Error('Khách hàng đã thanh toán đủ, không thể ghi nhận thêm.');
+        }
+
         const debtId = await _ensureCustomerDebt(client, orderId, paymentData.createdBy);
 
         const { rows: [debt] } = await client.query(
@@ -217,20 +241,20 @@ const recordPaymentByShipment = async (shipmentId, paymentData) => {
 
         if (!debtBase) {
             const { rows: [si] } = await client.query(
-                `SELECT os.estimated_price, sc.owner_driver_id, o.customer_id, o.id AS order_id
+                `SELECT os.actual_price, os.estimated_price, sc.owner_driver_id, o.customer_id, o.id AS order_id
                  FROM order_shipments os
                  JOIN orders o ON o.id = os.order_id
                  LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
                  WHERE os.id = $1`,
                 [shipmentId]
             );
-            if (!si) throw new Error('KhÃ´ng tÃ¬m tháº¥y chuyáº¿n xe');
+            if (!si) throw new Error('Không tìm thấy chuyến xe');
 
             const { rows: [created] } = await client.query(
                 `INSERT INTO debts (debt_type, customer_id, driver_id, order_id, shipment_id, total_amount, created_at, updated_at)
                  VALUES ('customer', $1, $2, $3, $4, $5, NOW(), NOW())
                  RETURNING id`,
-                [si.customer_id, si.owner_driver_id, si.order_id, shipmentId, Number(si.estimated_price) || 0]
+                [si.customer_id, si.owner_driver_id, si.order_id, shipmentId, Number(si.actual_price || si.estimated_price) || 0]
             );
             debtBase = created;
         }

@@ -81,6 +81,10 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const handleSubmit = async () => {
     const num = Number(String(amount).replace(/[^0-9.]/g, ""));
     if (!num || num <= 0) { setError("Số tiền phải lớn hơn 0."); return; }
+    if (debtRemaining > 0 && num > debtRemaining + 0.01) {
+      setError(`Số tiền vượt quá số còn phải thu (${debtRemaining.toLocaleString("vi-VN")}đ).`);
+      return;
+    }
     setSubmit(true); setError(null);
     try {
       await accountantService.createPayment(order.id, {

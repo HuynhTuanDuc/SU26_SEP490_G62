@@ -206,7 +206,8 @@ const getDriverKPIById = async (driverId, { month = null, year = null } = {}) =>
 
 // ─── Tính lại KPI cho 1 driver trong 1 tháng rồi UPSERT vào kpi_records ──────
 // Gọi tự động sau mỗi lần trip hoàn thành (fire-and-forget)
-// Doanh thu KPI chỉ tính actual_price (BR-026) — không fallback estimated_price
+// BR-026: doanh thu KPI dùng actual_price, fallback estimated_price nếu chưa có.
+// Gọi thêm sau khi coordinator approve phiếu thu (set actual_price) để KPI cập nhật.
 
 const recalculateDriverKPI = async (driverId, month, year) => {
     await revenueAllocationRepository.ensureRevenueAllocationTable();
@@ -220,11 +221,6 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     );
     const vehicleGroupId = vgRes.rows[0]?.vehicle_group_id;
     if (!vehicleGroupId) return null;
-
-    // Doanh thu KPI = giá trị chuyến, không phụ thuộc trạng thái thanh toán.
-    // actual_price được set bởi coordinator/accountant (chưa có ở driver scope).
-    // Khi bên đó thêm setActualPrice, phải gọi recalculateAfterCompletion ngay sau để KPI tự cập nhật.
-    // Hiện tại actual_price luôn NULL → KPI dùng estimated_price, hoàn toàn đúng.
     const shipRes = await pool.query(
         `SELECT
             COUNT(*) FILTER (

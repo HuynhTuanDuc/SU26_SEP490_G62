@@ -1,39 +1,90 @@
-﻿const pool = require('../config/database');
+const pool = require('../config/database');
 
 const getFinanceStats = async () => {
 
     const query = `
-        WITH completed_revenue AS (
-            SELECT COALESCE(SUM(os.actual_price), 0) AS total_revenue
-            FROM order_shipments os
-            JOIN orders o ON o.id = os.order_id
-            WHERE o.derived_status = 'completed'
-        ),
-        outstanding_debts AS (
+        WITH order_stats AS (
             SELECT
-                COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0) AS total_receivables,
-                COUNT(DISTINCT d.order_id)
-                    FILTER (WHERE (d.total_amount - COALESCE(dp_agg.paid, 0)) > 0.01) AS pending_count
-            FROM debts d
+                o.id,
+                COALESCE(ship_sum.actual_price, 0)      AS actual_price,
+                COALESCE(cust.remaining, 0)             AS customer_remaining,
+                COALESCE(drv.remaining, 0)              AS driver_remaining,
+                COALESCE(pending.receipt_remaining, 0)  AS pending_receipt_remaining
+            FROM orders o
             LEFT JOIN (
-                SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
-                FROM debt_payments GROUP BY debt_id
-            ) dp_agg ON dp_agg.debt_id = d.id
-            JOIN orders o ON o.id = d.order_id
+                SELECT order_id, COALESCE(SUM(actual_price), 0) AS actual_price
+                FROM order_shipments
+                GROUP BY order_id
+            ) ship_sum ON ship_sum.order_id = o.id
+            LEFT JOIN (
+                SELECT d.order_id,
+                       GREATEST(
+                           SUM(d.total_amount)
+                           - COALESCE(SUM(dp_agg.paid), 0),
+                           0
+                       ) AS remaining
+                FROM debts d
+                LEFT JOIN (
+                    SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                    FROM debt_payments
+                    GROUP BY debt_id
+                ) dp_agg ON dp_agg.debt_id = d.id
+                WHERE d.debt_type = 'customer'
+                GROUP BY d.order_id
+            ) cust ON cust.order_id = o.id
+            LEFT JOIN (
+                SELECT d.order_id,
+                       GREATEST(
+                           SUM(d.total_amount)
+                           - COALESCE(SUM(dp_agg.paid), 0),
+                           0
+                       ) AS remaining
+                FROM debts d
+                LEFT JOIN (
+                    SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                    FROM debt_payments
+                    GROUP BY debt_id
+                ) dp_agg ON dp_agg.debt_id = d.id
+                WHERE d.debt_type = 'driver'
+                GROUP BY d.order_id
+            ) drv ON drv.order_id = o.id
+            LEFT JOIN (
+                SELECT rr.order_id,
+                       COALESCE(SUM(sr.amount), 0) AS receipt_remaining
+                FROM shipment_receipts sr
+                JOIN order_receipt_requests rr ON rr.id = sr.order_receipt_request_id
+                WHERE sr.payment_type IS NULL
+                GROUP BY rr.order_id
+            ) pending ON pending.order_id = o.id
             WHERE o.derived_status = 'completed'
         )
         SELECT
-            cr.total_revenue,
-            GREATEST(cr.total_revenue - od.total_receivables, 0) AS total_collected,
-            od.total_receivables,
-            od.pending_count::int AS pending_payments_count
-        FROM completed_revenue cr, outstanding_debts od
+            SUM(actual_price)::numeric AS total_gross_revenue,
+            SUM(GREATEST(
+                actual_price - customer_remaining - driver_remaining - pending_receipt_remaining,
+                0
+            ))::numeric AS total_revenue,
+            SUM(GREATEST(
+                actual_price - customer_remaining - driver_remaining - pending_receipt_remaining,
+                0
+            ))::numeric AS total_collected,
+            (SUM(customer_remaining) + SUM(driver_remaining) + SUM(pending_receipt_remaining))::numeric AS total_receivables,
+            COUNT(*) FILTER (
+                WHERE customer_remaining + driver_remaining + pending_receipt_remaining > 0.01
+            )::int AS pending_payments_count
+        FROM order_stats
     `;
     const result = await pool.query(query);
-    return result.rows[0];
+    const row = result.rows[0];
+    return {
+        total_gross_revenue:    Number(row.total_gross_revenue)    || 0,
+        total_revenue:          Number(row.total_revenue)          || 0,
+        total_collected:        Number(row.total_collected)        || 0,
+        total_receivables:      Number(row.total_receivables)      || 0,
+        pending_payments_count: Number(row.pending_payments_count) || 0,
+    };
 };
 
 module.exports = {
     getFinanceStats,
 };
-
