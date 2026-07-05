@@ -522,32 +522,36 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const [showExpense, setShowExpense] = useState(false);
 
     // Flag để trigger navigation sau khi hoàn thành chuyến (qua useEffect để đảm bảo render cycle)
-    const [justCompleted, setJustCompleted] = useState(false);
+    const [completedTripData, setCompletedTripData] = useState<import('@/types/trip').ActiveTrip | null>(null);
 
-    const { isUploading: completingProof, completeWithProof } = useCompletionProof(() => {
-        setJustCompleted(true);
+    const { isUploading: completingProof, completeWithProof } = useCompletionProof((completedTrip) => {
+        // Dùng trip từ server response — is_final_shipment chính xác (check all others terminal)
+        setCompletedTripData(completedTrip);
     });
 
     useEffect(() => {
-        if (!justCompleted) return;
-        setJustCompleted(false);
+        if (!completedTripData) return;
+        const t = completedTripData;
+        setCompletedTripData(null);
         // Mọi tài đều nhập km sau khi hoàn thành — tài cuối của đơn cash còn tạo yêu cầu phiếu thu
         router.replace({
             pathname: '/receipt-request',
             params: {
-                orderId:          String(trip.order_id),
-                shipmentId:       String(trip.id),
-                estimatedPrice:   trip.estimated_price ?? '',
-                cargoName:        trip.cargo_name ?? '',
-                pickupAddress:    trip.pickup_address,
-                deliveryAddress:  trip.delivery_address,
-                shipmentIndex:    String(trip.shipment_index),
-                maxShipmentIndex: String(trip.max_shipment_index),
-                orderPaymentType: trip.order_payment_type ?? '',
+                orderId:          String(t.order_id),
+                shipmentId:       String(t.id),
+                estimatedPrice:   t.estimated_price ?? '',
+                cargoName:        t.cargo_name ?? '',
+                pickupAddress:    t.pickup_address,
+                deliveryAddress:  t.delivery_address,
+                shipmentIndex:    String(t.shipment_index),
+                maxShipmentIndex: String(t.max_shipment_index),
+                orderPaymentType: t.order_payment_type ?? '',
+                // is_final_shipment chính xác: index cao nhất VÀ tất cả chuyến khác đã terminal
+                isFinalShipment:  String(t.is_final_shipment),
             },
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [justCompleted]);
+    }, [completedTripData]);
     const { isUploading: submittingLoad, submitLoadingProof } = useLoadingProof(() => {
         showToast({ type: 'success', message: 'Đã lấy hàng – bắt đầu vận chuyển đến điểm giao', duration: 2500 });
         refresh();

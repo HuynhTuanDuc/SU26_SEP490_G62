@@ -2002,7 +2002,7 @@ BEGIN
     (v_drv2, '2026-06-20', 'unpaid', 'Viec ca nhan', 'approved'),
     (v_drv3, '2026-04-30', 'paid', 'Nghi le 30/4', 'approved'),
     (v_drv3, '2026-05-01', 'paid', 'Nghi le 1/5', 'approved'),
-    (v_drv4, '2026-06-28', 'unpaid', 'Con om', 'pending'),
+    (v_drv4, '2026-06-28', 'unpaid', 'Con om', 'approved'),
     (v_drv4, '2026-07-02', 'paid', 'Kham suc khoe dinh ky', 'approved')
     ON CONFLICT (driver_id, leave_date) DO NOTHING;
 
@@ -2050,8 +2050,8 @@ BEGIN
         WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'fuel');
 
         INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv4_vehicle, v_drv4, v_drv4, 'minor_repair', 150000, 'Bom lop giua duong', '2026-03-10'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'minor_repair');
+        SELECT v_sid, v_drv4_vehicle, v_drv4, v_drv4, 'repair', 150000, 'Bom lop giua duong', '2026-03-10'
+        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'repair');
     END IF;
 END $$;
 

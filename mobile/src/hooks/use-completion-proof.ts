@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { tripService } from '@/services/trip-service';
+import type { ActiveTrip } from '@/types/trip';
 
 type State = {
     isUploading: boolean;
@@ -16,7 +17,7 @@ async function compressImage(uri: string): Promise<string> {
     return result.uri;
 }
 
-export function useCompletionProof(onSuccess?: () => void) {
+export function useCompletionProof(onSuccess?: (completedTrip: ActiveTrip) => void) {
     const [state, setState] = useState<State>({ isUploading: false, error: null });
 
     // proofUri — ảnh xác nhận giao hàng (bắt buộc, BR-015/016/017)
@@ -33,9 +34,9 @@ export function useCompletionProof(onSuccess?: () => void) {
                 name: 'proof.jpg',
             } as unknown as Blob);
 
-            await tripService.completeWithProof(tripId, formData);
+            const result = await tripService.completeWithProof(tripId, formData);
             setState({ isUploading: false, error: null });
-            onSuccess?.();
+            onSuccess?.(result.trip);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Không thể hoàn thành chuyến';
             setState({ isUploading: false, error: message });

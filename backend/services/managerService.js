@@ -34,7 +34,7 @@ const getDashboard = async () => {
         queues: {
             salary_advances: pendingAdvances,
             debt_repayments: pendingRepayments.slice(0, 6),
-            receipt_requests: receiptRequests.slice(0, 6),
+            receipt_requests: (receiptRequests.requests || []).slice(0, 6),
         },
         company: companyInfo ?? {},
     };
