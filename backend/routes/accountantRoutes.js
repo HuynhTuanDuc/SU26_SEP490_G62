@@ -1,11 +1,12 @@
 ﻿const express = require('express');
 const router = express.Router();
 
-const accountantFinanceController = require('../controllers/accountantFinanceController');
-const accountantDebtController    = require('../controllers/accountantDebtController');
-const accountantPaymentController = require('../controllers/accountantPaymentController');
-const accountantReportController  = require('../controllers/accountantReportController');
-const accountantOrderRoutes = require('./accountantOrderRoutes');
+const accountantFinanceController      = require('../controllers/accountantFinanceController');
+const accountantDebtController         = require('../controllers/accountantDebtController');
+const accountantPaymentController      = require('../controllers/accountantPaymentController');
+const accountantReportController       = require('../controllers/accountantReportController');
+const accountantBankTransferController = require('../controllers/accountantBankTransferController');
+const accountantOrderRoutes   = require('./accountantOrderRoutes');
 const accountantPayrollRoutes = require('./accountantPayrollRoutes');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
@@ -25,5 +26,8 @@ router.post('/debts/payment/preview',    accountantPaymentController.previewAllo
 router.post('/debts/payment/allocate',   accountantPaymentController.allocatePayment);
 router.post('/debts/payment/by-shipment', accountantPaymentController.paymentByShipment);
 router.post('/debts/payment/by-debt',    accountantPaymentController.paymentByDebt);
+
+router.get ('/receipts/bank-transfer',                              accountantBankTransferController.getPendingBankTransfers);
+router.post('/receipts/:receiptId/confirm-bank-transfer',           accountantBankTransferController.confirmBankTransfer);
 
 module.exports = router;

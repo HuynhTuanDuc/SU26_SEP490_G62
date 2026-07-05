@@ -107,6 +107,7 @@ export default function AccountantPage({ user, onLogout }) {
             {activeView === "revenue" && (
               <RevenueView refreshKey={revenueRefreshKey} search={search} />
             )}
+
             {activeView === "debt" && (
               <DebtView search={search} />
             )}

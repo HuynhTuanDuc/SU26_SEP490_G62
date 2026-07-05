@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Button, Chip, Spinner, Divider,
+  Button, Chip, Spinner, Divider, Textarea,
 } from "@heroui/react";
 import {
   RiFileList3Line, RiMapPin2Line, RiArrowRightLine,
   RiTruckLine, RiUserLine, RiPhoneLine, RiBuildingLine,
   RiCheckboxCircleLine, RiTimeLine, RiCalendarLine,
   RiMoneyDollarCircleLine, RiBox2Line, RiScalesLine,
+  RiBankCardLine, RiCheckLine, RiImageLine,
+  RiArrowUpLine, RiArrowDownLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { accountantService } from "../services/accountant.service";
@@ -41,7 +43,169 @@ function InfoRow({ icon: Icon, label, value, mono }) {
   );
 }
 
-function ShipmentCard({ s, index }) {
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+function Lightbox({ url, onClose }) {
+  if (!url) return null;
+  return (
+    <div
+      className="fixed inset-0 bg-black/80 z-[999] flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <img src={url} alt="Biên lai" className="max-w-full max-h-full rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
+    </div>
+  );
+}
+
+// ── Bank-transfer confirm panel (inside ShipmentCard) ─────────────────────────
+const fmtVND = (v) =>
+  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(Number(v));
+
+function BankTransferPanel({ s, onConfirmed }) {
+  const [actualAmount, setActualAmount] = useState(
+    s.receipt_amount != null ? String(s.receipt_amount) : ""
+  );
+  const [notes,        setNotes]        = useState("");
+  const [lightboxUrl,  setLightboxUrl]  = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState(null);
+  const [confirmed,    setConfirmed]    = useState(s.bank_confirmed);
+  const [confirmResult, setConfirmResult] = useState(null);
+
+  if (!s.receipt_payment_type || s.receipt_payment_type !== "bank_transfer") return null;
+
+  const receiptAmt  = Number(s.receipt_amount ?? 0);
+  const actualNum   = Number(actualAmount.replace(/[^\d.]/g, "")) || 0;
+  const diff        = actualNum - receiptAmt;
+  const isShort     = diff < -0.01;
+  const isExcess    = diff > 0.01;
+  const amountValid = actualNum >= 0 && actualAmount.trim() !== "";
+
+  const handleConfirm = async () => {
+    if (!amountValid) { setError("Vui lòng nhập số tiền thực nhận"); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await accountantService.confirmBankTransfer(s.receipt_id, notes || undefined, actualNum);
+      setConfirmed(true);
+      setConfirmResult(res);
+      onConfirmed?.();
+    } catch (err) {
+      setError(err.message ?? "Xác nhận thất bại");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={`mt-2 rounded-xl border p-3 ${confirmed ? "bg-emerald-50 border-emerald-200" : "bg-orange-50 border-orange-200"}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <RiBankCardLine size={13} className={confirmed ? "text-emerald-600" : "text-orange-500"} />
+          <span className={`text-xs font-semibold ${confirmed ? "text-emerald-700" : "text-orange-700"}`}>
+            Chuyển khoản về công ty
+          </span>
+          {s.receipt_amount && (
+            <span className="text-[11px] text-gray-500 font-mono">· {fmtVND(s.receipt_amount)}</span>
+          )}
+        </div>
+        {confirmed ? (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600">
+            <RiCheckLine size={12} /> Đã xác nhận
+          </span>
+        ) : (
+          <span className="text-[11px] font-semibold text-orange-600">Chờ xác nhận</span>
+        )}
+      </div>
+
+      {/* Proof thumbnails */}
+      {s.proof_urls?.length > 0 ? (
+        <div className="flex gap-1.5 mb-2 flex-wrap">
+          {s.proof_urls.map((url, i) => (
+            <button key={i} onClick={() => setLightboxUrl(url)}
+              className="w-14 h-14 rounded-lg overflow-hidden border border-white shadow-sm hover:ring-2 hover:ring-blue-400 flex-shrink-0">
+              <img src={url} alt={`Biên lai ${i + 1}`} className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 text-gray-400 text-xs mb-2">
+          <RiImageLine size={12} /> Không có ảnh biên lai
+        </div>
+      )}
+
+      {/* Result after confirm */}
+      {confirmed && confirmResult && (
+        <div className={`rounded-lg px-3 py-2 text-xs mt-1 ${
+          confirmResult.action === "short"  ? "bg-red-50 text-red-700" :
+          confirmResult.action === "excess" ? "bg-blue-50 text-blue-700" :
+          "bg-emerald-100 text-emerald-700"
+        }`}>
+          {confirmResult.action === "short"  && `Khách trả thiếu ${fmtVND(Math.abs(confirmResult.diff))} — đã tạo công nợ khách hàng`}
+          {confirmResult.action === "excess" && `Khách trả thừa ${fmtVND(confirmResult.diff)} — đã phân bổ vào nợ cũ`}
+          {confirmResult.action === "exact"  && "Khách trả đủ — đã xác nhận"}
+        </div>
+      )}
+
+      {/* Confirm form */}
+      {!confirmed && (
+        <div className="flex flex-col gap-2">
+          {/* Amount input */}
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+              Số tiền thực nhận được
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={actualAmount}
+              onChange={e => setActualAmount(e.target.value)}
+              placeholder={String(receiptAmt)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-mono
+                         focus:outline-none focus:ring-2 focus:ring-blue-300"
+            />
+            {/* Diff hint */}
+            {amountValid && actualNum !== receiptAmt && (
+              <div className={`flex items-center gap-1 text-[11px] mt-1 font-semibold
+                ${isShort ? "text-red-600" : "text-blue-600"}`}>
+                {isShort
+                  ? <><RiArrowDownLine size={12} /> Thiếu {fmtVND(Math.abs(diff))} — sẽ tạo công nợ khách</>
+                  : <><RiArrowUpLine   size={12} /> Thừa {fmtVND(diff)} — sẽ phân bổ vào nợ cũ của khách</>
+                }
+              </div>
+            )}
+            {amountValid && Math.abs(diff) <= 0.01 && (
+              <p className="text-[11px] mt-1 text-emerald-600 font-semibold">Khớp đúng số tiền phiếu thu</p>
+            )}
+          </div>
+
+          <Textarea
+            placeholder="Ghi chú (tuỳ chọn)..."
+            value={notes}
+            onValueChange={setNotes}
+            minRows={1}
+            size="sm"
+          />
+
+          {error && <p className="text-red-500 text-xs">{error}</p>}
+
+          <Button
+            size="sm" color="success" fullWidth
+            onPress={handleConfirm} isLoading={loading}
+            isDisabled={!amountValid}
+            startContent={!loading && <RiCheckLine size={13} />}
+          >
+            Xác nhận đã nhận tiền
+          </Button>
+        </div>
+      )}
+
+      <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+    </div>
+  );
+}
+
+function ShipmentCard({ s, index, onBankConfirmed }) {
   const pickup   = s.pickup_addresses?.[0]?.address ?? s.pickup_address ?? "—";
   const delivery = s.delivery_address ?? "—";
   const state    = DRIVER_STATE[s.driver_payment_state] ?? { label: "Không có nợ TX", color: "text-gray-400", bg: "bg-gray-50", icon: RiTimeLine };
@@ -128,6 +292,9 @@ function ShipmentCard({ s, index }) {
             <MoneyText amount={s.total_expenses} className="text-[11px] font-bold text-orange-600" />
           </div>
         )}
+
+        {/* Bank transfer confirmation panel */}
+        <BankTransferPanel s={s} onConfirmed={onBankConfirmed} />
       </div>
     </div>
   );
@@ -137,13 +304,18 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading]     = useState(false);
 
-  useEffect(() => {
-    if (!isOpen || !order?.id) { setShipments([]); return; }
+  const loadShipments = () => {
+    if (!order?.id) return;
     setLoading(true);
     accountantService.getOrderShipments(order.id)
       .then((data) => setShipments(Array.isArray(data) ? data : []))
       .catch(() => setShipments([]))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!isOpen || !order?.id) { setShipments([]); return; }
+    loadShipments();
   }, [isOpen, order?.id]);
 
   if (!order) return null;
@@ -246,7 +418,12 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
             ) : (
               <div className="flex flex-col gap-2">
                 {shipments.map((s, i) => (
-                  <ShipmentCard key={s.id} s={s} index={s.shipment_index ?? i + 1} />
+                  <ShipmentCard
+                    key={s.id}
+                    s={s}
+                    index={s.shipment_index ?? i + 1}
+                    onBankConfirmed={loadShipments}
+                  />
                 ))}
               </div>
             )}

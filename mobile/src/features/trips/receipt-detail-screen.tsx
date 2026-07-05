@@ -10,7 +10,7 @@ import {
     Bank, Buildings, Camera, Car, CaretDown, CaretRight, CheckCircle,
     CurrencyDollar, MapPin, MapPinLine, Money, Package,
     PencilSimple, Phone, Receipt, Ruler, Scales,
-    Truck, User, UserCircle, Warning, X,
+    Truck, User, UserCircle, Warning, X, ListNumbers,
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -19,7 +19,7 @@ import { AppText }               from '@/components/app-text';
 import { ReceiptDetailSkeleton } from '@/components/skeleton';
 import { appTheme }              from '@/theme/app-theme';
 import { tripService }           from '@/services/trip-service';
-import type { CompanyInfo, DriverReceiptDetail, ExpenseItem, PaymentType } from '@/types/trip';
+import type { CompanyInfo, DriverReceiptDetail, ExpenseItem, OrderShipmentRow, PaymentType } from '@/types/trip';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +113,126 @@ function Row({ label, value, bold, icon }: {
                 {value}
             </Text>
         </XStack>
+    );
+}
+
+// ─── Shipment row (bên trong accordion tất cả chuyến) ────────────────────────
+
+const SHIPMENT_STATUS_LABEL: Record<string, string> = {
+    completed: 'Hoàn thành',
+    failed:    'Thất bại',
+    cancelled: 'Huỷ',
+    transit:   'Đang chạy',
+    picking:   'Lấy hàng',
+    arrived:   'Đã đến',
+    claimed:   'Đã nhận',
+    available: 'Chờ nhận',
+    returning: 'Hoàn hàng',
+};
+
+const SHIPMENT_STATUS_COLOR: Record<string, string> = {
+    completed: '#16A34A',
+    failed:    '#DC2626',
+    cancelled: '#6B7280',
+    transit:   '#2563EB',
+    picking:   '#D97706',
+    arrived:   '#7C3AED',
+    claimed:   '#0891B2',
+    available: '#6B7280',
+    returning: '#C2410C',
+};
+
+function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
+    const price        = s.actual_price ?? s.estimated_price;
+    const km           = s.actual_distance_km ?? s.estimated_distance_km;
+    const color        = SHIPMENT_STATUS_COLOR[s.status] ?? '#6B7280';
+    const expTotal     = (s.expenses ?? []).reduce((sum, e) => sum + Number(e.amount), 0);
+    const hasExpenses  = (s.expenses ?? []).length > 0;
+
+    return (
+        <View style={styles.shipmentRow}>
+            <XStack alignItems="flex-start" gap={10}>
+                <View style={[styles.shipmentIndex, { backgroundColor: `${color}18`, borderColor: `${color}40` }]}>
+                    <Text fontSize={13} fontWeight="900" color={color}>{index}</Text>
+                </View>
+                <YStack flex={1} gap={4}>
+                    <XStack justifyContent="space-between" alignItems="center">
+                        <View style={[styles.statusTag, { backgroundColor: `${color}14` }]}>
+                            <Text fontSize={10} fontWeight="700" color={color}>
+                                {SHIPMENT_STATUS_LABEL[s.status] ?? s.status}
+                            </Text>
+                        </View>
+                        {price ? (
+                            <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
+                                {fmtMoney(price)}{!s.actual_price ? ' *' : ''}
+                            </Text>
+                        ) : null}
+                    </XStack>
+                    {s.driver_name ? (
+                        <XStack alignItems="center" gap={5}>
+                            <User size={11} color={appTheme.colors.textMuted} weight="fill" />
+                            <Text fontSize={11} color={appTheme.colors.textMuted}>
+                                {s.driver_name}{s.plate_number ? ` · ${s.plate_number}` : ''}
+                            </Text>
+                        </XStack>
+                    ) : null}
+                    {s.pickup_address ? (
+                        <XStack alignItems="flex-start" gap={5}>
+                            <MapPinLine size={11} color={appTheme.colors.textMuted} weight="fill" style={{ marginTop: 1 }} />
+                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                {s.pickup_address}
+                            </Text>
+                        </XStack>
+                    ) : null}
+                    {s.delivery_address ? (
+                        <XStack alignItems="flex-start" gap={5}>
+                            <MapPin size={11} color={appTheme.colors.primary} weight="fill" style={{ marginTop: 1 }} />
+                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                {s.delivery_address}
+                            </Text>
+                        </XStack>
+                    ) : null}
+                    {km ? (
+                        <XStack alignItems="center" gap={5}>
+                            <Ruler size={11} color={appTheme.colors.textMuted} weight="fill" />
+                            <Text fontSize={11} color={appTheme.colors.textMuted}>
+                                {Number(km).toLocaleString('vi-VN')} km{!s.actual_distance_km ? ' (ước tính)' : ''}
+                            </Text>
+                        </XStack>
+                    ) : null}
+
+                    {/* Chi phí phát sinh của chuyến này */}
+                    {hasExpenses ? (
+                        <View style={styles.shipmentExpenseBlock}>
+                            <XStack justifyContent="space-between" alignItems="center" marginBottom={4}>
+                                <XStack alignItems="center" gap={4}>
+                                    <CurrencyDollar size={11} color={appTheme.colors.primary} weight="fill" />
+                                    <Text fontSize={11} fontWeight="700" color={appTheme.colors.text}>
+                                        Chi phí phát sinh
+                                    </Text>
+                                </XStack>
+                                <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary}>
+                                    +{fmtMoney(expTotal)}
+                                </Text>
+                            </XStack>
+                            <YStack gap={3}>
+                                {s.expenses.map(exp => (
+                                    <XStack key={exp.id} justifyContent="space-between" alignItems="center">
+                                        <Text fontSize={10} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                            {EXPENSE_TYPE_LABEL[exp.expense_type] ?? exp.expense_type}
+                                            {exp.description ? ` — ${exp.description}` : ''}
+                                        </Text>
+                                        <Text fontSize={10} fontWeight="700" color={appTheme.colors.text}>
+                                            {fmtMoney(exp.amount)}
+                                        </Text>
+                                    </XStack>
+                                ))}
+                            </YStack>
+                        </View>
+                    ) : null}
+                </YStack>
+            </XStack>
+        </View>
     );
 }
 
@@ -494,8 +614,14 @@ export function ReceiptDetailScreen() {
     const isApproved      = receipt.request_status === 'approved';
     const isRejected      = receipt.request_status === 'rejected';
     const alreadyRecorded = isApproved && receipt.payment_type !== null;
+    // bank_transfer cần kế toán xác nhận; trước khi confirm thì vẫn là "chờ xác nhận"
+    const bankPendingConfirm = alreadyRecorded && receipt.payment_type === 'bank_transfer' && !receipt.bank_confirmed;
     const needsProof      = selected === 'cash_collected' || selected === 'bank_transfer';
-    const totalExpenses   = receipt.expenses.reduce((s, e) => s + Number(e.amount), 0);
+    // Tổng chi phí phát sinh = của chuyến này + tất cả chuyến khác trong đơn
+    const totalExpenses = (receipt.order_shipments?.length > 0
+        ? receipt.order_shipments.reduce((s, sh) => s + (sh.expenses ?? []).reduce((es, e) => es + Number(e.amount), 0), 0)
+        : receipt.expenses.reduce((s, e) => s + Number(e.amount), 0)
+    );
     const kmDisplay       = receipt.actual_distance_km
         ? `${Number(receipt.actual_distance_km).toLocaleString('vi-VN')} km`
         : receipt.estimated_distance_km
@@ -592,37 +718,30 @@ export function ReceiptDetailScreen() {
                             {fmtMoney(Number(receipt.amount) + totalExpenses)}
                         </Text>
 
-                        {/* Breakdown nếu có chi phí phát sinh */}
-                        {totalExpenses > 0 ? (
-                            <View style={styles.amountBreakdown}>
-                                <XStack justifyContent="space-between" paddingVertical={3}>
-                                    <Text fontSize={11} color={appTheme.colors.textMuted}>Cước vận chuyển</Text>
-                                    <Text fontSize={11} color={appTheme.colors.text}>{fmtMoney(receipt.amount)}</Text>
-                                </XStack>
-                                <XStack justifyContent="space-between" paddingVertical={3}>
-                                    <Text fontSize={11} color={appTheme.colors.textMuted}>Chi phí phát sinh</Text>
-                                    <Text fontSize={11} color={appTheme.colors.primary}>+{fmtMoney(totalExpenses)}</Text>
-                                </XStack>
-                            </View>
-                        ) : null}
+                       
 
                         <View style={[
                             styles.statusChip,
-                            alreadyRecorded
-                                ? { backgroundColor: `${appTheme.colors.success}18` }
-                                : isRejected
-                                    ? { backgroundColor: '#FEF2F2' }
-                                    : { backgroundColor: `${appTheme.colors.warning}18` },
+                            bankPendingConfirm
+                                ? { backgroundColor: '#FFF7ED' }
+                                : alreadyRecorded
+                                    ? { backgroundColor: `${appTheme.colors.success}18` }
+                                    : isRejected
+                                        ? { backgroundColor: '#FEF2F2' }
+                                        : { backgroundColor: `${appTheme.colors.warning}18` },
                         ]}>
                             <Text fontSize={11} fontWeight="700" color={
-                                alreadyRecorded ? appTheme.colors.success
+                                bankPendingConfirm ? '#C2410C'
+                                    : alreadyRecorded ? appTheme.colors.success
                                     : isRejected ? '#E53E3E'
                                     : appTheme.colors.warning
                             }>
-                                {alreadyRecorded
-                                    ? (PAYMENT_LABEL[receipt.payment_type!] ?? receipt.payment_type)
-                                    : isRejected ? 'Yêu cầu bị từ chối'
-                                    : 'Chưa xác nhận thanh toán'}
+                                {bankPendingConfirm
+                                    ? 'Chờ kế toán xác nhận chuyển khoản'
+                                    : alreadyRecorded
+                                        ? (PAYMENT_LABEL[receipt.payment_type!] ?? receipt.payment_type)
+                                        : isRejected ? 'Yêu cầu bị từ chối'
+                                        : 'Chưa xác nhận thanh toán'}
                             </Text>
                         </View>
                     </View>
@@ -647,66 +766,146 @@ export function ReceiptDetailScreen() {
 
                     <View style={styles.divider} />
 
-                    {/* ── Accordion: Đơn hàng + chi phí ───────────────────── */}
-                    <AccordionSection
-                        icon={<Package size={15} color={appTheme.colors.primary} weight="fill" />}
-                        title={`Đơn hàng #${receipt.order_id}`}
-                        badge={receipt.cargo_name ?? undefined}
-                        defaultOpen
-                    >
-                        <Row icon={<Package size={13} color={appTheme.colors.primary} weight="fill" />}
-                            label="Hàng hóa" value={receipt.cargo_name} bold />
-                        {receipt.cargo_weight_kg ? (
-                            <Row icon={<Scales size={13} color={appTheme.colors.primary} weight="fill" />}
-                                label="Khối lượng" value={`${receipt.cargo_weight_kg} kg`} />
-                        ) : null}
-                        <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
-                            label="Điểm lấy hàng" value={receipt.pickup_address} />
-                        <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
-                            label="Điểm giao hàng" value={receipt.delivery_address} />
-                        {kmDisplay ? (
-                            <Row icon={<Ruler size={13} color={appTheme.colors.primary} weight="fill" />}
-                                label="Quãng đường" value={kmDisplay} />
-                        ) : null}
-                        <Row icon={<CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />}
-                            label="Đơn giá thực" value={receipt.actual_price ? fmtMoney(receipt.actual_price) : null} />
-                        <Row icon={<CurrencyDollar size={13} color={appTheme.colors.textMuted} weight="fill" />}
-                            label="Đơn giá ước" value={!receipt.actual_price && receipt.estimated_price ? fmtMoney(receipt.estimated_price) : null} />
+                    {/* ── Accordion: Đơn hàng — tổng hợp tất cả chuyến ────── */}
+                    {(() => {
+                        const shipments     = receipt.order_shipments ?? [];
+                        const isMulti       = shipments.length > 1;
+                        const totalExpAll   = shipments.reduce((s, sh) =>
+                            s + (sh.expenses ?? []).reduce((es, e) => es + Number(e.amount), 0), 0);
+                        const completedList = shipments.filter(sh => sh.status === 'completed');
+                        const totalActual   = completedList.reduce((s, sh) => s + Number(sh.actual_price ?? 0), 0);
+                        const totalEst      = completedList.reduce((s, sh) => s + Number(sh.estimated_price ?? 0), 0);
+                        const baseTotal     = totalActual || totalEst;
+                        const grandTotal    = baseTotal + totalExpAll;
 
-                        {/* Chi phí phát sinh */}
-                        <View style={styles.expenseBlock}>
-                            <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
-                                <XStack gap={5} alignItems="center">
-                                    <CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />
-                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
-                                        Chi phí phát sinh
-                                    </Text>
-                                </XStack>
-                                {totalExpenses > 0 ? (
-                                    <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
-                                        {fmtMoney(totalExpenses)}
-                                    </Text>
+                        return (
+                            <AccordionSection
+                                icon={<Package size={15} color={appTheme.colors.primary} weight="fill" />}
+                                title={`Đơn hàng #${receipt.order_id}`}
+                                badge={receipt.cargo_name ?? undefined}
+                                defaultOpen
+                            >
+                                {/* ── Thông tin hàng hóa ─── */}
+                                <Row icon={<Package size={13} color={appTheme.colors.primary} weight="fill" />}
+                                    label="Hàng hóa" value={receipt.cargo_name} bold />
+                                {receipt.cargo_weight_kg ? (
+                                    <Row icon={<Scales size={13} color={appTheme.colors.primary} weight="fill" />}
+                                        label="Khối lượng" value={`${receipt.cargo_weight_kg} kg`} />
                                 ) : null}
-                            </XStack>
 
-                            {receipt.expenses.length === 0 ? (
-                                <Text fontSize={11} color={appTheme.colors.textMuted} textAlign="center" paddingVertical={6}>
-                                    Không có chi phí phát sinh
-                                </Text>
-                            ) : (
-                                <YStack gap={8}>
-                                    {receipt.expenses.map(exp => (
-                                        <ExpenseRow
-                                            key={exp.id}
-                                            expense={exp}
-                                            canEdit={isRejected}
-                                            onEdit={() => setEditExpense(exp)}
-                                        />
-                                    ))}
-                                </YStack>
-                            )}
-                        </View>
-                    </AccordionSection>
+                                {/* ── Danh sách chuyến ─── */}
+                                {isMulti ? (
+                                    <View style={styles.multiShipmentBlock}>
+                                        <XStack alignItems="center" gap={6} marginBottom={10}>
+                                            <ListNumbers size={13} color={appTheme.colors.primary} weight="fill" />
+                                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                                                Các chuyến trong đơn ({shipments.length})
+                                            </Text>
+                                            <View style={styles.completedBadge}>
+                                                <Text fontSize={10} fontWeight="700" color={appTheme.colors.success}>
+                                                    {completedList.length} hoàn thành
+                                                </Text>
+                                            </View>
+                                        </XStack>
+
+                                        <YStack gap={10}>
+                                            {shipments.map((s) => (
+                                                <ShipmentRow key={s.id} s={s} index={s.shipment_index} />
+                                            ))}
+                                        </YStack>
+
+                                        {/* Tổng cộng toàn đơn */}
+                                        {grandTotal > 0 ? (
+                                            <View style={styles.shipmentTotalBox}>
+                                                <XStack justifyContent="space-between" alignItems="center">
+                                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                                                        Tổng cộng đơn hàng
+                                                    </Text>
+                                                    <Text fontSize={15} fontWeight="900" color={appTheme.colors.primary}>
+                                                        {fmtMoney(grandTotal)}{!totalActual ? ' *' : ''}
+                                                    </Text>
+                                                </XStack>
+                                                {totalExpAll > 0 ? (
+                                                    <XStack justifyContent="space-between" marginTop={5}>
+                                                        <Text fontSize={10} color={appTheme.colors.textMuted}>
+                                                            Cước vận chuyển
+                                                        </Text>
+                                                        <Text fontSize={10} color={appTheme.colors.textMuted}>
+                                                            {fmtMoney(baseTotal)}
+                                                        </Text>
+                                                    </XStack>
+                                                ) : null}
+                                                {totalExpAll > 0 ? (
+                                                    <XStack justifyContent="space-between" marginTop={2}>
+                                                        <Text fontSize={10} color={appTheme.colors.textMuted}>
+                                                            Chi phí phát sinh (tất cả chuyến)
+                                                        </Text>
+                                                        <Text fontSize={10} color={appTheme.colors.primary}>
+                                                            +{fmtMoney(totalExpAll)}
+                                                        </Text>
+                                                    </XStack>
+                                                ) : null}
+                                                {!totalActual && totalEst > 0 ? (
+                                                    <Text fontSize={10} color={appTheme.colors.textMuted} marginTop={4}>
+                                                        * Giá ước tính — chưa được coordinator chốt
+                                                    </Text>
+                                                ) : null}
+                                            </View>
+                                        ) : null}
+                                    </View>
+                                ) : (
+                                    /* Đơn 1 chuyến — layout cũ */
+                                    <>
+                                        <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
+                                            label="Điểm lấy hàng" value={receipt.pickup_address} />
+                                        <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
+                                            label="Điểm giao hàng" value={receipt.delivery_address} />
+                                        {kmDisplay ? (
+                                            <Row icon={<Ruler size={13} color={appTheme.colors.primary} weight="fill" />}
+                                                label="Quãng đường" value={kmDisplay} />
+                                        ) : null}
+                                        <Row icon={<CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />}
+                                            label="Đơn giá thực" value={receipt.actual_price ? fmtMoney(receipt.actual_price) : null} />
+                                        <Row icon={<CurrencyDollar size={13} color={appTheme.colors.textMuted} weight="fill" />}
+                                            label="Đơn giá ước" value={!receipt.actual_price && receipt.estimated_price ? fmtMoney(receipt.estimated_price) : null} />
+
+                                        {/* Chi phí phát sinh */}
+                                        <View style={styles.expenseBlock}>
+                                            <XStack justifyContent="space-between" alignItems="center" marginBottom={8}>
+                                                <XStack gap={5} alignItems="center">
+                                                    <CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />
+                                                    <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>
+                                                        Chi phí phát sinh
+                                                    </Text>
+                                                </XStack>
+                                                {totalExpenses > 0 ? (
+                                                    <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
+                                                        {fmtMoney(totalExpenses)}
+                                                    </Text>
+                                                ) : null}
+                                            </XStack>
+                                            {receipt.expenses.length === 0 ? (
+                                                <Text fontSize={11} color={appTheme.colors.textMuted} textAlign="center" paddingVertical={6}>
+                                                    Không có chi phí phát sinh
+                                                </Text>
+                                            ) : (
+                                                <YStack gap={8}>
+                                                    {receipt.expenses.map(exp => (
+                                                        <ExpenseRow
+                                                            key={exp.id}
+                                                            expense={exp}
+                                                            canEdit={isRejected}
+                                                            onEdit={() => setEditExpense(exp)}
+                                                        />
+                                                    ))}
+                                                </YStack>
+                                            )}
+                                        </View>
+                                    </>
+                                )}
+                            </AccordionSection>
+                        );
+                    })()}
 
                     <View style={styles.divider} />
 
@@ -987,6 +1186,42 @@ const styles = StyleSheet.create({
     saveBtn:        {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
         backgroundColor: appTheme.colors.primary, borderRadius: 12, padding: 14, marginTop: 8,
+    },
+    // Multi-shipment block inside order accordion
+    multiShipmentBlock: {
+        marginTop: 10,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: appTheme.colors.border,
+    },
+    completedBadge: {
+        paddingHorizontal: 8, paddingVertical: 2,
+        borderRadius: 6,
+        backgroundColor: `${appTheme.colors.success}14`,
+    },
+    // Shipment list
+    shipmentRow: {
+        backgroundColor: appTheme.colors.surfaceSoft,
+        borderRadius: 10, padding: 10,
+        borderWidth: 1, borderColor: appTheme.colors.border,
+    },
+    shipmentIndex: {
+        width: 30, height: 30, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1, flexShrink: 0,
+    },
+    statusTag: {
+        paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6,
+    },
+    shipmentTotalBox: {
+        backgroundColor: `${appTheme.colors.primary}08`,
+        borderRadius: 10, padding: 10,
+        borderWidth: 1, borderColor: `${appTheme.colors.primary}20`,
+        marginBottom: 4,
+    },
+    shipmentExpenseBlock: {
+        marginTop: 8, paddingTop: 8,
+        borderTopWidth: 1, borderTopColor: appTheme.colors.border,
     },
     // Modal
     modalOverlay:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },

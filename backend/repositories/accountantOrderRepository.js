@@ -417,7 +417,18 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             FROM shipment_receipts sr
             JOIN order_receipt_requests rr ON rr.id = sr.order_receipt_request_id
             WHERE rr.order_id = o.id
-              AND sr.payment_type IS NULL
+              AND (
+                  -- chưa được driver xác nhận hình thức thanh toán
+                  sr.payment_type IS NULL
+                  OR
+                  -- driver chọn bank_transfer nhưng kế toán chưa xác nhận tiền về
+                  (sr.payment_type = 'bank_transfer' AND NOT EXISTS (
+                      SELECT 1 FROM financial_transactions ft
+                      WHERE ft.ref_type = 'shipment'
+                        AND ft.ref_id   = rr.requesting_shipment_id
+                        AND ft.event_type = 'bank_receipt'
+                  ))
+              )
         ) pending_agg ON TRUE
     `;
 
@@ -544,6 +555,22 @@ const getOrderShipments = async (orderId) => {
             JOIN debts d ON d.id = dp.debt_id
             WHERE d.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
             ORDER BY d.shipment_id, dp.paid_at DESC
+        ),
+        receipt_agg AS (
+            SELECT
+                orr.requesting_shipment_id          AS shipment_id,
+                sr.id                               AS receipt_id,
+                sr.payment_type                     AS receipt_payment_type,
+                sr.amount                           AS receipt_amount,
+                COALESCE(
+                    json_agg(pr.file_url ORDER BY pr.uploaded_at) FILTER (WHERE pr.file_url IS NOT NULL),
+                    '[]'
+                )                                   AS proof_urls
+            FROM order_receipt_requests orr
+            JOIN shipment_receipts sr ON sr.order_receipt_request_id = orr.id
+            LEFT JOIN payment_receipts pr ON pr.payment_id = sr.id
+            WHERE orr.requesting_shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
+            GROUP BY orr.requesting_shipment_id, sr.id, sr.payment_type, sr.amount
         )
         SELECT
             os.id, os.shipment_index, sc.vehicle_id, sc.owner_driver_id,
@@ -563,15 +590,24 @@ const getOrderShipments = async (orderId) => {
             da.driver_payment_state,
             da.total_amount                        AS driver_total,
             da.driver_paid,
-            pa.payment_type
+            pa.payment_type,
+            ra.receipt_id,
+            ra.receipt_payment_type,
+            ra.receipt_amount,
+            COALESCE(ra.proof_urls, '[]')          AS proof_urls,
+            EXISTS(
+                SELECT 1 FROM financial_transactions ft
+                WHERE ft.ref_type = 'shipment' AND ft.ref_id = os.id AND ft.event_type = 'bank_receipt'
+            )                                      AS bank_confirmed
         FROM order_shipments os
         LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
         LEFT JOIN vehicles  v  ON v.id  = sc.vehicle_id
         LEFT JOIN profiles  p  ON p.id  = sc.owner_driver_id
-        LEFT JOIN exp_agg   ea ON ea.shipment_id = os.id
-        LEFT JOIN stop_agg  sa ON sa.shipment_id = os.id
-        LEFT JOIN debt_agg  da ON da.shipment_id = os.id
-        LEFT JOIN pay_agg   pa ON pa.shipment_id = os.id
+        LEFT JOIN exp_agg     ea ON ea.shipment_id = os.id
+        LEFT JOIN stop_agg    sa ON sa.shipment_id = os.id
+        LEFT JOIN debt_agg    da ON da.shipment_id = os.id
+        LEFT JOIN pay_agg     pa ON pa.shipment_id = os.id
+        LEFT JOIN receipt_agg ra ON ra.shipment_id = os.id
         WHERE os.order_id = $1
         ORDER BY os.shipment_index ASC`,
         [orderId]
@@ -600,10 +636,15 @@ const getOrderShipments = async (orderId) => {
         notes: row.notes,
         pickup_addresses:  row.pickups || [],
         delivery_address:  row.delivery_address || null,
-        payment_type:      row.payment_type || null,
+        payment_type:         row.payment_type || null,
         driver_payment_state: row.driver_payment_state || null,
-        driver_total:      row.driver_total ? Number(row.driver_total) : null,
-        driver_paid:       row.driver_paid  ? Number(row.driver_paid)  : 0,
+        driver_total:         row.driver_total ? Number(row.driver_total) : null,
+        driver_paid:          row.driver_paid  ? Number(row.driver_paid)  : 0,
+        receipt_id:           row.receipt_id   || null,
+        receipt_payment_type: row.receipt_payment_type || null,
+        receipt_amount:       row.receipt_amount ? Number(row.receipt_amount) : null,
+        proof_urls:           row.proof_urls || [],
+        bank_confirmed:       row.bank_confirmed || false,
     }));
 };
 
