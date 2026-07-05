@@ -27,6 +27,9 @@ type Params = {
     shipmentIndex: string;
     maxShipmentIndex: string;
     orderPaymentType?: string;
+    // Khi navigate từ màn hình hoàn thành chuyến, server trả is_final_shipment chính xác
+    // (index cao nhất VÀ tất cả chuyến khác đã terminal). Nếu không có, fallback về index check.
+    isFinalShipment?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -109,8 +112,11 @@ export function ReceiptRequestScreen() {
     const orderId    = Number(params.orderId);
     const shipmentId = Number(params.shipmentId);
 
-    // Driver cuối = người có shipment_index cao nhất trong order
-    const isFinalShipment = Number(params.shipmentIndex) === Number(params.maxShipmentIndex);
+    // Ưu tiên dùng isFinalShipment từ server (chính xác: index cao nhất VÀ tất cả chuyến khác terminal)
+    // Fallback về index check khi navigate từ màn hình khác (ReceiptRequestSection)
+    const isFinalShipment = params.isFinalShipment !== undefined
+        ? params.isFinalShipment === 'true'
+        : Number(params.shipmentIndex) === Number(params.maxShipmentIndex);
     // Chỉ tài cuối của đơn cash mới tạo yêu cầu phiếu thu; các trường hợp còn lại chỉ lưu km
     const needsReceiptRequest = isFinalShipment && params.orderPaymentType === 'cash';
 
