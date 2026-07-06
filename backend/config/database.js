@@ -1,7 +1,7 @@
 const { Pool } = require('pg');
 
 const poolConfig = {
-    host: process.env.DB_HOST || 'localhost',
+    host: `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`,
     port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
