@@ -58,4 +58,33 @@ describe('Expense Service Integration Tests (L2)', () => {
         assert.strictEqual(fetched.length, 1);
         assert.strictEqual(fetched[0].expense_type, 'fuel');
     });
+
+    it('accumulates multiple expenses for the same shipment in insertion order', async () => {
+        await expenseService.createExpense(1, { shipmentId: 1, expenseType: 'fuel', amount: 500, receiptUrl: 'url1' });
+        await expenseService.createExpense(1, { shipmentId: 1, expenseType: 'toll', amount: 100, receiptUrl: 'url2' });
+
+        const fetched = await expenseService.getShipmentExpenses(1, 1);
+        assert.strictEqual(fetched.length, 2);
+        assert.deepStrictEqual(fetched.map((e) => e.expense_type), ['fuel', 'toll']);
+    });
+
+    it('rejects an expense from a driver who does not currently own the shipment (via v_shipment_current)', async () => {
+        await pool.query(`INSERT INTO accounts (id, email, password_hash, role_id) VALUES (2, 'driver2@test.com', 'hash', 2)`);
+        await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (2, 'Driver Two', 2)`);
+        await pool.query(`INSERT INTO drivers (profile_id, license_number, hire_date) VALUES (2, 'L456', CURRENT_DATE)`);
+
+        await assert.rejects(
+            () => expenseService.createExpense(2, { shipmentId: 1, expenseType: 'fuel', amount: 500, receiptUrl: 'url' }),
+            { message: 'Bạn không có quyền thêm chi phí cho chuyến này' },
+        );
+    });
+
+    it('rejects an expense once the shipment has already completed', async () => {
+        await pool.query(`UPDATE order_shipments SET status = 'completed' WHERE id = 1`);
+
+        await assert.rejects(
+            () => expenseService.createExpense(1, { shipmentId: 1, expenseType: 'fuel', amount: 500, receiptUrl: 'url' }),
+            { message: 'Không thể thêm chi phí khi chuyến đã kết thúc' },
+        );
+    });
 });

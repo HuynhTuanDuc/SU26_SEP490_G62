@@ -65,6 +65,16 @@ const approveSalaryAdvance = async (advanceId, managerId) => {
         entityId: updated.id,
     }, { displayMode: 'alert' }).catch(() => {});
 
+    notificationService.getUserIdsByRole('accountant').then((ids) =>
+        notificationService.createForUsers(ids, {
+            title: 'Có yêu cầu ứng lương cần giải ngân',
+            message: `Manager đã duyệt ứng lương tháng ${updated.request_month}/${updated.request_year}. Vui lòng giải ngân.`,
+            type: 'SALARY_ADVANCE_DISBURSE_NEEDED',
+            entityType: 'salary_advance',
+            entityId: updated.id,
+        }, { displayMode: 'toast' })
+    ).catch(() => {});
+
     return updated;
 };
 

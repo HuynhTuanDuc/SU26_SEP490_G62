@@ -1,5 +1,6 @@
 const managerService = require('../services/managerService');
 const accountantPayrollRepository = require('../repositories/accountantPayrollRepository');
+const notificationService = require('../services/notificationService');
 
 const parseId = (value, label) => {
     const parsed = Number(value);
@@ -161,6 +162,17 @@ const reviewPayroll = async (req, res) => {
     try {
         const payrollId = parseId(req.params.id, 'Payroll ID');
         const row = await accountantPayrollRepository.reviewPayroll(payrollId, req.user.userId);
+
+        notificationService.getUserIdsByRole('accountant').then((ids) =>
+            notificationService.createForUsers(ids, {
+                title: 'Bảng lương cần xác nhận',
+                message: `Manager đã duyệt bảng lương tháng ${row.payroll_month}/${row.payroll_year}. Vui lòng xác nhận và chi trả.`,
+                type: 'PAYROLL_REVIEWED',
+                entityType: 'payroll',
+                entityId: row.id,
+            }, { displayMode: 'toast' })
+        ).catch(() => {});
+
         res.json({ message: 'Đã xác nhận bảng lương (reviewed).', payroll: row });
     } catch (err) {
         sendError(res, err);

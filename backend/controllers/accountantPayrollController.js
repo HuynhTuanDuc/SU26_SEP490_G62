@@ -1,5 +1,6 @@
 ﻿const accountantPayrollRepository = require('../repositories/accountantPayrollRepository');
 const { posInt, enumVal, validMonth, validYear, sendError, err400 } = require('../utils/accountantValidate');
+const notificationService = require('../services/notificationService');
 
 const ADVANCE_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
 const PAYROLL_STATUSES = ['pending', 'reviewed', 'approved', 'paid'];
@@ -68,6 +69,17 @@ const markPayrollPaid = async (req, res) => {
     try {
         const payrollId = posInt(req.params.id, 'Mã bảng lương');
         const row = await accountantPayrollRepository.markPayrollPaid(payrollId, req.user.userId);
+
+        if (row.driver_id) {
+            notificationService.createForUser(row.driver_id, {
+                title: 'Lương đã được chi trả',
+                message: `Lương tháng ${row.payroll_month}/${row.payroll_year} đã được kế toán chi trả.`,
+                type: 'PAYROLL_PAID',
+                entityType: 'payroll',
+                entityId: row.id,
+            }, { displayMode: 'alert' }).catch(() => {});
+        }
+
         res.json({ message: 'Đã đánh dấu đã thanh toán lương.', payroll: row });
     } catch (err) {
         if (!err.status) err.status = err.message.includes('Không tìm thấy') ? 404 : 400;
@@ -110,6 +122,17 @@ const disburseAdvance = async (req, res) => {
         const row = await accountantPayrollRepository.disburseAdvance(
             advanceId, req.user.userId, { notes },
         );
+
+        if (row.driver_id) {
+            const fmtVND = (n) => Number(n || 0).toLocaleString('vi-VN') + 'đ';
+            notificationService.createForUser(row.driver_id, {
+                title: 'Ứng lương đã được giải ngân',
+                message: `Kế toán đã giải ngân ${fmtVND(row.amount)} ứng lương tháng ${row.request_month}/${row.request_year}.`,
+                type: 'SALARY_ADVANCE_DISBURSED',
+                entityType: 'salary_advance',
+                entityId: row.id,
+            }, { displayMode: 'alert' }).catch(() => {});
+        }
 
         res.json({ message: 'Giải ngân ứng lương thành công.', advance: row });
     } catch (err) {
