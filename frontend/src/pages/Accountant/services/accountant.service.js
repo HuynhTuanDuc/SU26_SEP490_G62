@@ -106,4 +106,13 @@ export const accountantService = {
 
   payBonus: (id) =>
     apiRequest(`/api/bonuses/${id}/pay`, { method: "PATCH" }),
+
+  getPendingBankTransfers: (params) =>
+    apiRequest(`${BASE}/receipts/bank-transfer?${new URLSearchParams(params)}`),
+
+  confirmBankTransfer: (receiptId, notes, actualAmount) =>
+    apiRequest(`${BASE}/receipts/${receiptId}/confirm-bank-transfer`, {
+      method: "POST",
+      body: { notes, actual_amount: actualAmount },
+    }),
 };

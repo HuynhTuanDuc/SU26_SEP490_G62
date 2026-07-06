@@ -219,18 +219,23 @@ const getFullTripById = async (tripId) => {
                 SELECT MAX(s2.shipment_index)
                 FROM order_shipments s2
                 WHERE s2.order_id = os.order_id
-            ) AS max_shipment_index
+            ) AS max_shipment_index,
+            (
+                os.shipment_index = (SELECT MAX(s2.shipment_index) FROM order_shipments s2 WHERE s2.order_id = os.order_id)
+                AND NOT EXISTS (
+                    SELECT 1 FROM order_shipments s3
+                    WHERE s3.order_id = os.order_id
+                      AND s3.id != os.id
+                      AND s3.status NOT IN ('completed', 'cancelled', 'failed')
+                )
+            ) AS is_final_shipment
          FROM order_shipments os
          JOIN orders o ON os.order_id = o.id
          WHERE os.id = $1`,
         [tripId],
     );
     if (!result.rows[0]) return null;
-    const row = result.rows[0];
-    return {
-        ...row,
-        is_final_shipment: Number(row.shipment_index) === Number(row.max_shipment_index),
-    };
+    return result.rows[0];
 };
 
 const claimShipment = async (shipmentId, driverId, vehicleId) => {
@@ -547,17 +552,23 @@ const releaseShipmentToPool = async (tripId, driverId, reason) => {
 
 const isFinalShipment = async (tripId) => {
     const result = await pool.query(
-        `SELECT os.shipment_index,
-                (SELECT MAX(s2.shipment_index)
-                 FROM order_shipments s2
-                 WHERE s2.order_id = os.order_id) AS max_index
+        `SELECT
+            (os.shipment_index = (
+                SELECT MAX(s2.shipment_index) FROM order_shipments s2
+                WHERE s2.order_id = os.order_id
+            )) AS is_max_index,
+            NOT EXISTS (
+                SELECT 1 FROM order_shipments s3
+                WHERE s3.order_id = os.order_id
+                  AND s3.id != os.id
+                  AND s3.status NOT IN ('completed', 'cancelled', 'failed')
+            ) AS all_others_terminal
          FROM order_shipments os
          WHERE os.id = $1`,
         [tripId],
     );
     if (!result.rows[0]) return false;
-    const { shipment_index, max_index } = result.rows[0];
-    return Number(shipment_index) === Number(max_index);
+    return result.rows[0].is_max_index && result.rows[0].all_others_terminal;
 };
 
 const saveDeliveryProof = async (shipmentId, driverId, fileUrl) => {
@@ -1074,6 +1085,10 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             EXISTS(SELECT 1 FROM debts d
                    WHERE d.shipment_id = orr.requesting_shipment_id
                      AND d.debt_type = 'customer') AS has_customer_debt,
+            EXISTS(SELECT 1 FROM financial_transactions ft
+                   WHERE ft.ref_type = 'shipment'
+                     AND ft.ref_id   = orr.requesting_shipment_id
+                     AND ft.event_type = 'bank_receipt') AS bank_confirmed,
             (SELECT ts.address FROM trip_stops ts
              WHERE ts.shipment_id = orr.requesting_shipment_id
                AND ts.stop_type = 'pickup'

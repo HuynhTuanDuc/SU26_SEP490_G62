@@ -17,8 +17,8 @@ const NAV_GROUPS = [
   {
     label: "Tài chính",
     items: [
-      { key: "revenue", label: "Doanh thu",  icon: RiLineChartLine },
-      { key: "debt",    label: "Công nợ",    icon: RiFileList3Line },
+      { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
+      { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
     ],
   },
   {

@@ -332,6 +332,22 @@ export type ExpenseItem = {
     receipt_urls: string[];
 };
 
+export type OrderShipmentRow = {
+    id: number;
+    shipment_index: number;
+    status: string;
+    actual_price: string | null;
+    estimated_price: string | null;
+    actual_distance_km: string | null;
+    estimated_distance_km: string | null;
+    completed_at: string | null;
+    driver_name: string | null;
+    plate_number: string | null;
+    pickup_address: string | null;
+    delivery_address: string | null;
+    expenses: ExpenseItem[];
+};
+
 export type DriverReceiptDetail = DriverReceiptSummary & {
     actual_receipt_id: number | null;
     orr_id: number;
@@ -354,9 +370,11 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     coordinator_name: string | null;
     has_driver_debt: boolean;
     has_customer_debt: boolean;
+    bank_confirmed: boolean;
     pickup_address: string | null;
     delivery_address: string | null;
     expenses: ExpenseItem[];
+    order_shipments: OrderShipmentRow[];
 };
 
 export type CompanyInfo = {

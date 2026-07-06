@@ -90,8 +90,8 @@ const rejectDebtRepayment = async (req, res) => {
 
 const getReceiptRequests = async (req, res) => {
     try {
-        const requests = await managerService.getReceiptRequests(req.query);
-        res.json({ requests });
+        const data = await managerService.getReceiptRequests(req.query);
+        res.json(data);
     } catch (err) {
         sendError(res, err);
     }
