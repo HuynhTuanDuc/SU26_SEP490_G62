@@ -80,6 +80,12 @@ export const canCancelTrip = (trip) => {
     : [normalizeStatus(trip.status)];
   return Boolean(trip.orderId) && statuses.some((status) => !["completed", "cancelled", "failed"].includes(status));
 };
+export const canEditTrip = (trip) => {
+  const statuses = Array.isArray(trip.trips) && trip.trips.length > 0
+    ? trip.trips.map((item) => normalizeStatus(item.status))
+    : [normalizeStatus(trip.status)];
+  return Boolean(trip.orderId) && statuses.some((status) => !["completed", "cancelled"].includes(status));
+};
 export const shouldHighlightNoCheckIn = (trip) => {
   const hasCheckInMarker = /(?:^|\|)\s*Chấm công\s*:/i.test(String(trip.notes ?? ""));
   return hasCheckInMarker && !String(trip.checkIn ?? "").trim();

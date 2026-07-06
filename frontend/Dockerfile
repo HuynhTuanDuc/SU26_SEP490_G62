@@ -2,7 +2,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
-ARG VITE_API_BASE_URL=http://localhost:9999
+ARG VITE_API_BASE_URL=http://https://backend-730006147515.asia-southeast1.run.app:9999
 ARG VITE_GG_CLIENT_ID
 COPY package*.json ./
 RUN npm ci

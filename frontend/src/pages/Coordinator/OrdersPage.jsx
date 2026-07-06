@@ -10,6 +10,7 @@ import {
   STATUS_QUERY,
   buildTripFromOrder,
   canCancelTrip,
+  canEditTrip,
   emptyForm,
   formatCurrency,
   formatDateForInput,
@@ -441,7 +442,12 @@ const OrdersPage = forwardRef(function OrdersPage({ search, refreshKey }, ref) {
       key: "actions",
       render: (_, trip) => (
         <div className="table-actions">
-          <Button className="coordinator-table-icon-btn" type="text" onClick={() => openEditModal(trip)}>
+          <Button
+            className="coordinator-table-icon-btn"
+            type="text"
+            disabled={!canEditTrip(trip)}
+            onClick={() => openEditModal(trip)}
+          >
             Sửa
           </Button>
           <Button
