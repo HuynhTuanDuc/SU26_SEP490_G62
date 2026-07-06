@@ -865,6 +865,18 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
     try {
         await client.query('BEGIN');
 
+        const currentShipmentsRes = await client.query(
+            `SELECT status FROM order_shipments WHERE order_id = $1`,
+            [orderId],
+        );
+        const currentShipments = currentShipmentsRes.rows;
+        if (
+            currentShipments.length > 0
+            && currentShipments.every((s) => ['completed', 'cancelled'].includes(String(s.status).toLowerCase()))
+        ) {
+            throw new Error('Không thể chỉnh sửa đơn đã hoàn tất hoặc đã hủy');
+        }
+
         const customer = (customer_name || customer_phone)
             ? await findOrCreateCustomer(client, customer_name, customer_phone, normalizePhone, safeTrim)
             : null;
@@ -917,6 +929,10 @@ const updateOrder = async (orderId, payload, normalizeNumber, safeTrim, normaliz
                 const shipmentData = shipmentsDataArray[i];
 
                 if (existing && shipmentData) {
+                    if (['completed', 'cancelled'].includes(String(existing.status).toLowerCase())) {
+                        throw new Error(`Không thể chỉnh sửa chuyến đã ở trạng thái ${existing.status}`);
+                    }
+
                     if (
                         existing.status !== SHIPMENT_STATUS.AVAILABLE
                         && (
