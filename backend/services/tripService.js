@@ -484,7 +484,21 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     if (['cash_collected', 'bank_transfer'].includes(paymentType) && !proofUrl) {
         throw new Error('Ảnh xác minh là bắt buộc cho hình thức này');
     }
-    return tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount });
+    const result = await tripRepository.recordReceiptCollection(receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount });
+
+    if (paymentType === 'bank_transfer') {
+        notificationService.getUserIdsByRole('accountant').then((ids) =>
+            notificationService.createForUsers(ids, {
+                title: 'Khách chuyển khoản về công ty — cần xác nhận',
+                message: `Tài xế đã xác nhận khách chuyển khoản cho phiếu thu #${receiptId}. Vui lòng kiểm tra và xác nhận đã nhận tiền.`,
+                type: 'BANK_TRANSFER_PENDING',
+                entityType: 'receipt',
+                entityId: receiptId,
+            }, { displayMode: 'alert' })
+        ).catch(() => {});
+    }
+
+    return result;
 };
 
 const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
