@@ -158,4 +158,36 @@ describe('Admin Service Integration Tests', () => {
         assert.strictEqual(result.changed, false);
         assert.strictEqual(before.rows[0].updated_at.getTime(), after.rows[0].updated_at.getTime());
     });
+
+    it('getAllUsers() reads back every account joined with its profile and role', async () => {
+        const users = await adminService.getAllUsers();
+
+        assert.strictEqual(users.length, 4);
+        const admin = users.find((u) => u.email === 'admin1@test.com');
+        assert.strictEqual(admin.role, 'admin');
+        assert.strictEqual(admin.full_name, 'Admin One');
+    });
+
+    it('createUser() inserts an account+profile pair and sends the welcome email', async () => {
+        const newId = await adminService.createUser('new.user@test.com', 'New User', '0955555555', 'user');
+
+        assert.ok(newId);
+        assert.strictEqual(emailService.sendWelcomeEmail.mock.calls.length, 1);
+
+        const account = await pool.query('SELECT email, role_id, is_active FROM accounts WHERE id = $1', [newId]);
+        const profile = await pool.query('SELECT full_name, phone FROM profiles WHERE id = $1', [newId]);
+
+        assert.strictEqual(account.rows[0].email, 'new.user@test.com');
+        assert.strictEqual(account.rows[0].role_id, 3);
+        assert.strictEqual(account.rows[0].is_active, true);
+        assert.strictEqual(profile.rows[0].full_name, 'New User');
+        assert.strictEqual(profile.rows[0].phone, '0955555555');
+    });
+
+    it('createUser() rejects a duplicate email at the database level', async () => {
+        await assert.rejects(
+            () => adminService.createUser('admin1@test.com', 'Dup Admin', '0966666666', 'user'),
+            (err) => err.status === 409,
+        );
+    });
 });
