@@ -1,9 +1,11 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
 const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError, err400 } = require('../utils/accountantValidate');
 
-const PAYMENT_TYPES   = ['cash', 'bank_transfer', 'client_credit'];
-const DRIVER_STATES   = ['driver_holding', 'settled', 'pending'];
-const PAYMENT_METHODS = ['cash', 'bank_transfer'];
+const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
+const CREATE_DRIVER_STATES = ['company_received', 'driver_holding'];
+const DRIVER_STATES        = ['driver_holding', 'settled', 'pending'];
+const PAYMENT_METHODS      = ['cash', 'bank_transfer'];
+const EXPENSE_TYPES        = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
 
 const getOrders = async (req, res) => {
     try {
@@ -72,6 +74,37 @@ const createOrder = async (req, res) => {
             nonNegAmount(s.cargo_weight ?? 0, `${idx}: Khối lượng hàng`);
 
             enumVal(s.payment_type, PAYMENT_TYPES, `${idx}: Hình thức thanh toán`);
+
+            const driverState = s.driver_payment_state ?? 'company_received';
+            enumVal(driverState, CREATE_DRIVER_STATES, `${idx}: Trạng thái tài xế`);
+
+            if (s.payment_type === 'client_credit' && driverState === 'driver_holding')
+                throw err400(`${idx}: Ghi nợ khách không thể kết hợp với "Tài xế đang giữ tiền".`);
+
+            const expenses = Array.isArray(s.expenses) ? s.expenses : [];
+            if (expenses.length > 20)
+                throw err400(`${idx}: Tối đa 20 chi phí phát sinh.`);
+            for (let j = 0; j < expenses.length; j++) {
+                const e    = expenses[j];
+                const eIdx = `${idx} - Chi phí ${j + 1}`;
+                if (!e.expense_type)
+                    throw err400(`${eIdx}: Loại chi phí là bắt buộc.`);
+                enumVal(e.expense_type, EXPENSE_TYPES, `${eIdx}: Loại chi phí`);
+                nonNegAmount(e.amount ?? 0, `${eIdx}: Số tiền`);
+                if (e.description && String(e.description).length > 200)
+                    throw err400(`${eIdx}: Ghi chú chi phí không quá 200 ký tự.`);
+            }
+
+            for (const addr of (s.pickup_addresses || [])) {
+                if (String(addr || '').length > 500)
+                    throw err400(`${idx}: Địa chỉ lấy hàng không quá 500 ký tự.`);
+            }
+            if (s.delivery_address && String(s.delivery_address).length > 500)
+                throw err400(`${idx}: Địa chỉ giao hàng không quá 500 ký tự.`);
+            if (s.cargo_name && String(s.cargo_name).length > 200)
+                throw err400(`${idx}: Tên hàng không quá 200 ký tự.`);
+            if (s.notes && String(s.notes).length > 500)
+                throw err400(`${idx}: Ghi chú chuyến không quá 500 ký tự.`);
         }
 
         const newOrder = await accountantOrderService.createOrder({
