@@ -7,6 +7,9 @@ ARG VITE_GG_CLIENT_ID
 COPY package*.json ./
 RUN npm ci
 COPY . .
+
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
 RUN if [ -n "$VITE_GG_CLIENT_ID" ]; then \
     VITE_API_BASE_URL="$VITE_API_BASE_URL" VITE_GG_CLIENT_ID="$VITE_GG_CLIENT_ID" npm run build; \
     else \
