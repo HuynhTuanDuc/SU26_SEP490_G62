@@ -1,7 +1,9 @@
-import { Button, Input, Modal, Select, Spin } from "antd";
-import { CloseOutlined, PlusOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
+import { Button, Image, Input, Modal, Select, Spin, Tag, Tooltip } from "antd";
+import { CloseOutlined, PlusOutlined, LoadingOutlined, CheckCircleOutlined, StopOutlined, FileImageOutlined } from "@ant-design/icons";
 import StatusTag from "./StatusTag";
 import { expenseTypeOptions, formatCurrency, normalizeStatus } from "../utils";
+import { apiRequest } from "../../../services/apiClient";
 
 const formatRouteLabel = (shipment) => {
   if (!shipment) return "-";
@@ -24,6 +26,29 @@ export default function ReceiptDetailModal({
   updateExpenseShipment,
   removeExpense,
 }) {
+  const [ocrResults, setOcrResults] = useState({});
+  const [ocrLoading, setOcrLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !detail?.request?.id) return;
+
+    const allExpenses = (detail.shipments || []).flatMap((s) => s.expenses || []);
+    const hasImages = allExpenses.some((e) => Array.isArray(e.receipt_urls) && e.receipt_urls.length > 0);
+    if (!hasImages) return;
+
+    setOcrResults({});
+    setOcrLoading(true);
+
+    apiRequest(`/api/coordinator/receipt-requests/${detail.request.id}/scan-expenses`)
+      .then((data) => {
+        const map = {};
+        (data.results || []).forEach((r) => { map[r.expense_id] = r; });
+        setOcrResults(map);
+      })
+      .catch(() => {})
+      .finally(() => setOcrLoading(false));
+  }, [open, detail?.request?.id]);
+
   if (!open) return null;
 
   const shipments = detail?.shipments || (detail?.shipment ? [detail.shipment] : []);
@@ -166,18 +191,67 @@ export default function ReceiptDetailModal({
                 )}
               </div>
               <div className="receipt-expense-list">
-                {(detail.expenses || []).map((expense) => (
-                  <div key={expense.id} className="receipt-expense-item readonly">
-                    <div>
-                      <strong>{expenseTypeOptions.find((option) => option.value === expense.expense_type)?.label || expense.expense_type}</strong>
-                      <span>
-                        {expense.description || "Chi phí đã ghi nhận"}
-                        {expense.shipment_id ? ` · Chuyến #${expense.shipment_id}` : ""}
-                      </span>
+                {(detail.expenses || []).map((expense) => {
+                  const ocr = ocrResults[expense.id];
+                  const images = Array.isArray(expense.receipt_urls) ? expense.receipt_urls : [];
+                  const hasImage = images.length > 0;
+
+                  return (
+                    <div key={expense.id} className="receipt-expense-item readonly" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+                      {/* Dòng 1: tên loại + số tiền + badge OCR */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <strong>{expenseTypeOptions.find((o) => o.value === expense.expense_type)?.label || expense.expense_type}</strong>
+                          <span style={{ marginLeft: 8, color: "#6b7280", fontSize: 12 }}>
+                            {expense.description || "Chi phí đã ghi nhận"}
+                            {expense.shipment_id ? ` · Chuyến #${expense.shipment_id}` : ""}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {hasImage && (
+                            ocrLoading && !ocr ? (
+                              <Tooltip title="Đang quét hóa đơn...">
+                                <Tag icon={<LoadingOutlined />} color="processing">Đang quét</Tag>
+                              </Tooltip>
+                            ) : ocr?.valid === true ? (
+                              <Tooltip title="Số tiền trên hóa đơn khớp với số khai">
+                                <Tag icon={<CheckCircleOutlined />} color="success">Hợp lệ</Tag>
+                              </Tooltip>
+                            ) : ocr?.valid === false ? (
+                              <Tooltip title={ocr.reject_reason || "Hóa đơn không hợp lệ"}>
+                                <Tag icon={<StopOutlined />} color="error">Không khớp</Tag>
+                              </Tooltip>
+                            ) : null
+                          )}
+                          {!hasImage && (
+                            <Tooltip title="Tài xế chưa đính kèm ảnh hóa đơn">
+                              <Tag icon={<FileImageOutlined />} color="default">Chưa có ảnh</Tag>
+                            </Tooltip>
+                          )}
+                          <strong>{formatCurrency(expense.amount)}</strong>
+                        </div>
+                      </div>
+
+                      {/* Dòng 2: thumbnails ảnh hóa đơn */}
+                      {hasImage && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <Image.PreviewGroup>
+                            {images.map((url, idx) => (
+                              <Image
+                                key={idx}
+                                src={url}
+                                width={72}
+                                height={72}
+                                style={{ objectFit: "cover", borderRadius: 6, border: "1px solid #e5e7eb", cursor: "pointer" }}
+                                placeholder={<div style={{ width: 72, height: 72, background: "#f3f4f6", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center" }}><LoadingOutlined /></div>}
+                              />
+                            ))}
+                          </Image.PreviewGroup>
+                        </div>
+                      )}
                     </div>
-                    <strong>{formatCurrency(expense.amount)}</strong>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {!readonly && form.expenses.map((expense, index) => (
                   <div key={`expense-${index}`} className="receipt-expense-editor">
