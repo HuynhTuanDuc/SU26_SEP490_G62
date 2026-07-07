@@ -22,15 +22,40 @@ const EMPTY_SHIPMENT = () => ({
   notes: "",
 });
 
+const VN_PHONE_RE = /^0\d{8,10}$/;
+
 const validate = (customer, shipments) => {
   const errors = {};
-  if (!customer.name.trim()) errors.customer_name = "Bắt buộc";
-  if (!customer.phone.trim()) errors.customer_phone = "Bắt buộc";
+
+  if (!customer.name.trim()) {
+    errors.customer_name = "Bắt buộc";
+  }
+  if (!customer.phone.trim()) {
+    errors.customer_phone = "Bắt buộc";
+  } else if (!VN_PHONE_RE.test(customer.phone.trim())) {
+    errors.customer_phone = "Định dạng không hợp lệ (VD: 0901234567)";
+  }
+
   shipments.forEach((s, i) => {
     const hasPickup = (s.pickup_addresses ?? []).some((a) => a.trim());
     if (!hasPickup) errors[`shipment_${i}_pickup`] = "Cần ít nhất 1 điểm lấy hàng";
     if (!s.delivery_address?.trim()) errors[`shipment_${i}_delivery`] = "Cần điểm giao hàng";
+
+    const fee = Number(s.cargo_fee);
+    if (isNaN(fee) || fee < 0) errors[`shipment_${i}_fee`] = "Cước xe không được âm";
+
+    if (s.payment_type === "client_credit" && s.driver_payment_state === "driver_holding") {
+      errors[`shipment_${i}_payment`] = "Ghi nợ khách không thể kết hợp với 'Tài xế đang giữ tiền'";
+    }
+
+    (s.expenses ?? []).forEach((e, j) => {
+      const amt = Number(e.amount);
+      if (e.amount !== "" && (isNaN(amt) || amt < 0)) {
+        errors[`shipment_${i}_expense_${j}_amount`] = "Không được âm";
+      }
+    });
   });
+
   return errors;
 };
 
@@ -183,6 +208,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
                 key={i}
                 index={i}
                 shipment={s}
+                errors={errors}
                 onChange={(field, value) => updateShipment(i, field, value)}
                 onRemove={() => removeShipment(i)}
                 canRemove={shipments.length > 1}

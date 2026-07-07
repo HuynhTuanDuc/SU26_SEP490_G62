@@ -32,7 +32,8 @@ function SectionLabel({ icon: Icon, children }) {
   );
 }
 
-export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove }) {
+export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove, canRemove }) {
+  const e = (key) => errors[`shipment_${index}_${key}`];
   const isCash = ["cash", "bank_transfer"].includes(shipment.payment_type);
 
   const handleAddPickup = () =>
@@ -106,6 +107,9 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
           >
             Thêm điểm lấy
           </Button>
+          {e("pickup") && (
+            <p className="text-xs text-red-500">{e("pickup")}</p>
+          )}
         </div>
 
         <Input
@@ -115,6 +119,8 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
           onValueChange={(v) => onChange("delivery_address", v)}
           size="sm"
           isRequired
+          isInvalid={!!e("delivery")}
+          errorMessage={e("delivery")}
           classNames={{ inputWrapper: "bg-white" }}
         />
       </div>
@@ -150,6 +156,8 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
             onValueChange={(v) => onChange("cargo_fee", v)}
             size="sm"
             isRequired
+            isInvalid={!!e("fee")}
+            errorMessage={e("fee")}
             classNames={{ inputWrapper: "bg-white" }}
           />
         </div>
@@ -187,6 +195,9 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
             </Select>
           )}
         </div>
+        {e("payment") && (
+          <p className="text-xs text-red-500">{e("payment")}</p>
+        )}
       </div>
 
       <Divider className="my-0" />
@@ -252,6 +263,8 @@ export function ShipmentForm({ index, shipment, onChange, onRemove, canRemove })
                     type="number"
                     value={exp.amount}
                     onValueChange={(v) => handleExpenseChange(i, "amount", v)}
+                    isInvalid={!!errors[`shipment_${index}_expense_${i}_amount`]}
+                    errorMessage={errors[`shipment_${index}_expense_${i}_amount`]}
                     classNames={{ inputWrapper: "bg-gray-50" }}
                   />
                   <Input
