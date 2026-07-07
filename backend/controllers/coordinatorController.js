@@ -1,4 +1,6 @@
 const coordinatorService = require('../services/coordinatorService');
+const expenseRepository  = require('../repositories/expenseRepository');
+const { validateExpenseReceipt } = require('../services/expenseAiValidator');
 
 const listVehicleGroups = async (_req, res) => {
   try {
@@ -100,6 +102,48 @@ const rejectReceiptRequest = async (req, res) => {
     }
 };
 
+const scanReceiptExpenses = async (req, res) => {
+    try {
+        const requestId = Number(req.params.id);
+        if (!requestId) return res.status(400).json({ error: 'Request ID không hợp lệ' });
+
+        const detail = await coordinatorService.getReceiptRequestDetail(requestId);
+        if (!detail) return res.status(404).json({ error: 'Không tìm thấy yêu cầu phiếu thu' });
+
+        // Gom tất cả expenses từ các shipment
+        const allExpenses = (detail.shipments || []).flatMap((s) => s.expenses || []);
+
+        // Lọc expense có ảnh hóa đơn
+        const toScan = allExpenses.filter((e) => Array.isArray(e.receipt_urls) && e.receipt_urls.length > 0);
+
+        // OCR song song
+        const results = await Promise.all(
+            toScan.map(async (expense) => {
+                const imageUrl = expense.receipt_urls[0];
+                try {
+                    const result = await validateExpenseReceipt(imageUrl, { amount: expense.amount, expenseType: expense.expense_type });
+                    return {
+                        expense_id:        expense.id,
+                        valid:             result.valid,
+                        reject_reason:     result.reject_reason,
+                    };
+                } catch {
+                    return { expense_id: expense.id, valid: true, reject_reason: null };
+                }
+            }),
+        );
+
+        // Expense không có ảnh → bỏ qua (không scan)
+        const noImageIds = allExpenses
+            .filter((e) => !Array.isArray(e.receipt_urls) || e.receipt_urls.length === 0)
+            .map((e) => ({ expense_id: e.id, valid: null, reject_reason: null }));
+
+        res.json({ results: [...results, ...noImageIds] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 module.exports = {
     listVehicleGroups,
     listPartners,
@@ -108,4 +152,5 @@ module.exports = {
     getReceiptRequestDetail,
     approveReceiptRequest,
     rejectReceiptRequest,
+    scanReceiptExpenses,
 };

@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const notificationService = require('../services/notificationService');
 
 // GET /api/accountant/receipts/bank-transfer
 // Danh sách phiếu thu bank_transfer chưa có kế toán xác nhận
@@ -125,6 +126,7 @@ const confirmBankTransfer = async (req, res) => {
             `SELECT sr.id AS sr_id, sr.amount, sr.payment_type,
                     orr.requesting_shipment_id AS shipment_id,
                     orr.order_id,
+                    orr.driver_id,
                     o.customer_id
              FROM shipment_receipts sr
              JOIN order_receipt_requests orr ON orr.id = sr.order_receipt_request_id
@@ -237,6 +239,24 @@ const confirmBankTransfer = async (req, res) => {
         }
 
         await client.query('COMMIT');
+
+        if (rec.driver_id) {
+            const fmtVND = (n) => Number(n || 0).toLocaleString('vi-VN') + 'đ';
+            let notiMsg = `Kế toán đã xác nhận nhận ${fmtVND(actualReceived)} chuyển khoản cho phiếu thu #${rec.sr_id}.`;
+            if (result.action === 'short') {
+                notiMsg += ` Còn thiếu ${fmtVND(result.shortfall)} — đã ghi công nợ khách.`;
+            } else if (result.action === 'excess') {
+                notiMsg += ` Thừa ${fmtVND(result.excess)} — đã phân bổ vào nợ cũ.`;
+            }
+            notificationService.createForUser(rec.driver_id, {
+                title: 'Chuyển khoản đã được xác nhận',
+                message: notiMsg,
+                type: 'BANK_TRANSFER_CONFIRMED',
+                entityType: 'receipt',
+                entityId: rec.sr_id,
+            }, { displayMode: 'alert' }).catch(() => {});
+        }
+
         res.json({ message: 'Đã xác nhận nhận tiền chuyển khoản thành công', ...result });
     } catch (err) {
         await client.query('ROLLBACK');
