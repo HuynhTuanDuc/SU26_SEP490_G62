@@ -23,14 +23,16 @@ const verifyToken = async (req, res, next) => {
         const bearerToken = req.headers['authorization']?.split(' ')[1];
         const cookieToken = readCookieValue(req.headers.cookie, authService.AUTH_COOKIE_NAME);
         const token = bearerToken || cookieToken;
-        if (!token) return res.status(403).json({ error: 'Bạn cần đăng nhập lại' });
+        // code: 'NO_TOKEN' báo cho client biết access-token cookie đã hết hạn/bị xoá
+        // (khác với tài khoản bị khoá) để apiClient biết khi nào nên thử refresh.
+        if (!token) return res.status(403).json({ error: 'Bạn cần đăng nhập lại', code: 'NO_TOKEN' });
 
         const decoded = authService.verifyToken(token);
 
         const account = await profileRepository.getAccountById(decoded.userId);
         if (!account) return res.status(401).json({ error: 'Không thấy người dùng' });
         if (account.is_active === false) {
-            return res.status(403).json({ error: 'Tài khoản của bạn đã bị khoá.' });
+            return res.status(403).json({ error: 'Tài khoản của bạn đã bị khoá.', code: 'ACCOUNT_LOCKED' });
         }
 
         req.user = { ...decoded, role: account.role, roleId: account.role_id };
