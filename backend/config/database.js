@@ -1,9 +1,15 @@
 const { Pool } = require('pg');
 
+// Cloud Run sets K_SERVICE automatically; only there do we have the
+// /cloudsql Unix socket mounted. Everywhere else (local dev, whether
+// against a local Postgres or the Cloud SQL proxy in TCP mode) use a
+// normal host:port connection.
+const runningOnCloudRun = Boolean(process.env.K_SERVICE);
+
 const poolConfig = {
-    host: process.env.INSTANCE_CONNECTION_NAME
+    host: runningOnCloudRun
         ? `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`
-        : (process.env.DB_HOST || 'localhost'),
+        : (process.env.DB_HOST || '127.0.0.1'),
     port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 5432,
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
