@@ -31,6 +31,26 @@ async function parseResponse(response) {
   return payload;
 }
 
+// Access-token cookie có thể tự hết hạn/bị trình duyệt xoá trước khi request
+// tới server, khi đó server trả 403 kèm code NO_TOKEN thay vì 401 (token có
+// mặt nhưng không hợp lệ). Cả hai trường hợp đều nên thử refresh phiên;
+// các 403 khác (tài khoản bị khoá, không đủ quyền) không có code này nên sẽ
+// không bị thử refresh vô ích.
+async function isRefreshableAuthFailure(response) {
+  if (response.status === 401) return true;
+  if (response.status !== 403) return false;
+
+  try {
+    const clone = response.clone();
+    const contentType = clone.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) return false;
+    const payload = await clone.json();
+    return payload?.code === "NO_TOKEN";
+  } catch {
+    return false;
+  }
+}
+
 async function refreshAuthSession() {
   if (!refreshPromise) {
     refreshPromise = fetch(buildUrl("/auth/refresh"), {
@@ -83,7 +103,10 @@ export async function apiRequest(path, options = {}) {
     credentials: "include",
   });
 
-  if (response.status === 401 && retryOnAuthFailure && !skipAuthRefresh && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/google") {
+  const canAttemptRefresh =
+    retryOnAuthFailure && !skipAuthRefresh && path !== "/auth/refresh" && path !== "/auth/login" && path !== "/auth/google";
+
+  if (canAttemptRefresh && (await isRefreshableAuthFailure(response))) {
     await refreshAuthSession();
     return apiRequest(path, {
       ...options,

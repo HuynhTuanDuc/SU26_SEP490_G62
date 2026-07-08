@@ -15,11 +15,29 @@ const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
 const passwordResetStore = new Map();
 const AUTH_COOKIE_NAME = 'auth_token';
 const REFRESH_COOKIE_NAME = 'refresh_token';
+// Chuyển chuỗi kiểu jsonwebtoken ("15m", "8h", "7d", "30s"...) sang mili-giây,
+// dùng chung để cookie/DB TTL luôn khớp với thời hạn thực của JWT.
+const parseDurationToMs = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const match = String(value).trim().match(/^(\d+)\s*(ms|s|m|h|d)?$/i);
+    if (!match) return null;
+    const amount = Number(match[1]);
+    const unitMs = { ms: 1, s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 }[
+        (match[2] || 'ms').toLowerCase()
+    ];
+    return amount * unitMs;
+};
+
 // Dev/test: 8h để tiện dùng Swagger; production giữ 15m hoặc override qua env
 const ACCESS_TOKEN_EXPIRES_IN  = process.env.JWT_ACCESS_EXPIRES_IN
     || (process.env.NODE_ENV === 'production' ? '15m' : '8h');
 const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS || (7 * 24 * 60 * 60 * 1000));
+// Cookie/DB TTL bám theo đúng thời hạn của JWT, tránh lệch pha khiến cookie
+// hết hạn trước (hoặc sau) khi token vẫn còn hiệu lực.
+const ACCESS_TOKEN_EXPIRES_IN_MS = parseDurationToMs(ACCESS_TOKEN_EXPIRES_IN) || 15 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = Number(process.env.JWT_REFRESH_TTL_MS)
+    || parseDurationToMs(REFRESH_TOKEN_EXPIRES_IN)
+    || (7 * 24 * 60 * 60 * 1000);
 
 let refreshTokenTableReadyPromise = null;
 
@@ -462,6 +480,8 @@ module.exports = {
     revokeRefreshToken,
     ACCESS_TOKEN_EXPIRES_IN,
     REFRESH_TOKEN_EXPIRES_IN,
+    ACCESS_TOKEN_EXPIRES_IN_MS,
+    REFRESH_TOKEN_TTL_MS,
     AuthError,
     AUTH_COOKIE_NAME,
     REFRESH_COOKIE_NAME,

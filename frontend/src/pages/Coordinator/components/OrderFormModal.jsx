@@ -54,7 +54,7 @@ export default function OrderFormModal({
               status={formErrors.date ? "error" : undefined}
               format="YYYY-MM-DD"
             />
-            {formErrors.date && <div className="field-error">{formErrors.date}</div>}
+            <div className="field-error">{formErrors.date || ""}</div>
           </label>
           <label>
             <span>SĐT</span>
@@ -63,9 +63,7 @@ export default function OrderFormModal({
               onChange={(event) => updateField("customer_phone", event.target.value)}
               status={formErrors.customer_phone ? "error" : undefined}
             />
-            {formErrors.customer_phone && (
-              <div className="field-error">{formErrors.customer_phone}</div>
-            )}
+            <div className="field-error">{formErrors.customer_phone || ""}</div>
           </label>
 
           <label>
@@ -75,9 +73,7 @@ export default function OrderFormModal({
               onChange={(event) => updateField("customer_name", event.target.value)}
               status={formErrors.customer_name ? "error" : undefined}
             />
-            {formErrors.customer_name && (
-              <div className="field-error">{formErrors.customer_name}</div>
-            )}
+            <div className="field-error">{formErrors.customer_name || ""}</div>
           </label>
         </div>
 
@@ -101,9 +97,7 @@ export default function OrderFormModal({
               onChange={(event) => updateField("cargo_weight_kg", event.target.value)}
               status={formErrors.cargo_weight_kg ? "error" : undefined}
             />
-            {formErrors.cargo_weight_kg && (
-              <div className="field-error">{formErrors.cargo_weight_kg}</div>
-            )}
+            <div className="field-error">{formErrors.cargo_weight_kg || ""}</div>
           </label>
         </div>
 
@@ -119,9 +113,7 @@ export default function OrderFormModal({
               placeholder="VD: 500000"
               status={formErrors.prepaid_amount ? "error" : undefined}
             />
-            {formErrors.prepaid_amount && (
-              <div className="field-error">{formErrors.prepaid_amount}</div>
-            )}
+            <div className="field-error">{formErrors.prepaid_amount || ""}</div>
           </label>
         </div>
 
@@ -143,12 +135,14 @@ export default function OrderFormModal({
                 style={fieldStyle}
                 value={form.partner_name || undefined}
                 placeholder="Chọn đối tác"
+                status={formErrors.partner_name ? "error" : undefined}
                 onChange={(value) => updateField("partner_name", value)}
                 options={partners.map((partner) => ({
                   value: partner.company_name,
                   label: partner.contact_person ? `${partner.company_name} - ${partner.contact_person}` : partner.company_name,
                 }))}
               />
+              <div className="field-error">{formErrors.partner_name || ""}</div>
             </label>
           </div>
         )}
@@ -194,9 +188,7 @@ export default function OrderFormModal({
                   }}
                   options={vehicleGroups.map((group) => ({ value: group.id, label: group.name }))}
                 />
-                {formErrors[`trip_${index}_vehicle_group_id`] && (
-                  <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`]}</div>
-                )}
+                <div className="field-error">{formErrors[`trip_${index}_vehicle_group_id`] || ""}</div>
               </label>
 
               <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
@@ -218,9 +210,7 @@ export default function OrderFormModal({
                     })),
                   ]}
                 />
-                {formErrors[`trip_${index}_plate`] && (
-                  <div className="field-error">{formErrors[`trip_${index}_plate`]}</div>
-                )}
+                <div className="field-error">{formErrors[`trip_${index}_plate`] || ""}</div>
               </label>
 
               <label style={{ display: 'grid', gap: 6, fontSize: 14, color: '#2a3144' }}>
@@ -234,9 +224,7 @@ export default function OrderFormModal({
                   placeholder="VD: 120"
                   status={formErrors[`trip_${index}_distance`] ? "error" : undefined}
                 />
-                {formErrors[`trip_${index}_distance`] && (
-                  <div className="field-error">{formErrors[`trip_${index}_distance`]}</div>
-                )}
+                <div className="field-error">{formErrors[`trip_${index}_distance`] || ""}</div>
               </label>
             </div>
 
@@ -250,9 +238,7 @@ export default function OrderFormModal({
                     placeholder="Địa chỉ lấy hàng"
                     status={formErrors[`trip_${index}_pickup_address`] ? "error" : undefined}
                   />
-                  {formErrors[`trip_${index}_pickup_address`] && (
-                    <div className="field-error">{formErrors[`trip_${index}_pickup_address`]}</div>
-                  )}
+                  <div className="field-error">{formErrors[`trip_${index}_pickup_address`] || ""}</div>
                 </label>
                 {(trip.pickup_addresses || [trip.pickup_address]).slice(1).map((address, extraIndex) => {
                   const stopIndex = extraIndex + 1;
@@ -287,9 +273,7 @@ export default function OrderFormModal({
                     placeholder="Địa chỉ giao hàng"
                     status={formErrors[`trip_${index}_delivery_address`] ? "error" : undefined}
                   />
-                  {formErrors[`trip_${index}_delivery_address`] && (
-                    <div className="field-error">{formErrors[`trip_${index}_delivery_address`]}</div>
-                  )}
+                  <div className="field-error">{formErrors[`trip_${index}_delivery_address`] || ""}</div>
                 </label>
                 {(trip.delivery_addresses || [trip.delivery_address]).slice(1).map((address, extraIndex) => {
                   const stopIndex = extraIndex + 1;
@@ -342,14 +326,6 @@ export default function OrderFormModal({
             />
           </label>
         </div>
-        {Object.keys(formErrors).length > 0 && (
-          <div className="full field-error field-error-box">
-            {Object.entries(formErrors).map(([key, error]) => (
-              <div key={key}>{error}</div>
-            ))}
-          </div>
-        )}
-
         <div className="form-actions full">
           <Button type="default" className="coordinator-secondary-btn" onClick={onClose}>
             Hủy

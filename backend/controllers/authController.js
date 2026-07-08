@@ -1,7 +1,10 @@
 const authService = require('../services/authService');
 
-const ACCESS_COOKIE_MAX_AGE_MS = 15 * 60 * 1000;
-const REFRESH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Cookie phải sống đúng bằng thời hạn thực của JWT/DB refresh token,
+// nếu không cookie sẽ tự rụng trước (hoặc sau) khi token còn hạn,
+// khiến client mất token mà không kịp gọi refresh.
+const ACCESS_COOKIE_MAX_AGE_MS = authService.ACCESS_TOKEN_EXPIRES_IN_MS;
+const REFRESH_COOKIE_MAX_AGE_MS = authService.REFRESH_TOKEN_TTL_MS;
 
 const shouldUseSecureCookies = () => process.env.NODE_ENV === 'production';
 

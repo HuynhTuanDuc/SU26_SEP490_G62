@@ -228,22 +228,27 @@ export default function UserList({ user }) {
         raw: false,
       });
 
-      const importRows = rows.filter((row) => !isImportedRowEmpty(row));
-      if (importRows.length === 0) {
-        throw new Error('File Excel không có dòng dữ liệu hợp lệ.');
-      }
-
       const missingHeaders = USER_IMPORT_HEADERS.filter((header) => !(header in (rows[0] || {})));
       if (missingHeaders.length > 0) {
         throw new Error(`File thiếu cột: ${missingHeaders.join(', ')}`);
+      }
+
+      // Gắn số thứ tự dòng gốc trong file (dòng 1 là header) trước khi lọc dòng
+      // trống, để khi có dòng trống nằm xen giữa (VD: dòng 2 và 5 có dữ liệu,
+      // dòng 3-4 để trống) thì thông báo lỗi vẫn trỏ đúng số dòng trong Excel.
+      const numberedRows = rows.map((row, index) => ({ row, rowNumber: index + 2 }));
+      const skippedRows = numberedRows.filter(({ row }) => isImportedRowEmpty(row));
+      const importRows = numberedRows.filter(({ row }) => !isImportedRowEmpty(row));
+      if (importRows.length === 0) {
+        throw new Error('File Excel không có dòng dữ liệu hợp lệ.');
       }
 
       const successes = [];
       const failures = [];
 
       for (let index = 0; index < importRows.length; index += 1) {
-        const rowNumber = index + 2;
-        const payload = buildImportedUserPayload(importRows[index]);
+        const { row, rowNumber } = importRows[index];
+        const payload = buildImportedUserPayload(row);
 
         if (!payload.email || !payload.full_name || !payload.phone || !payload.role) {
           failures.push({
@@ -275,27 +280,52 @@ export default function UserList({ user }) {
         await fetchUsers();
       }
 
-      Modal.info({
-        title: 'Kết quả import người dùng',
+      const modalKind = failures.length === 0 ? 'success' : successes.length === 0 ? 'error' : 'warning';
+      const modalTitle =
+        modalKind === 'success'
+          ? 'Import nhân viên thành công'
+          : modalKind === 'error'
+          ? 'Import nhân viên thất bại'
+          : 'Import nhân viên hoàn tất một phần';
+      const modalFn = { success: Modal.success, error: Modal.error, warning: Modal.warning }[modalKind];
+
+      modalFn({
+        title: modalTitle,
         width: 720,
         content: (
           <div style={{ display: 'grid', gap: 12 }}>
-            <Text>{`Thành công: ${successes.length} dòng`}</Text>
-            <Text>{`Thất bại: ${failures.length} dòng`}</Text>
-            {failures.length > 0 ? (
-              <div style={{ maxHeight: 240, overflowY: 'auto', paddingRight: 8 }}>
-                {failures.slice(0, 12).map((failure) => (
-                  <div key={`${failure.row}-${failure.message}`} style={{ marginBottom: 8 }}>
-                    <Text type="danger">{`Dòng ${failure.row}: ${failure.message}`}</Text>
+            <Text>{`Đã tạo thành công ${successes.length}/${importRows.length} nhân viên từ file.`}</Text>
+            {skippedRows.length > 0 ? (
+              <Text type="secondary">
+                {`Đã bỏ qua ${skippedRows.length} dòng trống (dòng ${skippedRows
+                  .map(({ rowNumber }) => rowNumber)
+                  .join(', ')}).`}
+              </Text>
+            ) : null}
+            {successes.length > 0 ? (
+              <div style={{ maxHeight: 180, overflowY: 'auto', paddingRight: 8 }}>
+                {successes.map((success) => (
+                  <div key={`${success.row}-${success.email}`} style={{ marginBottom: 4 }}>
+                    <Text type="success">{`Dòng ${success.row}: ${success.email} - đã tạo tài khoản.`}</Text>
                   </div>
                 ))}
-                {failures.length > 12 ? (
-                  <Text type="secondary">{`Còn ${failures.length - 12} lỗi khác, vui lòng chia nhỏ file hoặc sửa và import lại.`}</Text>
-                ) : null}
               </div>
-            ) : (
-              <Text type="secondary">Tất cả dòng dữ liệu đều đã được tạo thành công.</Text>
-            )}
+            ) : null}
+            {failures.length > 0 ? (
+              <div>
+                <Text strong type="danger">{`Có ${failures.length} dòng chưa import được, vui lòng sửa và import lại:`}</Text>
+                <div style={{ maxHeight: 240, overflowY: 'auto', paddingRight: 8, marginTop: 8 }}>
+                  {failures.slice(0, 12).map((failure) => (
+                    <div key={`${failure.row}-${failure.message}`} style={{ marginBottom: 8 }}>
+                      <Text type="danger">{`Dòng ${failure.row}: ${failure.message}`}</Text>
+                    </div>
+                  ))}
+                  {failures.length > 12 ? (
+                    <Text type="secondary">{`Còn ${failures.length - 12} lỗi khác, vui lòng chia nhỏ file hoặc sửa và import lại.`}</Text>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         ),
       });

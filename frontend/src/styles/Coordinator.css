@@ -565,6 +565,7 @@
   color: #d14343;
   font-size: 12px;
   line-height: 1.35;
+  min-height: 17px;
 }
 
 
@@ -577,14 +578,6 @@
   background: #f6f7fb;
   color: #18227f;
   font-weight: 700;
-}
-
-.coordinator-shell .field-error-box,
-.field-error-box {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: #fff7f7;
-  border: 1px solid #f1c0c0;
 }
 
 .coordinator-shell .receipt-layout,
