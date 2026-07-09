@@ -14,11 +14,11 @@ export function useUpdateProfile(onSuccess?: (profile: Partial<UserProfile>) => 
             const { profile } = await profileService.updateMyProfile(payload);
             setState({ isLoading: false, error: null });
             onSuccess?.(profile);
-            return profile;
+            return { profile, error: null as string | null };
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Cập nhật thất bại';
             setState({ isLoading: false, error: message });
-            return null;
+            return { profile: null, error: message };
         }
     };
 

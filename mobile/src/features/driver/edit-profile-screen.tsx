@@ -105,7 +105,7 @@ export function EditProfileScreen() {
         if (errors.phone) setErrors((e) => ({ ...e, phone: undefined }));
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         const validation = validate(fullName, phone);
         if (Object.keys(validation).length > 0) {
             setErrors(validation);
@@ -122,7 +122,10 @@ export function EditProfileScreen() {
             city:      city.trim()    || null,
             country:   country.trim() || 'VN',
         };
-        update(payload);
+        const { error } = await update(payload);
+        if (error) {
+            showToast({ type: 'error', message: error });
+        }
     };
 
     const I = 14;
