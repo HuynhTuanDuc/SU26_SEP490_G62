@@ -526,6 +526,7 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
 
     const { isUploading: completingProof, completeWithProof } = useCompletionProof((completedTrip) => {
         // Dùng trip từ server response — is_final_shipment chính xác (check all others terminal)
+        setProofUri(null);  // disable button immediately before navigation fires
         setCompletedTripData(completedTrip);
     });
 
@@ -586,8 +587,8 @@ function ActiveTripContent({ trip, refresh }: { trip: ActiveTrip; refresh: () =>
     const handleCompleteTripViaStops = async () => {
         setCompletingViaStops(true);
         try {
-            await tripService.completeWithProof(trip.id, new FormData());
-            setJustCompleted(true);
+            const result = await tripService.completeWithProof(trip.id, new FormData());
+            setCompletedTripData(result.trip);
         } catch (e: unknown) {
             showToast({ type: 'error', message: e instanceof Error ? e.message : 'Lỗi', duration: 2000 });
         } finally {

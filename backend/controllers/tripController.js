@@ -446,9 +446,16 @@ const recordReceiptCollection = async (req, res) => {
 
         const message = result?.excessDistributed
             ? 'Đã ghi nhận thanh toán — phần thừa tự động phân bổ vào nợ cũ của khách.'
+            : result?.partialPayment
+            ? `Đã ghi nhận thanh toán một phần — khách còn nợ ${Number(result.shortfall).toLocaleString('vi-VN')}đ.`
             : 'Đã ghi nhận thanh toán phiếu thu';
 
-        res.json({ message, excessDistributed: result?.excessDistributed ?? false });
+        res.json({
+            message,
+            excessDistributed: result?.excessDistributed ?? false,
+            partialPayment:    result?.partialPayment    ?? false,
+            shortfall:         result?.shortfall         ?? 0,
+        });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('Ảnh') ? 422

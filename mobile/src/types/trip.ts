@@ -226,18 +226,16 @@ export type ExpenseType =
     | 'fuel'
     | 'toll'
     | 'parking'
-    | 'repair'
-    | 'maintenance'
-    | 'depreciation'
+    | 'ferry'
+    | 'minor_repair'
     | 'other';
 
 export const EXPENSE_TYPE_LABEL: Record<ExpenseType, string> = {
     fuel:         'Nhiên liệu',
     toll:         'Phí cầu đường',
     parking:      'Đỗ xe',
-    repair:       'Sửa chữa',
-    maintenance:  'Bảo dưỡng',
-    depreciation: 'Khấu hao',
+    ferry:        'Phà',
+    minor_repair: 'Sửa chữa nhỏ',
     other:        'Khác',
 };
 

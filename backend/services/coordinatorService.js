@@ -5,6 +5,7 @@ const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
+const { ALLOWED_EXPENSE_TYPES: VALID_EXPENSE_TYPES, PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 const COLUMN_ALIASES = {
   date: [
@@ -344,8 +345,7 @@ const importExcel = async (userId, fileBuffer) => {
 
 // ─── Receipt Request Management ───────────────────────────────────────────────
 
-const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
-const PASS_THROUGH_EXPENSE_TYPES = new Set(['parking', 'toll', 'depreciation']);
+// toll, parking, ferry: khách chịu (pass-through). fuel/minor_repair/other: công ty chịu.
 
 const resolveShipmentActualRevenue = (shipment = {}) => {
     const actualPrice = Number(shipment.actual_price);
@@ -705,7 +705,7 @@ const getReceiptRequests = async ({
                 SUM(e.amount) AS total_expenses,
                 SUM(
                     CASE
-                        WHEN e.expense_type IN ('parking', 'toll', 'depreciation') THEN e.amount
+                        WHEN e.expense_type IN ('parking', 'toll', 'ferry') THEN e.amount
                         ELSE 0
                     END
                 ) AS pass_through_expenses

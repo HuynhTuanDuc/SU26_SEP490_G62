@@ -34,7 +34,7 @@ const SEVERITY_DOT_COLOR: Record<IncidentSeverity, string> = {
     critical: '#7C3AED',
 };
 
-const TYPE_ICON: Record<IncidentType, React.ReactNode> = {
+const TYPE_ICON: Record<string, React.ReactNode> = {
     vehicle_breakdown: <Truck         size={16} color={appTheme.colors.danger}      />,
     cargo_damage:      <Package       size={16} color={appTheme.colors.warningText} />,
     road_incident:     <AlertTriangle size={16} color={appTheme.colors.warning}     />,

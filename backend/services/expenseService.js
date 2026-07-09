@@ -1,12 +1,11 @@
 const expenseRepository = require('../repositories/expenseRepository');
 const tripRepository    = require('../repositories/tripRepository');
+const { ALLOWED_EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 // Trạng thái trip cho phép thêm chi phí (chưa kết thúc)
 const EXPENSE_ALLOWED_STATUSES = [
     'claimed', 'picking', 'transit', 'arrived', 'failed', 'returning',
 ];
-
-const ALLOWED_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
 
 const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl }) => {
     if (!receiptUrl) throw new Error('Ảnh bằng chứng là bắt buộc');

@@ -5,8 +5,7 @@ export type IncidentType =
     | 'cargo_damage'
     | 'road_incident'
     | 'customer_refusal'
-    | 'traffic_jam'
-    | 'other';
+    | 'traffic_jam';
 
 export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical';
 
@@ -20,7 +19,6 @@ export const INCIDENT_TYPE_LABEL: Record<IncidentType, string> = {
     road_incident:     'Đường sá / Giao thông',
     customer_refusal:  'Khách từ chối nhận',
     traffic_jam:       'Tắc đường',
-    other:             'Khác',
 };
 
 export const INCIDENT_SEVERITY_LABEL: Record<IncidentSeverity, string> = {
@@ -75,7 +73,6 @@ export const INCIDENT_SUBTYPES: Record<IncidentType, string[]> = {
         'Công trình xây dựng',
         'Sự kiện / lễ hội',
     ],
-    other: [],
 };
 
 // ─── Data models ──────────────────────────────────────────────────────────────

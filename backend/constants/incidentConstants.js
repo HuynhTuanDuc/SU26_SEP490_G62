@@ -1,18 +1,6 @@
-const INCIDENT_TYPE = Object.freeze({
-    VEHICLE_BREAKDOWN: 'vehicle_breakdown',
-    CARGO_DAMAGE:      'cargo_damage',
-    ROAD_INCIDENT:     'road_incident',
-    CUSTOMER_REFUSAL:  'customer_refusal',
-    TRAFFIC_JAM:       'traffic_jam',
-    OTHER:             'other',
-});
-
-const INCIDENT_STATUS = Object.freeze({
-    OPEN:          'open',
-    INVESTIGATING: 'investigating',
-    RESOLVED:      'resolved',
-    CLOSED:        'closed',
-});
+const ALLOWED_INCIDENT_TYPES    = ['vehicle_breakdown', 'cargo_damage', 'road_incident', 'customer_refusal', 'traffic_jam'];
+const ALLOWED_INCIDENT_STATUSES = ['open', 'investigating', 'resolved', 'closed'];
+const ALLOWED_SEVERITIES        = ['low', 'medium', 'high', 'critical'];
 
 const INCIDENT_SEVERITY = Object.freeze({
     LOW:      'low',
@@ -21,15 +9,9 @@ const INCIDENT_SEVERITY = Object.freeze({
     CRITICAL: 'critical',
 });
 
-const ALLOWED_INCIDENT_TYPES   = Object.values(INCIDENT_TYPE);
-const ALLOWED_INCIDENT_STATUSES = Object.values(INCIDENT_STATUS);
-const ALLOWED_SEVERITIES        = Object.values(INCIDENT_SEVERITY);
-
 const MAX_IMAGES_PER_INCIDENT = 3;
 
 module.exports = {
-    INCIDENT_TYPE,
-    INCIDENT_STATUS,
     INCIDENT_SEVERITY,
     ALLOWED_INCIDENT_TYPES,
     ALLOWED_INCIDENT_STATUSES,

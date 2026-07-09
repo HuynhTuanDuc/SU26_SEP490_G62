@@ -1,11 +1,11 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
 const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError, err400 } = require('../utils/accountantValidate');
+const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
 const CREATE_DRIVER_STATES = ['company_received', 'driver_holding'];
 const DRIVER_STATES        = ['driver_holding', 'settled', 'pending'];
 const PAYMENT_METHODS      = ['cash', 'bank_transfer'];
-const EXPENSE_TYPES        = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
 
 const getOrders = async (req, res) => {
     try {
