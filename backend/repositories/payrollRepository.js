@@ -197,7 +197,19 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
 
-    const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus;
+    // 6. Thưởng & phúc lợi đã được duyệt trong kỳ (Tết, hiếu hỉ, đặc biệt...)
+    const bonusRes = await pool.query(
+        `SELECT COALESCE(SUM(amount), 0) AS total
+         FROM driver_bonuses
+         WHERE driver_id = $1
+           AND status = 'approved'
+           AND EXTRACT(MONTH FROM approved_at) = $2
+           AND EXTRACT(YEAR  FROM approved_at) = $3`,
+        [driverId, month, year],
+    );
+    const bonusWelfareTotal = Number(bonusRes.rows[0].total ?? 0);
+
+    const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + bonusWelfareTotal;
     const estimatedNet   = estimatedGross - BHXH_EMPLOYEE - advanceDeduction - driverDebtDeduction;
 
     return {
@@ -214,6 +226,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         phone_allowance:        PHONE_ALLOWANCE.toFixed(2),
         kpi_bonus:              kpiBonus.toFixed(2),
         top_driver_bonus:       topDriverBonus.toFixed(2),
+        bonus_welfare_total:    bonusWelfareTotal.toFixed(2),
         insurance_employee:     BHXH_EMPLOYEE.toFixed(2),
         insurance_salary_base:  INSURANCE_SALARY_BASE.toFixed(2),
         advance_deduction:      advanceDeduction.toFixed(2),
