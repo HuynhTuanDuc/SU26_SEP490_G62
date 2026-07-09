@@ -33,13 +33,11 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 // orders.derived_status: open | completed | cancelled | partial
 // 'active' filter = orders chưa kết thúc (open / partial)
-const TERMINAL = new Set(['completed']);
-
 function applyFilter(orders: OrderHistoryItem[], f: Filter): OrderHistoryItem[] {
     if (f === 'all')       return orders;
     if (f === 'completed') return orders.filter(o => o.order_status === 'completed');
     if (f === 'cancelled') return orders.filter(o => o.order_status === 'cancelled');
-    if (f === 'active')    return orders.filter(o => !TERMINAL.has(o.order_status) && o.order_status !== 'cancelled');
+    if (f === 'active')    return orders.filter(o => o.order_status !== 'completed' && o.order_status !== 'cancelled');
     return orders;
 }
 

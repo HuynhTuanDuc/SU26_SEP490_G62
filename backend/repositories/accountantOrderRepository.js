@@ -1,5 +1,6 @@
 ﻿const pool = require('../config/database');
 const { insertAssignmentHistory } = require('./tripRepository');
+const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
@@ -164,7 +165,6 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     return shipmentId;
 };
 
-const PASS_THROUGH_EXPENSE_TYPES = new Set(['toll', 'parking', 'ferry']);
 
 const normalizeCustomerDebtPaymentType = (paymentType) => {
     if (!paymentType) return null;

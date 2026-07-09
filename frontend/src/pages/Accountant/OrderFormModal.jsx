@@ -35,15 +35,15 @@ const { Text } = Typography;
 const { TextArea } = Input;
 
 const EXPENSE_TYPES = [
-  { value: "fuel", label: "Đổ dầu / Xăng", group: "driver" },
-  { value: "toll", label: "BOT / Phí cầu đường / Phà / Vé bến / Hầm", group: "pass_through" },
-  { value: "parking", label: "Đỗ xe / Bến bãi", group: "driver" },
-  { value: "repair", label: "Sửa xe / Sự cố", group: "driver" },
-  { value: "maintenance", label: "Bảo dưỡng", group: "driver" },
-  { value: "other", label: "Khác", group: "other" },
+  { value: "fuel",         label: "Đổ dầu / Xăng (cty chịu)",          group: "company" },
+  { value: "toll",         label: "BOT / Phí cầu đường (khách chịu)",   group: "pass_through" },
+  { value: "parking",      label: "Đỗ xe / Bến bãi (khách chịu)",       group: "pass_through" },
+  { value: "ferry",        label: "Phà (khách chịu)",                    group: "pass_through" },
+  { value: "minor_repair", label: "Sửa xe nhỏ / Sự cố (cty chịu)",      group: "company" },
+  { value: "other",        label: "Khác",                                group: "other" },
 ];
 
-const PASS_THROUGH_TYPES = new Set(["toll", "parking"]);
+const PASS_THROUGH_TYPES = new Set(["toll", "parking", "ferry"]);
 
 const CUSTOMER_PAYMENT_OPTIONS = [
   { value: "cash", label: "Tiền mặt" },

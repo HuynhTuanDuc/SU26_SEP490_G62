@@ -5,6 +5,7 @@ const expenseRepository = require('../repositories/expenseRepository');
 const incidentRepository = require('../repositories/incidentRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
+const { ALLOWED_EXPENSE_TYPES: VALID_EXPENSE_TYPES, PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 const COLUMN_ALIASES = {
   date: [
@@ -344,9 +345,7 @@ const importExcel = async (userId, fileBuffer) => {
 
 // ─── Receipt Request Management ───────────────────────────────────────────────
 
-const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
 // toll, parking, ferry: khách chịu (pass-through). fuel/minor_repair/other: công ty chịu.
-const PASS_THROUGH_EXPENSE_TYPES = new Set(['parking', 'toll', 'ferry']);
 
 const resolveShipmentActualRevenue = (shipment = {}) => {
     const actualPrice = Number(shipment.actual_price);

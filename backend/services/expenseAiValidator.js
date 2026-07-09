@@ -157,7 +157,6 @@ const withTimeout = (promise, ms) =>
  */
 const validateExpenseReceipt = async (imageUrl, { amount, expenseType }) => {
     const claimed = Number(amount);
-    console.log(`[OCR] Start — type: ${expenseType}, claimed: ${fmtVND(claimed)}`);
 
     let ocrText;
     try {
@@ -166,17 +165,14 @@ const validateExpenseReceipt = async (imageUrl, { amount, expenseType }) => {
             OCR_TIMEOUT_MS,
         );
         ocrText = result.data.text || '';
-        console.log(`[OCR] Done — preview: "${ocrText.replace(/\s+/g, ' ').trim().slice(0, 140)}"`);
     } catch (err) {
         console.warn('[OCR] Failed / timed out — allowing through:', err.message);
         return { valid: true, reject_reason: null };
     }
 
     const allAmounts = extractAmounts(ocrText);
-    console.log('[OCR] All amounts found:', allAmounts);
 
     if (allAmounts.length === 0) {
-        console.log('[OCR] REJECT — no numbers readable');
         return {
             valid: false,
             reject_reason: 'Không đọc được số tiền từ ảnh. Vui lòng chụp rõ hơn, đủ ánh sáng.',
@@ -184,10 +180,8 @@ const validateExpenseReceipt = async (imageUrl, { amount, expenseType }) => {
     }
 
     const receiptTotal = resolveReceiptTotal(ocrText, allAmounts);
-    console.log(`[OCR] Receipt total: ${fmtVND(receiptTotal)}`);
 
     if (!receiptTotal) {
-        console.log('[OCR] REJECT — cannot determine receipt total');
         return {
             valid: false,
             reject_reason: 'Không xác định được tổng tiền hóa đơn. Vui lòng chụp rõ toàn bộ hóa đơn.',
@@ -195,14 +189,12 @@ const validateExpenseReceipt = async (imageUrl, { amount, expenseType }) => {
     }
 
     if (!matchesTotal(claimed, receiptTotal)) {
-        console.log(`[OCR] REJECT — claimed ${fmtVND(claimed)} vs receipt total ${fmtVND(receiptTotal)}`);
         return {
             valid: false,
             reject_reason: `Số tiền khai (${fmtVND(claimed)}) không khớp với tổng hóa đơn (${fmtVND(receiptTotal)}). Vui lòng chụp đúng hóa đơn của khoản chi phí này.`,
         };
     }
 
-    console.log(`[OCR] PASS — ${fmtVND(claimed)} matches total ${fmtVND(receiptTotal)}`);
     return { valid: true, reject_reason: null };
 };
 

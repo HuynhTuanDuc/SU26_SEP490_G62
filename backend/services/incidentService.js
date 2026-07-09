@@ -22,8 +22,10 @@ const TYPE_LABEL = {
     road_incident:     'Đường sá / giao thông',
     customer_refusal:  'Khách từ chối nhận',
     traffic_jam:       'Tắc đường',
-    other:             'Khác',
 };
+
+// Types that can be reported without an active trip
+const FREE_INCIDENT_TYPES = new Set(['vehicle_breakdown', 'traffic_jam']);
 
 const STATUS_LABEL = {
     open:          'Mới tiếp nhận',
@@ -102,6 +104,10 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         : INCIDENT_SEVERITY.MEDIUM;
 
     const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
+
+    if (!FREE_INCIDENT_TYPES.has(incidentType) && !parsedShipmentId) {
+        throw new Error('Loại sự cố này chỉ có thể báo cáo khi đang thực hiện chuyến vận chuyển');
+    }
 
     if (parsedShipmentId) {
         const shipment = await tripRepository.getTripById(parsedShipmentId);

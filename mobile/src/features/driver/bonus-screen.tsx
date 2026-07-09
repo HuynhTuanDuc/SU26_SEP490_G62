@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, View, StyleSheet } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { Gift, CheckCircle2, Clock, XCircle, Banknote } from 'lucide-react-native';
+import { Gift, Banknote } from 'lucide-react-native';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { AppText }      from '@/components/app-text';

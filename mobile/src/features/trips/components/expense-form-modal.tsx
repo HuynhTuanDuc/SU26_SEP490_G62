@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     Alert, Animated, Image, Modal, Platform,
-    Pressable, ScrollView, StyleSheet, TextInput,
-    useWindowDimensions, View,
+    Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -31,9 +30,11 @@ type Props = {
     onSuccess: () => void;
 };
 
-export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Props) {
-    const { height: windowHeight } = useWindowDimensions();
+// Stable constants — not reactive so screen sharing can't move the modal
+const SLIDE_START      = 1000;
+const MAX_SCROLL_HEIGHT = 560;
 
+export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Props) {
     // Animation — chạy trên native thread, không bị JS delay
     const slideAnim   = useRef(new Animated.Value(0)).current;
     const backdropAnim = useRef(new Animated.Value(0)).current;
@@ -78,7 +79,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
 
     const translateY = slideAnim.interpolate({
         inputRange:  [0, 1],
-        outputRange: [windowHeight, 0],
+        outputRange: [SLIDE_START, 0],
     });
 
     // ── Form state ──
@@ -228,7 +229,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                     </XStack>
 
                     <ScrollView
-                        style={{ maxHeight: windowHeight * 0.65 }}
+                        style={{ maxHeight: MAX_SCROLL_HEIGHT }}
                         contentContainerStyle={sheet.scrollContent}
                         keyboardShouldPersistTaps="handled"
                         showsVerticalScrollIndicator={false}

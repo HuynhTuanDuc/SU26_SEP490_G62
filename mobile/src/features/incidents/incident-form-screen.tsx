@@ -9,7 +9,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import {
     AlertTriangle, Camera, CheckCircle, History, MapPin, Navigation,
-    Package, Truck, X, Zap,
+    Package, Truck, X,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -30,9 +30,12 @@ import type { IncidentSeverity, IncidentType } from '@/types/incident';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const INCIDENT_TYPES: IncidentType[] = [
+// Types allowed without a trip
+const FREE_TYPES: IncidentType[] = ['vehicle_breakdown', 'traffic_jam'];
+// All 5 types (when on an active trip)
+const ALL_INCIDENT_TYPES: IncidentType[] = [
     'vehicle_breakdown', 'cargo_damage', 'road_incident',
-    'customer_refusal', 'traffic_jam', 'other',
+    'customer_refusal', 'traffic_jam',
 ];
 const SEVERITIES: IncidentSeverity[] = ['low', 'medium', 'high', 'critical'];
 const MAX_IMAGES = 3;
@@ -43,7 +46,6 @@ const TYPE_ICON: Record<IncidentType, React.ReactNode> = {
     road_incident:     <AlertTriangle size={22} color={appTheme.colors.warningText} />,
     customer_refusal:  <X            size={22} color='#7C3AED'                      />,
     traffic_jam:       <Navigation   size={22} color={appTheme.colors.primary}      />,
-    other:             <Zap          size={22} color={appTheme.colors.textMuted}    />,
 };
 
 const TYPE_BG: Record<IncidentType, string> = {
@@ -52,7 +54,6 @@ const TYPE_BG: Record<IncidentType, string> = {
     road_incident:     '#FFF7ED',
     customer_refusal:  '#F5F3FF',
     traffic_jam:       appTheme.colors.primarySoft,
-    other:             appTheme.colors.surfaceSoft,
 };
 
 const TYPE_BORDER: Record<IncidentType, string> = {
@@ -61,7 +62,6 @@ const TYPE_BORDER: Record<IncidentType, string> = {
     road_incident:     '#FED7AA',
     customer_refusal:  '#DDD6FE',
     traffic_jam:       appTheme.colors.primaryMuted,
-    other:             appTheme.colors.border,
 };
 
 const SEVERITY_COLOR: Record<IncidentSeverity, string> = {
@@ -201,6 +201,8 @@ export function IncidentFormScreen() {
 
     const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
     const isTrafficType    = incidentType === 'road_incident' || incidentType === 'traffic_jam';
+    // Without a trip only free types are allowed
+    const visibleTypes     = parsedShipmentId ? ALL_INCIDENT_TYPES : FREE_TYPES;
 
     const { isSubmitting, error, submit, clearError } = useSubmitIncident(
         (incident) => {
@@ -362,8 +364,24 @@ export function IncidentFormScreen() {
                         <Text fontSize={12} fontWeight="700" color={appTheme.colors.textMuted}>
                             LOẠI SỰ CỐ
                         </Text>
+                        {!parsedShipmentId ? (
+                            <XStack
+                                backgroundColor={appTheme.colors.primarySoft}
+                                borderRadius={appTheme.radius.md}
+                                borderWidth={1}
+                                borderColor={appTheme.colors.primaryMuted}
+                                padding={10}
+                                gap={8}
+                                alignItems="center"
+                            >
+                                <MapPin size={14} color={appTheme.colors.primary} />
+                                <Text fontSize={12} color={appTheme.colors.primary} flex={1}>
+                                    {'Hàng hóa, khách từ chối, đường sá chỉ báo được khi đang có chuyến. Vào chuyến để báo thêm loại khác.'}
+                                </Text>
+                            </XStack>
+                        ) : null}
                         <YStack gap={8}>
-                            {INCIDENT_TYPES.map((t) => {
+                            {visibleTypes.map((t) => {
                                 const active = t === incidentType;
                                 return (
                                     <Pressable

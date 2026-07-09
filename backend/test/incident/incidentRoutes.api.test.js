@@ -63,7 +63,7 @@ describe('Incident Routes API Tests (L3)', () => {
     });
 
     it('POST /api/incidents without a token -> 403', async () => {
-        const res = await request(app).post('/api/incidents').send({ shipmentId: 1, incidentType: 'other', description: 'x' });
+        const res = await request(app).post('/api/incidents').send({ shipmentId: 1, incidentType: 'vehicle_breakdown', description: 'x' });
         assert.strictEqual(res.status, 403);
     });
 
@@ -94,12 +94,12 @@ describe('Incident Routes API Tests (L3)', () => {
         assert.strictEqual(Number(evidence.rows[0].count), 2);
     });
 
-    it('POST /api/incidents missing shipmentId -> 400', async () => {
+    it('POST /api/incidents missing shipmentId for trip-required type -> 400', async () => {
         const res = await request(app)
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
-            .field('incidentType', 'other')
-            .field('description', 'no shipment id here');
+            .field('incidentType', 'cargo_damage')
+            .field('description', 'Hàng bị hỏng nhưng không có shipmentId');
 
         assert.strictEqual(res.status, 400);
     });
@@ -114,8 +114,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Sự cố khác cần xử lý sớm');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         const res = await request(app)
             .patch('/api/incidents/100000/status')
@@ -130,8 +130,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Sự cố khác cần xử lý sớm');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         const res = await request(app)
             .patch(`/api/incidents/${create.body.incident.id}/status`)
@@ -147,8 +147,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Sự cố khác cần xử lý sớm');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         const res = await request(app)
             .get('/api/incidents/my')
@@ -194,8 +194,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Sự cố khác cần xử lý sớm');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         const res = await request(app)
             .get(`/api/incidents/${create.body.incident.id}`)
@@ -210,8 +210,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Sự cố khác cần xử lý sớm');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         await pool.query(`
             INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES (3, 'driver2@test.com', 'hash', 2, true)
@@ -231,8 +231,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Mô tả ban đầu của sự cố');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         const res = await request(app)
             .patch(`/api/incidents/${create.body.incident.id}`)
@@ -248,8 +248,8 @@ describe('Incident Routes API Tests (L3)', () => {
             .post('/api/incidents')
             .set('Authorization', `Bearer ${driverToken}`)
             .field('shipmentId', '1')
-            .field('incidentType', 'other')
-            .field('description', 'Sự cố khác cần xử lý sớm');
+            .field('incidentType', 'customer_refusal')
+            .field('description', 'Khách từ chối nhận hàng tại điểm giao');
 
         await request(app)
             .patch(`/api/incidents/${create.body.incident.id}/status`)

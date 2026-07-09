@@ -91,7 +91,7 @@ describe('Incident Service Integration Tests (L2)', () => {
     });
 
     it('BR-023: driver cannot resolve their own incident — only updateIncidentStatus (coordinator) can', async () => {
-        const incident = await incidentService.createIncident(1, { shipmentId: 1, incidentType: 'other', description: 'Sự cố khác cần xử lý' });
+        const incident = await incidentService.createIncident(1, { shipmentId: 1, incidentType: 'customer_refusal', description: 'Khách từ chối nhận hàng tại điểm giao' });
 
         const resolved = await incidentService.updateIncidentStatus(incident.id, 2, { status: 'resolved', resolution: 'Đã điều xe hỗ trợ' });
 
