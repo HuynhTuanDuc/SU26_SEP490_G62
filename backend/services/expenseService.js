@@ -6,7 +6,7 @@ const EXPENSE_ALLOWED_STATUSES = [
     'claimed', 'picking', 'transit', 'arrived', 'failed', 'returning',
 ];
 
-const ALLOWED_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
+const ALLOWED_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
 
 const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl }) => {
     if (!receiptUrl) throw new Error('Ảnh bằng chứng là bắt buộc');

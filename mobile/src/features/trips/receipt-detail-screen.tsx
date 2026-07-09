@@ -31,9 +31,8 @@ const EXPENSE_TYPE_LABEL: Record<string, string> = {
     fuel:         'Xăng dầu',
     toll:         'Phí đường bộ',
     parking:      'Phí đỗ xe',
-    repair:       'Sửa chữa',
-    maintenance:  'Bảo dưỡng',
-    depreciation: 'Khấu hao',
+    ferry:        'Phà',
+    minor_repair: 'Sửa chữa nhỏ',
     other:        'Khác',
 };
 

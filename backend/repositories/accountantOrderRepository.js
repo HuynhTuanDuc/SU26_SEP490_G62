@@ -164,7 +164,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     return shipmentId;
 };
 
-const PASS_THROUGH_EXPENSE_TYPES = new Set(['toll', 'parking']);
+const PASS_THROUGH_EXPENSE_TYPES = new Set(['toll', 'parking', 'ferry']);
 
 const normalizeCustomerDebtPaymentType = (paymentType) => {
     if (!paymentType) return null;
@@ -513,9 +513,10 @@ const getOrderShipments = async (orderId) => {
                 COALESCE(SUM(CASE WHEN e.expense_type = 'fuel'        THEN e.amount END), 0)          AS fuel,
                 COALESCE(SUM(CASE WHEN e.expense_type = 'toll'        THEN e.amount END), 0)          AS toll,
                 COALESCE(SUM(CASE WHEN e.expense_type = 'parking'     THEN e.amount END), 0)          AS parking,
-                COALESCE(SUM(CASE WHEN e.expense_type = 'repair'      THEN e.amount END), 0)          AS repair,
-                COALESCE(SUM(CASE WHEN e.expense_type = 'maintenance' THEN e.amount END), 0)          AS maintenance,
-                COALESCE(SUM(CASE WHEN e.expense_type = 'other'       THEN e.amount END), 0)          AS other
+                COALESCE(SUM(CASE WHEN e.expense_type = 'ferry'       THEN e.amount END), 0)          AS ferry,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'minor_repair' THEN e.amount END), 0)         AS minor_repair,
+                COALESCE(SUM(CASE WHEN e.expense_type = 'other'       THEN e.amount END), 0)          AS other,
+                COALESCE(SUM(CASE WHEN e.expense_type IN ('toll','parking','ferry') THEN e.amount END), 0) AS pass_through_total
             FROM expenses e
             WHERE e.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
             GROUP BY e.shipment_id
@@ -582,9 +583,10 @@ const getOrderShipments = async (orderId) => {
             COALESCE(ea.fuel, 0)                   AS fuel,
             COALESCE(ea.toll, 0)                   AS toll,
             COALESCE(ea.parking, 0)                AS parking,
-            COALESCE(ea.repair, 0)                 AS repair,
-            COALESCE(ea.maintenance, 0)            AS maintenance,
+            COALESCE(ea.ferry, 0)                  AS ferry,
+            COALESCE(ea.minor_repair, 0)           AS minor_repair,
             COALESCE(ea.other, 0)                  AS other,
+            COALESCE(ea.pass_through_total, 0)     AS pass_through_total,
             sa.pickups,
             sa.delivery_address,
             da.driver_payment_state,
@@ -625,13 +627,16 @@ const getOrderShipments = async (orderId) => {
         actual_price: Number(row.actual_price) || 0,
         total_expenses: Number(row.total_expenses) || 0,
         expenses: {
-            fuel:        Number(row.fuel)        || 0,
-            toll:        Number(row.toll)        || 0,
-            parking:     Number(row.parking)     || 0,
-            repair:      Number(row.repair)      || 0,
-            maintenance: Number(row.maintenance) || 0,
-            other:       Number(row.other)       || 0,
+            fuel:         Number(row.fuel)         || 0,
+            toll:         Number(row.toll)         || 0,
+            parking:      Number(row.parking)      || 0,
+            ferry:        Number(row.ferry)        || 0,
+            minor_repair: Number(row.minor_repair) || 0,
+            other:        Number(row.other)        || 0,
         },
+        pass_through_total:  Number(row.pass_through_total) || 0,
+        // total_customer_due = doanh thu (actual_price) + chi phí khách chịu (toll/parking/ferry)
+        total_customer_due:  (Number(row.actual_price) || 0) + (Number(row.pass_through_total) || 0),
         status: row.status,
         notes: row.notes,
         pickup_addresses:  row.pickups || [],
