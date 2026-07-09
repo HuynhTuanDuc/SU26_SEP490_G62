@@ -224,7 +224,14 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
         </div>
         <div className="flex items-center gap-2">
           {s.actual_price != null ? (
-            <MoneyText amount={s.actual_price} className="text-sm font-bold text-gray-800" />
+            <span className="flex flex-col items-end">
+              <MoneyText amount={s.total_customer_due || s.actual_price} className="text-sm font-bold text-gray-800" />
+              {Number(s.pass_through_total) > 0 && (
+                <span className="text-[10px] text-gray-400">
+                  cước {Number(s.actual_price).toLocaleString("vi-VN")} + PT {Number(s.pass_through_total).toLocaleString("vi-VN")}
+                </span>
+              )}
+            </span>
           ) : s.cargo_fee != null ? (
             <span className="flex flex-col items-end">
               <MoneyText amount={s.cargo_fee} className="text-sm font-bold text-gray-800" />
@@ -286,10 +293,25 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
         )}
 
         {}
-        {Number(s.total_expenses) > 0 && (
+        {Number(s.pass_through_total) > 0 && (
+          <div className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-blue-600 font-medium">BOT / Parking / Phà (khách chịu)</span>
+            <MoneyText amount={s.pass_through_total} className="text-[11px] font-bold text-blue-700" />
+          </div>
+        )}
+        {Number(s.expenses?.fuel) > 0 && (
           <div className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-1.5">
-            <span className="text-[11px] text-orange-500 font-medium">Chi phí phát sinh</span>
-            <MoneyText amount={s.total_expenses} className="text-[11px] font-bold text-orange-600" />
+            <span className="text-[11px] text-orange-500 font-medium">Xăng dầu (công ty chịu)</span>
+            <MoneyText amount={s.expenses.fuel} className="text-[11px] font-bold text-orange-600" />
+          </div>
+        )}
+        {(Number(s.total_expenses) - Number(s.pass_through_total) - Number(s.expenses?.fuel)) > 0.5 && (
+          <div className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-1.5">
+            <span className="text-[11px] text-orange-500 font-medium">Chi phí khác (công ty chịu)</span>
+            <MoneyText
+              amount={Number(s.total_expenses) - Number(s.pass_through_total) - Number(s.expenses?.fuel)}
+              className="text-[11px] font-bold text-orange-600"
+            />
           </div>
         )}
 
@@ -328,6 +350,8 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
 
   const debtChip = DEBT_STATUS[order.debt_status];
   const totalRevenue = order.actual_price ?? order.estimated_price;
+  const totalPassThrough = shipments.reduce((sum, s) => sum + (Number(s.pass_through_total) || 0), 0);
+  const totalCustomerDue = (Number(totalRevenue) || 0) + totalPassThrough;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
@@ -366,10 +390,15 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
               </span>
               <div className="flex items-center gap-2">
                 <RiMoneyDollarCircleLine size={14} className="text-gray-400" />
-                <span className="text-xs text-gray-400 w-24">Tổng cước</span>
+                <span className="text-xs text-gray-400 w-24">Thực thu khách</span>
                 <div className="flex flex-col">
-                  <MoneyText amount={totalRevenue} className="text-sm font-bold text-gray-800" />
+                  <MoneyText amount={totalCustomerDue} className="text-sm font-bold text-gray-800" />
                   {order.actual_price == null && <span className="text-[9px] text-gray-400">ước tính</span>}
+                  {totalPassThrough > 0 && (
+                    <span className="text-[9px] text-gray-400">
+                      cước {Number(totalRevenue).toLocaleString("vi-VN")} + PT {totalPassThrough.toLocaleString("vi-VN")}
+                    </span>
+                  )}
                 </div>
               </div>
               <InfoRow

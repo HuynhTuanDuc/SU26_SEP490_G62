@@ -141,4 +141,126 @@ describe('Incident Routes API Tests (L3)', () => {
         assert.strictEqual(res.status, 200);
         assert.strictEqual(res.body.incident.status, 'resolved');
     });
+
+    it('GET /api/incidents/my -> 200 with the driver\'s own incidents, paginated', async () => {
+        await request(app)
+            .post('/api/incidents')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '1')
+            .field('incidentType', 'other')
+            .field('description', 'Sự cố khác cần xử lý sớm');
+
+        const res = await request(app)
+            .get('/api/incidents/my')
+            .set('Authorization', `Bearer ${driverToken}`);
+
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.body.incidents.length, 1);
+        assert.strictEqual(res.body.pagination.total, 1);
+    });
+
+    it('GET /api/incidents/shipment/:shipmentId as the owning driver -> 200', async () => {
+        await request(app)
+            .post('/api/incidents')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '1')
+            .field('incidentType', 'traffic_jam')
+            .field('description', 'Kẹt xe nghiêm trọng trên cao tốc');
+
+        const res = await request(app)
+            .get('/api/incidents/shipment/1')
+            .set('Authorization', `Bearer ${driverToken}`);
+
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.body.incidents.length, 1);
+    });
+
+    it('GET /api/incidents/shipment/:shipmentId as a driver not on the shipment -> 403', async () => {
+        await pool.query(`
+            INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES (3, 'driver2@test.com', 'hash', 2, true)
+        `);
+        await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (3, 'Driver Two', 2)`);
+        const otherDriverToken = signAccessToken({ userId: 3, email: 'driver2@test.com', role: 'driver' });
+
+        const res = await request(app)
+            .get('/api/incidents/shipment/1')
+            .set('Authorization', `Bearer ${otherDriverToken}`);
+
+        assert.strictEqual(res.status, 403);
+    });
+
+    it('GET /api/incidents/:id as the reporting driver -> 200', async () => {
+        const create = await request(app)
+            .post('/api/incidents')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '1')
+            .field('incidentType', 'other')
+            .field('description', 'Sự cố khác cần xử lý sớm');
+
+        const res = await request(app)
+            .get(`/api/incidents/${create.body.incident.id}`)
+            .set('Authorization', `Bearer ${driverToken}`);
+
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.body.incident.id, create.body.incident.id);
+    });
+
+    it('GET /api/incidents/:id as a driver who did not report it -> 403', async () => {
+        const create = await request(app)
+            .post('/api/incidents')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '1')
+            .field('incidentType', 'other')
+            .field('description', 'Sự cố khác cần xử lý sớm');
+
+        await pool.query(`
+            INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES (3, 'driver2@test.com', 'hash', 2, true)
+        `);
+        await pool.query(`INSERT INTO profiles (id, full_name, role_id) VALUES (3, 'Driver Two', 2)`);
+        const otherDriverToken = signAccessToken({ userId: 3, email: 'driver2@test.com', role: 'driver' });
+
+        const res = await request(app)
+            .get(`/api/incidents/${create.body.incident.id}`)
+            .set('Authorization', `Bearer ${otherDriverToken}`);
+
+        assert.strictEqual(res.status, 403);
+    });
+
+    it('PATCH /api/incidents/:id by the reporting driver while still open -> 200 updates the description', async () => {
+        const create = await request(app)
+            .post('/api/incidents')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '1')
+            .field('incidentType', 'other')
+            .field('description', 'Mô tả ban đầu của sự cố');
+
+        const res = await request(app)
+            .patch(`/api/incidents/${create.body.incident.id}`)
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ description: 'Mô tả đã được cập nhật chi tiết hơn' });
+
+        assert.strictEqual(res.status, 200);
+        assert.strictEqual(res.body.incident.description, 'Mô tả đã được cập nhật chi tiết hơn');
+    });
+
+    it('PATCH /api/incidents/:id after it has been resolved -> 422 (cannot edit a closed incident)', async () => {
+        const create = await request(app)
+            .post('/api/incidents')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '1')
+            .field('incidentType', 'other')
+            .field('description', 'Sự cố khác cần xử lý sớm');
+
+        await request(app)
+            .patch(`/api/incidents/${create.body.incident.id}/status`)
+            .set('Authorization', `Bearer ${coordinatorToken}`)
+            .send({ status: 'resolved', resolution: 'Đã xử lý xong' });
+
+        const res = await request(app)
+            .patch(`/api/incidents/${create.body.incident.id}`)
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ description: 'Cố gắng sửa sau khi đã đóng' });
+
+        assert.strictEqual(res.status, 422);
+    });
 });

@@ -19,7 +19,7 @@ import { tripService } from '@/services/trip-service';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
 
-const EXPENSE_TYPES: ExpenseType[] = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'other'];
+const EXPENSE_TYPES: ExpenseType[] = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
 
 const C  = 28;
 const CT = 3;

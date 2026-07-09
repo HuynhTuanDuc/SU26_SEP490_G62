@@ -1170,11 +1170,12 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     if (rec.payment_type !== null) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
 
     const receiptAmount  = Number(rec.amount);
-    // collectedAmount: tổng tiền thực nhận từ khách (chỉ áp dụng cash_collected)
-    // Phải >= receiptAmount; nếu không hợp lệ thì dùng receiptAmount
-    const totalCollected = (collectedAmount && Number(collectedAmount) >= receiptAmount)
-        ? Number(collectedAmount) : receiptAmount;
+    // collectedAmount: số tiền tài xế thực nhận từ khách (có thể ít hơn, đủ, hoặc hơn)
+    const rawCollected   = collectedAmount ? Number(collectedAmount) : null;
+    const isPartial      = rawCollected !== null && rawCollected < receiptAmount - 0.01;
+    const totalCollected = rawCollected !== null ? rawCollected : receiptAmount;
     const excessAmount   = Math.max(0, totalCollected - receiptAmount);
+    const shortfall      = isPartial ? receiptAmount - totalCollected : 0;
 
     const client = await pool.connect();
     try {
@@ -1187,7 +1188,7 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
         );
 
         if (paymentType === 'cash_collected') {
-            // Khách trả tiền mặt cho tài → Driver Debt = tổng nhận (bao gồm thừa nếu có)
+            // Driver cầm tiền mặt → Driver Debt = số thực nhận (không phải toàn bộ phiếu thu)
             const debtNote = notes
                 ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
                 : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
@@ -1205,6 +1206,23 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 await client.query(
                     `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,
                     [rec.sr_id, proofUrl],
+                );
+            }
+            // Thanh toán một phần: phần còn thiếu → Customer Debt
+            if (shortfall > 0.01 && rec.customer_id) {
+                await client.query(
+                    `INSERT INTO debts (
+                        debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
+                        total_amount, due_date, notes, updated_by, created_at, updated_at
+                    )
+                     VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
+                        CURRENT_DATE + INTERVAL '30 days',
+                        $5, $6, NOW(), NOW())`,
+                    [
+                        rec.customer_id, rec.order_id, rec.shipment_id, shortfall,
+                        `Khách chưa trả đủ — còn thiếu (đã trả ${totalCollected.toLocaleString('vi-VN')}đ / tổng ${receiptAmount.toLocaleString('vi-VN')}đ)`,
+                        driverId,
+                    ],
                 );
             }
         } else if (paymentType === 'bank_transfer') {
@@ -1282,7 +1300,12 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
         }
 
         await client.query('COMMIT');
-        return { excessDistributed: excessAmount >= 0.01, excessAmount };
+        return {
+            excessDistributed: excessAmount >= 0.01,
+            excessAmount,
+            partialPayment: isPartial,
+            shortfall,
+        };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;

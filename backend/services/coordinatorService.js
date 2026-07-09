@@ -344,8 +344,9 @@ const importExcel = async (userId, fileBuffer) => {
 
 // ─── Receipt Request Management ───────────────────────────────────────────────
 
-const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'repair', 'maintenance', 'depreciation', 'other'];
-const PASS_THROUGH_EXPENSE_TYPES = new Set(['parking', 'toll', 'depreciation']);
+const VALID_EXPENSE_TYPES = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
+// toll, parking, ferry: khách chịu (pass-through). fuel/minor_repair/other: công ty chịu.
+const PASS_THROUGH_EXPENSE_TYPES = new Set(['parking', 'toll', 'ferry']);
 
 const resolveShipmentActualRevenue = (shipment = {}) => {
     const actualPrice = Number(shipment.actual_price);
@@ -705,7 +706,7 @@ const getReceiptRequests = async ({
                 SUM(e.amount) AS total_expenses,
                 SUM(
                     CASE
-                        WHEN e.expense_type IN ('parking', 'toll', 'depreciation') THEN e.amount
+                        WHEN e.expense_type IN ('parking', 'toll', 'ferry') THEN e.amount
                         ELSE 0
                     END
                 ) AS pass_through_expenses
