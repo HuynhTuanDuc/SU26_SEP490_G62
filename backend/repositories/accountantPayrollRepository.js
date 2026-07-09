@@ -99,7 +99,18 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id]);
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
-    const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus;
+    // Thưởng & phúc lợi đã được duyệt trong kỳ (Tết, hiếu hỉ, đặc biệt...)
+    const { rows: [bonusRow] } = await client.query(`
+        SELECT COALESCE(SUM(amount), 0)::numeric AS total
+        FROM driver_bonuses
+        WHERE driver_id = $1
+          AND status = 'approved'
+          AND EXTRACT(MONTH FROM approved_at) = $2
+          AND EXTRACT(YEAR  FROM approved_at) = $3
+    `, [driver.driver_id, month, year]);
+    const bonusWelfareTotal = Number(bonusRow.total ?? 0);
+
+    const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + bonusWelfareTotal;
     // proRatedBase đã phản ánh ngày nghỉ; DB computed net_salary dùng full baseSalary rồi trừ absence_penalty
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
     const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction;
@@ -116,6 +127,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         revenueBonus,
         kpiBonus,
         topDriverBonus,
+        bonusWelfareTotal,
         phoneAllowance: PHONE_ALLOWANCE,
         advanceDeduction,
         driverDebtDeduction,
@@ -146,6 +158,7 @@ const getAllPayrolls = async ({ month, year, status = null, search = null }) => 
             p.revenue_bonus::text,
             p.kpi_bonus::text,
             p.top_driver_bonus::text,
+            p.overtime_bonus::text,
             p.other_bonus::text,
             p.insurance_employee::text,
             p.driver_debt_deduction::text,
@@ -226,10 +239,10 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     $4, $5,
                     $6, $7, $8,
                     $9, $10,
-                    0, 0, $11,
-                    $12, $13,
-                    $14, $15,
-                    $16, 0,
+                    $11, 0, $12,
+                    $13, $14,
+                    $15, $16,
+                    $17, 0,
                     'pending'
                 )
                 ON CONFLICT (driver_id, payroll_month, payroll_year)
@@ -241,6 +254,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     revenue_bonus          = EXCLUDED.revenue_bonus,
                     kpi_bonus              = EXCLUDED.kpi_bonus,
                     top_driver_bonus       = EXCLUDED.top_driver_bonus,
+                    overtime_bonus         = EXCLUDED.overtime_bonus,
                     other_bonus            = EXCLUDED.other_bonus,
                     insurance_employee     = EXCLUDED.insurance_employee,
                     insurance_company      = EXCLUDED.insurance_company,
@@ -255,6 +269,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                 c.baseSalary, c.monthsOfService,
                 c.totalRevenue, c.revenuePct, c.revenueBonus,
                 c.kpiBonus, c.topDriverBonus,
+                c.bonusWelfareTotal,
                 PHONE_ALLOWANCE,
                 BHXH_EMPLOYEE, BHXH_COMPANY,
                 c.driverDebtDeduction, c.advanceDeduction,

@@ -145,6 +145,15 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                     />
                 ) : null}
 
+                {Number(e.bonus_welfare_total) > 0 ? (
+                    <SalaryRow
+                        label="Thưởng & Phúc lợi"
+                        value={`+ ${fmtMoney(e.bonus_welfare_total)}`}
+                        sub="Tết, hiếu hỉ, thưởng đặc biệt..."
+                        tone="positive"
+                    />
+                ) : null}
+
                 <SalaryRow
                     label="Phụ cấp điện thoại"
                     value={`+ ${fmtMoney(e.phone_allowance)}`}
@@ -204,7 +213,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 <Info size={12} color={appTheme.colors.textMuted} style={{ marginTop: 2 }} />
                 <AppText variant="caption" tone="muted" flex={1}>
                     Lương trả ngày 10 hàng tháng. BHXH công ty đóng thêm 21.5% (1,141,650₫) — không trừ vào lương.
-                    Đây là ước tính — chưa bao gồm các khoản điều chỉnh từ kế toán.
+                    Thưởng & phúc lợi đã duyệt trong tháng được cộng vào lương. Đây là ước tính — kế toán có thể điều chỉnh.
                 </AppText>
             </XStack>
         </YStack>

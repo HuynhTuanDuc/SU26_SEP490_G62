@@ -16,7 +16,6 @@ const sendWelcomeEmail = async (toEmail, rawPassword, fullName, role) => {
     try {
 
         if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
-            console.log(`[Email Service] Cần cấu hình SMTP trong .env để gửi mail tới ${toEmail}`);
             return;
         }
 
@@ -41,18 +40,15 @@ const sendWelcomeEmail = async (toEmail, rawPassword, fullName, role) => {
             `,
         };
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`[Email Service] Đã gửi thư tới ${toEmail} thành công (Message ID: ${info.messageId})`);
+        await transporter.sendMail(mailOptions);
     } catch (error) {
         console.error('[Email Service] Lỗi khi gửi thư:', error);
-
     }
 };
 
 const sendEmailChangeVerificationCode = async (toEmail, fullName, code) => {
     try {
         if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
-            console.log(`[Email Service] Cần cấu hình SMTP để gửi mã xác nhận đổi email tới ${toEmail}: ${code}`);
             return;
         }
 
@@ -74,8 +70,7 @@ const sendEmailChangeVerificationCode = async (toEmail, fullName, code) => {
             `,
         };
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`[Email Service] Đã gửi mã xác nhận đổi email tới ${toEmail} (Message ID: ${info.messageId})`);
+        await transporter.sendMail(mailOptions);
     } catch (error) {
         console.error('[Email Service] Lỗi khi gửi mã xác nhận đổi email:', error);
     }
@@ -84,7 +79,6 @@ const sendEmailChangeVerificationCode = async (toEmail, fullName, code) => {
 const sendPasswordResetCodeEmail = async (toEmail, fullName, code) => {
     try {
         if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
-            console.log(`[Email Service] Cần cấu hình SMTP để gửi mã đặt lại mật khẩu tới ${toEmail}: ${code}`);
             return;
         }
 
@@ -106,8 +100,7 @@ const sendPasswordResetCodeEmail = async (toEmail, fullName, code) => {
             `,
         };
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log(`[Email Service] Đã gửi mã đặt lại mật khẩu tới ${toEmail} (Message ID: ${info.messageId})`);
+        await transporter.sendMail(mailOptions);
     } catch (error) {
         console.error('[Email Service] Lỗi khi gửi mã đặt lại mật khẩu:', error);
     }
