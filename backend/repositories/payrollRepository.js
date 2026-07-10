@@ -202,7 +202,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         `SELECT COALESCE(SUM(amount), 0) AS total
          FROM driver_bonuses
          WHERE driver_id = $1
-           AND status = 'approved'
+           AND status IN ('approved', 'paid')
            AND EXTRACT(MONTH FROM approved_at) = $2
            AND EXTRACT(YEAR  FROM approved_at) = $3`,
         [driverId, month, year],
