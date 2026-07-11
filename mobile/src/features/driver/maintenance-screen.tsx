@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-    ActivityIndicator, Alert, Image, Pressable,
-    RefreshControl, ScrollView, StyleSheet, TextInput, View,
+    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal,
+    Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import { useConfirm } from '@/providers/ui-provider';
 import { useMoneyInput } from '@/hooks/use-money-input';
@@ -16,7 +16,7 @@ import { MaintenanceCardSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
 import { useMaintenance } from '@/hooks/use-maintenance';
 import { maintenanceService } from '@/services/maintenance-service';
-import type { MaintenanceRecord, MaintenanceStatus } from '@/types/maintenance';
+import type { MaintenanceRecord, MaintenanceStatus, MaintenanceType } from '@/types/maintenance';
 import { MAINTENANCE_TYPE_LABEL, MAINTENANCE_STATUS_LABEL } from '@/types/maintenance';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -34,9 +34,11 @@ const fmtMoney = (val: string | number | null) => {
 };
 
 const STATUS_STYLE: Record<MaintenanceStatus, { bg: string; text: string; border: string }> = {
+    requested:            { bg: appTheme.colors.surfaceSoft,   text: appTheme.colors.textMuted,    border: appTheme.colors.border         },
     open:                 { bg: appTheme.colors.warningSoft,   text: appTheme.colors.warningText,  border: appTheme.colors.warningBorder  },
     pending_verification: { bg: appTheme.colors.primarySoft,   text: appTheme.colors.primary,      border: appTheme.colors.primaryMuted   },
     completed:            { bg: appTheme.colors.successSoft,   text: appTheme.colors.successText,  border: appTheme.colors.successBorder  },
+    rejected:             { bg: appTheme.colors.dangerSoft,    text: appTheme.colors.dangerText,   border: appTheme.colors.dangerBorder   },
 };
 
 // ─── Maintenance card ─────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ function MaintenanceCard({
     onBillUploaded: (vehicleId: number, uri: string) => Promise<void>;
     onCompleted:    (vehicleId: number, cost: number) => Promise<void>;
 }) {
-    const [expanded,    setExpanded]    = useState(record.status === 'open');
+    const [expanded,    setExpanded]    = useState(record.status === 'open' || record.status === 'requested' || record.status === 'rejected');
     const [showCamera,  setShowCamera]  = useState(false);
     const [uploading,   setUploading]   = useState(false);
     const [completing,  setCompleting]  = useState(false);
@@ -61,6 +63,8 @@ function MaintenanceCard({
     const style = STATUS_STYLE[record.status];
     const isOpen = record.status === 'open';
     const isPending = record.status === 'pending_verification';
+    const isRequested = record.status === 'requested';
+    const isRejected = record.status === 'rejected';
 
     const handleCapture = async (uri: string) => {
         setShowCamera(false);
@@ -155,7 +159,34 @@ function MaintenanceCard({
                             <Text fontSize={14} color={appTheme.colors.text}>{record.description}</Text>
                         </YStack>
 
+                        {/* Requested / rejected banners */}
+                        {isRequested && (
+                            <XStack
+                                padding={12} borderRadius={appTheme.radius.sm}
+                                backgroundColor={appTheme.colors.surfaceSoft}
+                                alignItems="center" gap={10}
+                            >
+                                <Clock size={16} color={appTheme.colors.textMuted} />
+                                <Text flex={1} fontSize={13} color={appTheme.colors.textMuted}>
+                                    Đã gửi yêu cầu bảo dưỡng. Đang chờ quản lý duyệt.
+                                </Text>
+                            </XStack>
+                        )}
+
+                        {isRejected && (
+                            <XStack
+                                padding={12} borderRadius={appTheme.radius.sm}
+                                backgroundColor={appTheme.colors.dangerSoft}
+                                alignItems="flex-start" gap={10}
+                            >
+                                <Text flex={1} fontSize={13} color={appTheme.colors.dangerText}>
+                                    Yêu cầu bị từ chối{record.reject_reason ? `: ${record.reject_reason}` : '.'}
+                                </Text>
+                            </XStack>
+                        )}
+
                         {/* Cost row */}
+                        {!isRequested && !isRejected && (
                         <YStack gap={6}>
                             <Text fontSize={12} color={appTheme.colors.textMuted}>Chi phí bảo dưỡng</Text>
                             {isOpen ? (
@@ -173,8 +204,10 @@ function MaintenanceCard({
                                 </Text>
                             )}
                         </YStack>
+                        )}
 
                         {/* Bill images */}
+                        {!isRequested && !isRejected && (
                         <YStack gap={8}>
                             <XStack justifyContent="space-between" alignItems="center">
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
@@ -214,6 +247,7 @@ function MaintenanceCard({
                                 </Text>
                             )}
                         </YStack>
+                        )}
 
                         {/* Status messages / action buttons */}
                         {isPending && (
@@ -257,11 +291,120 @@ function MaintenanceCard({
     );
 }
 
+// ─── Request modal ────────────────────────────────────────────────────────────
+
+const REQUEST_TYPES: MaintenanceType[] = ['scheduled', 'repair', 'inspection', 'emergency'];
+
+function RequestMaintenanceModal({ onClose, onSuccess }: {
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const [type,   setType]   = useState<MaintenanceType>('scheduled');
+    const [reason, setReason] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = async () => {
+        if (!reason.trim()) {
+            setError('Vui lòng nhập lý do yêu cầu bảo dưỡng');
+            return;
+        }
+        setIsSubmitting(true);
+        setError(null);
+        try {
+            await maintenanceService.requestMaintenance({ maintenance_type: type, reason: reason.trim() });
+            Alert.alert('Đã gửi yêu cầu', 'Quản lý sẽ xem xét và duyệt yêu cầu bảo dưỡng của bạn.', [
+                { text: 'Đóng', onPress: onSuccess },
+            ]);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Không thể gửi yêu cầu');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+            <KeyboardAvoidingView
+                style={s2.modalOverlay}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <Pressable style={s2.modalBackdrop} onPress={onClose} />
+                <View style={s2.modalSheet}>
+                    <View style={s2.handle} />
+                    <Text fontSize={17} fontWeight="900" color={appTheme.colors.text} marginBottom={6}>
+                        Yêu cầu bảo dưỡng xe
+                    </Text>
+                    <Text fontSize={13} color={appTheme.colors.textMuted} marginBottom={16}>
+                        Gửi yêu cầu để quản lý duyệt trước khi đưa xe đi bảo dưỡng
+                    </Text>
+
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={8}>
+                        Loại bảo dưỡng
+                    </Text>
+                    <XStack flexWrap="wrap" gap={8} marginBottom={14}>
+                        {REQUEST_TYPES.map((t) => (
+                            <Pressable
+                                key={t}
+                                style={[s2.typeChip, type === t && s2.typeChipActive]}
+                                onPress={() => setType(t)}
+                            >
+                                <Text
+                                    fontSize={13} fontWeight="700"
+                                    color={type === t ? appTheme.colors.primary : appTheme.colors.textMuted}
+                                >
+                                    {MAINTENANCE_TYPE_LABEL[t]}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </XStack>
+
+                    <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={8}>
+                        Lý do
+                    </Text>
+                    <TextInput
+                        style={[s2.input, { height: 80, textAlignVertical: 'top' }]}
+                        value={reason}
+                        onChangeText={setReason}
+                        placeholder="Mô tả tình trạng xe, lý do cần bảo dưỡng..."
+                        placeholderTextColor={appTheme.colors.textMuted}
+                        multiline
+                    />
+
+                    {error ? (
+                        <Text fontSize={12} color={appTheme.colors.dangerText} marginTop={8}>{error}</Text>
+                    ) : null}
+
+                    <XStack gap={10} marginTop={20}>
+                        <Pressable style={[s2.actionBtn, s2.cancelBtn]} onPress={onClose}>
+                            <Text fontSize={14} fontWeight="700" color={appTheme.colors.textMuted}>Huỷ</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[s2.actionBtn, s2.confirmBtn, isSubmitting && { opacity: 0.6 }]}
+                            onPress={handleSubmit}
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting
+                                ? <ActivityIndicator color="#fff" size="small" />
+                                : <Text fontSize={14} fontWeight="900" color="#fff">Gửi yêu cầu</Text>
+                            }
+                        </Pressable>
+                    </XStack>
+                </View>
+            </KeyboardAvoidingView>
+        </Modal>
+    );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export function MaintenanceScreen() {
     const { records, isLoading, error, reload } = useMaintenance();
     const [refreshing, setRefreshing] = useState(false);
+    const [showRequestModal, setShowRequestModal] = useState(false);
+
+    // Đang có yêu cầu / đợt bảo dưỡng chưa xong → không cho gửi thêm
+    const hasActive = records.some((r) => ['requested', 'open', 'pending_verification'].includes(r.status));
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -289,6 +432,16 @@ export function MaintenanceScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={appTheme.colors.primary} />}
                 showsVerticalScrollIndicator={false}
             >
+                {/* Request button */}
+                {!isLoading && !hasActive ? (
+                    <Pressable
+                        style={s2.requestBtn}
+                        onPress={() => setShowRequestModal(true)}
+                    >
+                        <Wrench size={16} color="#fff" />
+                        <Text fontSize={14} fontWeight="900" color="#fff">Yêu cầu bảo dưỡng xe</Text>
+                    </Pressable>
+                ) : null}
                 {isLoading && records.length === 0 ? (
                     <YStack gap={0}>
                         <MaintenanceCardSkeleton />
@@ -325,6 +478,13 @@ export function MaintenanceScreen() {
                     />
                 ))}
             </ScrollView>
+
+            {showRequestModal ? (
+                <RequestMaintenanceModal
+                    onClose={() => setShowRequestModal(false)}
+                    onSuccess={() => { setShowRequestModal(false); void reload(false); }}
+                />
+            ) : null}
         </View>
     );
 }
@@ -374,4 +534,69 @@ const s = StyleSheet.create({
         backgroundColor: appTheme.colors.success,
         marginTop: 4,
     },
+});
+
+const s2 = StyleSheet.create({
+    requestBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        height: 48,
+        borderRadius: appTheme.radius.md,
+        backgroundColor: appTheme.colors.primary,
+        marginBottom: 16,
+    },
+    typeChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 10,
+        borderWidth: 1.5,
+        borderColor: appTheme.colors.border,
+        backgroundColor: appTheme.colors.surfaceSoft,
+    },
+    typeChipActive: {
+        borderColor: appTheme.colors.primaryMuted,
+        backgroundColor: appTheme.colors.primarySoft,
+    },
+    input: {
+        borderWidth: 1.5,
+        borderColor: appTheme.colors.border,
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        fontSize: 15,
+        color: appTheme.colors.text,
+        backgroundColor: appTheme.colors.surfaceSoft,
+    },
+    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+    modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+    modalSheet: {
+        backgroundColor: appTheme.colors.background,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        padding: 24,
+        paddingTop: 12,
+    },
+    handle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: appTheme.colors.border,
+        alignSelf: 'center',
+        marginBottom: 20,
+    },
+    actionBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelBtn: {
+        backgroundColor: appTheme.colors.surfaceSoft,
+        borderWidth: 1,
+        borderColor: appTheme.colors.border,
+    },
+    confirmBtn: { backgroundColor: appTheme.colors.primary },
 });

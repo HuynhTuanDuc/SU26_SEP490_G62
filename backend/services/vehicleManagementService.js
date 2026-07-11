@@ -465,6 +465,89 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
     return updatedVehicle;
 };
 
+// ─── Maintenance request (driver yêu cầu, manager duyệt) ─────────────────────
+
+const listMaintenanceRequests = async () =>
+    vehicleManagementRepository.listMaintenanceRequests();
+
+const approveMaintenanceRequest = async (recordId, managerId, payload = {}) => {
+    const parsedRecordId = parsePositiveInteger(recordId, 'maintenance_record_id');
+    const parsedManagerId = parsePositiveInteger(managerId, 'manager_id');
+
+    const result = await vehicleManagementRepository.approveMaintenanceRequest({
+        maintenanceRecordId: parsedRecordId,
+        managerId: parsedManagerId,
+        note: normalizeString(payload.note) || 'Duyệt yêu cầu bảo dưỡng của tài xế',
+    });
+    if (!result) {
+        throw createError('Yêu cầu bảo dưỡng không tồn tại hoặc đã được xử lý', 404);
+    }
+
+    const updatedVehicle = await getVehicleDetail(result.vehicleId);
+    const performedBy = updatedVehicle?.active_maintenance_performed_by ?? updatedVehicle?.assigned_driver_id ?? null;
+
+    if (performedBy) {
+        try {
+            await notificationService.createForUser(performedBy, {
+                title: 'Yêu cầu bảo dưỡng được duyệt',
+                message: `Yêu cầu bảo dưỡng xe ${updatedVehicle?.plate_number ?? ''} đã được duyệt. Bạn có thể tiến hành bảo dưỡng.`,
+                type: 'MAINTENANCE_ASSIGNED',
+                entityType: 'maintenance_record',
+                entityId: result.maintenanceId,
+                displayMode: 'alert',
+            });
+            notificationGateway.broadcastToUser(performedBy, {
+                type: 'maintenance.assigned',
+                vehicleId: result.vehicleId,
+                maintenanceRecordId: result.maintenanceId,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
+
+    broadcastManagerVehicleChange('sent_to_maintenance', updatedVehicle, {
+        maintenanceRecordId: result.maintenanceId,
+    });
+    return updatedVehicle;
+};
+
+const rejectMaintenanceRequest = async (recordId, managerId, payload = {}) => {
+    const parsedRecordId = parsePositiveInteger(recordId, 'maintenance_record_id');
+    const parsedManagerId = parsePositiveInteger(managerId, 'manager_id');
+    const reason = normalizeString(payload.reason);
+    if (!reason) {
+        throw createError('Cần ghi lý do từ chối yêu cầu bảo dưỡng', 400);
+    }
+
+    const rejected = await vehicleManagementRepository.rejectMaintenanceRequest({
+        maintenanceRecordId: parsedRecordId,
+        managerId: parsedManagerId,
+        reason,
+    });
+    if (!rejected) {
+        throw createError('Yêu cầu bảo dưỡng không tồn tại hoặc đã được xử lý', 404);
+    }
+
+    if (rejected.performed_by) {
+        try {
+            await notificationService.createForUser(rejected.performed_by, {
+                title: 'Yêu cầu bảo dưỡng bị từ chối',
+                message: `Yêu cầu bảo dưỡng xe của bạn bị từ chối: ${reason}`,
+                type: 'MAINTENANCE_REJECTED',
+                entityType: 'maintenance_record',
+                entityId: rejected.id,
+                displayMode: 'alert',
+            });
+            notificationGateway.broadcastToUser(rejected.performed_by, {
+                type: 'maintenance.assigned',
+                vehicleId: rejected.vehicle_id,
+                maintenanceRecordId: rejected.id,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
+
+    return rejected;
+};
+
 const completeMaintenance = async (vehicleId, managerId, payload = {}) => {
     const vehicle = await getVehicleOrThrow(vehicleId);
     ensureVehicleStatus(vehicle, ['maintenance'], 'Complete maintenance');
@@ -720,6 +803,9 @@ module.exports = {
     updateVehicle,
     changeVehicleStatus,
     sendVehicleToMaintenance,
+    listMaintenanceRequests,
+    approveMaintenanceRequest,
+    rejectMaintenanceRequest,
     completeMaintenance,
     verifyMaintenance,
     markVehicleAsBroken,

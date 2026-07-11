@@ -7,14 +7,15 @@ const createIncident = async (req, res) => {
         const driverId = req.user.userId;
         const { shipmentId, incidentType, severityLevel, description, location } = req.body;
 
-        if (!shipmentId) return res.status(400).json({ error: 'shipmentId là bắt buộc' });
+        // shipmentId có thể null: sự cố ngoài chuyến (hỏng xe / tắc đường) — service tự validate theo loại
+        const parsedShipmentId = Number(shipmentId);
 
         const imageUrls = (req.files ?? []).map((f) => f.path);
 
         const incident = await incidentService.createIncident(
             driverId,
             {
-                shipmentId: Number(shipmentId),
+                shipmentId: Number.isInteger(parsedShipmentId) && parsedShipmentId > 0 ? parsedShipmentId : null,
                 incidentType,
                 severityLevel,
                 description,

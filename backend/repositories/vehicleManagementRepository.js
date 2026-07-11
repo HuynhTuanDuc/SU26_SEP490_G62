@@ -367,7 +367,7 @@ const hasOpenMaintenanceRecord = async (vehicleId, db = pool) => {
         `SELECT id
          FROM maintenance_records
          WHERE vehicle_id = $1
-           AND status IN ('open', 'pending_verification')
+           AND status IN ('requested', 'open', 'pending_verification')
          LIMIT 1`,
         [vehicleId],
     );
@@ -1338,11 +1338,14 @@ const getMaintenanceRecordsForDriver = async (driverId, db = pool) => {
         `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
                 mr.maintenance_type, mr.description, mr.cost, mr.maintenance_date,
                 mr.next_due_date, mr.status, mr.bill_pics, mr.started_at, mr.completed_at,
-                mr.created_by
+                mr.created_by, mr.request_reason, mr.reject_reason
          FROM maintenance_records mr
          JOIN vehicles v ON v.id = mr.vehicle_id
          WHERE mr.performed_by = $1
-           AND mr.status IN ('open', 'pending_verification')
+           AND (
+                mr.status IN ('requested', 'open', 'pending_verification')
+                OR (mr.status = 'rejected' AND mr.updated_at > NOW() - INTERVAL '30 days')
+           )
          ORDER BY mr.started_at DESC`,
         [driverId],
     );
@@ -1370,6 +1373,133 @@ const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = poo
          ORDER BY started_at DESC, id DESC
          LIMIT 1`,
         [vehicleId, driverId],
+    );
+    return result.rows[0] ?? null;
+};
+
+// ─── Maintenance request (driver gửi yêu cầu, manager duyệt) ─────────────────
+
+const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, reason }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        await client.query('SELECT id FROM vehicles WHERE id = $1 FOR UPDATE', [vehicleId]);
+
+        const existing = await hasOpenMaintenanceRecord(vehicleId, client);
+        if (existing) {
+            const err = new Error('Xe đang có yêu cầu hoặc đợt bảo dưỡng chưa hoàn tất');
+            err.code = 'OPEN_MAINTENANCE_EXISTS';
+            throw err;
+        }
+
+        const result = await client.query(
+            `INSERT INTO maintenance_records (
+                vehicle_id, maintenance_type, description, maintenance_date,
+                performed_by, status, requested_by, request_reason,
+                started_at, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, CURRENT_DATE, $4, 'requested', $4, $5, NOW(), NOW(), NOW())
+            RETURNING id`,
+            [vehicleId, maintenanceType, reason, driverId, reason],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId: result.rows[0].id };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const listMaintenanceRequests = async (db = pool) => {
+    const result = await db.query(
+        `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
+                mr.maintenance_type, mr.request_reason, mr.maintenance_date,
+                mr.status, mr.created_at,
+                mr.requested_by, p.full_name AS requested_by_name
+         FROM maintenance_records mr
+         JOIN vehicles v ON v.id = mr.vehicle_id
+         LEFT JOIN profiles p ON p.id = mr.requested_by
+         WHERE mr.status = 'requested'
+         ORDER BY mr.created_at DESC`,
+    );
+    return result.rows;
+};
+
+const approveMaintenanceRequest = async ({ maintenanceRecordId, managerId, note = null }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const recordResult = await client.query(
+            `SELECT id, vehicle_id, status
+             FROM maintenance_records
+             WHERE id = $1
+             FOR UPDATE`,
+            [maintenanceRecordId],
+        );
+        const record = recordResult.rows[0];
+        if (!record || record.status !== 'requested') {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const vehicleResult = await client.query(
+            'SELECT id, status FROM vehicles WHERE id = $1 FOR UPDATE',
+            [record.vehicle_id],
+        );
+        const vehicle = vehicleResult.rows[0];
+
+        await client.query(
+            `UPDATE maintenance_records
+             SET status = 'open',
+                 started_at = NOW(),
+                 created_by = $2,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [maintenanceRecordId, managerId],
+        );
+
+        await client.query(
+            `UPDATE vehicles
+             SET status = 'maintenance', updated_at = NOW()
+             WHERE id = $1`,
+            [record.vehicle_id],
+        );
+
+        await client.query(
+            `INSERT INTO vehicle_status_history (
+                vehicle_id, action_type, from_status, to_status,
+                reference_type, reference_id, note, created_by
+            )
+            VALUES ($1, 'send_to_maintenance', $2, 'maintenance', 'maintenance_record', $3, $4, $5)`,
+            [record.vehicle_id, vehicle.status, maintenanceRecordId, note, managerId],
+        );
+
+        await client.query('COMMIT');
+        return { maintenanceId: maintenanceRecordId, vehicleId: record.vehicle_id, previousStatus: vehicle.status };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const rejectMaintenanceRequest = async ({ maintenanceRecordId, managerId, reason }, db = pool) => {
+    const result = await db.query(
+        `UPDATE maintenance_records
+         SET status = 'rejected',
+             reject_reason = $2,
+             created_by = $3,
+             updated_at = NOW()
+         WHERE id = $1
+           AND status = 'requested'
+         RETURNING id, vehicle_id, performed_by`,
+        [maintenanceRecordId, reason, managerId],
     );
     return result.rows[0] ?? null;
 };
@@ -1416,4 +1546,8 @@ module.exports = {
     getMaintenanceRecordsForDriver,
     updateMaintenanceBillPics,
     updateMaintenanceCost,
+    createMaintenanceRequest,
+    listMaintenanceRequests,
+    approveMaintenanceRequest,
+    rejectMaintenanceRequest,
 };

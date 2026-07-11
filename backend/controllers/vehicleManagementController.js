@@ -179,6 +179,33 @@ const listAssignableDrivers = async (req, res) => {
     }
 };
 
+const listMaintenanceRequests = async (req, res) => {
+    try {
+        const requests = await vehicleManagementService.listMaintenanceRequests();
+        res.json({ requests });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
+const approveMaintenanceRequest = async (req, res) => {
+    try {
+        const vehicle = await vehicleManagementService.approveMaintenanceRequest(req.params.id, req.user.userId, req.body);
+        res.json({ message: 'Đã duyệt yêu cầu bảo dưỡng', vehicle });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
+const rejectMaintenanceRequest = async (req, res) => {
+    try {
+        await vehicleManagementService.rejectMaintenanceRequest(req.params.id, req.user.userId, req.body);
+        res.json({ message: 'Đã từ chối yêu cầu bảo dưỡng' });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
 module.exports = {
     listVehicleGroups,
     getVehicleGroupDetail,
@@ -199,4 +226,7 @@ module.exports = {
     setVehicleDriverAssignment,
     softDeleteVehicle,
     listAssignableDrivers,
+    listMaintenanceRequests,
+    approveMaintenanceRequest,
+    rejectMaintenanceRequest,
 };

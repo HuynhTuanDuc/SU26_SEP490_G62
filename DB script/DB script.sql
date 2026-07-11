@@ -317,7 +317,10 @@ CREATE TABLE maintenance_records (
     next_due_date       DATE,
     performed_by        INT NOT NULL REFERENCES drivers(profile_id),
     status              TEXT NOT NULL DEFAULT 'open'
-                            CHECK (status IN ('open','pending_verification','completed')),
+                            CHECK (status IN ('requested','open','pending_verification','completed','rejected')),
+    requested_by        INT REFERENCES profiles(id),
+    request_reason      TEXT,
+    reject_reason       TEXT,
     started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at        TIMESTAMPTZ,
     bill_pics           JSONB NOT NULL DEFAULT '[]'::jsonb,

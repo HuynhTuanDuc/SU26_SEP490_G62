@@ -19,6 +19,15 @@ const getAllDrivers = async (_req, res) => {
     }
 };
 
+const requestMaintenance = async (req, res) => {
+    try {
+        const result = await driverService.requestMaintenance(req.user.userId, req.body);
+        res.status(201).json({ message: 'Đã gửi yêu cầu bảo dưỡng. Chờ quản lý duyệt.', ...result });
+    } catch (err) {
+        res.status(err.statusCode || 500).json({ error: err.message });
+    }
+};
+
 const listMaintenance = async (req, res) => {
     try {
         const records = await driverService.listMaintenanceForDriver(req.user.userId);
@@ -47,4 +56,4 @@ const completeMaintenance = async (req, res) => {
     }
 };
 
-module.exports = { getAllDrivers, getMyVehicle, listMaintenance, uploadMaintenanceBill, completeMaintenance };
+module.exports = { getAllDrivers, getMyVehicle, requestMaintenance, listMaintenance, uploadMaintenanceBill, completeMaintenance };

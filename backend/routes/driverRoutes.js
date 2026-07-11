@@ -25,6 +25,12 @@ router.get(
     driverController.listMaintenance,
 );
 router.post(
+    '/maintenance/request',
+    verifyToken,
+    requireRole('driver'),
+    driverController.requestMaintenance,
+);
+router.post(
     '/maintenance/:vehicleId/bills',
     verifyToken,
     requireRole('driver'),
