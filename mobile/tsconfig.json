@@ -2,7 +2,6 @@
   "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
     "strict": true,
-    "ignoreDeprecations": "6.0",
     "jsx": "react-native",
     "skipLibCheck": true,
     "types": ["node", "jest"],

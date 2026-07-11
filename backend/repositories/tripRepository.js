@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 const {
     SHIPMENT_STATUS,
     ACTIVE_STATUSES,
@@ -1192,16 +1193,24 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
             const debtNote = notes
                 ? `Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty. ${notes}`
                 : 'Tài xế đã thu tiền mặt từ khách — chưa nộp về công ty';
-            await client.query(
+            const { rows: [driverDebt] } = await client.query(
                 `INSERT INTO debts (
                     debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                     total_amount, due_date, notes, updated_by, created_at, updated_at
                 )
                  VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
                     CURRENT_DATE + INTERVAL '30 days',
-                    $5, $1, NOW(), NOW())`,
+                    $5, $1, NOW(), NOW())
+                 RETURNING id`,
                 [driverId, rec.order_id, rec.shipment_id, totalCollected, debtNote],
             );
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'driver_debt_created',
+                debitAccount: '1388', creditAccount: '131',
+                amount: totalCollected,
+                description: `Tài xế thu tiền mặt từ khách — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
+                refType: 'debt', refId: driverDebt.id, actorId: driverId,
+            });
             if (proofUrl) {
                 await client.query(
                     `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,
@@ -1210,20 +1219,28 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
             }
             // Thanh toán một phần: phần còn thiếu → Customer Debt
             if (shortfall > 0.01 && rec.customer_id) {
-                await client.query(
+                const { rows: [shortfallDebt] } = await client.query(
                     `INSERT INTO debts (
                         debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                         total_amount, due_date, notes, updated_by, created_at, updated_at
                     )
                      VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
                         CURRENT_DATE + INTERVAL '30 days',
-                        $5, $6, NOW(), NOW())`,
+                        $5, $6, NOW(), NOW())
+                     RETURNING id`,
                     [
                         rec.customer_id, rec.order_id, rec.shipment_id, shortfall,
                         `Khách chưa trả đủ — còn thiếu (đã trả ${totalCollected.toLocaleString('vi-VN')}đ / tổng ${receiptAmount.toLocaleString('vi-VN')}đ)`,
                         driverId,
                     ],
                 );
+                await financialLedgerRepository.insertTransaction(client, {
+                    eventType: 'customer_debt_created',
+                    debitAccount: '131', creditAccount: '511',
+                    amount: shortfall,
+                    description: `Khách trả thiếu tiền mặt — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
+                    refType: 'debt', refId: shortfallDebt.id, actorId: driverId,
+                });
             }
         } else if (paymentType === 'bank_transfer') {
             // Khách chuyển khoản về công ty → lưu bằng chứng, không tạo debt
@@ -1235,7 +1252,7 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
             }
         } else if (paymentType === 'client_credit') {
             // Khách nợ công ty → Customer Debt
-            await client.query(
+            const { rows: [creditDebt] } = await client.query(
                 `INSERT INTO debts (
                     debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                     total_amount, due_date, notes, updated_by, created_at, updated_at
@@ -1243,9 +1260,17 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                  VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
                     CURRENT_DATE + INTERVAL '30 days',
                     'Khách hàng chưa thanh toán — ghi nhận công nợ',
-                    $5, NOW(), NOW())`,
+                    $5, NOW(), NOW())
+                 RETURNING id`,
                 [rec.customer_id, rec.order_id, rec.shipment_id, receiptAmount, driverId],
             );
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'customer_debt_created',
+                debitAccount: '131', creditAccount: '511',
+                amount: receiptAmount,
+                description: `Khách ghi nợ — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
+                refType: 'debt', refId: creditDebt.id, actorId: driverId,
+            });
         }
 
         // Phần thừa → tự động phân bổ vào nợ cũ của khách (oldest → newest)
@@ -1283,16 +1308,18 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                     rem -= alloc;
                 }
                 if (ids.length > 0) {
+                    // status = 'pending': tiền thừa driver đang cầm, phải chờ kế toán xác nhận
+                    // mới được ghi giảm nợ khách (driver không tự confirm — permission matrix)
                     await client.query(
                         `INSERT INTO debt_payments
                              (debt_id, amount, payment_method, status,
-                              paid_at, confirmed_at, confirmed_by, created_by, notes)
+                              paid_at, created_by, notes)
                          SELECT unnest($1::int[]), unnest($2::numeric[]),
-                                'cash', 'confirmed', NOW(), NOW(), $3, $3, $4`,
+                                'cash', 'pending', NOW(), $3, $4`,
                         [
                             ids, amounts,
                             driverId,
-                            `Phân bổ tự động từ phiếu thu #${rec.sr_id} — khách trả thừa`,
+                            `Phân bổ từ phiếu thu #${rec.sr_id} — khách trả thừa, chờ kế toán xác nhận`,
                         ],
                     );
                 }

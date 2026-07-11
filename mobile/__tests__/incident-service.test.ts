@@ -14,8 +14,8 @@ describe('incidentService', () => {
 
             const result = await incidentService.createIncident({
                 shipmentId:    5,
-                incidentType:  'VEHICLE_BREAKDOWN',
-                severityLevel: 'HIGH',
+                incidentType:  'vehicle_breakdown',
+                severityLevel: 'high',
                 description:   'Xe hỏng giữa đường',
                 imageUris:     ['file://photo.jpg'],
             });
@@ -31,8 +31,8 @@ describe('incidentService', () => {
 
             await incidentService.createIncident({
                 shipmentId:    5,
-                incidentType:  'OTHER',
-                severityLevel: 'LOW',
+                incidentType:  'traffic_jam',
+                severityLevel: 'low',
                 description:   'Thử nghiệm',
                 imageUris:     [],
             });
@@ -48,11 +48,11 @@ describe('incidentService', () => {
         it('G62-FE-47: updateIncident(3, payload) → PATCH /api/incidents/3', async () => {
             mockApi.patch = jest.fn().mockResolvedValue({ incident: { id: 3 } });
 
-            await incidentService.updateIncident(3, { severityLevel: 'LOW', description: 'Cập nhật' });
+            await incidentService.updateIncident(3, { severityLevel: 'low', description: 'Cập nhật' });
 
             expect(mockApi.patch).toHaveBeenCalledWith(
                 '/api/incidents/3',
-                { severityLevel: 'LOW', description: 'Cập nhật' },
+                { severityLevel: 'low', description: 'Cập nhật' },
             );
         });
     });

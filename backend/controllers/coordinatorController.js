@@ -144,6 +144,34 @@ const scanReceiptExpenses = async (req, res) => {
     }
 };
 
+// PATCH /api/coordinator/expenses/:id/approve
+const approveExpense = async (req, res) => {
+    try {
+        const expenseId = Number(req.params.id);
+        if (!expenseId) return res.status(400).json({ error: 'Expense ID không hợp lệ' });
+        const expenseService = require('../services/expenseService');
+        const expense = await expenseService.approveExpense(expenseId, req.user.userId);
+        res.json({ message: 'Đã duyệt chi phí', expense });
+    } catch (err) {
+        const code = err.message.includes('Không tìm thấy') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// PATCH /api/coordinator/expenses/:id/reject  Body: { reason? }
+const rejectExpense = async (req, res) => {
+    try {
+        const expenseId = Number(req.params.id);
+        if (!expenseId) return res.status(400).json({ error: 'Expense ID không hợp lệ' });
+        const expenseService = require('../services/expenseService');
+        const expense = await expenseService.rejectExpense(expenseId, req.user.userId, req.body?.reason);
+        res.json({ message: 'Đã từ chối chi phí', expense });
+    } catch (err) {
+        const code = err.message.includes('Không tìm thấy') ? 404 : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 module.exports = {
     listVehicleGroups,
     listPartners,
@@ -153,4 +181,6 @@ module.exports = {
     approveReceiptRequest,
     rejectReceiptRequest,
     scanReceiptExpenses,
+    approveExpense,
+    rejectExpense,
 };

@@ -55,8 +55,7 @@ const createSalaryAdvance = async ({ driverId, amount, reason, requestMonth, req
     const activeTotal = Number(existing.rows[0]?.active_total ?? 0);
     if (activeTotal + Number(amount) > MAX_ADVANCE_AMOUNT) {
         const remaining = Math.max(0, MAX_ADVANCE_AMOUNT - activeTotal);
-        throw new Error(`Tong tien ung luong trong thang khong duoc vuot qua ${MAX_ADVANCE_AMOUNT.toLocaleString('vi-VN')}d. Con co the ung: ${remaining.toLocaleString('vi-VN')}d`);
-        throw new Error('Đã có yêu cầu ứng lương đang chờ xử lý trong tháng này');
+        throw new Error(`Tổng tiền ứng lương trong tháng không được vượt quá ${MAX_ADVANCE_AMOUNT.toLocaleString('vi-VN')}đ. Còn có thể ứng: ${remaining.toLocaleString('vi-VN')}đ`);
     }
 
     const result = await pool.query(
@@ -197,12 +196,13 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
 
-    // 6. Thưởng & phúc lợi đã được duyệt trong kỳ (Tết, hiếu hỉ, đặc biệt...)
+    // 6. Thưởng & phúc lợi đã duyệt trong kỳ, chờ chi qua lương (Tết, hiếu hỉ, đặc biệt...)
+    // Chỉ tính 'approved' — khoản 'paid' là đã chi rồi (qua lương kỳ trước hoặc chi lẻ), không cộng lại
     const bonusRes = await pool.query(
         `SELECT COALESCE(SUM(amount), 0) AS total
          FROM driver_bonuses
          WHERE driver_id = $1
-           AND status IN ('approved', 'paid')
+           AND status = 'approved'
            AND EXTRACT(MONTH FROM approved_at) = $2
            AND EXTRACT(YEAR  FROM approved_at) = $3`,
         [driverId, month, year],

@@ -17,4 +17,8 @@ router.post('/receipt-requests/:id/approve',        coordinatorController.approv
 router.post('/receipt-requests/:id/reject',         coordinatorController.rejectReceiptRequest);
 router.get('/receipt-requests/:id/scan-expenses',   coordinatorController.scanReceiptExpenses);
 
+// Duyệt / từ chối chi phí driver khai (luồng duyệt độc lập ngoài phiếu thu)
+router.patch('/expenses/:id/approve', coordinatorController.approveExpense);
+router.patch('/expenses/:id/reject',  coordinatorController.rejectExpense);
+
 module.exports = router;

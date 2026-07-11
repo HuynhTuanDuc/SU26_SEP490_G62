@@ -15,7 +15,8 @@
  *       Expense gắn với Vehicle (BR-022). Bắt buộc ảnh chứng từ (BR-021).
  *       Expense KHÔNG tính vào KPI hay Revenue (mục 17).
  *
- *       Các loại expense: fuel, toll, parking, ferry, minor_repair, other
+ *       Các loại expense: toll, parking, etc (khách chịu) | fuel, repair (công ty chịu)
+ *       Expense driver tạo có status = pending, chờ coordinator duyệt.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -31,7 +32,7 @@
  *                 description: Chuyến mà chi phí phát sinh
  *               expense_type:
  *                 type: string
- *                 enum: [fuel, toll, parking, ferry, minor_repair, other]
+ *                 enum: [toll, parking, etc, fuel, repair]
  *               amount:
  *                 type: number
  *                 example: 150000
