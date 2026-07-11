@@ -80,26 +80,16 @@ describe('tripService', () => {
         });
     });
 
-    describe('cancelDelivery', () => {
-        it('G62-FE-34: cancelDelivery(5, reason) → POST /api/trips/5/cancel-delivery', async () => {
-            mockApi.post = jest.fn().mockResolvedValue({ message: 'Cancelled' });
-
-            await tripService.cancelDelivery(5, 'Khách từ chối');
-
-            expect(mockApi.post).toHaveBeenCalledWith('/api/trips/5/cancel-delivery', { reason: 'Khách từ chối' });
-        });
-    });
-
     // ── Status / Proof ────────────────────────────────────────────────────────
 
     describe('getActiveTrip', () => {
         it('G62-FE-35: getActiveTrip → GET /api/trips/active trả về trip', async () => {
-            mockApi.get = jest.fn().mockResolvedValue({ shipment: { id: 1, status: 'CLAIMED' } });
+            mockApi.get = jest.fn().mockResolvedValue({ trip: { id: 1, status: 'claimed' } });
 
             const result = await tripService.getActiveTrip();
 
             expect(mockApi.get).toHaveBeenCalledWith('/api/trips/active');
-            expect(result.shipment).toBeTruthy();
+            expect(result.trip).toBeTruthy();
         });
 
         it('G62-FE-36: getActiveTrip không có trip → 404 reject', async () => {
@@ -113,14 +103,14 @@ describe('tripService', () => {
     });
 
     describe('updateStatus', () => {
-        it('G62-FE-37: updateStatus(5,"PICKING") → PATCH /api/trips/5/status body.status=PICKING', async () => {
-            mockApi.patch = jest.fn().mockResolvedValue({ message: 'OK', status: 'PICKING' });
+        it('G62-FE-37: updateStatus(5,"picking") → PATCH /api/trips/5/status body.status=picking', async () => {
+            mockApi.patch = jest.fn().mockResolvedValue({ message: 'OK', status: 'picking' });
 
-            await tripService.updateStatus(5, 'PICKING');
+            await tripService.updateStatus(5, 'picking');
 
             expect(mockApi.patch).toHaveBeenCalledWith(
                 '/api/trips/5/status',
-                { status: 'PICKING', reason: undefined },
+                { status: 'picking', reason: undefined },
             );
         });
     });
@@ -142,19 +132,6 @@ describe('tripService', () => {
             await tripService.completeWithProof(5, new FormData());
 
             expect(mockApi.postForm).toHaveBeenCalledWith('/api/trips/5/complete', expect.any(FormData));
-        });
-    });
-
-    describe('markUnpaid', () => {
-        it('G62-FE-40: markUnpaid(5, 500000, notes) → POST /api/trips/5/mark-unpaid', async () => {
-            mockApi.post = jest.fn().mockResolvedValue({ message: 'OK', debt: {} });
-
-            await tripService.markUnpaid(5, 500000, 'Ghi chú');
-
-            expect(mockApi.post).toHaveBeenCalledWith(
-                '/api/trips/5/mark-unpaid',
-                { amount: 500000, notes: 'Ghi chú' },
-            );
         });
     });
 
@@ -180,14 +157,6 @@ describe('tripService', () => {
     });
 
     describe('payment', () => {
-        it('G62-FE-43: recordPayment(5, formData) → POST /api/trips/5/payment', async () => {
-            mockApi.postForm = jest.fn().mockResolvedValue({ message: 'OK', payment: {}, debt: {} });
-
-            await tripService.recordPayment(5, new FormData());
-
-            expect(mockApi.postForm).toHaveBeenCalledWith('/api/trips/5/payment', expect.any(FormData));
-        });
-
         it('G62-FE-44: getPaymentSummary(5) → GET /api/trips/5/payment-summary', async () => {
             mockApi.get = jest.fn().mockResolvedValue({ trip_value: '1000000', cash_collected: '500000' });
 

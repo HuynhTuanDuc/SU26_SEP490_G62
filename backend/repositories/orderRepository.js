@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
 const { ACTIVE_STATUSES, SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { insertAssignmentHistory } = require('./tripRepository');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 
 //Query to list order specific detail
@@ -665,6 +666,14 @@ const createOrderWithShipment = async ({
     );
 
     const order = orderResult.rows[0];
+    // Ghi sổ tiền khách ứng trước (nếu có)
+    await financialLedgerRepository.insertTransaction(client, {
+        eventType: 'prepaid_received',
+        debitAccount: '1121', creditAccount: '131',
+        amount: Number(orderData.prepaid_amount || 0),
+        description: `Khách ứng trước — đơn #${order.id}`,
+        refType: 'order', refId: order.id, actorId: userId,
+    });
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments
             (order_id, shipment_index, cargo_name, cargo_weight_kg, vehicle_group_id, estimated_price, estimated_distance_km, arrived_at, status, notes, created_at, claimed_at)
@@ -748,8 +757,17 @@ const createOrderWithMultipleShipments = async ({
         ],
     );
 
-    
-    const order = orderResult.rows[0]; //Lấy order 
+
+    const order = orderResult.rows[0]; //Lấy order
+
+    // Ghi sổ tiền khách ứng trước (nếu có)
+    await financialLedgerRepository.insertTransaction(client, {
+        eventType: 'prepaid_received',
+        debitAccount: '1121', creditAccount: '131',
+        amount: Number(orderData.prepaid_amount || 0),
+        description: `Khách ứng trước — đơn #${order.id}`,
+        refType: 'order', refId: order.id, actorId: userId,
+    });
 
     const createdShipments = [];
 

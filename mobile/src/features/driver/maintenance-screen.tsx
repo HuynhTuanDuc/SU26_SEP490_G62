@@ -44,7 +44,6 @@ const STATUS_STYLE: Record<MaintenanceStatus, { bg: string; text: string; border
 function MaintenanceCard({
     record,
     onBillUploaded,
-    onCostUpdated,
     onCompleted,
 }: {
     record: MaintenanceRecord;

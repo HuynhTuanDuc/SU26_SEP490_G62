@@ -10,6 +10,7 @@ import {
   RiMenuFoldLine,
   RiMenuUnfoldLine,
   RiGiftLine,
+  RiBookOpenLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
 
@@ -19,6 +20,7 @@ const NAV_GROUPS = [
     items: [
       { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
       { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
+      { key: "ledger",  label: "Nhật ký tài chính", icon: RiBookOpenLine },
     ],
   },
   {

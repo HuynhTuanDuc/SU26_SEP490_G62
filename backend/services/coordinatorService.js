@@ -6,6 +6,7 @@ const incidentRepository = require('../repositories/incidentRepository');
 const notificationGateway = require('./notificationGateway');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { ALLOWED_EXPENSE_TYPES: VALID_EXPENSE_TYPES, PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
+const financialLedgerRepository = require('../repositories/financialLedgerRepository');
 
 const COLUMN_ALIASES = {
   date: [
@@ -345,7 +346,7 @@ const importExcel = async (userId, fileBuffer) => {
 
 // ─── Receipt Request Management ───────────────────────────────────────────────
 
-// toll, parking, ferry: khách chịu (pass-through). fuel/minor_repair/other: công ty chịu.
+// toll, parking, etc: khách chịu (pass-through). fuel/repair: công ty chịu.
 
 const resolveShipmentActualRevenue = (shipment = {}) => {
     const actualPrice = Number(shipment.actual_price);
@@ -705,13 +706,14 @@ const getReceiptRequests = async ({
                 SUM(e.amount) AS total_expenses,
                 SUM(
                     CASE
-                        WHEN e.expense_type IN ('parking', 'toll', 'ferry') THEN e.amount
+                        WHEN e.expense_type IN ('parking', 'toll', 'etc') THEN e.amount
                         ELSE 0
                     END
                 ) AS pass_through_expenses
             FROM expenses e
             JOIN order_shipments os_exp ON os_exp.id = e.shipment_id
             WHERE os_exp.order_id = rr.order_id
+              AND e.status != 'rejected'
          ) exp ON TRUE
          ${where}
          ORDER BY rr.requested_at DESC
@@ -890,10 +892,12 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                 throw new Error('Chi phí có chuyến xe không thuộc đơn hàng này');
             }
             const expenseVehicleId = pricingSnapshot.shipments.find((shipment) => Number(shipment.id) === Number(expenseShipmentId))?.vehicle_id ?? null;
-            await client.query(
+            const { rows: [insertedExpense] } = await client.query(
                 `INSERT INTO expenses
-                    (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, created_at, updated_at)
-                 VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, NOW(), NOW())`,
+                    (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date,
+                     status, reviewed_by, reviewed_at, created_at, updated_at)
+                 VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), NOW(), NOW())
+                 RETURNING id`,
                 [
                     expenseShipmentId,
                     expenseVehicleId,
@@ -903,6 +907,16 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                     expense.description,
                 ],
             );
+            // Ghi sổ: pass-through (khách chịu) tách khỏi chi phí vận hành (công ty chịu)
+            const isPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type);
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: isPassThrough ? 'pass_through_cost' : 'expense_recorded',
+                debitAccount: isPassThrough ? '3388' : '642',
+                creditAccount: '1111',
+                amount: expense.amount,
+                description: `${isPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${expense.expense_type}) — chuyến #${expenseShipmentId}`,
+                refType: 'expense', refId: insertedExpense.id, actorId: coordinatorId,
+            });
         }
 
         for (const shipmentSummary of computed.shipment_breakdown) {
@@ -913,6 +927,37 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
                  WHERE id = $2`,
                 [shipmentSummary.actual_income, shipmentSummary.shipment_id],
             );
+            // Ghi sổ doanh thu chuyến khi actual_price được chốt chính thức
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'shipment_revenue',
+                debitAccount: '131', creditAccount: '511',
+                amount: shipmentSummary.actual_income,
+                description: `Doanh thu chuyến #${shipmentSummary.shipment_id} — đơn #${req.order_id}`,
+                refType: 'shipment', refId: shipmentSummary.shipment_id, actorId: coordinatorId,
+            });
+        }
+
+        // Duyệt phiếu thu = duyệt luôn các chi phí pending mà driver đã khai trong đơn
+        const { rows: autoApprovedExpenses } = await client.query(
+            `UPDATE expenses e
+             SET status = 'approved', reviewed_by = $1, reviewed_at = NOW(), updated_at = NOW()
+             FROM order_shipments os
+             WHERE os.id = e.shipment_id
+               AND os.order_id = $2
+               AND e.status = 'pending'
+             RETURNING e.id, e.shipment_id, e.expense_type, e.amount`,
+            [coordinatorId, req.order_id],
+        );
+        for (const exp of autoApprovedExpenses) {
+            const expPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(exp.expense_type);
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
+                debitAccount: expPassThrough ? '3388' : '642',
+                creditAccount: '1111',
+                amount: exp.amount,
+                description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — chuyến #${exp.shipment_id}, duyệt cùng phiếu thu`,
+                refType: 'expense', refId: exp.id, actorId: coordinatorId,
+            });
         }
 
         // Cập nhật trạng thái request → approved

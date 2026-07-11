@@ -1,9 +1,10 @@
 const pool = require('../config/database');
 
 const createExpense = async ({ shipmentId, vehicleId, driverId, expenseType, amount, description }) => {
+    // Driver khai chi phí → pending, chờ coordinator duyệt (ghi sổ FT khi duyệt)
     const result = await pool.query(
-        `INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
          RETURNING *`,
         [shipmentId, vehicleId ?? null, driverId, expenseType, amount, description ?? null],
     );
@@ -29,6 +30,8 @@ const getShipmentExpenses = async (shipmentId) => {
             e.amount::text,
             e.description,
             e.expense_date,
+            e.status,
+            e.reject_reason,
             e.created_at,
             COALESCE(
                 json_agg(ea.file_url ORDER BY ea.uploaded_at)

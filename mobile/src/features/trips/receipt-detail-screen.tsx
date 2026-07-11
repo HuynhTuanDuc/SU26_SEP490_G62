@@ -28,9 +28,12 @@ type CollectionType = 'cash_collected' | 'bank_transfer' | 'client_credit';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const EXPENSE_TYPE_LABEL: Record<string, string> = {
-    fuel:         'Xăng dầu',
-    toll:         'Phí đường bộ',
+    toll:         'Phí cầu đường',
     parking:      'Phí đỗ xe',
+    etc:          'Phí ETC',
+    fuel:         'Xăng dầu / nhiên liệu',
+    repair:       'Sửa xe',
+    // Giá trị cũ — chỉ hiển thị
     ferry:        'Phà',
     minor_repair: 'Sửa chữa nhỏ',
     other:        'Khác',

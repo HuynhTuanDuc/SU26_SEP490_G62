@@ -115,4 +115,15 @@ export const accountantService = {
       method: "POST",
       body: { notes, actual_amount: actualAmount },
     }),
+
+  // ─── Nhật ký tài chính (financial ledger) ────────────────────────────────────
+  getLedger: (params) =>
+    apiRequest(`${BASE}/ledger?${new URLSearchParams(params)}`),
+
+  getLedgerStats: (params) =>
+    apiRequest(`${BASE}/ledger/stats?${new URLSearchParams(params)}`),
+
+  // Trả về CSV text — caller tự tạo blob download
+  exportLedgerPeriod: (from, to) =>
+    apiRequest(`${BASE}/ledger/export`, { method: "POST", body: { from, to } }),
 };

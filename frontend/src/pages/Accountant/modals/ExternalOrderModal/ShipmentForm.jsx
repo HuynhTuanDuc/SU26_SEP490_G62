@@ -13,12 +13,11 @@ const DRIVER_PAYMENT_STATES = [
 ];
 
 export const EXPENSE_TYPES = [
-  { key: "fuel",         label: "Xăng dầu" },
-  { key: "toll",         label: "Phí cầu đường / BOT" },
-  { key: "parking",      label: "Phí bãi xe" },
-  { key: "ferry",        label: "Phà" },
-  { key: "minor_repair", label: "Sửa chữa nhỏ" },
-  { key: "other",        label: "Chi phí khác" },
+  { key: "toll",    label: "Phí cầu đường / BOT (khách chịu)" },
+  { key: "parking", label: "Phí bãi xe (khách chịu)" },
+  { key: "etc",     label: "Phí ETC (khách chịu)" },
+  { key: "fuel",    label: "Xăng dầu / nhiên liệu (cty chịu)" },
+  { key: "repair",  label: "Sửa xe (cty chịu)" },
 ];
 
 const EMPTY_EXPENSE = () => ({ expense_type: "toll", amount: "", description: "" });

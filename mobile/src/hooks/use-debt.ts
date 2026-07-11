@@ -40,7 +40,7 @@ export function useDebt() {
     useFocusEffect(useCallback(() => { load(); }, [load]));
 
     // Reload tức thì khi backend push debt.updated qua WebSocket
-    useEffect(() => appEvents.on('debt.updated', () => load(false)), [load]);
+    useEffect(() => appEvents.on('debt.updated', () => load()), [load]);
 
     return { ...state, reload: load };
 }
