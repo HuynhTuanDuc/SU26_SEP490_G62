@@ -37,7 +37,8 @@ const buildOrderPaymentType = (shipments = []) => {
 };
 
 const findOrCreateCustomer = async (client, { phone, name, companyName }) => {
-    const cleanPhone = trimToNull(phone);
+    // customers.phone NOT NULL — khách lẻ không SĐT dùng phone rỗng (gom chung 1 hồ sơ)
+    const cleanPhone = trimToNull(phone) || '';
     const cleanName = trimToNull(name);
     const cleanCompanyName = trimToNull(companyName);
 
@@ -109,21 +110,25 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     cargoName, cargoWeight, shipmentNotes,
     pickupAddresses, deliveryAddress, contactName, contactPhone,
     expenses, createdByUserId,
+    distanceKm = null, completedAt = null,
 }) => {
     const shipmentResult = await client.query(
         `INSERT INTO order_shipments (
             order_id, shipment_index,
             estimated_price, actual_price,
+            estimated_distance_km, actual_distance_km,
             cargo_name, cargo_weight_kg,
             status, notes, completed_at, created_at, updated_at
         )
-         VALUES ($1, $2, $3, $4, $5, $6, 'completed', $7, NOW(), NOW(), NOW())
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, 'completed', $8, COALESCE($9::timestamptz, NOW()), NOW(), NOW())
          RETURNING id`,
         [
             orderId, shipmentIndex,
             estimatedPrice, actualPrice || null,
+            distanceKm,
             cargoName || null, cargoWeight || 0,
             shipmentNotes,
+            completedAt,
         ]
     );
     const shipmentId = shipmentResult.rows[0].id;
@@ -194,14 +199,15 @@ const insertDebtForShipment = async (client, {
     const normalizedPaymentType = normalizeCustomerDebtPaymentType(paymentType);
     if (Number(actualPrice || 0) <= 0) return;
 
+    // driver_holding: tài đang giữ tiền → nợ treo; driver_paid: đã nộp về → nợ + payment confirmed
     if (
-        driverPaymentState === 'driver_holding'
+        ['driver_holding', 'driver_paid'].includes(driverPaymentState)
         && ['cash', 'bank_transfer'].includes(normalizedPaymentType)
     ) {
         if (!driverId) {
             throw new Error('KhÃ´ng thá»ƒ táº¡o cÃ´ng ná»£ tÃ i xáº¿ khi chuyáº¿n chÆ°a cÃ³ tÃ i xáº¿.');
         }
-        await client.query(
+        const debtInsertResult = await client.query(
             `INSERT INTO debts (
                 debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                 total_amount, due_date, notes,
@@ -210,9 +216,11 @@ const insertDebtForShipment = async (client, {
              VALUES ('driver', $1, NULL, NULL, $2, $3, $4,
                 CURRENT_DATE + INTERVAL '30 days',
                 'TÃ i xáº¿ Ä‘Ã£ thu nhÆ°ng chÆ°a mang tiá»n vá» cÃ´ng ty',
-                $5, NOW(), NOW())`,
+                $5, NOW(), NOW())
+             RETURNING id`,
             [driverId, orderId, shipmentId, actualPrice, createdByUserId]
         );
+        const driverDebtId = debtInsertResult.rows[0].id;
         await financialLedgerRepository.insertTransaction(client, {
             eventType: 'driver_debt_created',
             debitAccount: '1388', creditAccount: '131',
@@ -220,6 +228,23 @@ const insertDebtForShipment = async (client, {
             description: `Công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
             refType: 'shipment', refId: shipmentId, actorId: createdByUserId,
         });
+
+        if (driverPaymentState === 'driver_paid') {
+            await client.query(
+                `INSERT INTO debt_payments (debt_id, amount, payment_method, status,
+                                            paid_at, confirmed_at, confirmed_by, created_by, notes)
+                 VALUES ($1, $2, 'cash', 'confirmed', NOW(), NOW(), $3, $3,
+                         'Import đơn ngoài — tài xế đã nộp tiền về công ty')`,
+                [driverDebtId, actualPrice, createdByUserId]
+            );
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'driver_debt_paid',
+                debitAccount: '1111', creditAccount: '1388',
+                amount: actualPrice,
+                description: `Tài xế đã nộp tiền — đơn ngoài, chuyến #${shipmentId}`,
+                refType: 'debt', refId: driverDebtId, actorId: createdByUserId,
+            });
+        }
     } else if (normalizedPaymentType === 'client_credit') {
 
         await client.query(
@@ -336,7 +361,17 @@ const createOrderWithShipments = async (orderData) => {
                 contactPhone: trimToNull(orderData.customer_phone),
                 expenses: s.expenses || [],
                 createdByUserId: orderData.created_by,
+                distanceKm: s.distance_km != null && Number(s.distance_km) > 0 ? Number(s.distance_km) : null,
+                completedAt: s.completed_at || orderData.completed_at || null,
             });
+
+            // Nợ mặc định = số khách phải trả (cước + chi hộ); import cho phép ghi đè
+            // bằng số tiền tài xế thực giữ (khách trả thiếu / tài nộp một phần) —
+            // chỉ áp dụng cho trạng thái tiền nằm ở tài xế
+            const isDriverMoneyState = ['driver_holding', 'driver_paid'].includes(s.driver_payment_state);
+            const debtAmount = (isDriverMoneyState && s.driver_holding_amount != null && Number(s.driver_holding_amount) >= 0)
+                ? Number(s.driver_holding_amount)
+                : actualPrice + passThrough;
 
             await insertDebtForShipment(client, {
                 shipmentId,
@@ -344,8 +379,7 @@ const createOrderWithShipments = async (orderData) => {
                 driverId,
                 customerId,
                 partnerId: s.partner_id || orderData.partner_id || null,
-                // Nợ = số khách phải trả cho chuyến (cước + chi hộ khách)
-                actualPrice: actualPrice + passThrough,
+                actualPrice: debtAmount,
                 driverPaymentState: s.driver_payment_state || 'company_received',
                 paymentType: s.payment_type || null,
                 createdByUserId: orderData.created_by,
