@@ -18,6 +18,8 @@ router.get('/', verifyToken, requireRole('coordinator', 'admin'), driverControll
 
 router.get('/me/vehicle', verifyToken, requireRole('driver'), driverController.getMyVehicle);
 
+router.get('/me/assignment-history', verifyToken, requireRole('driver'), driverController.getMyAssignmentHistory);
+
 router.get(
     '/maintenance',
     verifyToken,
@@ -28,6 +30,7 @@ router.post(
     '/maintenance/request',
     verifyToken,
     requireRole('driver'),
+    handleUpload(uploadMaintenanceBill.array('bills', 5)),
     driverController.requestMaintenance,
 );
 router.post(

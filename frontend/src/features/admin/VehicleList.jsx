@@ -34,6 +34,7 @@ import {
   assignVehicleDriver,
   createVehicle,
   fetchMaintenanceRequests,
+  fetchVehicleAssignmentHistory,
   fetchVehicleDetail,
   fetchDriverOptions,
   fetchVehicleGroups,
@@ -222,6 +223,7 @@ export default function VehicleList({ user }) {
   const [loadingMaintenanceDrivers, setLoadingMaintenanceDrivers] = useState(false);
 
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
+  const [assignmentHistory, setAssignmentHistory] = useState([]);
   const [rejectRequestTarget, setRejectRequestTarget] = useState(null);
   const [rejectRequestReason, setRejectRequestReason] = useState("");
   const [processingRequestId, setProcessingRequestId] = useState(null);
@@ -401,6 +403,9 @@ export default function VehicleList({ user }) {
     try {
       const data = await fetchVehicleDetail(vehicle.id);
       setDetailVehicle(data.vehicle);
+      fetchVehicleAssignmentHistory(vehicle.id)
+        .then((res) => setAssignmentHistory(res.history || []))
+        .catch(() => setAssignmentHistory([]));
     } catch (err) {
       message.error(err.message);
     }
@@ -834,6 +839,33 @@ export default function VehicleList({ user }) {
                 <Timeline items={buildHistoryTimelineItems(incidentHistory)} />
               ) : (
                 <Text type="secondary">No incident history.</Text>
+              )}
+            </div>
+
+            <div>
+              <Title level={5}>Driver Assignment History</Title>
+              {assignmentHistory.length > 0 ? (
+                <Timeline
+                  items={assignmentHistory.map((item) => ({
+                    color: item.action === "assign" ? "green" : "red",
+                    children: (
+                      <Space direction="vertical" size={0}>
+                        <Text strong>
+                          {item.action === "assign"
+                            ? `Gán tài xế: ${item.driver_name || `#${item.driver_id}`}`
+                            : `Bỏ gán tài xế: ${item.previous_driver_name || (item.previous_driver_id ? `#${item.previous_driver_id}` : "—")}`}
+                        </Text>
+                        <Text type="secondary">
+                          {formatDateTime(item.created_at)}
+                          {item.created_by_name ? ` | bởi ${item.created_by_name}` : ""}
+                        </Text>
+                        {item.note ? <Text type="secondary">{item.note}</Text> : null}
+                      </Space>
+                    ),
+                  }))}
+                />
+              ) : (
+                <Text type="secondary">Chưa có lịch sử gán xe (chỉ ghi từ khi tính năng được bật).</Text>
               )}
             </div>
           </Space>

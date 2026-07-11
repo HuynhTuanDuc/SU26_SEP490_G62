@@ -1109,12 +1109,26 @@ const cancelOrder = async (orderId, reason = 'Coordinator cancelled order') => {
              WHERE id = $1`,
             [shipment.id, reason],
         );
-        await client.query(
+        const { rows: [cancelledOrder] } = await client.query(
             `UPDATE orders
              SET derived_status = 'cancelled', updated_at = NOW()
-             WHERE id = $1`,
+             WHERE id = $1
+             RETURNING prepaid_amount`,
             [orderId],
         );
+
+        // Đơn đã nhận tiền ứng trước → ghi bút toán hoàn tiền (đảo prepaid_received)
+        // để tiền ứng không "mất tích" khỏi sổ khi đơn bị hủy.
+        const prepaid = Number(cancelledOrder?.prepaid_amount || 0);
+        if (prepaid > 0) {
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'prepaid_refunded',
+                debitAccount: '131', creditAccount: '1121',
+                amount: prepaid,
+                description: `Hoàn tiền khách ứng trước do hủy đơn #${orderId} — ${reason}`,
+                refType: 'order', refId: orderId, actorId: null,
+            });
+        }
 
         await client.query('COMMIT');
         const updated = await pool.query(`${selectOrderProjection} WHERE o.id = $1`, [orderId]);

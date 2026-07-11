@@ -191,9 +191,13 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
             [confirmedBy, paymentId],
         );
 
-        // Ghi sổ nhật ký tài chính
+        // Ghi sổ nhật ký tài chính.
+        // method = 'offset' (cấn trừ nội bộ — vd. khách trả thừa qua tài xế, tiền đã nằm trong
+        // nợ tài xế): KHÔNG ghi FT tiền mặt — tiền chỉ về công ty khi tài xế nộp quỹ.
         const cashAccount = pay.payment_method === 'bank_transfer' ? '1121' : '1111';
-        if (pay.debt_type === 'driver') {
+        if (pay.payment_method === 'offset') {
+            // không ghi sổ
+        } else if (pay.debt_type === 'driver') {
             await financialLedgerRepository.insertTransaction(client, {
                 eventType: 'driver_debt_paid',
                 debitAccount: cashAccount, creditAccount: '1388',

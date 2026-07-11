@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import {
-    AlertCircle, Calendar, Car, CheckCircle2, Clock,
+    AlertCircle, ArrowLeftRight, Calendar, Car, CheckCircle2, Clock,
     Package, Truck, Wrench,
 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -10,6 +11,7 @@ import { AppText } from '@/components/app-text';
 import { ScreenHeader } from '@/components/screen-header';
 import { appTheme } from '@/theme/app-theme';
 import { useVehicle } from '@/hooks/use-vehicle';
+import { maintenanceService, type AssignmentHistoryItem } from '@/services/maintenance-service';
 import type { MaintenanceRecord, MaintenanceStatus } from '@/types/maintenance';
 import { MAINTENANCE_TYPE_LABEL, MAINTENANCE_STATUS_LABEL } from '@/types/maintenance';
 import type { VehicleStatus } from '@/types/vehicle';
@@ -40,9 +42,11 @@ const VEHICLE_STATUS_STYLE: Record<VehicleStatus, { bg: string; text: string; bo
 };
 
 const MAINTENANCE_STATUS_STYLE: Record<MaintenanceStatus, { bg: string; text: string; border: string }> = {
+    requested:            { bg: appTheme.colors.surfaceSoft,  text: appTheme.colors.textMuted,   border: appTheme.colors.border        },
     open:                 { bg: appTheme.colors.warningSoft,  text: appTheme.colors.warningText, border: appTheme.colors.warningBorder },
     pending_verification: { bg: appTheme.colors.primarySoft,  text: appTheme.colors.primary,     border: appTheme.colors.primaryMuted  },
     completed:            { bg: appTheme.colors.successSoft,  text: appTheme.colors.successText, border: appTheme.colors.successBorder },
+    rejected:             { bg: appTheme.colors.dangerSoft,   text: appTheme.colors.dangerText,  border: appTheme.colors.dangerBorder  },
 };
 
 // ─── Info row ─────────────────────────────────────────────────────────────────
@@ -130,6 +134,14 @@ function VehicleSkeleton() {
 
 export function VehicleScreen() {
     const { vehicle, maintenance, isLoading, error, refresh } = useVehicle();
+    const [assignments, setAssignments] = useState<AssignmentHistoryItem[]>([]);
+
+    const loadAssignments = () => {
+        maintenanceService.getMyAssignmentHistory()
+            .then(({ history }) => setAssignments(history))
+            .catch(() => {});
+    };
+    useEffect(() => { loadAssignments(); }, []);
 
     const vehicleStyle = vehicle ? VEHICLE_STATUS_STYLE[vehicle.status] : null;
 
@@ -141,7 +153,7 @@ export function VehicleScreen() {
 
             <ScrollView
                 contentContainerStyle={{ paddingBottom: appTheme.spacing.screenBottom }}
-                refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refresh} />}
+                refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => { refresh(); loadAssignments(); }} />}
             >
                 {isLoading ? (
                     <VehicleSkeleton />
@@ -274,6 +286,69 @@ export function VehicleScreen() {
                                 maintenance.map((record) => (
                                     <MaintenanceRow key={record.id} record={record} />
                                 ))
+                            )}
+                        </YStack>
+
+                        {/* Lịch sử gán xe */}
+                        <YStack
+                            marginHorizontal={appTheme.spacing.screenX}
+                            marginTop={16}
+                            borderRadius={appTheme.radius.lg}
+                            borderWidth={1}
+                            borderColor={appTheme.colors.border}
+                            backgroundColor={appTheme.colors.surface}
+                            overflow="hidden"
+                        >
+                            <XStack paddingHorizontal={16} paddingVertical={10}
+                                backgroundColor={appTheme.colors.surfaceSoft}
+                                alignItems="center" gap={8}>
+                                <ArrowLeftRight size={14} color={appTheme.colors.textMuted} />
+                                <Text fontSize={11} fontWeight="900" color={appTheme.colors.textMuted}>
+                                    LỊCH SỬ GÁN XE ({assignments.length})
+                                </Text>
+                            </XStack>
+
+                            {assignments.length === 0 ? (
+                                <YStack alignItems="center" paddingVertical={24} gap={8}>
+                                    <Text fontSize={13} color={appTheme.colors.textMuted}>
+                                        Chưa có lịch sử gán xe
+                                    </Text>
+                                </YStack>
+                            ) : (
+                                assignments.map((item) => {
+                                    const isAssign = item.action === 'assign';
+                                    return (
+                                        <XStack
+                                            key={item.id}
+                                            paddingHorizontal={14} paddingVertical={12}
+                                            borderBottomWidth={1} borderBottomColor={appTheme.colors.border}
+                                            alignItems="center" gap={12}
+                                        >
+                                            <XStack width={36} height={36} borderRadius={10}
+                                                backgroundColor={isAssign ? appTheme.colors.successSoft : appTheme.colors.dangerSoft}
+                                                borderWidth={1}
+                                                borderColor={isAssign ? appTheme.colors.successBorder : appTheme.colors.dangerBorder}
+                                                alignItems="center" justifyContent="center">
+                                                <Car size={16} color={isAssign ? appTheme.colors.successText : appTheme.colors.dangerText} />
+                                            </XStack>
+                                            <YStack flex={1} gap={2}>
+                                                <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>
+                                                    {isAssign ? 'Được gán xe' : 'Bị gỡ khỏi xe'} {item.plate_number}
+                                                </Text>
+                                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                                    {fmtDate(item.created_at)}
+                                                    {item.vehicle_group_name ? ` · ${item.vehicle_group_name}` : ''}
+                                                    {item.created_by_name ? ` · bởi ${item.created_by_name}` : ''}
+                                                </Text>
+                                                {item.note ? (
+                                                    <Text fontSize={12} color={appTheme.colors.textMuted} numberOfLines={1}>
+                                                        {item.note}
+                                                    </Text>
+                                                ) : null}
+                                            </YStack>
+                                        </XStack>
+                                    );
+                                })
                             )}
                         </YStack>
                     </>

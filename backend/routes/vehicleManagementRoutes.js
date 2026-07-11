@@ -1,5 +1,6 @@
 const express = require('express');
 const vehicleManagementController = require('../controllers/vehicleManagementController');
+const holidayController = require('../controllers/holidayController');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -18,6 +19,10 @@ router.get('/vehicles', vehicleManagementController.listVehicles);
 router.post('/vehicles', vehicleManagementController.createVehicle);
 router.get('/vehicles/:id', vehicleManagementController.getVehicleDetail);
 router.put('/vehicles/:id', vehicleManagementController.updateVehicle);
+router.get('/holidays', holidayController.listHolidays);
+router.post('/holidays', holidayController.createHoliday);
+router.delete('/holidays/:date', holidayController.deleteHoliday);
+
 router.get('/maintenance-requests', vehicleManagementController.listMaintenanceRequests);
 router.post('/maintenance-requests/:id/approve', vehicleManagementController.approveMaintenanceRequest);
 router.post('/maintenance-requests/:id/reject', vehicleManagementController.rejectMaintenanceRequest);
@@ -29,6 +34,7 @@ router.post('/vehicles/:id/restore', vehicleManagementController.restoreVehicle)
 router.post('/vehicles/:id/retire', vehicleManagementController.retireVehicle);
 router.patch('/vehicles/:id/status', vehicleManagementController.changeVehicleStatus);
 router.patch('/vehicles/:id/driver-assignment', vehicleManagementController.setVehicleDriverAssignment);
+router.get('/vehicles/:id/assignment-history', vehicleManagementController.getVehicleAssignmentHistory);
 router.delete('/vehicles/:id', vehicleManagementController.softDeleteVehicle);
 
 module.exports = router;

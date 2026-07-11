@@ -196,6 +196,25 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const driverDebtDeduction = Number(debtRes.rows[0].remaining ?? 0);
 
+    // 5b. Đi làm ngày lễ = 200% lương: cộng thêm 100% lương ngày cho mỗi ngày lễ có chuyến hoàn thành
+    const holidayRes = await pool.query(
+        `SELECT COUNT(DISTINCT h.holiday_date)::int AS days
+         FROM company_holidays h
+         WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
+           AND EXTRACT(YEAR  FROM h.holiday_date) = $3
+           AND EXISTS (
+               SELECT 1
+               FROM order_shipments os
+               JOIN v_shipment_current sc ON sc.shipment_id = os.id
+               WHERE sc.owner_driver_id = $1
+                 AND os.status = 'completed'
+                 AND os.completed_at::date = h.holiday_date
+           )`,
+        [driverId, month, year],
+    );
+    const holidayDaysWorked = Number(holidayRes.rows[0]?.days ?? 0);
+    const holidayBonus      = Math.round(baseSalary / 28) * holidayDaysWorked;
+
     // 6. Thưởng & phúc lợi đã duyệt trong kỳ, chờ chi qua lương (Tết, hiếu hỉ, đặc biệt...)
     // Chỉ tính 'approved' — khoản 'paid' là đã chi rồi (qua lương kỳ trước hoặc chi lẻ), không cộng lại
     const bonusRes = await pool.query(
@@ -209,7 +228,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const bonusWelfareTotal = Number(bonusRes.rows[0].total ?? 0);
 
-    const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + bonusWelfareTotal;
+    const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
     const estimatedNet   = estimatedGross - BHXH_EMPLOYEE - advanceDeduction - driverDebtDeduction;
 
     return {
@@ -226,6 +245,8 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         phone_allowance:        PHONE_ALLOWANCE.toFixed(2),
         kpi_bonus:              kpiBonus.toFixed(2),
         top_driver_bonus:       topDriverBonus.toFixed(2),
+        holiday_bonus:          holidayBonus.toFixed(2),
+        holiday_days_worked:    holidayDaysWorked,
         bonus_welfare_total:    bonusWelfareTotal.toFixed(2),
         insurance_employee:     BHXH_EMPLOYEE.toFixed(2),
         insurance_salary_base:  INSURANCE_SALARY_BASE.toFixed(2),

@@ -5,7 +5,13 @@ import { MoneyText } from "../shared/MoneyText";
 function ShipmentRow({ shipment }) {
   const pickup   = shipment.pickup_addresses?.[0]?.address ?? "—";
   const delivery = shipment.delivery_address ?? "—";
-  const settled  = shipment.driver_payment_state === "paid";
+
+  // Trạng thái nộp tiền của tài xế: paid / partial / unpaid
+  const driverTotal     = Number(shipment.driver_total || 0);
+  const driverPaid      = Number(shipment.driver_paid || 0);
+  const driverRemaining = Math.max(0, driverTotal - driverPaid);
+  const payState = shipment.driver_payment_state
+    ?? (driverRemaining <= 0.01 ? "paid" : driverPaid > 0 ? "partial" : "unpaid");
 
   return (
     <tr className="bg-blue-50/30 border-b border-blue-100/40 last:border-0">
@@ -49,25 +55,44 @@ function ShipmentRow({ shipment }) {
 
       {}
       <td className="py-3 pr-4">
-        <MoneyText
-          amount={shipment.actual_price || shipment.cargo_fee}
-          className="text-xs font-semibold text-gray-700"
-        />
+        <div className="flex flex-col gap-0.5">
+          <MoneyText
+            amount={Number(shipment.actual_price || shipment.cargo_fee || 0) + Number(shipment.pass_through_total || 0)}
+            className="text-xs font-semibold text-gray-700"
+          />
+          {Number(shipment.pass_through_total) > 0 && (
+            <span className="text-[10px] text-gray-400">
+              gồm chi hộ <MoneyText amount={shipment.pass_through_total} />
+            </span>
+          )}
+        </div>
       </td>
 
       {}
       <td className="py-3 pr-4">
-        {shipment.driver_total ? (
+        {driverTotal > 0 ? (
           <div className="flex items-center gap-1">
-            {settled
+            {payState === "paid"
               ? <RiCheckboxCircleLine size={13} className="text-emerald-500" />
-              : <RiTimeLine size={13} className="text-amber-500" />
+              : <RiTimeLine size={13} className={payState === "partial" ? "text-orange-500" : "text-amber-500"} />
             }
             <div className="flex flex-col">
-              <span className={`text-[11px] font-semibold ${settled ? "text-emerald-600" : "text-amber-600"}`}>
-                {settled ? "Đã nộp" : "Chưa nộp"}
+              <span className={`text-[11px] font-semibold ${
+                payState === "paid" ? "text-emerald-600"
+                  : payState === "partial" ? "text-orange-600"
+                  : "text-amber-600"
+              }`}>
+                {payState === "paid" ? "Đã nộp đủ"
+                  : payState === "partial" ? "Nộp 1 phần"
+                  : "Chưa nộp"}
               </span>
-              <MoneyText amount={shipment.driver_total} className="text-[10px] text-gray-400" />
+              {payState === "partial" ? (
+                <span className="text-[10px] text-gray-400">
+                  đã nộp <MoneyText amount={driverPaid} /> · còn <MoneyText amount={driverRemaining} />
+                </span>
+              ) : (
+                <MoneyText amount={driverTotal} className="text-[10px] text-gray-400" />
+              )}
             </div>
           </div>
         ) : (

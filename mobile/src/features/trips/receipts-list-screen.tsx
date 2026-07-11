@@ -80,12 +80,13 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
                             Đơn #{item.order_id}
                         </Text>
                         <YStack alignItems="flex-end" gap={1}>
+                            {/* amount đã gồm cước + chi hộ khách (backend chốt khi duyệt) */}
                             <Text fontSize={15} fontWeight="900" color={statusCfg.color}>
-                                {fmtMoney(Number(item.amount) + Number(item.total_expenses ?? 0))}
+                                {fmtMoney(Number(item.amount))}
                             </Text>
-                            {Number(item.total_expenses) > 0 ? (
+                            {Number(item.pass_through_total) > 0 ? (
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>
-                                    {fmtMoney(item.amount)} + {fmtMoney(item.total_expenses)} CP
+                                    gồm chi hộ {fmtMoney(item.pass_through_total)}
                                 </Text>
                             ) : null}
                         </YStack>

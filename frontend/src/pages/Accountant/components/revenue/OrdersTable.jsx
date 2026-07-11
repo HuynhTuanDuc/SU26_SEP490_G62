@@ -75,10 +75,15 @@ function OrderRow({ order, isExpanded, onToggle, shipments, isLoadingShipments, 
         <td className="py-3.5 pr-4">
           <div className="flex flex-col gap-0.5">
             <MoneyText
-              amount={order.actual_price || order.estimated_price}
+              amount={order.final_price ?? (order.actual_price || order.estimated_price)}
               className="text-sm font-bold text-gray-800"
             />
-            {order.actual_price == null && Number(order.estimated_price) > 0 && (
+            {Number(order.pass_through_total) > 0 && order.final_price != null && (
+              <span className="text-[10px] text-gray-400">
+                gồm chi hộ <MoneyText amount={order.pass_through_total} />
+              </span>
+            )}
+            {order.final_price == null && Number(order.estimated_price) > 0 && (
               <span className="text-[10px] text-gray-400 italic">ước tính</span>
             )}
           </div>

@@ -1287,6 +1287,17 @@ const retireVehicle = async ({ vehicleId, managerId, note = null }) => {
             [vehicleId],
         );
 
+        if (vehicle.assigned_driver_id) {
+            await insertVehicleAssignmentHistory({
+                vehicleId,
+                driverId: null,
+                previousDriverId: vehicle.assigned_driver_id,
+                action: 'unassign',
+                note: 'Bỏ gán do xe ngừng hoạt động (retired)',
+                createdBy: managerId,
+            }, client);
+        }
+
         await client.query(
             `INSERT INTO vehicle_status_history (
                 vehicle_id,
@@ -1363,23 +1374,71 @@ const updateMaintenanceCost = async (maintenanceRecordId, cost, db = pool) => {
     return result.rows[0] ?? null;
 };
 
-const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = pool) => {
+const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = pool, statuses = ['open']) => {
     const result = await db.query(
         `SELECT id, vehicle_id, performed_by, status, bill_pics, cost, created_by
          FROM maintenance_records
          WHERE vehicle_id = $1
            AND performed_by = $2
-           AND status = 'open'
+           AND status = ANY($3)
          ORDER BY started_at DESC, id DESC
          LIMIT 1`,
-        [vehicleId, driverId],
+        [vehicleId, driverId, statuses],
     );
     return result.rows[0] ?? null;
 };
 
+// ─── Vehicle driver assignment history ───────────────────────────────────────
+
+const insertVehicleAssignmentHistory = async ({
+    vehicleId, driverId = null, previousDriverId = null, action, note = null, createdBy = null,
+}, db = pool) => {
+    await db.query(
+        `INSERT INTO vehicle_driver_assignments
+            (vehicle_id, driver_id, previous_driver_id, action, note, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [vehicleId, driverId, previousDriverId, action, note, createdBy],
+    );
+};
+
+const getVehicleAssignmentHistory = async (vehicleId, db = pool) => {
+    const result = await db.query(
+        `SELECT vda.id, vda.vehicle_id, vda.action, vda.note, vda.created_at,
+                vda.driver_id, p_driver.full_name AS driver_name,
+                vda.previous_driver_id, p_prev.full_name AS previous_driver_name,
+                vda.created_by, p_by.full_name AS created_by_name
+         FROM vehicle_driver_assignments vda
+         LEFT JOIN profiles p_driver ON p_driver.id = vda.driver_id
+         LEFT JOIN profiles p_prev   ON p_prev.id   = vda.previous_driver_id
+         LEFT JOIN profiles p_by     ON p_by.id     = vda.created_by
+         WHERE vda.vehicle_id = $1
+         ORDER BY vda.created_at DESC, vda.id DESC`,
+        [vehicleId],
+    );
+    return result.rows;
+};
+
+const getDriverAssignmentHistory = async (driverId, db = pool) => {
+    const result = await db.query(
+        `SELECT vda.id, vda.action, vda.note, vda.created_at,
+                vda.vehicle_id, v.plate_number, v.brand, v.model,
+                vg.name AS vehicle_group_name,
+                vda.created_by, p_by.full_name AS created_by_name
+         FROM vehicle_driver_assignments vda
+         JOIN vehicles v ON v.id = vda.vehicle_id
+         LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+         LEFT JOIN profiles p_by ON p_by.id = vda.created_by
+         WHERE vda.driver_id = $1
+            OR (vda.action = 'unassign' AND vda.previous_driver_id = $1)
+         ORDER BY vda.created_at DESC, vda.id DESC`,
+        [driverId],
+    );
+    return result.rows;
+};
+
 // ─── Maintenance request (driver gửi yêu cầu, manager duyệt) ─────────────────
 
-const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, reason }) => {
+const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, reason, billPics = [] }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1396,12 +1455,12 @@ const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, 
         const result = await client.query(
             `INSERT INTO maintenance_records (
                 vehicle_id, maintenance_type, description, maintenance_date,
-                performed_by, status, requested_by, request_reason,
+                performed_by, status, requested_by, request_reason, bill_pics,
                 started_at, created_at, updated_at
             )
-            VALUES ($1, $2, $3, CURRENT_DATE, $4, 'requested', $4, $5, NOW(), NOW(), NOW())
+            VALUES ($1, $2, $3, CURRENT_DATE, $4, 'requested', $4, $5, $6::jsonb, NOW(), NOW(), NOW())
             RETURNING id`,
-            [vehicleId, maintenanceType, reason, driverId, reason],
+            [vehicleId, maintenanceType, reason, driverId, reason, JSON.stringify(billPics ?? [])],
         );
 
         await client.query('COMMIT');
@@ -1550,4 +1609,7 @@ module.exports = {
     listMaintenanceRequests,
     approveMaintenanceRequest,
     rejectMaintenanceRequest,
+    insertVehicleAssignmentHistory,
+    getVehicleAssignmentHistory,
+    getDriverAssignmentHistory,
 };

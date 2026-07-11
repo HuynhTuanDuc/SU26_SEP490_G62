@@ -206,14 +206,14 @@ function MaintenanceCard({
                         </YStack>
                         )}
 
-                        {/* Bill images */}
-                        {!isRequested && !isRejected && (
+                        {/* Bill images — cho phép thêm ảnh cả khi đang chờ duyệt */}
+                        {!isRejected && (
                         <YStack gap={8}>
                             <XStack justifyContent="space-between" alignItems="center">
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    Hóa đơn ({record.bill_pics.length} ảnh)
+                                    {isRequested ? 'Chứng từ' : 'Hóa đơn'} ({record.bill_pics.length} ảnh)
                                 </Text>
-                                {isOpen && (
+                                {(isOpen || isRequested) && (
                                     <Pressable
                                         style={[s.uploadBtn, uploading && { opacity: 0.6 }]}
                                         onPress={() => setShowCamera(true)}
@@ -241,9 +241,9 @@ function MaintenanceCard({
                                 </XStack>
                             )}
 
-                            {isOpen && record.bill_pics.length === 0 && (
+                            {(isOpen || isRequested) && record.bill_pics.length === 0 && (
                                 <Text fontSize={12} color={appTheme.colors.textMuted} style={{ fontStyle: 'italic' }}>
-                                    Chưa có ảnh hóa đơn
+                                    Chưa có ảnh chứng từ
                                 </Text>
                             )}
                         </YStack>
@@ -301,6 +301,8 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
 }) {
     const [type,   setType]   = useState<MaintenanceType>('scheduled');
     const [reason, setReason] = useState('');
+    const [billUris, setBillUris] = useState<string[]>([]);
+    const [showCamera, setShowCamera] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -312,7 +314,7 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
         setIsSubmitting(true);
         setError(null);
         try {
-            await maintenanceService.requestMaintenance({ maintenance_type: type, reason: reason.trim() });
+            await maintenanceService.requestMaintenance({ maintenance_type: type, reason: reason.trim(), billUris });
             Alert.alert('Đã gửi yêu cầu', 'Quản lý sẽ xem xét và duyệt yêu cầu bảo dưỡng của bạn.', [
                 { text: 'Đóng', onPress: onSuccess },
             ]);
@@ -322,6 +324,17 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
             setIsSubmitting(false);
         }
     };
+
+    if (showCamera) {
+        return (
+            <CameraModal
+                visible
+                label="Chụp chứng từ / báo giá"
+                onCapture={(uri) => { setBillUris((prev) => [...prev, uri]); setShowCamera(false); }}
+                onClose={() => setShowCamera(false)}
+            />
+        );
+    }
 
     return (
         <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -370,6 +383,29 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
                         placeholderTextColor={appTheme.colors.textMuted}
                         multiline
                     />
+
+                    <XStack justifyContent="space-between" alignItems="center" marginTop={14} marginBottom={8}>
+                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>
+                            Ảnh chứng từ ({billUris.length}) — không bắt buộc
+                        </Text>
+                        <Pressable style={s2.typeChip} onPress={() => setShowCamera(true)} disabled={billUris.length >= 5}>
+                            <Text fontSize={12} fontWeight="700" color={appTheme.colors.primary}>
+                                {billUris.length >= 5 ? 'Tối đa 5 ảnh' : '+ Chụp ảnh'}
+                            </Text>
+                        </Pressable>
+                    </XStack>
+                    {billUris.length > 0 ? (
+                        <XStack flexWrap="wrap" gap={8}>
+                            {billUris.map((uri, i) => (
+                                <Pressable
+                                    key={i}
+                                    onLongPress={() => setBillUris((prev) => prev.filter((_, j) => j !== i))}
+                                >
+                                    <Image source={{ uri }} style={s2.billThumb} />
+                                </Pressable>
+                            ))}
+                        </XStack>
+                    ) : null}
 
                     {error ? (
                         <Text fontSize={12} color={appTheme.colors.dangerText} marginTop={8}>{error}</Text>
@@ -599,4 +635,10 @@ const s2 = StyleSheet.create({
         borderColor: appTheme.colors.border,
     },
     confirmBtn: { backgroundColor: appTheme.colors.primary },
+    billThumb: {
+        width: 64,
+        height: 64,
+        borderRadius: 10,
+        backgroundColor: appTheme.colors.border,
+    },
 });

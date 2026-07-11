@@ -145,6 +145,15 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                     />
                 ) : null}
 
+                {Number(e.holiday_bonus) > 0 ? (
+                    <SalaryRow
+                        label="Đi làm ngày lễ (200%)"
+                        value={`+ ${fmtMoney(e.holiday_bonus)}`}
+                        sub={`${e.holiday_days_worked} ngày lễ có chuyến hoàn thành`}
+                        tone="positive"
+                    />
+                ) : null}
+
                 {Number(e.bonus_welfare_total) > 0 ? (
                     <SalaryRow
                         label="Thưởng & Phúc lợi"
@@ -226,8 +235,10 @@ function PayrollCard({ p }: { p: Payroll }) {
     const badge = PAYROLL_STATUS[p.status] ?? PAYROLL_STATUS.pending;
     const [expanded, setExpanded] = useState(false);
 
-    // overtime_bonus là snapshot tổng Thưởng & phúc lợi (driver_bonuses approved trong kỳ)
-    const welfareBonus = Number(p.overtime_bonus) + Number(p.holiday_bonus) + Number(p.other_bonus);
+    // overtime_bonus = snapshot Thưởng & phúc lợi; holiday_bonus = đi làm lễ 200%; other_bonus = phụ cấp ĐT
+    const welfareBonus = Number(p.overtime_bonus);
+    const holidayBonus = Number(p.holiday_bonus);
+    const phoneAllowance = Number(p.other_bonus);
 
     return (
         <YStack
@@ -292,6 +303,13 @@ function PayrollCard({ p }: { p: Payroll }) {
                     {Number(p.top_driver_bonus) > 0 ? (
                         <SalaryRow label="Thưởng lái xe xuất sắc" value={`+ ${fmtMoney(p.top_driver_bonus)}`} tone="positive" />
                     ) : null}
+                    {holidayBonus > 0 ? (
+                        <SalaryRow
+                            label="Đi làm ngày lễ (200%)"
+                            value={`+ ${fmtMoney(holidayBonus)}`}
+                            tone="positive"
+                        />
+                    ) : null}
                     {welfareBonus > 0 ? (
                         <SalaryRow
                             label="Thưởng & Phúc lợi"
@@ -299,6 +317,9 @@ function PayrollCard({ p }: { p: Payroll }) {
                             sub="Tết, hiếu hỉ, thưởng đặc biệt..."
                             tone="positive"
                         />
+                    ) : null}
+                    {phoneAllowance > 0 ? (
+                        <SalaryRow label="Phụ cấp điện thoại" value={`+ ${fmtMoney(phoneAllowance)}`} tone="positive" />
                     ) : null}
                     <SalaryRow label="Tổng thu nhập" value={fmtMoney(p.gross_salary)} bold />
                     <SalaryRow label="BHXH người lao động" value={`- ${fmtMoney(p.insurance_employee)}`} tone="negative" />

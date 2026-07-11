@@ -45,6 +45,8 @@ export type PayrollEstimate = {
     phone_allowance: string;
     kpi_bonus: string;
     top_driver_bonus: string;
+    holiday_bonus: string;
+    holiday_days_worked: number;
     bonus_welfare_total: string;
     insurance_employee: string;
     insurance_salary_base: string;

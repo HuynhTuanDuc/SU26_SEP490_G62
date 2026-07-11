@@ -73,7 +73,7 @@ const getVehicleDetail = async (req, res) => {
 
 const createVehicle = async (req, res) => {
     try {
-        const vehicle = await vehicleManagementService.createVehicle(req.body);
+        const vehicle = await vehicleManagementService.createVehicle(req.body, req.user.userId);
         res.status(201).json({ message: 'Vehicle created successfully', vehicle });
     } catch (err) {
         handleError(res, err);
@@ -82,7 +82,7 @@ const createVehicle = async (req, res) => {
 
 const updateVehicle = async (req, res) => {
     try {
-        const vehicle = await vehicleManagementService.updateVehicle(req.params.id, req.body);
+        const vehicle = await vehicleManagementService.updateVehicle(req.params.id, req.body, req.user.userId);
         res.json({ message: 'Vehicle updated successfully', vehicle });
     } catch (err) {
         handleError(res, err);
@@ -154,7 +154,7 @@ const retireVehicle = async (req, res) => {
 
 const setVehicleDriverAssignment = async (req, res) => {
     try {
-        const vehicle = await vehicleManagementService.setVehicleDriverAssignment(req.params.id, req.body);
+        const vehicle = await vehicleManagementService.setVehicleDriverAssignment(req.params.id, req.body, req.user.userId);
         res.json({ message: 'Vehicle driver assignment updated successfully', vehicle });
     } catch (err) {
         handleError(res, err);
@@ -174,6 +174,15 @@ const listAssignableDrivers = async (req, res) => {
     try {
         const drivers = await vehicleManagementService.listAssignableDrivers(req.query.vehicle_id ?? null);
         res.json({ drivers });
+    } catch (err) {
+        handleError(res, err);
+    }
+};
+
+const getVehicleAssignmentHistory = async (req, res) => {
+    try {
+        const history = await vehicleManagementService.getVehicleAssignmentHistory(req.params.id);
+        res.json({ history });
     } catch (err) {
         handleError(res, err);
     }
@@ -229,4 +238,5 @@ module.exports = {
     listMaintenanceRequests,
     approveMaintenanceRequest,
     rejectMaintenanceRequest,
+    getVehicleAssignmentHistory,
 };

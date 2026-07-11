@@ -17,6 +17,11 @@ function handleUpload(middleware) {
     };
 }
 
+// Accountant / Manager — hàng chờ tài xế báo nộp tiền + xác nhận / từ chối
+router.get('/repayments/pending',              financeRoles, debtController.getPendingRepayments);
+router.patch('/repayments/:paymentId/confirm', financeRoles, debtController.confirmRepayment);
+router.patch('/repayments/:paymentId/reject',  financeRoles, debtController.rejectRepayment);
+
 // Driver endpoints
 router.get('/me',                             driverOnly, debtController.getMyDebts);
 router.get('/summary',                        driverOnly, debtController.getMyDebtSummary);

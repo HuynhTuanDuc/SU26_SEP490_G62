@@ -61,18 +61,25 @@ const updateExpense = async (expenseId, driverId, { expenseType, amount, descrip
              WHERE e.id = $1
                AND e.created_by = $2
                AND orr.driver_id = $2
-               AND orr.status = 'rejected'`,
+               AND orr.status = 'rejected'
+               AND e.status != 'approved'`,
             [expenseId, driverId],
         );
-        if (!check.rows[0]) throw new Error('Chỉ được sửa chi phí khi yêu cầu phiếu thu bị từ chối');
+        if (!check.rows[0]) throw new Error('Chỉ được sửa chi phí khi yêu cầu phiếu thu bị từ chối và chi phí chưa được duyệt');
 
+        // Sửa xong quay về 'pending' để coordinator duyệt lại cùng phiếu thu
+        // (nếu giữ 'rejected' thì khoản đã sửa sẽ không bao giờ được tính lại)
         await client.query(
             `UPDATE expenses
-             SET expense_type = COALESCE($1, expense_type),
-                 amount       = COALESCE($2, amount),
-                 description  = COALESCE($3, description),
-                 updated_by   = $4,
-                 updated_at   = NOW()
+             SET expense_type  = COALESCE($1, expense_type),
+                 amount        = COALESCE($2, amount),
+                 description   = COALESCE($3, description),
+                 status        = 'pending',
+                 reject_reason = NULL,
+                 reviewed_by   = NULL,
+                 reviewed_at   = NULL,
+                 updated_by    = $4,
+                 updated_at    = NOW()
              WHERE id = $5`,
             [expenseType ?? null, amount ? Number(amount) : null, description ?? null, driverId, expenseId],
         );

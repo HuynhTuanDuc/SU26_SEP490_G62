@@ -180,23 +180,23 @@ const recordPaymentWithOverflow = async (orderId, paymentData) => {
         await _ensureCustomerDebt(client, orderId, paymentData.createdBy);
 
         // 3. Khoá và load TẤT CẢ công nợ chưa thanh toán của khách
+        // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
         const { rows: debts } = await client.query(
             `SELECT
-                d.id                                                                       AS debt_id,
+                d.id             AS debt_id,
                 d.order_id,
                 d.total_amount,
-                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)         AS paid_amount,
-                GREATEST(0,
-                    d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                )                                                                          AS remaining
+                paid.paid        AS paid_amount,
+                GREATEST(0, d.total_amount - paid.paid) AS remaining
              FROM debts d
-             LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid
+                 FROM debt_payments dp
+                 WHERE dp.debt_id = d.id
+             ) paid ON TRUE
              WHERE d.customer_id = $1
                AND d.debt_type = 'customer'
-             GROUP BY d.id, d.order_id, d.total_amount
-             HAVING GREATEST(0,
-                d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-             ) > 0.01
+               AND GREATEST(0, d.total_amount - paid.paid) > 0.01
              ORDER BY d.created_at ASC, d.id ASC
              FOR UPDATE OF d`,
             [customerId]
@@ -440,17 +440,21 @@ const allocatePayment = async (personType, personId, paymentData) => {
         const personField = personType === 'driver' ? 'd.driver_id' : 'd.customer_id';
         const debtType    = personType === 'driver'  ? 'driver'    : 'customer';
 
+        // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
         const { rows: debts } = await client.query(
             `SELECT
                 d.id AS debt_id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id,
-                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid_amount,
-                GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) AS remaining
+                paid.paid AS paid_amount,
+                GREATEST(0, d.total_amount - paid.paid) AS remaining
              FROM debts d
-             LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid
+                 FROM debt_payments dp
+                 WHERE dp.debt_id = d.id
+             ) paid ON TRUE
              WHERE ${personField} = $1
                AND d.debt_type = $2
-             GROUP BY d.id, d.total_amount, d.driver_id, d.customer_id, d.shipment_id
-             HAVING GREATEST(0, d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)) > 0.01
+               AND GREATEST(0, d.total_amount - paid.paid) > 0.01
              ORDER BY d.created_at ASC
              FOR UPDATE OF d`,
             [personId, debtType]
@@ -543,7 +547,13 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
 
         if (!existing) {
             const { rows: [s] } = await client.query(
-                `SELECT os.actual_price, os.estimated_price, sc.owner_driver_id, o.id AS order_id
+                `SELECT os.actual_price, os.estimated_price, sc.owner_driver_id, o.id AS order_id,
+                        COALESCE((
+                            SELECT SUM(e.amount) FROM expenses e
+                            WHERE e.shipment_id = os.id
+                              AND e.status != 'rejected'
+                              AND e.expense_type IN ('toll', 'parking', 'etc')
+                        ), 0) AS pass_through_total
                  FROM order_shipments os
                  JOIN orders o ON o.id = os.order_id
                  LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
@@ -552,7 +562,8 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
             );
             if (!s) throw new Error('KhÃ´ng tÃ¬m tháº¥y chuyáº¿n xe');
 
-            const shipmentPrice = Number(s.actual_price || s.estimated_price) || 0;
+            // Nợ tài xế = số tiền tài xế đang cầm = cước + chi hộ khách
+            const shipmentPrice = (Number(s.actual_price || s.estimated_price) || 0) + Number(s.pass_through_total || 0);
             const { rows: [newDebt] } = await client.query(
                 `INSERT INTO debts (debt_type, driver_id, customer_id, partner_id, order_id, shipment_id, total_amount, updated_by, created_at, updated_at)
                  VALUES ('driver', $1, NULL, NULL, $2, $3, $4, $5, NOW(), NOW())

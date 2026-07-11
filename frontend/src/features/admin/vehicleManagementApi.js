@@ -65,6 +65,10 @@ export async function changeVehicleStatus(id, status) {
   });
 }
 
+export async function fetchVehicleAssignmentHistory(id) {
+  return apiRequest(`/api/admin/vehicles/${id}/assignment-history`);
+}
+
 export async function fetchMaintenanceRequests() {
   return apiRequest("/api/admin/maintenance-requests");
 }

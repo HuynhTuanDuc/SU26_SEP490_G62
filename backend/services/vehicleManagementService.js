@@ -333,7 +333,7 @@ const validateMaintenanceDriver = async (performedBy, { vehicle = null, currentP
     return parsedDriverId;
 };
 
-const createVehicle = async (payload) => {
+const createVehicle = async (payload, actorId = null) => {
     const requestedStatus = payload.status ? String(payload.status).trim() : 'active';
     if (!VEHICLE_STATUSES.includes(requestedStatus)) {
         throw createError(`status must be one of: ${VEHICLE_STATUSES.join(', ')}`, 400);
@@ -347,12 +347,22 @@ const createVehicle = async (payload) => {
         ...normalizedPayload,
         status: 'active',
     });
+    if (normalizedPayload.assigned_driver_id) {
+        await vehicleManagementRepository.insertVehicleAssignmentHistory({
+            vehicleId,
+            driverId: normalizedPayload.assigned_driver_id,
+            previousDriverId: null,
+            action: 'assign',
+            note: 'Gán tài xế khi tạo xe',
+            createdBy: actorId,
+        });
+    }
     const vehicle = await getVehicleDetail(vehicleId);
     broadcastManagerVehicleChange('created', vehicle);
     return vehicle;
 };
 
-const updateVehicle = async (vehicleId, payload) => {
+const updateVehicle = async (vehicleId, payload, actorId = null) => {
     const id = parsePositiveInteger(vehicleId, 'vehicle_id');
     const existingVehicle = await vehicleManagementRepository.getVehicleById(id);
     if (!existingVehicle) throw createError('Vehicle not found', 404);
@@ -378,6 +388,16 @@ const updateVehicle = async (vehicleId, payload) => {
     }
 
     await vehicleManagementRepository.updateVehicle(id, normalizedPayload);
+    if (driverAssignmentChanged) {
+        await vehicleManagementRepository.insertVehicleAssignmentHistory({
+            vehicleId: id,
+            driverId: normalizedPayload.assigned_driver_id ?? null,
+            previousDriverId: existingVehicle.assigned_driver_id ?? null,
+            action: normalizedPayload.assigned_driver_id ? 'assign' : 'unassign',
+            note: 'Thay đổi qua cập nhật thông tin xe',
+            createdBy: actorId,
+        });
+    }
     const vehicle = await getVehicleDetail(id);
     broadcastManagerVehicleChange('updated', vehicle);
     return vehicle;
@@ -711,7 +731,7 @@ const changeVehicleStatus = async (vehicleId, managerId, payload = {}) => {
     }
 };
 
-const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
+const setVehicleDriverAssignment = async (vehicleId, payload = {}, actorId = null) => {
     const id = parsePositiveInteger(vehicleId, 'vehicle_id');
     const existingVehicle = await vehicleManagementRepository.getVehicleById(id);
     if (!existingVehicle) throw createError('Vehicle not found', 404);
@@ -751,12 +771,28 @@ const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
         assigned_driver_id: nextAssignedDriverId,
     });
 
+    await vehicleManagementRepository.insertVehicleAssignmentHistory({
+        vehicleId: id,
+        driverId: nextAssignedDriverId,
+        previousDriverId: existingVehicle.assigned_driver_id ?? null,
+        action: isUnassignAction ? 'unassign' : 'assign',
+        note: null,
+        createdBy: actorId,
+    });
+
     const vehicle = await getVehicleDetail(id);
     broadcastManagerVehicleChange('driver_assignment_changed', vehicle);
     return vehicle;
 };
 
 const softDeleteVehicle = async (vehicleId, managerId) => retireVehicle(vehicleId, managerId, {});
+
+const getVehicleAssignmentHistory = async (vehicleId) => {
+    const id = parsePositiveInteger(vehicleId, 'vehicle_id');
+    const vehicle = await vehicleManagementRepository.getVehicleById(id);
+    if (!vehicle) throw createError('Vehicle not found', 404);
+    return vehicleManagementRepository.getVehicleAssignmentHistory(id);
+};
 
 const listAssignableDrivers = async (vehicleId = null) => {
     const currentVehicleId = vehicleId === null
@@ -812,6 +848,7 @@ module.exports = {
     restoreVehicle,
     retireVehicle,
     setVehicleDriverAssignment,
+    getVehicleAssignmentHistory,
     softDeleteVehicle,
     listAssignableDrivers,
 };

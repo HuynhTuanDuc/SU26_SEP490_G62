@@ -26,9 +26,12 @@ const getAllDrivers = async () => driverRepository.getAllDrivers();
 
 const getDriverVehicle = async (profileId) => driverRepository.getDriverVehicle(profileId);
 
+const getMyAssignmentHistory = async (driverId) =>
+    vehicleManagementRepository.getDriverAssignmentHistory(driverId);
+
 const MAINTENANCE_REQUEST_TYPES = ['scheduled', 'repair', 'inspection', 'emergency'];
 
-const requestMaintenance = async (driverId, payload) => {
+const requestMaintenance = async (driverId, payload, billUrls = []) => {
     const maintenanceType = payload?.maintenance_type;
     const reason = payload?.reason?.trim();
 
@@ -51,6 +54,7 @@ const requestMaintenance = async (driverId, payload) => {
             driverId,
             maintenanceType,
             reason,
+            billPics: billUrls,
         });
     } catch (err) {
         if (err.code === 'OPEN_MAINTENANCE_EXISTS') {
@@ -99,7 +103,10 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
         throw createError('Bill image is required', 400);
     }
 
-    const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
+    // Cho phép thêm bill cả khi yêu cầu bảo dưỡng còn chờ duyệt (requested)
+    const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(
+        parsedVehicleId, driverId, undefined, ['requested', 'open'],
+    );
     if (!record) {
         throw createError('Open maintenance record for this driver and vehicle was not found', 404);
     }
@@ -204,6 +211,7 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
 module.exports = {
     getAllDrivers,
     getDriverVehicle,
+    getMyAssignmentHistory,
     requestMaintenance,
     listMaintenanceForDriver,
     uploadMaintenanceBill,
