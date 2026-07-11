@@ -65,6 +65,28 @@ export async function changeVehicleStatus(id, status) {
   });
 }
 
+export async function fetchVehicleAssignmentHistory(id) {
+  return apiRequest(`/api/admin/vehicles/${id}/assignment-history`);
+}
+
+export async function fetchMaintenanceRequests() {
+  return apiRequest("/api/admin/maintenance-requests");
+}
+
+export async function approveMaintenanceRequest(id, payload = {}) {
+  return apiRequest(`/api/admin/maintenance-requests/${id}/approve`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function rejectMaintenanceRequest(id, payload) {
+  return apiRequest(`/api/admin/maintenance-requests/${id}/reject`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export async function sendVehicleToMaintenance(id, payload) {
   return apiRequest(`/api/admin/vehicles/${id}/send-to-maintenance`, {
     method: "POST",

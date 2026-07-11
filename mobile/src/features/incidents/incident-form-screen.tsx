@@ -32,9 +32,9 @@ import type { IncidentSeverity, IncidentType } from '@/types/incident';
 
 // Types allowed without a trip
 const FREE_TYPES: IncidentType[] = ['vehicle_breakdown', 'traffic_jam'];
-// All 5 types (when on an active trip)
+// All types (when on an active trip)
 const ALL_INCIDENT_TYPES: IncidentType[] = [
-    'vehicle_breakdown', 'cargo_damage', 'road_incident',
+    'vehicle_breakdown', 'cargo_damage',
     'customer_refusal', 'traffic_jam',
 ];
 const SEVERITIES: IncidentSeverity[] = ['low', 'medium', 'high', 'critical'];
@@ -43,7 +43,6 @@ const MAX_IMAGES = 3;
 const TYPE_ICON: Record<IncidentType, React.ReactNode> = {
     vehicle_breakdown: <Truck        size={22} color={appTheme.colors.danger}       />,
     cargo_damage:      <Package      size={22} color={appTheme.colors.warning}      />,
-    road_incident:     <AlertTriangle size={22} color={appTheme.colors.warningText} />,
     customer_refusal:  <X            size={22} color='#7C3AED'                      />,
     traffic_jam:       <Navigation   size={22} color={appTheme.colors.primary}      />,
 };
@@ -51,7 +50,6 @@ const TYPE_ICON: Record<IncidentType, React.ReactNode> = {
 const TYPE_BG: Record<IncidentType, string> = {
     vehicle_breakdown: '#FEF2F2',
     cargo_damage:      '#FFFBEB',
-    road_incident:     '#FFF7ED',
     customer_refusal:  '#F5F3FF',
     traffic_jam:       appTheme.colors.primarySoft,
 };
@@ -59,7 +57,6 @@ const TYPE_BG: Record<IncidentType, string> = {
 const TYPE_BORDER: Record<IncidentType, string> = {
     vehicle_breakdown: appTheme.colors.dangerBorder,
     cargo_damage:      appTheme.colors.warningBorder,
-    road_incident:     '#FED7AA',
     customer_refusal:  '#DDD6FE',
     traffic_jam:       appTheme.colors.primaryMuted,
 };
@@ -200,7 +197,7 @@ export function IncidentFormScreen() {
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
     const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
-    const isTrafficType    = incidentType === 'road_incident' || incidentType === 'traffic_jam';
+    const isTrafficType    = incidentType === 'traffic_jam';
     // Without a trip only free types are allowed
     const visibleTypes     = parsedShipmentId ? ALL_INCIDENT_TYPES : FREE_TYPES;
 
@@ -227,8 +224,8 @@ export function IncidentFormScreen() {
         setDuplicateId(null);
         clearError();
         setFieldErrors({});
-        // Tự động lấy GPS cho loại sự cố đường xá/giao thông
-        if (t === 'road_incident' || t === 'traffic_jam') {
+        // Tự động lấy GPS cho loại sự cố giao thông
+        if (t === 'traffic_jam') {
             void handleGetLocation();
         }
     };

@@ -100,6 +100,25 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id]);
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
+    // Đi làm ngày lễ = 200% lương (Điều V.1): lương cứng đã gồm 100% (lễ không trừ công),
+    // cộng thêm 100% lương ngày cho mỗi ngày lễ có chuyến hoàn thành
+    const { rows: [holidayRow] } = await client.query(`
+        SELECT COUNT(DISTINCT h.holiday_date)::int AS days
+        FROM company_holidays h
+        WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
+          AND EXTRACT(YEAR  FROM h.holiday_date) = $3
+          AND EXISTS (
+              SELECT 1
+              FROM order_shipments os
+              JOIN v_shipment_current sc ON sc.shipment_id = os.id
+              WHERE sc.owner_driver_id = $1
+                AND os.status = 'completed'
+                AND os.completed_at::date = h.holiday_date
+          )
+    `, [driver.driver_id, month, year]);
+    const holidayDaysWorked = Number(holidayRow?.days ?? 0);
+    const holidayBonus      = Math.round(baseSalary / WORKING_DAYS_PER_MONTH) * holidayDaysWorked;
+
     // Thưởng & phúc lợi đã duyệt trong kỳ, chờ chi qua lương (Tết, hiếu hỉ, đặc biệt...)
     // Chỉ tính 'approved' — khoản 'paid' là đã chi rồi, không cộng lại (tránh chi 2 lần)
     const { rows: [bonusRow] } = await client.query(`
@@ -112,7 +131,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id, month, year]);
     const bonusWelfareTotal = Number(bonusRow.total ?? 0);
 
-    const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + bonusWelfareTotal;
+    const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
     // proRatedBase đã phản ánh ngày nghỉ; DB computed net_salary dùng full baseSalary rồi trừ absence_penalty
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
     const netBeforeDebt= gross - BHXH_EMPLOYEE - advanceDeduction;
@@ -129,6 +148,8 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         revenueBonus,
         kpiBonus,
         topDriverBonus,
+        holidayBonus,
+        holidayDaysWorked,
         bonusWelfareTotal,
         phoneAllowance: PHONE_ALLOWANCE,
         advanceDeduction,
@@ -241,7 +262,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     $4, $5,
                     $6, $7, $8,
                     $9, $10,
-                    $11, 0, $12,
+                    $11, $18, $12,
                     $13, $14,
                     $15, $16,
                     $17, 0,
@@ -257,6 +278,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     kpi_bonus              = EXCLUDED.kpi_bonus,
                     top_driver_bonus       = EXCLUDED.top_driver_bonus,
                     overtime_bonus         = EXCLUDED.overtime_bonus,
+                    holiday_bonus          = EXCLUDED.holiday_bonus,
                     other_bonus            = EXCLUDED.other_bonus,
                     insurance_employee     = EXCLUDED.insurance_employee,
                     insurance_company      = EXCLUDED.insurance_company,
@@ -276,6 +298,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                 BHXH_EMPLOYEE, BHXH_COMPANY,
                 c.driverDebtDeduction, c.advanceDeduction,
                 c.absencePenalty,
+                c.holidayBonus,
             ]);
 
             if (!upserted) { skipped++; }
@@ -348,19 +371,19 @@ const markPayrollPaid = async (payrollId, accountantId) => {
         // 2. Cấn trừ công nợ tài xế đã khấu trừ vào lương → ghi debt_payments (FIFO nợ cũ nhất trước)
         const debtDeduction = Number(row.driver_debt_deduction ?? 0);
         if (debtDeduction > 0.01) {
+            // Postgres cấm FOR UPDATE + GROUP BY — tính tổng qua LATERAL để vẫn lock được dòng debts
             const { rows: openDebts } = await client.query(`
                 SELECT d.id AS debt_id,
-                       GREATEST(0,
-                           d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                       ) AS remaining
+                       GREATEST(0, d.total_amount - paid.paid) AS remaining
                 FROM debts d
-                LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+                LEFT JOIN LATERAL (
+                    SELECT COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid
+                    FROM debt_payments dp
+                    WHERE dp.debt_id = d.id
+                ) paid ON TRUE
                 WHERE d.driver_id = $1
                   AND d.debt_type = 'driver'
-                GROUP BY d.id, d.total_amount
-                HAVING GREATEST(0,
-                    d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                ) > 0.01
+                  AND GREATEST(0, d.total_amount - paid.paid) > 0.01
                 ORDER BY d.created_at ASC, d.id ASC
                 FOR UPDATE OF d
             `, [row.driver_id]);
@@ -397,7 +420,18 @@ const markPayrollPaid = async (payrollId, accountantId) => {
             }
         }
 
-        // 3. Ghi sổ chi lương
+        // 3. Ghi sổ hoàn ứng lương — tất toán TK 141 (đã ghi 141/1111 khi giải ngân)
+        if (Number(row.advance_deduction ?? 0) > 0) {
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'advance_recovered',
+                debitAccount: '334', creditAccount: '141',
+                amount: Number(row.advance_deduction),
+                description: `Hoàn ứng lương tháng ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
+                refType: 'payroll', refId: payrollId, actorId: accountantId,
+            });
+        }
+
+        // 4. Ghi sổ chi lương
         await financialLedgerRepository.insertTransaction(client, {
             eventType: 'payroll_paid',
             debitAccount: '334', creditAccount: '1111',

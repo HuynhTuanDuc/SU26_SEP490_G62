@@ -26,6 +26,69 @@ const getAllDrivers = async () => driverRepository.getAllDrivers();
 
 const getDriverVehicle = async (profileId) => driverRepository.getDriverVehicle(profileId);
 
+const getMyAssignmentHistory = async (driverId) =>
+    vehicleManagementRepository.getDriverAssignmentHistory(driverId);
+
+const MAINTENANCE_REQUEST_TYPES = ['scheduled', 'repair', 'inspection', 'emergency'];
+
+const requestMaintenance = async (driverId, payload, billUrls = []) => {
+    const maintenanceType = payload?.maintenance_type;
+    const reason = payload?.reason?.trim();
+
+    if (!MAINTENANCE_REQUEST_TYPES.includes(maintenanceType)) {
+        throw createError('Loại bảo dưỡng không hợp lệ', 400);
+    }
+    if (!reason) {
+        throw createError('Vui lòng nhập lý do yêu cầu bảo dưỡng', 400);
+    }
+
+    const vehicle = await driverRepository.getDriverVehicle(driverId);
+    if (!vehicle) {
+        throw createError('Tài xế chưa được phân công xe', 404);
+    }
+
+    let result;
+    try {
+        result = await vehicleManagementRepository.createMaintenanceRequest({
+            vehicleId: vehicle.id,
+            driverId,
+            maintenanceType,
+            reason,
+            billPics: billUrls,
+        });
+    } catch (err) {
+        if (err.code === 'OPEN_MAINTENANCE_EXISTS') {
+            throw createError('Xe đang có yêu cầu hoặc đợt bảo dưỡng chưa hoàn tất', 409);
+        }
+        throw err;
+    }
+
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.vehicles.changed',
+        action: 'maintenance_requested',
+        vehicleId: vehicle.id,
+        maintenanceRecordId: result.maintenanceId,
+    });
+
+    try {
+        const managerIds = await notificationService.getUserIdsByRole('manager');
+        if (managerIds.length > 0) {
+            await notificationService.createForUsers(managerIds, {
+                title: 'Yêu cầu bảo dưỡng xe',
+                message: `Tài xế yêu cầu bảo dưỡng xe ${vehicle.plate_number ?? ''}: ${reason}`,
+                type: 'MAINTENANCE_REQUESTED',
+                entityType: 'vehicle',
+                entityId: vehicle.id,
+                displayMode: 'alert',
+            });
+        }
+    } catch (err) {
+        console.error('[driverService] Không gửi được notification yêu cầu bảo dưỡng:', err.message);
+    }
+
+    return { maintenanceRecordId: result.maintenanceId };
+};
+
 const listMaintenanceForDriver = async (driverId) => {
     const records = await vehicleManagementRepository.getMaintenanceRecordsForDriver(driverId);
     return records;
@@ -40,7 +103,10 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
         throw createError('Bill image is required', 400);
     }
 
-    const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
+    // Cho phép thêm bill cả khi yêu cầu bảo dưỡng còn chờ duyệt (requested)
+    const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(
+        parsedVehicleId, driverId, undefined, ['requested', 'open'],
+    );
     if (!record) {
         throw createError('Open maintenance record for this driver and vehicle was not found', 404);
     }
@@ -145,6 +211,8 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
 module.exports = {
     getAllDrivers,
     getDriverVehicle,
+    getMyAssignmentHistory,
+    requestMaintenance,
     listMaintenanceForDriver,
     uploadMaintenanceBill,
     updateMaintenanceCost,

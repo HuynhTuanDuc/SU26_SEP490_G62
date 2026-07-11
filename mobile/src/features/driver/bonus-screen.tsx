@@ -46,6 +46,23 @@ const fmtDate = (iso: string | null) => {
     return new Date(iso).toLocaleDateString('vi-VN');
 };
 
+// Nhóm theo tháng tạo phiếu — tháng mới nhất trước, trong tháng phiếu mới nhất trước
+// (backend đã ORDER BY created_at DESC nên chỉ cần gom nhóm tuần tự)
+function groupByMonth(bonuses: DriverBonus[]): { key: string; label: string; items: DriverBonus[] }[] {
+    const groups: { key: string; label: string; items: DriverBonus[] }[] = [];
+    for (const b of bonuses) {
+        const d = new Date(b.created_at);
+        const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        const last = groups[groups.length - 1];
+        if (last && last.key === key) {
+            last.items.push(b);
+        } else {
+            groups.push({ key, label: `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`, items: [b] });
+        }
+    }
+    return groups;
+}
+
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: BonusStatus }) {
@@ -213,7 +230,16 @@ export default function BonusScreen() {
                             <AppText style={styles.emptyText}>Chưa có khoản thưởng nào</AppText>
                         </View>
                     ) : (
-                        bonuses.map((b) => <BonusCard key={b.id} bonus={b} />)
+                        groupByMonth(bonuses).map((group) => (
+                            <View key={group.key}>
+                                <XStack alignItems="center" gap="$2" mb="$2" mt="$1">
+                                    <AppText style={styles.monthHeader}>{group.label}</AppText>
+                                    <View style={styles.monthDivider} />
+                                    <AppText style={styles.monthCount}>{group.items.length} khoản</AppText>
+                                </XStack>
+                                {group.items.map((b) => <BonusCard key={b.id} bonus={b} />)}
+                            </View>
+                        ))
                     )}
                 </ScrollView>
             )}
@@ -269,5 +295,8 @@ const styles = StyleSheet.create({
     summaryLabel:   { fontSize: 12, color: '#6B7280', marginBottom: 4 },
     summaryValue:   { fontSize: 18, fontWeight: '700', color: '#111827' },
     emptyText:      { fontSize: 14, color: '#9CA3AF', marginTop: 12 },
+    monthHeader:    { fontSize: 13, fontWeight: '700', color: '#374151' },
+    monthDivider:   { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
+    monthCount:     { fontSize: 11, color: '#9CA3AF' },
     errorText:      { fontSize: 14, color: '#EF4444', textAlign: 'center' },
 });

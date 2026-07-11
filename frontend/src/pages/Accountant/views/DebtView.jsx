@@ -50,6 +50,175 @@ function isOverdue(due_date) {
   return due_date && new Date(due_date) < new Date();
 }
 
+const REPAY_METHOD_LABEL = {
+  cash:          "Tiền mặt",
+  bank_transfer: "Chuyển khoản",
+  offset:        "Cấn trừ",
+};
+
+// ─── Hàng chờ tài xế / khách báo nộp tiền ─────────────────────────────────────
+function PendingRepaymentsPanel({ onChanged }) {
+  const [items, setItems]           = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [actingId, setActingId]     = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [lightboxUrl, setLightboxUrl]   = useState(null);
+  const [error, setError]           = useState(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    accountantService.getPendingRepayments()
+      .then((data) => setItems(data.repayments ?? []))
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleConfirm = async (item) => {
+    setActingId(item.id);
+    setError(null);
+    try {
+      await accountantService.confirmRepayment(item.id);
+      load();
+      onChanged?.();
+    } catch (err) {
+      setError(err.message ?? "Xác nhận thất bại");
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) { setError("Cần nhập lý do từ chối"); return; }
+    setActingId(rejectTarget.id);
+    setError(null);
+    try {
+      await accountantService.rejectRepayment(rejectTarget.id, rejectReason.trim());
+      setRejectTarget(null);
+      setRejectReason("");
+      load();
+      onChanged?.();
+    } catch (err) {
+      setError(err.message ?? "Từ chối thất bại");
+    } finally {
+      setActingId(null);
+    }
+  };
+
+  if (!loading && items.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <RiTimeLine size={16} className="text-amber-500" />
+        <span className="text-sm font-bold text-amber-700">
+          Báo nộp tiền chờ xác nhận {items.length > 0 && `(${items.length})`}
+        </span>
+      </div>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      {loading ? (
+        <div className="flex justify-center py-3"><Spinner size="sm" /></div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {items.map((item) => (
+            <div key={item.id}
+              className="flex items-center gap-3 bg-white rounded-xl border border-amber-100 px-4 py-3">
+              {/* Ảnh chứng từ */}
+              {item.receipt_url ? (
+                <button
+                  onClick={() => setLightboxUrl(item.receipt_url)}
+                  className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 flex-shrink-0 hover:ring-2 hover:ring-blue-400"
+                >
+                  <img src={item.receipt_url} alt="Chứng từ" className="w-full h-full object-cover" />
+                </button>
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  <RiFileList3Line size={18} className="text-gray-300" />
+                </div>
+              )}
+
+              {/* Nội dung */}
+              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800 truncate">{item.driver_name}</span>
+                  <Chip size="sm" variant="flat"
+                    color={item.debt_type === "driver" ? "warning" : "primary"}
+                    className="text-[10px] h-4">
+                    {item.debt_type === "driver" ? "Tài xế nộp quỹ" : "Khách thanh toán"}
+                  </Chip>
+                </div>
+                <span className="text-[11px] text-gray-400">
+                  Nợ #{item.debt_id}{item.cargo_name ? ` · ${item.cargo_name}` : ""}
+                  {" · "}{REPAY_METHOD_LABEL[item.payment_method] ?? item.payment_method ?? "—"}
+                  {item.paid_at ? ` · ${new Date(item.paid_at).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+                </span>
+                {item.notes && <span className="text-[11px] text-gray-400 italic truncate">{item.notes}</span>}
+              </div>
+
+              <MoneyText amount={item.amount} className="text-sm font-bold text-gray-800 flex-shrink-0" />
+
+              {/* Thao tác */}
+              <div className="flex gap-2 flex-shrink-0">
+                <Button size="sm" color="success" variant="flat"
+                  isLoading={actingId === item.id}
+                  onPress={() => handleConfirm(item)}
+                  startContent={actingId !== item.id && <RiCheckboxCircleLine size={14} />}>
+                  Xác nhận
+                </Button>
+                <Button size="sm" color="danger" variant="light"
+                  isDisabled={actingId === item.id}
+                  onPress={() => { setRejectTarget(item); setRejectReason(""); }}>
+                  Từ chối
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox ảnh chứng từ */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 bg-black/80 z-[999] flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}>
+          <img src={lightboxUrl} alt="Chứng từ" className="max-w-full max-h-full rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+
+      {/* Modal từ chối */}
+      <Modal isOpen={Boolean(rejectTarget)} onClose={() => setRejectTarget(null)} size="sm">
+        <ModalContent>
+          <ModalHeader className="text-base">
+            Từ chối báo nộp tiền{rejectTarget ? ` — ${rejectTarget.driver_name}` : ""}
+          </ModalHeader>
+          <ModalBody>
+            <Input
+              label="Lý do từ chối"
+              value={rejectReason}
+              onValueChange={setRejectReason}
+              placeholder="VD: ảnh chứng từ không rõ, số tiền không khớp..."
+              isRequired
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={() => setRejectTarget(null)}>Huỷ</Button>
+            <Button color="danger" onPress={handleReject}
+              isLoading={actingId === rejectTarget?.id}
+              isDisabled={!rejectReason.trim()}>
+              Từ chối
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+    </div>
+  );
+}
+
 function DebtStatCard({ label, value, sub, icon: Icon, gradient, lightBg, text, border }) {
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow`}>
@@ -383,6 +552,9 @@ export function DebtView({ search = "" }) {
 
   return (
     <div className="flex flex-col gap-5">
+
+      {/* Hàng chờ tài xế / khách báo nộp tiền */}
+      <PendingRepaymentsPanel onChanged={refetch} />
 
       {}
       <div className="grid grid-cols-3 gap-4">

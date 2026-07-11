@@ -1007,14 +1007,22 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
             orr.id                                                             AS orr_id,
             orr.status                                                         AS request_status,
             ${RECEIPT_PAYMENT_TYPE_SQL}                                       AS payment_type,
+            -- sr.amount (đã gồm cước + chi hộ − trả trước, chốt khi duyệt);
+            -- fallback cho phiếu chưa duyệt / dữ liệu cũ: cước (thực tế/ước tính) − trả trước + chi hộ
             COALESCE(sr.amount,
-                (SELECT GREATEST(
-                    COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
+                GREATEST(
+                    (SELECT COALESCE(SUM(COALESCE(os2.actual_price, os2.estimated_price)), 0)
+                     FROM order_shipments os2
+                     WHERE os2.order_id = orr.order_id)
+                    - COALESCE(o.prepaid_amount, 0),
                     0
                 )
-                 FROM order_shipments os2
-                 WHERE os2.order_id = orr.order_id
-                   AND os2.actual_price IS NOT NULL)
+                + (SELECT COALESCE(SUM(e.amount), 0)
+                   FROM expenses e
+                   JOIN order_shipments os3 ON os3.id = e.shipment_id
+                   WHERE os3.order_id = orr.order_id
+                     AND e.status != 'rejected'
+                     AND e.expense_type IN ('toll', 'parking', 'etc'))
             )                                                                  AS amount,
             COALESCE(sr.collected_at, orr.processed_at, orr.requested_at)    AS collected_at,
             COALESCE(sr.notes, orr.coordinator_notes)                         AS notes,
@@ -1026,7 +1034,14 @@ const getDriverReceipts = async (driverId, { page = 1, limit = 20 } = {}) => {
             c.phone                                                            AS customer_phone,
             (SELECT COALESCE(SUM(e.amount), 0)
              FROM expenses e
-             WHERE e.shipment_id = orr.requesting_shipment_id)::text          AS total_expenses
+             WHERE e.shipment_id = orr.requesting_shipment_id
+               AND e.status != 'rejected')::text                              AS total_expenses,
+            (SELECT COALESCE(SUM(e.amount), 0)
+             FROM expenses e
+             JOIN order_shipments os4 ON os4.id = e.shipment_id
+             WHERE os4.order_id = orr.order_id
+               AND e.status != 'rejected'
+               AND e.expense_type IN ('toll', 'parking', 'etc'))::text        AS pass_through_total
          FROM order_receipt_requests orr
          JOIN orders o                   ON o.id  = orr.order_id
          LEFT JOIN shipment_receipts sr  ON sr.order_receipt_request_id = orr.id
@@ -1218,29 +1233,23 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 );
             }
             // Thanh toán một phần: phần còn thiếu → Customer Debt
+            // KHÔNG ghi FT: doanh thu (131/511) đã ghi đủ khi duyệt phiếu thu (shipment_revenue);
+            // phần phải thu còn lại đã nằm sẵn trên 131 — ghi thêm sẽ đội doanh thu.
             if (shortfall > 0.01 && rec.customer_id) {
-                const { rows: [shortfallDebt] } = await client.query(
+                await client.query(
                     `INSERT INTO debts (
                         debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                         total_amount, due_date, notes, updated_by, created_at, updated_at
                     )
                      VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
                         CURRENT_DATE + INTERVAL '30 days',
-                        $5, $6, NOW(), NOW())
-                     RETURNING id`,
+                        $5, $6, NOW(), NOW())`,
                     [
                         rec.customer_id, rec.order_id, rec.shipment_id, shortfall,
                         `Khách chưa trả đủ — còn thiếu (đã trả ${totalCollected.toLocaleString('vi-VN')}đ / tổng ${receiptAmount.toLocaleString('vi-VN')}đ)`,
                         driverId,
                     ],
                 );
-                await financialLedgerRepository.insertTransaction(client, {
-                    eventType: 'customer_debt_created',
-                    debitAccount: '131', creditAccount: '511',
-                    amount: shortfall,
-                    description: `Khách trả thiếu tiền mặt — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
-                    refType: 'debt', refId: shortfallDebt.id, actorId: driverId,
-                });
             }
         } else if (paymentType === 'bank_transfer') {
             // Khách chuyển khoản về công ty → lưu bằng chứng, không tạo debt
@@ -1252,7 +1261,8 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
             }
         } else if (paymentType === 'client_credit') {
             // Khách nợ công ty → Customer Debt
-            const { rows: [creditDebt] } = await client.query(
+            // KHÔNG ghi FT: doanh thu đã ghi khi duyệt phiếu thu — nợ theo dõi ở bảng debts.
+            await client.query(
                 `INSERT INTO debts (
                     debt_type, driver_id, customer_id, partner_id, order_id, shipment_id,
                     total_amount, due_date, notes, updated_by, created_at, updated_at
@@ -1260,36 +1270,28 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                  VALUES ('customer', NULL, $1, NULL, $2, $3, $4,
                     CURRENT_DATE + INTERVAL '30 days',
                     'Khách hàng chưa thanh toán — ghi nhận công nợ',
-                    $5, NOW(), NOW())
-                 RETURNING id`,
+                    $5, NOW(), NOW())`,
                 [rec.customer_id, rec.order_id, rec.shipment_id, receiptAmount, driverId],
             );
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: 'customer_debt_created',
-                debitAccount: '131', creditAccount: '511',
-                amount: receiptAmount,
-                description: `Khách ghi nợ — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
-                refType: 'debt', refId: creditDebt.id, actorId: driverId,
-            });
         }
 
         // Phần thừa → tự động phân bổ vào nợ cũ của khách (oldest → newest)
         // Áp dụng cho cash_collected khi khách trả thừa để thanh toán nợ cũ
         if (excessAmount >= 0.01 && rec.customer_id && paymentType === 'cash_collected') {
+            // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
             const { rows: oldDebts } = await client.query(
                 `SELECT d.id AS debt_id,
-                        GREATEST(0,
-                            d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                        ) AS remaining
+                        GREATEST(0, d.total_amount - paid.paid) AS remaining
                  FROM debts d
-                 LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+                 LEFT JOIN LATERAL (
+                     SELECT COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid
+                     FROM debt_payments dp
+                     WHERE dp.debt_id = d.id
+                 ) paid ON TRUE
                  WHERE d.customer_id = $1
                    AND d.debt_type = 'customer'
                    AND d.order_id != $2
-                 GROUP BY d.id, d.total_amount
-                 HAVING GREATEST(0,
-                     d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                 ) > 0.01
+                   AND GREATEST(0, d.total_amount - paid.paid) > 0.01
                  ORDER BY d.created_at ASC, d.id ASC
                  FOR UPDATE OF d`,
                 [rec.customer_id, rec.order_id],
@@ -1309,13 +1311,15 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 }
                 if (ids.length > 0) {
                     // status = 'pending': tiền thừa driver đang cầm, phải chờ kế toán xác nhận
-                    // mới được ghi giảm nợ khách (driver không tự confirm — permission matrix)
+                    // mới được ghi giảm nợ khách (driver không tự confirm — permission matrix).
+                    // method = 'offset': tiền đã nằm trong nợ tài xế (driver_debt_created) —
+                    // khi confirm KHÔNG ghi thêm FT tiền mặt (tránh đếm trùng).
                     await client.query(
                         `INSERT INTO debt_payments
                              (debt_id, amount, payment_method, status,
                               paid_at, created_by, notes)
                          SELECT unnest($1::int[]), unnest($2::numeric[]),
-                                'cash', 'pending', NOW(), $3, $4`,
+                                'offset', 'pending', NOW(), $3, $4`,
                         [
                             ids, amounts,
                             driverId,

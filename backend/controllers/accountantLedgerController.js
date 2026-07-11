@@ -3,6 +3,7 @@ const financialLedgerRepository = require('../repositories/financialLedgerReposi
 const EVENT_TYPE_LABEL = {
     shipment_revenue:      'Doanh thu chuyến',
     prepaid_received:      'Khách ứng trước',
+    prepaid_refunded:      'Hoàn tiền ứng trước',
     cash_receipt:          'Thu tiền mặt',
     bank_receipt:          'Thu chuyển khoản',
     driver_debt_created:   'Phát sinh nợ tài xế',
@@ -12,7 +13,9 @@ const EVENT_TYPE_LABEL = {
     pass_through_cost:     'Chi hộ khách',
     expense_recorded:      'Chi phí vận hành',
     payroll_paid:          'Chi lương',
+    bonus_paid:            'Chi thưởng ngoài kỳ',
     advance_disbursed:     'Giải ngân ứng lương',
+    advance_recovered:     'Hoàn ứng lương',
 };
 
 // GET /api/accountant/ledger?event_type=&from=&to=&exported=&page=&pageSize=

@@ -70,6 +70,19 @@ export const accountantService = {
   paymentByDebt: (data) =>
     apiRequest(`${BASE}/debts/payment/by-debt`, { method: "POST", body: data }),
 
+  // ─── Tài xế báo nộp tiền — hàng chờ xác nhận ─────────────────────────────────
+  getPendingRepayments: () =>
+    apiRequest("/api/debts/repayments/pending"),
+
+  confirmRepayment: (paymentId) =>
+    apiRequest(`/api/debts/repayments/${paymentId}/confirm`, { method: "PATCH" }),
+
+  rejectRepayment: (paymentId, reason) =>
+    apiRequest(`/api/debts/repayments/${paymentId}/reject`, {
+      method: "PATCH",
+      body: { reason },
+    }),
+
   getReportOverview: (months = 6) =>
     apiRequest(`${BASE}/reports/overview?months=${months}`),
 

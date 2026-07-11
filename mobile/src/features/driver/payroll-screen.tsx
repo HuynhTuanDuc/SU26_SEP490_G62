@@ -145,6 +145,15 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                     />
                 ) : null}
 
+                {Number(e.holiday_bonus) > 0 ? (
+                    <SalaryRow
+                        label="Đi làm ngày lễ (200%)"
+                        value={`+ ${fmtMoney(e.holiday_bonus)}`}
+                        sub={`${e.holiday_days_worked} ngày lễ có chuyến hoàn thành`}
+                        tone="positive"
+                    />
+                ) : null}
+
                 {Number(e.bonus_welfare_total) > 0 ? (
                     <SalaryRow
                         label="Thưởng & Phúc lợi"
@@ -224,47 +233,112 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
 
 function PayrollCard({ p }: { p: Payroll }) {
     const badge = PAYROLL_STATUS[p.status] ?? PAYROLL_STATUS.pending;
+    const [expanded, setExpanded] = useState(false);
+
+    // overtime_bonus = snapshot Thưởng & phúc lợi; holiday_bonus = đi làm lễ 200%; other_bonus = phụ cấp ĐT
+    const welfareBonus = Number(p.overtime_bonus);
+    const holidayBonus = Number(p.holiday_bonus);
+    const phoneAllowance = Number(p.other_bonus);
+
     return (
-        <XStack
-            padding={16} borderRadius={appTheme.radius.lg}
+        <YStack
+            borderRadius={appTheme.radius.lg}
             backgroundColor={appTheme.colors.surface}
             borderWidth={1} borderColor={badge.border}
-            alignItems="center" gap={12}
+            overflow="hidden"
         >
-            <XStack
-                width={44} height={44} borderRadius={16}
-                backgroundColor={badge.bg}
-                alignItems="center" justifyContent="center"
-            >
-                <Banknote size={20} color={badge.color} />
-            </XStack>
-            <YStack flex={1} gap={2}>
-                <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
-                    {MONTH_NAMES[p.payroll_month]}/{p.payroll_year}
-                </Text>
-                <XStack gap={8} alignItems="center">
+            <Pressable onPress={() => setExpanded((v) => !v)}>
+                <XStack padding={16} alignItems="center" gap={12}>
                     <XStack
-                        paddingHorizontal={8} paddingVertical={2}
-                        borderRadius={appTheme.radius.pill}
+                        width={44} height={44} borderRadius={16}
                         backgroundColor={badge.bg}
-                        borderWidth={1} borderColor={badge.border}
+                        alignItems="center" justifyContent="center"
                     >
-                        <Text fontSize={10} fontWeight="700" color={badge.color}>{badge.label}</Text>
+                        <Banknote size={20} color={badge.color} />
                     </XStack>
-                    {p.paid_at ? (
-                        <Text fontSize={11} color={appTheme.colors.textMuted}>
-                            {new Date(p.paid_at).toLocaleDateString('vi-VN')}
+                    <YStack flex={1} gap={2}>
+                        <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
+                            {MONTH_NAMES[p.payroll_month]}/{p.payroll_year}
                         </Text>
-                    ) : null}
+                        <XStack gap={8} alignItems="center">
+                            <XStack
+                                paddingHorizontal={8} paddingVertical={2}
+                                borderRadius={appTheme.radius.pill}
+                                backgroundColor={badge.bg}
+                                borderWidth={1} borderColor={badge.border}
+                            >
+                                <Text fontSize={10} fontWeight="700" color={badge.color}>{badge.label}</Text>
+                            </XStack>
+                            {p.paid_at ? (
+                                <Text fontSize={11} color={appTheme.colors.textMuted}>
+                                    {new Date(p.paid_at).toLocaleDateString('vi-VN')}
+                                </Text>
+                            ) : null}
+                        </XStack>
+                    </YStack>
+                    <YStack alignItems="flex-end" gap={2}>
+                        <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
+                            {fmtMoney(p.net_salary)}
+                        </Text>
+                        <Text fontSize={10} color={appTheme.colors.textMuted}>thực nhận</Text>
+                    </YStack>
                 </XStack>
-            </YStack>
-            <YStack alignItems="flex-end" gap={2}>
-                <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
-                    {fmtMoney(p.net_salary)}
-                </Text>
-                <Text fontSize={10} color={appTheme.colors.textMuted}>thực nhận</Text>
-            </YStack>
-        </XStack>
+            </Pressable>
+
+            {expanded ? (
+                <YStack
+                    paddingHorizontal={16} paddingBottom={14} paddingTop={2}
+                    borderTopWidth={1} borderTopColor={appTheme.colors.border}
+                >
+                    <SalaryRow label="Lương cứng" value={fmtMoney(p.base_salary)} />
+                    <SalaryRow
+                        label="Thưởng doanh thu"
+                        value={`+ ${fmtMoney(p.revenue_bonus)}`}
+                        sub={`Doanh thu: ${fmtMoney(p.total_revenue)}`}
+                        tone="positive"
+                    />
+                    {Number(p.kpi_bonus) > 0 ? (
+                        <SalaryRow label="Thưởng vượt KPI" value={`+ ${fmtMoney(p.kpi_bonus)}`} tone="positive" />
+                    ) : null}
+                    {Number(p.top_driver_bonus) > 0 ? (
+                        <SalaryRow label="Thưởng lái xe xuất sắc" value={`+ ${fmtMoney(p.top_driver_bonus)}`} tone="positive" />
+                    ) : null}
+                    {holidayBonus > 0 ? (
+                        <SalaryRow
+                            label="Đi làm ngày lễ (200%)"
+                            value={`+ ${fmtMoney(holidayBonus)}`}
+                            tone="positive"
+                        />
+                    ) : null}
+                    {welfareBonus > 0 ? (
+                        <SalaryRow
+                            label="Thưởng & Phúc lợi"
+                            value={`+ ${fmtMoney(welfareBonus)}`}
+                            sub="Tết, hiếu hỉ, thưởng đặc biệt..."
+                            tone="positive"
+                        />
+                    ) : null}
+                    {phoneAllowance > 0 ? (
+                        <SalaryRow label="Phụ cấp điện thoại" value={`+ ${fmtMoney(phoneAllowance)}`} tone="positive" />
+                    ) : null}
+                    <SalaryRow label="Tổng thu nhập" value={fmtMoney(p.gross_salary)} bold />
+                    <SalaryRow label="BHXH người lao động" value={`- ${fmtMoney(p.insurance_employee)}`} tone="negative" />
+                    {Number(p.driver_debt_deduction) > 0 ? (
+                        <SalaryRow label="Khấu trừ công nợ" value={`- ${fmtMoney(p.driver_debt_deduction)}`} tone="negative" />
+                    ) : null}
+                    {Number(p.advance_deduction) > 0 ? (
+                        <SalaryRow label="Hoàn ứng lương" value={`- ${fmtMoney(p.advance_deduction)}`} tone="negative" />
+                    ) : null}
+                    {Number(p.absence_penalty) > 0 ? (
+                        <SalaryRow label="Phạt nghỉ không lương" value={`- ${fmtMoney(p.absence_penalty)}`} tone="negative" />
+                    ) : null}
+                    {Number(p.other_deduction) > 0 ? (
+                        <SalaryRow label="Khấu trừ khác" value={`- ${fmtMoney(p.other_deduction)}`} tone="negative" />
+                    ) : null}
+                    <SalaryRow label="Thực nhận" value={fmtMoneyFull(p.net_salary)} tone="positive" bold />
+                </YStack>
+            ) : null}
+        </YStack>
     );
 }
 

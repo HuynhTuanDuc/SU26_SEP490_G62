@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const BONUS_TYPES    = ['tet_annual', 'welfare_wedding', 'welfare_funeral', 'welfare_birthday', 'holiday_overtime', 'special'];
 const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
@@ -256,14 +257,34 @@ const reject = async (id, rejectedBy, reason) => {
 };
 
 const pay = async (id, paidBy) => {
-    const { rows: [row] } = await pool.query(
-        `UPDATE driver_bonuses
-         SET status = 'paid', paid_by = $2, paid_at = NOW(), updated_at = NOW()
-         WHERE id = $1 AND status = 'approved'
-         RETURNING id`,
-        [id, paidBy],
-    );
-    if (!row) throw new Error('Không tìm thấy hoặc trạng thái không hợp lệ (cần approved)');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [row] } = await client.query(
+            `UPDATE driver_bonuses
+             SET status = 'paid', paid_by = $2, paid_at = NOW(), updated_at = NOW()
+             WHERE id = $1 AND status = 'approved'
+             RETURNING id, type, amount, driver_id`,
+            [id, paidBy],
+        );
+        if (!row) throw new Error('Không tìm thấy hoặc trạng thái không hợp lệ (cần approved)');
+
+        // Chi thưởng lẻ ngoài kỳ lương (tiền mặt) — phải vào nhật ký tài chính
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'bonus_paid',
+            debitAccount: '642', creditAccount: '1111',
+            amount: Number(row.amount),
+            description: `Chi thưởng/phúc lợi ngoài kỳ lương (${row.type}) — phiếu thưởng #${row.id}, tài xế #${row.driver_id}`,
+            refType: null, refId: null, actorId: paidBy,
+        });
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
     return getById(id);
 };
 

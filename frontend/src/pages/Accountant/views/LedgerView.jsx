@@ -16,6 +16,7 @@ const fmtDateTime = (iso) =>
 const EVENT_COLOR = {
   shipment_revenue:      "success",
   prepaid_received:      "success",
+  prepaid_refunded:      "warning",
   cash_receipt:          "success",
   bank_receipt:          "success",
   customer_payment:      "success",
@@ -25,7 +26,9 @@ const EVENT_COLOR = {
   pass_through_cost:     "default",
   expense_recorded:      "danger",
   payroll_paid:          "danger",
+  bonus_paid:            "danger",
   advance_disbursed:     "danger",
+  advance_recovered:     "primary",
 };
 
 const DEFAULT_PAGE_SIZE = 20;

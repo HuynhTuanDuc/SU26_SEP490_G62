@@ -30,13 +30,17 @@ import {
 import VehicleModal from "./VehicleModal";
 import { useRoleRealtime } from "../../hooks/useRoleRealtime";
 import {
+  approveMaintenanceRequest,
   assignVehicleDriver,
   createVehicle,
+  fetchMaintenanceRequests,
+  fetchVehicleAssignmentHistory,
   fetchVehicleDetail,
   fetchDriverOptions,
   fetchVehicleGroups,
   fetchVehicles,
   markVehicleBroken,
+  rejectMaintenanceRequest,
   retireVehicle,
   restoreVehicle,
   sendVehicleToMaintenance,
@@ -66,6 +70,13 @@ const formatDateTime = (value) => {
   if (!value) return "Not set";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+
+const maintenanceTypeLabel = {
+  scheduled: "Bảo dưỡng định kỳ",
+  repair: "Sửa chữa",
+  inspection: "Kiểm tra",
+  emergency: "Khẩn cấp",
 };
 
 const MAINTENANCE_ACTIONS = new Set(["send_to_maintenance", "complete_maintenance"]);
@@ -211,6 +222,54 @@ export default function VehicleList({ user }) {
   const [maintenanceDriverOptions, setMaintenanceDriverOptions] = useState([]);
   const [loadingMaintenanceDrivers, setLoadingMaintenanceDrivers] = useState(false);
 
+  const [maintenanceRequests, setMaintenanceRequests] = useState([]);
+  const [assignmentHistory, setAssignmentHistory] = useState([]);
+  const [rejectRequestTarget, setRejectRequestTarget] = useState(null);
+  const [rejectRequestReason, setRejectRequestReason] = useState("");
+  const [processingRequestId, setProcessingRequestId] = useState(null);
+
+  const loadMaintenanceRequests = async () => {
+    try {
+      const data = await fetchMaintenanceRequests();
+      setMaintenanceRequests(data.requests || []);
+    } catch (err) {
+      message.error(err.message);
+    }
+  };
+
+  const handleApproveRequest = async (request) => {
+    try {
+      setProcessingRequestId(request.id);
+      await approveMaintenanceRequest(request.id);
+      message.success(`Đã duyệt yêu cầu bảo dưỡng xe ${request.plate_number}`);
+      await Promise.all([loadMaintenanceRequests(), loadVehicles()]);
+    } catch (err) {
+      message.error(err.message);
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
+
+  const handleRejectRequest = async () => {
+    if (!rejectRequestTarget) return;
+    if (!rejectRequestReason.trim()) {
+      message.warning("Cần ghi lý do từ chối");
+      return;
+    }
+    try {
+      setProcessingRequestId(rejectRequestTarget.id);
+      await rejectMaintenanceRequest(rejectRequestTarget.id, { reason: rejectRequestReason.trim() });
+      message.success("Đã từ chối yêu cầu bảo dưỡng");
+      setRejectRequestTarget(null);
+      setRejectRequestReason("");
+      await loadMaintenanceRequests();
+    } catch (err) {
+      message.error(err.message);
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
+
   const loadMaintenanceDriverOptions = async (vehicle) => {
     if (!vehicle?.id) {
       setMaintenanceDriverOptions([]);
@@ -280,6 +339,7 @@ export default function VehicleList({ user }) {
   useEffect(() => {
     loadVehicleGroups();
     loadVehicles({ page: 1 });
+    loadMaintenanceRequests();
   }, []);
 
   useRoleRealtime(user, {
@@ -287,6 +347,7 @@ export default function VehicleList({ user }) {
       if (payload?.type === "manager.vehicles.changed") {
         loadVehicleGroups();
         loadVehicles();
+        loadMaintenanceRequests();
         if (detailVehicle?.id && payload.vehicleId && Number(detailVehicle.id) === Number(payload.vehicleId)) {
           openDetail({ id: detailVehicle.id });
         }
@@ -342,6 +403,9 @@ export default function VehicleList({ user }) {
     try {
       const data = await fetchVehicleDetail(vehicle.id);
       setDetailVehicle(data.vehicle);
+      fetchVehicleAssignmentHistory(vehicle.id)
+        .then((res) => setAssignmentHistory(res.history || []))
+        .catch(() => setAssignmentHistory([]));
     } catch (err) {
       message.error(err.message);
     }
@@ -567,6 +631,100 @@ export default function VehicleList({ user }) {
         onVehicleGroupsChange={setVehicleGroups}
       />
 
+      {maintenanceRequests.length > 0 && (
+        <div style={{ padding: 24, background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+          <div style={{ marginBottom: 16 }}>
+            <Title level={4} style={{ margin: 0 }}>
+              <ToolOutlined /> Yêu cầu bảo dưỡng chờ duyệt
+            </Title>
+            <Text type="secondary">{maintenanceRequests.length} yêu cầu từ tài xế</Text>
+          </div>
+          <Table
+            rowKey="id"
+            dataSource={maintenanceRequests}
+            pagination={false}
+            size="small"
+            columns={[
+              {
+                title: "Xe",
+                key: "vehicle",
+                render: (_, r) => (
+                  <Space direction="vertical" size={0}>
+                    <Text strong>{r.plate_number}</Text>
+                    <Text type="secondary">{[r.brand, r.model].filter(Boolean).join(" ")}</Text>
+                  </Space>
+                ),
+              },
+              {
+                title: "Tài xế",
+                dataIndex: "requested_by_name",
+                key: "requested_by_name",
+                render: (v) => v || "—",
+              },
+              {
+                title: "Loại",
+                dataIndex: "maintenance_type",
+                key: "maintenance_type",
+                render: (v) => <Tag color="blue">{maintenanceTypeLabel[v] || v}</Tag>,
+              },
+              {
+                title: "Lý do",
+                dataIndex: "request_reason",
+                key: "request_reason",
+              },
+              {
+                title: "Ngày gửi",
+                dataIndex: "created_at",
+                key: "created_at",
+                render: (v) => formatDateTime(v),
+              },
+              {
+                title: "Thao tác",
+                key: "actions",
+                width: 190,
+                render: (_, r) => (
+                  <Space>
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={processingRequestId === r.id}
+                      onClick={() => handleApproveRequest(r)}
+                    >
+                      Duyệt
+                    </Button>
+                    <Button
+                      danger
+                      size="small"
+                      disabled={processingRequestId === r.id}
+                      onClick={() => { setRejectRequestTarget(r); setRejectRequestReason(""); }}
+                    >
+                      Từ chối
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      <Modal
+        title={`Từ chối yêu cầu bảo dưỡng${rejectRequestTarget ? ` — xe ${rejectRequestTarget.plate_number}` : ""}`}
+        open={Boolean(rejectRequestTarget)}
+        okText="Từ chối"
+        okButtonProps={{ danger: true, loading: processingRequestId === rejectRequestTarget?.id }}
+        cancelText="Huỷ"
+        onOk={handleRejectRequest}
+        onCancel={() => { setRejectRequestTarget(null); setRejectRequestReason(""); }}
+      >
+        <Input.TextArea
+          rows={3}
+          placeholder="Lý do từ chối (bắt buộc)"
+          value={rejectRequestReason}
+          onChange={(e) => setRejectRequestReason(e.target.value)}
+        />
+      </Modal>
+
       <div style={{ padding: 24, background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
           <div>
@@ -681,6 +839,33 @@ export default function VehicleList({ user }) {
                 <Timeline items={buildHistoryTimelineItems(incidentHistory)} />
               ) : (
                 <Text type="secondary">No incident history.</Text>
+              )}
+            </div>
+
+            <div>
+              <Title level={5}>Driver Assignment History</Title>
+              {assignmentHistory.length > 0 ? (
+                <Timeline
+                  items={assignmentHistory.map((item) => ({
+                    color: item.action === "assign" ? "green" : "red",
+                    children: (
+                      <Space direction="vertical" size={0}>
+                        <Text strong>
+                          {item.action === "assign"
+                            ? `Gán tài xế: ${item.driver_name || `#${item.driver_id}`}`
+                            : `Bỏ gán tài xế: ${item.previous_driver_name || (item.previous_driver_id ? `#${item.previous_driver_id}` : "—")}`}
+                        </Text>
+                        <Text type="secondary">
+                          {formatDateTime(item.created_at)}
+                          {item.created_by_name ? ` | bởi ${item.created_by_name}` : ""}
+                        </Text>
+                        {item.note ? <Text type="secondary">{item.note}</Text> : null}
+                      </Space>
+                    ),
+                  }))}
+                />
+              ) : (
+                <Text type="secondary">Chưa có lịch sử gán xe (chỉ ghi từ khi tính năng được bật).</Text>
               )}
             </div>
           </Space>

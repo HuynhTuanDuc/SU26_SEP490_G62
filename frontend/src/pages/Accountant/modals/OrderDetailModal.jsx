@@ -269,7 +269,14 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
             <StateIcon size={12} className={state.color} />
             <span className={`text-[11px] font-semibold ${state.color}`}>{state.label}</span>
             {s.driver_total != null && (
-              <MoneyText amount={s.driver_total} className={`text-[11px] ${state.color} ml-1`} />
+              s.driver_payment_state === "partial" ? (
+                <span className={`text-[11px] ${state.color} ml-1`}>
+                  còn <MoneyText amount={Math.max(0, Number(s.driver_total) - Number(s.driver_paid || 0))} />
+                  {" / "}<MoneyText amount={s.driver_total} />
+                </span>
+              ) : (
+                <MoneyText amount={s.driver_total} className={`text-[11px] ${state.color} ml-1`} />
+              )
             )}
           </div>
         </div>

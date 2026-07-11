@@ -318,6 +318,7 @@ export type DriverReceiptSummary = {
     payment_type: PaymentType | null;
     amount: string;
     total_expenses: string;
+    pass_through_total: string;
     collected_at: string;
     notes: string | null;
     rejection_reason: string | null;
@@ -336,6 +337,8 @@ export type ExpenseItem = {
     expense_date: string;
     created_at: string;
     receipt_urls: string[];
+    status?: ExpenseStatus;
+    reject_reason?: string | null;
 };
 
 export type OrderShipmentRow = {

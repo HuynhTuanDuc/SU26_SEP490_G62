@@ -435,8 +435,10 @@ const getOrderShipmentsForReceipt = async (db, orderId) => {
             [shipment.id],
         );
         const expenses = await expenseRepository.getShipmentExpenses(shipment.id);
-        const totalExpenses = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-        const passThroughExpenses = expenses.reduce((sum, expense) => (
+        // Chi phí bị từ chối không được tính vào bất kỳ tổng tiền nào
+        const countableExpenses = expenses.filter((expense) => expense.status !== 'rejected');
+        const totalExpenses = countableExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+        const passThroughExpenses = countableExpenses.reduce((sum, expense) => (
             PASS_THROUGH_EXPENSE_TYPES.has(String(expense.expense_type || '').trim())
                 ? sum + Number(expense.amount || 0)
                 : sum
@@ -969,7 +971,13 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
         );
 
         // Tạo phiếu thu để driver xem — payment_type = NULL cho đến khi driver xác nhận
-        const totalAmount = computed.remaining_amount;
+        // Tổng khách phải trả = cước (km × đơn giá − trả trước) + chi hộ khách (toll/parking/etc)
+        // Chi phí công ty chịu (fuel/repair) KHÔNG cộng vào tiền khách.
+        const snapshotPassThrough = sumPassThroughExpenses(pricingSnapshot.shipments);
+        const coordinatorPassThrough = normalizedExpenses.reduce((sum, expense) => (
+            PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type) ? sum + Number(expense.amount) : sum
+        ), 0);
+        const totalAmount = computed.remaining_amount + snapshotPassThrough + coordinatorPassThrough;
         await client.query(
             `INSERT INTO shipment_receipts
                  (shipment_id, amount, collected_by, notes, order_receipt_request_id, created_by, collected_at)
