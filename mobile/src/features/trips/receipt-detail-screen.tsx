@@ -39,6 +39,15 @@ const EXPENSE_TYPE_LABEL: Record<string, string> = {
     other:        'Khác',
 };
 
+// Chỉ chi hộ khách (khách chịu) mới tính vào tiền khách phải trả.
+// Xăng dầu / sửa xe là chi phí công ty — không cộng vào phiếu thu.
+const PASS_THROUGH_TYPES = new Set(['toll', 'parking', 'etc']);
+
+const sumPassThrough = (expenses: { expense_type: string; amount: string | number; status?: string }[] | undefined) =>
+    (expenses ?? [])
+        .filter((e) => e.status !== 'rejected' && PASS_THROUGH_TYPES.has(e.expense_type))
+        .reduce((s, e) => s + Number(e.amount), 0);
+
 const PAYMENT_LABEL: Record<PaymentType, string> = {
     cash_collected: 'Tiền mặt (Driver thu)',
     bank_transfer:  'Chuyển khoản về công ty',
@@ -148,7 +157,8 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
     const price        = s.actual_price ?? s.estimated_price;
     const km           = s.actual_distance_km ?? s.estimated_distance_km;
     const color        = SHIPMENT_STATUS_COLOR[s.status] ?? '#6B7280';
-    const expTotal     = (s.expenses ?? []).reduce((sum, e) => sum + Number(e.amount), 0);
+    // Chỉ chi hộ khách được cộng vào tiền khách; fuel/repair chỉ hiển thị tham khảo
+    const expTotal     = sumPassThrough(s.expenses);
     const hasExpenses  = (s.expenses ?? []).length > 0;
 
     return (
@@ -213,15 +223,19 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
                                         Chi phí phát sinh
                                     </Text>
                                 </XStack>
-                                <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary}>
-                                    +{fmtMoney(expTotal)}
-                                </Text>
+                                {expTotal > 0 ? (
+                                    <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary}>
+                                        +{fmtMoney(expTotal)}
+                                    </Text>
+                                ) : null}
                             </XStack>
                             <YStack gap={3}>
                                 {s.expenses.map(exp => (
                                     <XStack key={exp.id} justifyContent="space-between" alignItems="center">
                                         <Text fontSize={10} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
                                             {EXPENSE_TYPE_LABEL[exp.expense_type] ?? exp.expense_type}
+                                            {!PASS_THROUGH_TYPES.has(exp.expense_type) ? ' (công ty chịu)' : ''}
+                                            {exp.status === 'rejected' ? ' (bị từ chối)' : ''}
                                             {exp.description ? ` — ${exp.description}` : ''}
                                         </Text>
                                         <Text fontSize={10} fontWeight="700" color={appTheme.colors.text}>
@@ -499,10 +513,8 @@ export function ReceiptDetailScreen() {
                     const hint = data.order_payment_type;
                     if (hint === 'cash' || hint === 'cash_collected') setSelected('cash_collected');
                     else if (hint === 'bank_transfer' || hint === 'qr_transfer') setSelected('bank_transfer');
-                    // pre-fill với tổng dự kiến (cước + chi phí)
-                    const expenses = data.expenses ?? [];
-                    const expTotal = expenses.reduce((s: number, e: any) => s + Number(e.amount), 0);
-                    setCashValue(Number(data.amount) + expTotal);
+                    // pre-fill với tổng phiếu thu — amount đã bao gồm cước + chi hộ khách
+                    setCashValue(Number(data.amount));
                 }
             })
             .catch(err => setError(err instanceof Error ? err.message : 'Không thể tải phiếu thu'))
@@ -535,7 +547,7 @@ export function ReceiptDetailScreen() {
             return;
         }
 
-        const expectedTotal = Number(receipt.amount) + totalExpenses;
+        const expectedTotal = Number(receipt.amount);
         const actualCash    = cashAmount;
         const diffNote      = selected === 'cash_collected' && actualCash !== expectedTotal
             ? `\nChênh lệch: ${(actualCash - expectedTotal).toLocaleString('vi-VN')}₫`
@@ -563,11 +575,25 @@ export function ReceiptDetailScreen() {
                             const name = proofUri.split('/').pop() ?? 'proof.jpg';
                             fd.append('proof', { uri: proofUri, name, type: 'image/jpeg' } as any);
                         }
-                        await tripService.recordReceiptCollection(targetId, fd);
+                        const res = await tripService.recordReceiptCollection(targetId, fd);
                         setProofUri(null);
                         load();
+                        Alert.alert(
+                            'Đã ghi nhận thanh toán',
+                            (res as any)?.message
+                                ?? (selected === 'bank_transfer'
+                                    ? 'Đã ghi nhận khách chuyển khoản. Kế toán sẽ xác nhận khi tiền về tài khoản.'
+                                    : 'Đã ghi nhận thanh toán phiếu thu.'),
+                        );
                     } catch (err: any) {
-                        Alert.alert('Lỗi', err?.message ?? 'Thử lại.');
+                        const msg = err?.message ?? 'Thử lại.';
+                        // Lần bấm trước đã thành công (upload chậm) → reload thay vì báo lỗi
+                        if (msg.includes('đã được ghi nhận')) {
+                            load();
+                            Alert.alert('Đã ghi nhận trước đó', 'Phiếu thu này đã được ghi nhận thanh toán rồi. Màn hình sẽ được cập nhật.');
+                        } else {
+                            Alert.alert('Lỗi', msg);
+                        }
                     } finally {
                         setIsSubmitting(false);
                     }
@@ -619,10 +645,11 @@ export function ReceiptDetailScreen() {
     // bank_transfer cần kế toán xác nhận; trước khi confirm thì vẫn là "chờ xác nhận"
     const bankPendingConfirm = alreadyRecorded && receipt.payment_type === 'bank_transfer' && !receipt.bank_confirmed;
     const needsProof      = selected === 'cash_collected' || selected === 'bank_transfer';
-    // Tổng chi phí phát sinh = của chuyến này + tất cả chuyến khác trong đơn
+    // Tổng chi phí phát sinh (mọi loại, trừ rejected) — chỉ để hiển thị danh sách.
+    // Tiền khách phải trả = receipt.amount (backend đã gồm cước + chi hộ khách).
     const totalExpenses = (receipt.order_shipments?.length > 0
-        ? receipt.order_shipments.reduce((s, sh) => s + (sh.expenses ?? []).reduce((es, e) => es + Number(e.amount), 0), 0)
-        : receipt.expenses.reduce((s, e) => s + Number(e.amount), 0)
+        ? receipt.order_shipments.reduce((s, sh) => s + (sh.expenses ?? []).filter((e) => e.status !== 'rejected').reduce((es, e) => es + Number(e.amount), 0), 0)
+        : receipt.expenses.filter((e) => e.status !== 'rejected').reduce((s, e) => s + Number(e.amount), 0)
     );
     const kmDisplay       = receipt.actual_distance_km
         ? `${Number(receipt.actual_distance_km).toLocaleString('vi-VN')} km`
@@ -717,7 +744,10 @@ export function ReceiptDetailScreen() {
                             TỔNG THU
                         </Text>
                         <Text fontSize={36} fontWeight="900" color={appTheme.colors.primary} marginTop={2}>
-                            {fmtMoney(Number(receipt.amount) + totalExpenses)}
+                            {fmtMoney(Number(receipt.amount))}
+                        </Text>
+                        <Text fontSize={10} color={appTheme.colors.textMuted}>
+                            Đã gồm cước vận chuyển và chi phí khách chịu (cầu đường, đỗ xe, ETC)
                         </Text>
 
                        
@@ -772,8 +802,8 @@ export function ReceiptDetailScreen() {
                     {(() => {
                         const shipments     = receipt.order_shipments ?? [];
                         const isMulti       = shipments.length > 1;
-                        const totalExpAll   = shipments.reduce((s, sh) =>
-                            s + (sh.expenses ?? []).reduce((es, e) => es + Number(e.amount), 0), 0);
+                        // Chỉ chi hộ khách (toll/parking/etc) mới cộng vào tiền khách phải trả
+                        const totalExpAll   = shipments.reduce((s, sh) => s + sumPassThrough(sh.expenses), 0);
                         const completedList = shipments.filter(sh => sh.status === 'completed');
                         const totalActual   = completedList.reduce((s, sh) => s + Number(sh.actual_price ?? 0), 0);
                         const totalEst      = completedList.reduce((s, sh) => s + Number(sh.estimated_price ?? 0), 0);
@@ -840,7 +870,7 @@ export function ReceiptDetailScreen() {
                                                 {totalExpAll > 0 ? (
                                                     <XStack justifyContent="space-between" marginTop={2}>
                                                         <Text fontSize={10} color={appTheme.colors.textMuted}>
-                                                            Chi phí phát sinh (tất cả chuyến)
+                                                            Chi hộ khách (cầu đường, đỗ xe, ETC)
                                                         </Text>
                                                         <Text fontSize={10} color={appTheme.colors.primary}>
                                                             +{fmtMoney(totalExpAll)}
@@ -1027,21 +1057,21 @@ export function ReceiptDetailScreen() {
                                     placeholder="0"
                                     placeholderTextColor={appTheme.colors.textMuted}
                                 />
-                                {cashAmount > 0 && cashAmount !== (Number(receipt?.amount) + totalExpenses) ? (
+                                {cashAmount > 0 && cashAmount !== Number(receipt?.amount) ? (
                                     <XStack alignItems="flex-start" gap={4}>
                                         <Warning size={12} color={
-                                            cashAmount > (Number(receipt?.amount) + totalExpenses)
+                                            cashAmount > Number(receipt?.amount)
                                                 ? appTheme.colors.primary
                                                 : appTheme.colors.warningText
                                         } weight="fill" style={{ marginTop: 1 }} />
                                         <Text fontSize={11} color={
-                                            cashAmount > (Number(receipt?.amount) + totalExpenses)
+                                            cashAmount > Number(receipt?.amount)
                                                 ? appTheme.colors.primary
                                                 : appTheme.colors.warningText
                                         } flex={1}>
-                                            {cashAmount > (Number(receipt?.amount) + totalExpenses)
-                                                ? `Thừa ${(cashAmount - Number(receipt?.amount) - totalExpenses).toLocaleString('vi-VN')}₫ — sẽ tự động trừ vào nợ cũ của khách`
-                                                : `Thiếu ${(Number(receipt?.amount) + totalExpenses - cashAmount).toLocaleString('vi-VN')}₫ so với tổng dự kiến`
+                                            {cashAmount > Number(receipt?.amount)
+                                                ? `Thừa ${(cashAmount - Number(receipt?.amount)).toLocaleString('vi-VN')}₫ — sẽ tự động trừ vào nợ cũ của khách`
+                                                : `Thiếu ${(Number(receipt?.amount) - cashAmount).toLocaleString('vi-VN')}₫ — phần thiếu sẽ ghi công nợ cho khách`
                                             }
                                         </Text>
                                     </XStack>

@@ -58,7 +58,8 @@ export default function ReceiptDetailModal({
     0,
   );
   const passThroughExpenses = [...(detail?.expenses || []), ...form.expenses]
-    .filter((expense) => ["parking", "toll", "etc"].includes(String(expense.expense_type || "").trim()))
+    .filter((expense) => expense.status !== "rejected"
+      && ["parking", "toll", "etc"].includes(String(expense.expense_type || "").trim()))
     .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const finalPrice = actualRevenue + passThroughExpenses;
   const status = normalizeStatus(detail?.request?.status);

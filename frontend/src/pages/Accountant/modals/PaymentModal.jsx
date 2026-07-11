@@ -18,15 +18,24 @@ const PAYMENT_METHODS = [
 const METHOD_LABEL = {
   cash:          "Tiền mặt",
   bank_transfer: "Chuyển khoản",
+  offset:        "Cấn trừ",
+};
+
+const PAYMENT_STATUS_CHIP = {
+  confirmed: { label: "Đã xác nhận",  color: "success" },
+  pending:   { label: "Chờ xác nhận", color: "warning" },
+  rejected:  { label: "Từ chối",      color: "danger"  },
 };
 
 function HistoryItem({ payment }) {
-  const date = payment.created_at
-    ? new Date(payment.created_at).toLocaleDateString("vi-VN", {
+  const rawDate = payment.paid_at ?? payment.confirmed_at ?? payment.created_at;
+  const date = rawDate
+    ? new Date(rawDate).toLocaleDateString("vi-VN", {
         day: "2-digit", month: "2-digit", year: "numeric",
         hour: "2-digit", minute: "2-digit",
       })
     : "—";
+  const statusChip = PAYMENT_STATUS_CHIP[payment.payment_status] ?? PAYMENT_STATUS_CHIP.confirmed;
 
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
@@ -34,14 +43,15 @@ function HistoryItem({ payment }) {
         <MoneyText amount={payment.amount} className="text-xs font-bold text-emerald-600" />
         <span className="text-[11px] text-gray-400">
           {METHOD_LABEL[payment.payment_method] ?? payment.payment_method ?? "—"} · {date}
+          {payment.creator_name ? ` · ghi bởi ${payment.creator_name}` : ""}
         </span>
         {payment.notes && (
           <span className="text-[11px] text-gray-400 italic">{payment.notes}</span>
         )}
       </div>
-      <Chip size="sm" color="success" variant="flat" className="text-[10px] h-5">
+      <Chip size="sm" color={statusChip.color} variant="flat" className="text-[10px] h-5">
         <RiCheckboxCircleLine size={10} className="inline mr-0.5" />
-        Đã ghi
+        {statusChip.label}
       </Chip>
     </div>
   );

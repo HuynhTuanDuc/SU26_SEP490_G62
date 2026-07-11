@@ -1,7 +1,9 @@
 const expenseService = require('../services/expenseService');
-const expenseAiValidator = require('../services/expenseAiValidator');
+const { deleteUploadedFile } = require('../services/expenseAiValidator');
 
 // POST /api/expenses
+// Driver tạo chi phí: lưu thẳng (status = pending), KHÔNG chạy AI đọc bill ở bước này.
+// AI đọc bill chỉ chạy trên web coordinator khi duyệt phiếu thu (scanReceiptExpenses).
 const createExpense = async (req, res) => {
     const receiptUrl  = req.file?.path     ?? null;
     const filePublicId = req.file?.filename ?? null;
@@ -10,29 +12,6 @@ const createExpense = async (req, res) => {
         const { shipmentId, expenseType, amount, description } = req.body;
 
         if (!shipmentId) return res.status(400).json({ error: 'shipmentId là bắt buộc' });
-
-        // AI scan ảnh hóa đơn trước khi lưu
-        if (receiptUrl) {
-            let validation;
-            try {
-                validation = await expenseAiValidator.validateExpenseReceipt(receiptUrl, { expenseType, amount });
-            } catch (aiErr) {
-                // AI lỗi / timeout → fail-open, tiếp tục lưu bình thường
-                console.warn('[ExpenseAI] Lỗi xác thực, cho qua:', aiErr.message);
-                validation = null;
-            }
-
-            if (validation && !validation.valid) {
-                // Xóa ảnh đã upload vì hóa đơn không hợp lệ
-                expenseAiValidator.deleteUploadedFile(filePublicId);
-
-                return res.status(422).json({
-                    error: validation.reject_reason || 'Hóa đơn không hợp lệ. Vui lòng chụp lại ảnh rõ hơn.',
-                    ai_rejected: true,
-                    confidence: validation.confidence,
-                });
-            }
-        }
 
         const expenses = await expenseService.createExpense(req.user.userId, {
             shipmentId: Number(shipmentId),
@@ -44,8 +23,8 @@ const createExpense = async (req, res) => {
 
         res.status(201).json({ expenses });
     } catch (err) {
-        // Nếu service throw sau khi AI đã pass nhưng lưu DB lỗi → xóa ảnh tránh orphan
-        expenseAiValidator.deleteUploadedFile(filePublicId);
+        // Lưu DB lỗi → xóa ảnh đã upload tránh orphan trên Cloudinary
+        deleteUploadedFile(filePublicId);
 
         const status = err.message.includes('không tồn tại') ? 404
             : err.message.includes('quyền') ? 403

@@ -233,13 +233,8 @@ const insertDebtForShipment = async (client, {
                 'KhÃ¡ch chÆ°a thanh toÃ¡n', $5, NOW(), NOW())`,
             [customerId, orderId, shipmentId, actualPrice, createdByUserId]
         );
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: 'customer_debt_created',
-            debitAccount: '131', creditAccount: '511',
-            amount: actualPrice,
-            description: `Công nợ khách hàng — đơn ngoài, chuyến #${shipmentId}`,
-            refType: 'shipment', refId: shipmentId, actorId: createdByUserId,
-        });
+        // KHÔNG ghi FT: shipment_revenue (131/511) đã ghi cho chuyến này khi tạo đơn ngoài
+        // — ghi thêm customer_debt_created sẽ đội doanh thu. Nợ theo dõi ở bảng debts.
     } else if (partnerId && normalizedPaymentType === 'partner') {
 
         await client.query(
@@ -270,15 +265,17 @@ const createOrderWithShipments = async (orderData) => {
               companyName: orderData.customer_company,
           });
 
-    const computeActualPrice = (shipment) => {
-        const passThrough = (shipment.expenses || []).reduce(
-            (sum, e) => sum + (PASS_THROUGH_EXPENSE_TYPES.has(e.expense_type) ? Number(e.amount || 0) : 0),
-            0
-        );
-        return Number(shipment.cargo_fee || 0) + passThrough;
-    };
+    // Cước xe (doanh thu, KPI) tách khỏi chi hộ khách (BR-027: pass-through không vào revenue)
+    const computeActualPrice = (shipment) => Number(shipment.cargo_fee || 0);
+    const computePassThrough = (shipment) => (shipment.expenses || []).reduce(
+        (sum, e) => sum + (PASS_THROUGH_EXPENSE_TYPES.has(e.expense_type) ? Number(e.amount || 0) : 0),
+        0
+    );
 
-    const totalActualPrice = (orderData.shipments || []).reduce((sum, s) => sum + computeActualPrice(s), 0);
+    // Tổng giá trị đơn (khách phải trả) = cước + chi hộ — dùng cho hiển thị/công nợ
+    const totalActualPrice = (orderData.shipments || []).reduce(
+        (sum, s) => sum + computeActualPrice(s) + computePassThrough(s), 0,
+    );
     const orderNotes = buildOrderNotes(orderData);
     const orderCargoName = buildOrderCargoName(orderData.shipments || []);
     const orderPaymentType = buildOrderPaymentType(orderData.shipments || []);
@@ -319,6 +316,7 @@ const createOrderWithShipments = async (orderData) => {
             const vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
             const driverId = await findDriverById(client, s.driver_id) || await findDriverByName(client, s.driver_name);
             const actualPrice = computeActualPrice(s);
+            const passThrough = computePassThrough(s);
             const shipmentNotes = buildShipmentNotes(s);
             const pickupAddresses = (s.pickup_addresses || []).filter((p) => String(p || '').trim() !== '');
 
@@ -346,7 +344,8 @@ const createOrderWithShipments = async (orderData) => {
                 driverId,
                 customerId,
                 partnerId: s.partner_id || orderData.partner_id || null,
-                actualPrice,
+                // Nợ = số khách phải trả cho chuyến (cước + chi hộ khách)
+                actualPrice: actualPrice + passThrough,
                 driverPaymentState: s.driver_payment_state || 'company_received',
                 paymentType: s.payment_type || null,
                 createdByUserId: orderData.created_by,
@@ -408,9 +407,10 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     }
 
     // debt_status filter is applied as a compound condition across customer + driver debts
+    // Khách phải trả = cước (actual_price) + chi hộ khách (toll/parking/etc) — nợ & phiếu thu đều gồm chi hộ
     if (filters.debt_status) {
         const outstanding = `(GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) + dd_agg.driver_debt_remaining + pending_agg.pending_receipt_amount)`;
-        const received    = `(ship_agg.actual_price - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) - dd_agg.driver_debt_remaining - pending_agg.pending_receipt_amount)`;
+        const received    = `(ship_agg.actual_price + exp_agg.pass_through_total - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0) - dd_agg.driver_debt_remaining - pending_agg.pending_receipt_amount)`;
         if (filters.debt_status === 'paid') {
             conditions.push(`${outstanding} <= 0.01`);
         } else if (filters.debt_status === 'unpaid') {
@@ -452,7 +452,9 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             WHERE order_id = o.id
         ) ship_agg ON TRUE
         LEFT JOIN LATERAL (
-            SELECT COALESCE(SUM(e.amount), 0) AS total_expenses
+            SELECT
+                COALESCE(SUM(e.amount), 0) AS total_expenses,
+                COALESCE(SUM(e.amount) FILTER (WHERE e.expense_type IN ('toll','parking','etc')), 0) AS pass_through_total
             FROM expenses e
             JOIN order_shipments os ON os.id = e.shipment_id
             WHERE os.order_id = o.id
@@ -510,7 +512,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
                      + dd_agg.driver_debt_remaining
                      + pending_agg.pending_receipt_amount <= 0.01
                     THEN 'paid'
-                WHEN ship_agg.actual_price
+                WHEN ship_agg.actual_price + exp_agg.pass_through_total
                      - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0)
                      - dd_agg.driver_debt_remaining
                      - pending_agg.pending_receipt_amount > 0.01
@@ -521,8 +523,11 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             dd_agg.driver_debt_remaining,
             pending_agg.pending_receipt_amount,
             exp_agg.total_expenses,
+            exp_agg.pass_through_total,
+            -- Tổng khách phải trả = cước + chi hộ khách (NULL khi cước chưa được chốt)
+            NULLIF(ship_agg.actual_price, 0) + exp_agg.pass_through_total AS final_price,
             GREATEST(
-                ship_agg.actual_price
+                ship_agg.actual_price + exp_agg.pass_through_total
                 - dd_agg.driver_debt_remaining
                 - GREATEST(d_agg.debt_total - d_agg.debt_paid, 0)
                 - pending_agg.pending_receipt_amount,

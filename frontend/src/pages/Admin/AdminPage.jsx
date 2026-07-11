@@ -8,6 +8,7 @@ import ManagerDashboard from "../../features/manager/ManagerDashboard";
 import PartnerManagement from "../../features/manager/PartnerManagement";
 import ManagerPayrollPage from "../../features/manager/ManagerPayrollPage";
 import ManagerBonusPage from "../../features/manager/ManagerBonusPage";
+import HolidayManagement from "../../features/manager/HolidayManagement";
 import { C } from "../../styles/theme";
 import "../../styles/admin/Admin.css";
 import { saveSession } from "../../services/storage";
@@ -36,6 +37,7 @@ export default function AdminPage({ user, onLogout }) {
     vehicles:  "Quản lý xe",
     payroll:   "Duyệt lương tài xế",
     bonus:     "Thưởng & Phúc lợi",
+    holidays:  "Quản lý ngày lễ",
   };
 
   const pageSubtitleMap = {
@@ -45,6 +47,7 @@ export default function AdminPage({ user, onLogout }) {
     vehicles:  "Theo dõi phương tiện, tài xế được gán và trạng thái bảo trì.",
     payroll:   "Xác nhận bảng lương tài xế trước khi kế toán chi trả.",
     bonus:     "Duyệt thưởng Tết, phúc lợi kết hôn/tang gia/sinh nhật và thưởng đặc biệt.",
+    holidays:  "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương.",
   };
 
   return (
@@ -76,6 +79,7 @@ export default function AdminPage({ user, onLogout }) {
           {activeTab === "vehicles"  && <VehicleList        user={currentUser} />}
           {activeTab === "payroll"   && <ManagerPayrollPage />}
           {activeTab === "bonus"     && <ManagerBonusPage   />}
+          {activeTab === "holidays"  && <HolidayManagement  />}
         </section>
       </main>
     </div>

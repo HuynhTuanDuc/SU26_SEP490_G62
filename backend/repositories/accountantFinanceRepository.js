@@ -7,6 +7,8 @@ const getFinanceStats = async () => {
             SELECT
                 o.id,
                 COALESCE(ship_sum.actual_price, 0)      AS actual_price,
+                -- Khách phải trả = cước + chi hộ khách (nợ & phiếu thu đều gồm chi hộ)
+                COALESCE(ship_sum.actual_price, 0) + COALESCE(pt.pass_through_total, 0) AS collectible,
                 COALESCE(cust.remaining, 0)             AS customer_remaining,
                 COALESCE(drv.remaining, 0)              AS driver_remaining,
                 COALESCE(pending.receipt_remaining, 0)  AS pending_receipt_remaining
@@ -16,6 +18,14 @@ const getFinanceStats = async () => {
                 FROM order_shipments
                 GROUP BY order_id
             ) ship_sum ON ship_sum.order_id = o.id
+            LEFT JOIN (
+                SELECT os.order_id,
+                       COALESCE(SUM(e.amount) FILTER (WHERE e.expense_type IN ('toll','parking','etc')), 0) AS pass_through_total
+                FROM expenses e
+                JOIN order_shipments os ON os.id = e.shipment_id
+                WHERE e.status != 'rejected'
+                GROUP BY os.order_id
+            ) pt ON pt.order_id = o.id
             LEFT JOIN (
                 SELECT d.order_id,
                        GREATEST(
@@ -61,11 +71,11 @@ const getFinanceStats = async () => {
         SELECT
             SUM(actual_price)::numeric AS total_gross_revenue,
             SUM(GREATEST(
-                actual_price - customer_remaining - driver_remaining - pending_receipt_remaining,
+                collectible - customer_remaining - driver_remaining - pending_receipt_remaining,
                 0
             ))::numeric AS total_revenue,
             SUM(GREATEST(
-                actual_price - customer_remaining - driver_remaining - pending_receipt_remaining,
+                collectible - customer_remaining - driver_remaining - pending_receipt_remaining,
                 0
             ))::numeric AS total_collected,
             (SUM(customer_remaining) + SUM(driver_remaining) + SUM(pending_receipt_remaining))::numeric AS total_receivables,

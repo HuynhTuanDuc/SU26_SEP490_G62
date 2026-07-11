@@ -1,4 +1,4 @@
-export type MaintenanceStatus = 'open' | 'pending_verification' | 'completed';
+export type MaintenanceStatus = 'requested' | 'open' | 'pending_verification' | 'completed' | 'rejected';
 
 export type MaintenanceType = 'scheduled' | 'repair' | 'inspection' | 'emergency';
 
@@ -10,9 +10,11 @@ export const MAINTENANCE_TYPE_LABEL: Record<MaintenanceType, string> = {
 };
 
 export const MAINTENANCE_STATUS_LABEL: Record<MaintenanceStatus, string> = {
+    requested:            'Chờ duyệt',
     open:                 'Đang thực hiện',
     pending_verification: 'Chờ xác nhận',
     completed:            'Hoàn thành',
+    rejected:             'Bị từ chối',
 };
 
 export type MaintenanceRecord = {
@@ -31,4 +33,6 @@ export type MaintenanceRecord = {
     started_at: string;
     completed_at: string | null;
     created_by: number | null;
+    request_reason: string | null;
+    reject_reason: string | null;
 };

@@ -2,6 +2,7 @@ import React from 'react';
 import { Tooltip } from 'antd';
 import {
   Building2,
+  Calendar,
   Car,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ const MENU_CONFIG = {
     { type: 'divider' },
     { key: 'payroll',   Icon: Receipt,         label: 'Duyệt lương' },
     { key: 'bonus',     Icon: Gift,            label: 'Thưởng & Phúc lợi' },
+    { key: 'holidays',  Icon: Calendar,        label: 'Ngày lễ' },
     { type: 'divider' },
     { key: 'settings',  Icon: Settings,        label: 'Cài đặt', disabled: true },
   ],

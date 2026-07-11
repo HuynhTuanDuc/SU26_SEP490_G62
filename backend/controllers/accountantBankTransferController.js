@@ -195,20 +195,20 @@ const confirmBankTransfer = async (req, res) => {
         } else if (diff > 0.01 && rec.customer_id) {
             // ── Thừa: phân bổ vào nợ cũ của khách (oldest → newest) ─────
             const excess = diff;
+            // Postgres cấm FOR UPDATE + GROUP BY — dùng LATERAL để vẫn lock được dòng debts
             const { rows: oldDebts } = await client.query(
                 `SELECT d.id AS debt_id,
-                        GREATEST(0,
-                            d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                        ) AS remaining
+                        GREATEST(0, d.total_amount - paid.paid) AS remaining
                  FROM debts d
-                 LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+                 LEFT JOIN LATERAL (
+                     SELECT COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid
+                     FROM debt_payments dp
+                     WHERE dp.debt_id = d.id
+                 ) paid ON TRUE
                  WHERE d.customer_id = $1
                    AND d.debt_type = 'customer'
                    AND d.order_id != $2
-                 GROUP BY d.id, d.total_amount
-                 HAVING GREATEST(0,
-                     d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
-                 ) > 0.01
+                   AND GREATEST(0, d.total_amount - paid.paid) > 0.01
                  ORDER BY d.created_at ASC, d.id ASC
                  FOR UPDATE OF d`,
                 [rec.customer_id, rec.order_id],

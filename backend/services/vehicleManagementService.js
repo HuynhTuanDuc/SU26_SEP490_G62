@@ -333,7 +333,7 @@ const validateMaintenanceDriver = async (performedBy, { vehicle = null, currentP
     return parsedDriverId;
 };
 
-const createVehicle = async (payload) => {
+const createVehicle = async (payload, actorId = null) => {
     const requestedStatus = payload.status ? String(payload.status).trim() : 'active';
     if (!VEHICLE_STATUSES.includes(requestedStatus)) {
         throw createError(`status must be one of: ${VEHICLE_STATUSES.join(', ')}`, 400);
@@ -347,12 +347,22 @@ const createVehicle = async (payload) => {
         ...normalizedPayload,
         status: 'active',
     });
+    if (normalizedPayload.assigned_driver_id) {
+        await vehicleManagementRepository.insertVehicleAssignmentHistory({
+            vehicleId,
+            driverId: normalizedPayload.assigned_driver_id,
+            previousDriverId: null,
+            action: 'assign',
+            note: 'Gán tài xế khi tạo xe',
+            createdBy: actorId,
+        });
+    }
     const vehicle = await getVehicleDetail(vehicleId);
     broadcastManagerVehicleChange('created', vehicle);
     return vehicle;
 };
 
-const updateVehicle = async (vehicleId, payload) => {
+const updateVehicle = async (vehicleId, payload, actorId = null) => {
     const id = parsePositiveInteger(vehicleId, 'vehicle_id');
     const existingVehicle = await vehicleManagementRepository.getVehicleById(id);
     if (!existingVehicle) throw createError('Vehicle not found', 404);
@@ -378,6 +388,16 @@ const updateVehicle = async (vehicleId, payload) => {
     }
 
     await vehicleManagementRepository.updateVehicle(id, normalizedPayload);
+    if (driverAssignmentChanged) {
+        await vehicleManagementRepository.insertVehicleAssignmentHistory({
+            vehicleId: id,
+            driverId: normalizedPayload.assigned_driver_id ?? null,
+            previousDriverId: existingVehicle.assigned_driver_id ?? null,
+            action: normalizedPayload.assigned_driver_id ? 'assign' : 'unassign',
+            note: 'Thay đổi qua cập nhật thông tin xe',
+            createdBy: actorId,
+        });
+    }
     const vehicle = await getVehicleDetail(id);
     broadcastManagerVehicleChange('updated', vehicle);
     return vehicle;
@@ -463,6 +483,89 @@ const sendVehicleToMaintenance = async (vehicleId, managerId, payload = {}) => {
         maintenanceRecordId: maintenanceResult?.maintenanceId ?? null,
     });
     return updatedVehicle;
+};
+
+// ─── Maintenance request (driver yêu cầu, manager duyệt) ─────────────────────
+
+const listMaintenanceRequests = async () =>
+    vehicleManagementRepository.listMaintenanceRequests();
+
+const approveMaintenanceRequest = async (recordId, managerId, payload = {}) => {
+    const parsedRecordId = parsePositiveInteger(recordId, 'maintenance_record_id');
+    const parsedManagerId = parsePositiveInteger(managerId, 'manager_id');
+
+    const result = await vehicleManagementRepository.approveMaintenanceRequest({
+        maintenanceRecordId: parsedRecordId,
+        managerId: parsedManagerId,
+        note: normalizeString(payload.note) || 'Duyệt yêu cầu bảo dưỡng của tài xế',
+    });
+    if (!result) {
+        throw createError('Yêu cầu bảo dưỡng không tồn tại hoặc đã được xử lý', 404);
+    }
+
+    const updatedVehicle = await getVehicleDetail(result.vehicleId);
+    const performedBy = updatedVehicle?.active_maintenance_performed_by ?? updatedVehicle?.assigned_driver_id ?? null;
+
+    if (performedBy) {
+        try {
+            await notificationService.createForUser(performedBy, {
+                title: 'Yêu cầu bảo dưỡng được duyệt',
+                message: `Yêu cầu bảo dưỡng xe ${updatedVehicle?.plate_number ?? ''} đã được duyệt. Bạn có thể tiến hành bảo dưỡng.`,
+                type: 'MAINTENANCE_ASSIGNED',
+                entityType: 'maintenance_record',
+                entityId: result.maintenanceId,
+                displayMode: 'alert',
+            });
+            notificationGateway.broadcastToUser(performedBy, {
+                type: 'maintenance.assigned',
+                vehicleId: result.vehicleId,
+                maintenanceRecordId: result.maintenanceId,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
+
+    broadcastManagerVehicleChange('sent_to_maintenance', updatedVehicle, {
+        maintenanceRecordId: result.maintenanceId,
+    });
+    return updatedVehicle;
+};
+
+const rejectMaintenanceRequest = async (recordId, managerId, payload = {}) => {
+    const parsedRecordId = parsePositiveInteger(recordId, 'maintenance_record_id');
+    const parsedManagerId = parsePositiveInteger(managerId, 'manager_id');
+    const reason = normalizeString(payload.reason);
+    if (!reason) {
+        throw createError('Cần ghi lý do từ chối yêu cầu bảo dưỡng', 400);
+    }
+
+    const rejected = await vehicleManagementRepository.rejectMaintenanceRequest({
+        maintenanceRecordId: parsedRecordId,
+        managerId: parsedManagerId,
+        reason,
+    });
+    if (!rejected) {
+        throw createError('Yêu cầu bảo dưỡng không tồn tại hoặc đã được xử lý', 404);
+    }
+
+    if (rejected.performed_by) {
+        try {
+            await notificationService.createForUser(rejected.performed_by, {
+                title: 'Yêu cầu bảo dưỡng bị từ chối',
+                message: `Yêu cầu bảo dưỡng xe của bạn bị từ chối: ${reason}`,
+                type: 'MAINTENANCE_REJECTED',
+                entityType: 'maintenance_record',
+                entityId: rejected.id,
+                displayMode: 'alert',
+            });
+            notificationGateway.broadcastToUser(rejected.performed_by, {
+                type: 'maintenance.assigned',
+                vehicleId: rejected.vehicle_id,
+                maintenanceRecordId: rejected.id,
+            });
+        } catch { /* notification failure must not abort the main flow */ }
+    }
+
+    return rejected;
 };
 
 const completeMaintenance = async (vehicleId, managerId, payload = {}) => {
@@ -628,7 +731,7 @@ const changeVehicleStatus = async (vehicleId, managerId, payload = {}) => {
     }
 };
 
-const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
+const setVehicleDriverAssignment = async (vehicleId, payload = {}, actorId = null) => {
     const id = parsePositiveInteger(vehicleId, 'vehicle_id');
     const existingVehicle = await vehicleManagementRepository.getVehicleById(id);
     if (!existingVehicle) throw createError('Vehicle not found', 404);
@@ -668,12 +771,28 @@ const setVehicleDriverAssignment = async (vehicleId, payload = {}) => {
         assigned_driver_id: nextAssignedDriverId,
     });
 
+    await vehicleManagementRepository.insertVehicleAssignmentHistory({
+        vehicleId: id,
+        driverId: nextAssignedDriverId,
+        previousDriverId: existingVehicle.assigned_driver_id ?? null,
+        action: isUnassignAction ? 'unassign' : 'assign',
+        note: null,
+        createdBy: actorId,
+    });
+
     const vehicle = await getVehicleDetail(id);
     broadcastManagerVehicleChange('driver_assignment_changed', vehicle);
     return vehicle;
 };
 
 const softDeleteVehicle = async (vehicleId, managerId) => retireVehicle(vehicleId, managerId, {});
+
+const getVehicleAssignmentHistory = async (vehicleId) => {
+    const id = parsePositiveInteger(vehicleId, 'vehicle_id');
+    const vehicle = await vehicleManagementRepository.getVehicleById(id);
+    if (!vehicle) throw createError('Vehicle not found', 404);
+    return vehicleManagementRepository.getVehicleAssignmentHistory(id);
+};
 
 const listAssignableDrivers = async (vehicleId = null) => {
     const currentVehicleId = vehicleId === null
@@ -720,12 +839,16 @@ module.exports = {
     updateVehicle,
     changeVehicleStatus,
     sendVehicleToMaintenance,
+    listMaintenanceRequests,
+    approveMaintenanceRequest,
+    rejectMaintenanceRequest,
     completeMaintenance,
     verifyMaintenance,
     markVehicleAsBroken,
     restoreVehicle,
     retireVehicle,
     setVehicleDriverAssignment,
+    getVehicleAssignmentHistory,
     softDeleteVehicle,
     listAssignableDrivers,
 };
