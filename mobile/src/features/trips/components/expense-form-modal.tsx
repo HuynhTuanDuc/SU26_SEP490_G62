@@ -18,7 +18,7 @@ import { tripService } from '@/services/trip-service';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
 
-const EXPENSE_TYPES: ExpenseType[] = ['fuel', 'toll', 'parking', 'ferry', 'minor_repair', 'other'];
+const EXPENSE_TYPES: ExpenseType[] = ['toll', 'parking', 'etc', 'fuel', 'repair'];
 
 const C  = 28;
 const CT = 3;
@@ -83,7 +83,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
     });
 
     // ── Form state ──
-    const [expenseType,    setExpenseType]    = useState<ExpenseType>('fuel');
+    const [expenseType,    setExpenseType]    = useState<ExpenseType>('toll');
     const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange, clear: clearAmount } = useMoneyInput();
     const [description,    setDescription]    = useState('');
     const [receiptUri,     setReceiptUri]     = useState<string | null>(null);
@@ -96,7 +96,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
     const cameraRef = useRef<CameraView>(null);
 
     const reset = () => {
-        setExpenseType('fuel');
+        setExpenseType('toll');
         clearAmount();
         setDescription('');
         setReceiptUri(null);

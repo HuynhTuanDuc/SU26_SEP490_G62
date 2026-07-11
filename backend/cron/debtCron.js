@@ -2,25 +2,8 @@ const cron = require('node-cron');
 const pool = require('../config/database');
 
 
-const markOverdueDebts = async () => {
-    try {
-        const result = await pool.query(
-            `UPDATE debts
-             SET status     = 'overdue',
-                 updated_at = NOW()
-             WHERE status   IN ('unpaid', 'partial')
-               AND due_date IS NOT NULL
-               AND due_date < CURRENT_DATE
-             RETURNING id`,
-        );
-        if (result.rowCount > 0) {
-            console.info(`[debtCron] Đánh dấu ${result.rowCount} khoản nợ thành overdue`);
-        }
-    } catch (err) {
-        console.error('[debtCron] Lỗi khi cập nhật overdue:', err.message);
-    }
-};
-
+// Trạng thái nợ (unpaid/partial/paid/overdue) được tính động từ debt_payments
+// và due_date trong debtRepository — bảng debts không có cột status.
 
 const rejectExpiredLeaveRequests = async () => {
     try {
@@ -42,13 +25,12 @@ const rejectExpiredLeaveRequests = async () => {
 const initCronJobs = () => {
     // 00:05 mỗi ngày
     cron.schedule('5 0 * * *', async () => {
-        await markOverdueDebts();
         await rejectExpiredLeaveRequests();
     }, {
         timezone: 'Asia/Ho_Chi_Minh',
     });
 
-    console.info('[cron] Đã đăng ký job: debt overdue + leave cleanup — chạy lúc 00:05 (GMT+7)');
+    console.info('[cron] Đã đăng ký job: leave cleanup — chạy lúc 00:05 (GMT+7)');
 };
 
 module.exports = { initCronJobs };

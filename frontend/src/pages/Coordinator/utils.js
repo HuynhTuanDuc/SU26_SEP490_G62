@@ -46,15 +46,14 @@ export const formatNotificationTime = (value) => {
 };
 
 export const expenseTypeOptions = [
-  { value: "fuel",        label: "Nhiên liệu (cty chịu)" },
-  { value: "toll",        label: "Cầu đường (khách chịu)" },
-  { value: "parking",     label: "Đỗ xe (khách chịu)" },
-  { value: "ferry",       label: "Phà (khách chịu)" },
-  { value: "minor_repair", label: "Sửa chữa nhỏ (cty chịu)" },
-  { value: "other",       label: "Khác" },
+  { value: "toll",    label: "Phí cầu đường (khách chịu)" },
+  { value: "parking", label: "Phí đỗ xe (khách chịu)" },
+  { value: "etc",     label: "Phí ETC (khách chịu)" },
+  { value: "fuel",    label: "Xăng dầu / nhiên liệu (cty chịu)" },
+  { value: "repair",  label: "Sửa xe (cty chịu)" },
 ];
 export const newReceiptExpense = () => ({
-  expense_type: "fuel",
+  expense_type: "toll",
   amount: "",
   description: "",
 });

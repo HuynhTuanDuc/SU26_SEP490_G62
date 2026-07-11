@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 // ─── Driver: danh sách công nợ (chỉ xem, không tự tạo/nộp) ──────────────────
 
@@ -167,13 +168,15 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
 
         // Lấy thông tin payment + debt
         const payRes = await client.query(
-            `SELECT dp.id, dp.debt_id, dp.amount, dp.status, d.total_amount, d.driver_id,
+            `SELECT dp.id, dp.debt_id, dp.amount, dp.status, dp.payment_method,
+                    d.total_amount, d.driver_id, d.debt_type,
                     COALESCE(SUM(dp2.amount) FILTER (WHERE dp2.status = 'confirmed'), 0) AS already_paid
              FROM debt_payments dp
              JOIN debts d ON d.id = dp.debt_id
              LEFT JOIN debt_payments dp2 ON dp2.debt_id = dp.debt_id
              WHERE dp.id = $1
-             GROUP BY dp.id, dp.debt_id, dp.amount, dp.status, d.total_amount, d.driver_id`,
+             GROUP BY dp.id, dp.debt_id, dp.amount, dp.status, dp.payment_method,
+                      d.total_amount, d.driver_id, d.debt_type`,
             [paymentId],
         );
         const pay = payRes.rows[0];
@@ -187,6 +190,26 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
              WHERE id = $2`,
             [confirmedBy, paymentId],
         );
+
+        // Ghi sổ nhật ký tài chính
+        const cashAccount = pay.payment_method === 'bank_transfer' ? '1121' : '1111';
+        if (pay.debt_type === 'driver') {
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'driver_debt_paid',
+                debitAccount: cashAccount, creditAccount: '1388',
+                amount: Number(pay.amount),
+                description: `Tài xế nộp quỹ — công nợ #${pay.debt_id}`,
+                refType: 'debt', refId: pay.debt_id, actorId: confirmedBy,
+            });
+        } else {
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'customer_payment',
+                debitAccount: cashAccount, creditAccount: '131',
+                amount: Number(pay.amount),
+                description: `Khách hàng thanh toán — công nợ #${pay.debt_id}`,
+                refType: 'debt', refId: pay.debt_id, actorId: confirmedBy,
+            });
+        }
 
         await client.query('COMMIT');
         return { paymentId, debtId: pay.debt_id, driverId: pay.driver_id };

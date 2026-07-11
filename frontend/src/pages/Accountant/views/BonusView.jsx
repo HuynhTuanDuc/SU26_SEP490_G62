@@ -248,6 +248,12 @@ export function BonusView({ search }) {
             <p className="text-sm text-gray-600">
               Xác nhận đã chi trả khoản thưởng/phúc lợi này cho tài xế?
             </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800">
+              Lưu ý: thưởng đã duyệt sẽ tự động cộng vào bảng lương tháng và chuyển
+              sang trạng thái đã chi khi kế toán chi lương. Chỉ dùng nút này khi cần
+              chi tiền mặt riêng ngoài kỳ lương — khoản đã đánh dấu đã chi sẽ KHÔNG
+              được cộng vào bảng lương nữa.
+            </div>
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setConfirmId(null)}>Huỷ</Button>

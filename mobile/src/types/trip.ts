@@ -223,21 +223,27 @@ export type ShipmentPayment = {
 };
 
 export type ExpenseType =
-    | 'fuel'
     | 'toll'
     | 'parking'
-    | 'ferry'
-    | 'minor_repair'
-    | 'other';
+    | 'etc'
+    | 'fuel'
+    | 'repair';
 
-export const EXPENSE_TYPE_LABEL: Record<ExpenseType, string> = {
-    fuel:         'Nhiên liệu',
-    toll:         'Phí cầu đường',
-    parking:      'Đỗ xe',
+// Record<string, ...> để hiển thị được cả giá trị cũ trong DB (ferry, minor_repair, other...)
+export const EXPENSE_TYPE_LABEL: Record<string, string> = {
+    toll:         'Phí cầu đường (khách trả)',
+    parking:      'Phí đỗ xe (khách trả)',
+    etc:          'Phí ETC (khách trả)',
+    fuel:         'Xăng dầu / nhiên liệu (công ty trả)',
+    repair:       'Sửa xe (công ty trả)',
+    // Giá trị cũ — chỉ hiển thị
     ferry:        'Phà',
     minor_repair: 'Sửa chữa nhỏ',
+    maintenance:  'Bảo dưỡng',
     other:        'Khác',
 };
+
+export type ExpenseStatus = 'pending' | 'approved' | 'rejected';
 
 export type Expense = {
     id: number;
@@ -246,6 +252,8 @@ export type Expense = {
     amount: string;
     description: string | null;
     expense_date: string;
+    status: ExpenseStatus;
+    reject_reason: string | null;
     created_at: string;
     receipt_urls: string[];
 };

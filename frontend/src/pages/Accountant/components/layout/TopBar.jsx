@@ -163,23 +163,20 @@ export function TopBar({
           }}
         >
           <PopoverTrigger>
-            <div className="relative cursor-pointer">
-              <Button
-                isIconOnly
-                variant="flat"
-                size="sm"
-                className="h-9 w-9 text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 transition-colors"
-                aria-label="Thông báo"
-              >
-                <RiNotification3Line size={18} />
-              </Button>
-              {}
+            <Button
+              isIconOnly
+              variant="flat"
+              size="sm"
+              className="relative h-9 w-9 text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 transition-colors overflow-visible"
+              aria-label="Thông báo"
+            >
+              <RiNotification3Line size={18} />
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none pointer-events-none">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
-            </div>
+            </Button>
           </PopoverTrigger>
           <PopoverContent>
             <NotificationPanel

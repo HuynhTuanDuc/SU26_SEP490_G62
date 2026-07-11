@@ -35,15 +35,14 @@ const { Text } = Typography;
 const { TextArea } = Input;
 
 const EXPENSE_TYPES = [
-  { value: "fuel",         label: "Đổ dầu / Xăng (cty chịu)",          group: "company" },
-  { value: "toll",         label: "BOT / Phí cầu đường (khách chịu)",   group: "pass_through" },
-  { value: "parking",      label: "Đỗ xe / Bến bãi (khách chịu)",       group: "pass_through" },
-  { value: "ferry",        label: "Phà (khách chịu)",                    group: "pass_through" },
-  { value: "minor_repair", label: "Sửa xe nhỏ / Sự cố (cty chịu)",      group: "company" },
-  { value: "other",        label: "Khác",                                group: "other" },
+  { value: "toll",    label: "BOT / Phí cầu đường (khách chịu)", group: "pass_through" },
+  { value: "parking", label: "Đỗ xe / Bến bãi (khách chịu)",     group: "pass_through" },
+  { value: "etc",     label: "Phí ETC (khách chịu)",              group: "pass_through" },
+  { value: "fuel",    label: "Xăng dầu / nhiên liệu (cty chịu)", group: "company" },
+  { value: "repair",  label: "Sửa xe (cty chịu)",                 group: "company" },
 ];
 
-const PASS_THROUGH_TYPES = new Set(["toll", "parking", "ferry"]);
+const PASS_THROUGH_TYPES = new Set(["toll", "parking", "etc"]);
 
 const CUSTOMER_PAYMENT_OPTIONS = [
   { value: "cash", label: "Tiền mặt" },
@@ -114,7 +113,7 @@ const newShipment = () => ({
 
 const newExpense = () => ({
   id: newExpenseId(),
-  expense_type: "fuel",
+  expense_type: "toll",
   amount: 0,
   description: "",
 });

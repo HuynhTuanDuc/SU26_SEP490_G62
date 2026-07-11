@@ -1,4 +1,5 @@
 ﻿const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -99,7 +100,8 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id]);
     const totalDebt    = Number(debtRow.remaining ?? 0);
 
-    // Thưởng & phúc lợi đã được duyệt trong kỳ (Tết, hiếu hỉ, đặc biệt...)
+    // Thưởng & phúc lợi đã duyệt trong kỳ, chờ chi qua lương (Tết, hiếu hỉ, đặc biệt...)
+    // Chỉ tính 'approved' — khoản 'paid' là đã chi rồi, không cộng lại (tránh chi 2 lần)
     const { rows: [bonusRow] } = await client.query(`
         SELECT COALESCE(SUM(amount), 0)::numeric AS total
         FROM driver_bonuses
@@ -310,19 +312,114 @@ const confirmPayroll = async (payrollId, accountantId) => {
 };
 
 const markPayrollPaid = async (payrollId, accountantId) => {
-    const { rows: [row] } = await pool.query(`
-        UPDATE payrolls
-        SET status  = 'paid',
-            paid_by = $2,
-            paid_at = NOW(),
-            updated_at = NOW()
-        WHERE id = $1
-          AND status = 'approved'
-        RETURNING *
-    `, [payrollId, accountantId]);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y phiáº¿u lÆ°Æ¡ng hoáº·c tráº¡ng thÃ¡i khÃ´ng há»£p lá»‡ (cáº§n approved)');
-    return row;
+        const { rows: [row] } = await client.query(`
+            UPDATE payrolls
+            SET status  = 'paid',
+                paid_by = $2,
+                paid_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+              AND status = 'approved'
+            RETURNING *
+        `, [payrollId, accountantId]);
+
+        if (!row) throw new Error('Không tìm thấy phiếu lương hoặc trạng thái không hợp lệ (cần approved)');
+
+        // 1. Chốt thưởng & phúc lợi đã cộng vào lương kỳ này → 'paid' (chi qua lương, không chi lẻ nữa)
+        const { rows: paidBonuses } = await client.query(`
+            UPDATE driver_bonuses
+            SET status = 'paid', paid_by = $2, paid_at = NOW(), updated_at = NOW()
+            WHERE driver_id = $1
+              AND status = 'approved'
+              AND EXTRACT(MONTH FROM approved_at) = $3
+              AND EXTRACT(YEAR  FROM approved_at) = $4
+            RETURNING id, amount
+        `, [row.driver_id, accountantId, row.payroll_month, row.payroll_year]);
+
+        // Cảnh báo nếu bonus duyệt thêm sau lần tính lương cuối → tổng không khớp snapshot
+        const bonusPaidTotal = paidBonuses.reduce((s, b) => s + Number(b.amount), 0);
+        const bonusSnapshot  = Number(row.overtime_bonus ?? 0);
+        const bonusMismatch  = Math.abs(bonusPaidTotal - bonusSnapshot) > 0.01;
+
+        // 2. Cấn trừ công nợ tài xế đã khấu trừ vào lương → ghi debt_payments (FIFO nợ cũ nhất trước)
+        const debtDeduction = Number(row.driver_debt_deduction ?? 0);
+        if (debtDeduction > 0.01) {
+            const { rows: openDebts } = await client.query(`
+                SELECT d.id AS debt_id,
+                       GREATEST(0,
+                           d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+                       ) AS remaining
+                FROM debts d
+                LEFT JOIN debt_payments dp ON dp.debt_id = d.id
+                WHERE d.driver_id = $1
+                  AND d.debt_type = 'driver'
+                GROUP BY d.id, d.total_amount
+                HAVING GREATEST(0,
+                    d.total_amount - COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)
+                ) > 0.01
+                ORDER BY d.created_at ASC, d.id ASC
+                FOR UPDATE OF d
+            `, [row.driver_id]);
+
+            let rem = debtDeduction;
+            const ids = [], amounts = [];
+            for (const debt of openDebts) {
+                if (rem < 0.01) break;
+                const alloc = Math.min(rem, Number(debt.remaining));
+                if (alloc < 0.01) continue;
+                ids.push(Number(debt.debt_id));
+                amounts.push(alloc);
+                rem -= alloc;
+            }
+            if (ids.length > 0) {
+                await client.query(`
+                    INSERT INTO debt_payments
+                        (debt_id, amount, payment_method, status,
+                         paid_at, confirmed_at, confirmed_by, created_by, notes)
+                    SELECT unnest($1::int[]), unnest($2::numeric[]),
+                           'offset', 'confirmed', NOW(), NOW(), $3, $3, $4
+                `, [
+                    ids, amounts, accountantId,
+                    `Cấn trừ công nợ vào lương tháng ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
+                ]);
+                const clearedTotal = amounts.reduce((s, a) => s + a, 0);
+                await financialLedgerRepository.insertTransaction(client, {
+                    eventType: 'driver_debt_paid',
+                    debitAccount: '334', creditAccount: '1388',
+                    amount: clearedTotal,
+                    description: `Cấn trừ nợ tài xế vào lương ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
+                    refType: 'payroll', refId: payrollId, actorId: accountantId,
+                });
+            }
+        }
+
+        // 3. Ghi sổ chi lương
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'payroll_paid',
+            debitAccount: '334', creditAccount: '1111',
+            amount: Number(row.net_salary ?? 0),
+            description: `Chi lương tháng ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
+            refType: 'payroll', refId: payrollId, actorId: accountantId,
+        });
+
+        await client.query('COMMIT');
+        return {
+            ...row,
+            bonuses_marked_paid: paidBonuses.length,
+            bonus_mismatch_warning: bonusMismatch
+                ? `Tổng thưởng phúc lợi đã duyệt (${bonusPaidTotal.toLocaleString('vi-VN')}đ) khác snapshot trong bảng lương (${bonusSnapshot.toLocaleString('vi-VN')}đ) — có khoản duyệt sau lần tính lương cuối.`
+                : null,
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
 };
 
 const getSalaryAdvances = async ({ status = null, month = null, year = null, search = null }) => {
@@ -370,7 +467,15 @@ const disburseAdvance = async (advanceId, accountantId, { notes = null } = {}) =
         RETURNING *
     `, [advanceId, accountantId]);
 
-    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y yÃªu cáº§u á»©ng lÆ°Æ¡ng hoáº·c chÆ°a Ä‘Æ°á»£c manager duyá»‡t');
+    if (!row) throw new Error('Không tìm thấy yêu cầu ứng lương hoặc chưa được manager duyệt');
+
+    await financialLedgerRepository.insertTransaction(pool, {
+        eventType: 'advance_disbursed',
+        debitAccount: '141', creditAccount: '1111',
+        amount: Number(row.amount),
+        description: `Giải ngân ứng lương tháng ${row.request_month}/${row.request_year} — yêu cầu #${advanceId}`,
+        refType: 'advance', refId: advanceId, actorId: accountantId,
+    });
     return row;
 };
 

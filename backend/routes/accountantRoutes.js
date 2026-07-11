@@ -6,6 +6,7 @@ const accountantDebtController         = require('../controllers/accountantDebtC
 const accountantPaymentController      = require('../controllers/accountantPaymentController');
 const accountantReportController       = require('../controllers/accountantReportController');
 const accountantBankTransferController = require('../controllers/accountantBankTransferController');
+const accountantLedgerController       = require('../controllers/accountantLedgerController');
 const accountantOrderRoutes   = require('./accountantOrderRoutes');
 const accountantPayrollRoutes = require('./accountantPayrollRoutes');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
@@ -29,5 +30,10 @@ router.post('/debts/payment/by-debt',    accountantPaymentController.paymentByDe
 
 router.get ('/receipts/bank-transfer',                              accountantBankTransferController.getPendingBankTransfers);
 router.post('/receipts/:receiptId/confirm-bank-transfer',           accountantBankTransferController.confirmBankTransfer);
+
+// Nhật ký tài chính (append-only ledger) + xuất kỳ kế toán
+router.get ('/ledger',        accountantLedgerController.getJournal);
+router.get ('/ledger/stats',  accountantLedgerController.getJournalStats);
+router.post('/ledger/export', accountantLedgerController.exportPeriod);
 
 module.exports = router;

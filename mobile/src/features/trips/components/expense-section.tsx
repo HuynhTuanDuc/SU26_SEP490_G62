@@ -47,14 +47,28 @@ export function ExpenseSection({ expenses, canAdd, onAdd }: Props) {
                     expenses.map((e) => (
                         <XStack key={e.id} gap={10} alignItems="flex-start">
                             <YStack flex={1} gap={2}>
-                                <XStack alignItems="center" gap={6}>
+                                <XStack alignItems="center" gap={6} flexWrap="wrap">
                                     <Text fontSize={13} fontWeight="800" color={appTheme.colors.text}>
                                         {EXPENSE_TYPE_LABEL[e.expense_type]}
                                     </Text>
                                     <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
                                         {fmt(e.amount)}
                                     </Text>
+                                    {e.status === 'pending' ? (
+                                        <Text fontSize={10} fontWeight="800" color={appTheme.colors.warningText}>
+                                            Chờ duyệt
+                                        </Text>
+                                    ) : e.status === 'rejected' ? (
+                                        <Text fontSize={10} fontWeight="800" color={appTheme.colors.dangerText}>
+                                            Bị từ chối
+                                        </Text>
+                                    ) : null}
                                 </XStack>
+                                {e.status === 'rejected' && e.reject_reason ? (
+                                    <Text fontSize={11} color={appTheme.colors.dangerText}>
+                                        Lý do: {e.reject_reason}
+                                    </Text>
+                                ) : null}
                                 {e.description ? (
                                     <Text fontSize={11} color={appTheme.colors.textMuted}>{e.description}</Text>
                                 ) : null}

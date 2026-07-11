@@ -1,4 +1,5 @@
 ﻿const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const _debtStatus = (paid, total) => {
     if (paid >= total - 0.01) return 'paid';
@@ -27,6 +28,22 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
          RETURNING id, debt_id, amount`,
         [debt.id, numericAmount, method || 'cash', createdBy, notes || null]
     );
+
+    // Ghi sổ nhật ký tài chính theo loại công nợ
+    const { rows: [debtInfo] } = await client.query(
+        `SELECT debt_type FROM debts WHERE id = $1`, [debt.id],
+    );
+    const isDriverDebt = debtInfo?.debt_type === 'driver';
+    await financialLedgerRepository.insertTransaction(client, {
+        eventType: isDriverDebt ? 'driver_debt_paid' : 'customer_payment',
+        debitAccount: method === 'bank_transfer' ? '1121' : '1111',
+        creditAccount: isDriverDebt ? '1388' : '131',
+        amount: numericAmount,
+        description: isDriverDebt
+            ? `Tài xế nộp quỹ — công nợ #${debt.id}`
+            : `Khách hàng thanh toán — công nợ #${debt.id}`,
+        refType: 'debt', refId: debt.id, actorId: createdBy,
+    });
 
     return { payment, newPaidAmount, newStatus };
 };
@@ -242,6 +259,15 @@ const recordPaymentWithOverflow = async (orderId, paymentData) => {
                 paymentData.notes || null,
             ]
         );
+
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'customer_payment',
+            debitAccount: paymentData.paymentMethod === 'bank_transfer' ? '1121' : '1111',
+            creditAccount: '131',
+            amount: requestedAmount,
+            description: `Khách hàng thanh toán — đơn #${orderId}${allocations.length > 1 ? ` (phân bổ ${allocations.length} công nợ)` : ''}`,
+            refType: 'order', refId: orderId, actorId: paymentData.createdBy,
+        });
 
         await client.query('COMMIT');
         return {
@@ -480,9 +506,20 @@ const allocatePayment = async (personType, personId, paymentData) => {
                 debtIds, allocAmts,
                 paymentData.paymentMethod || 'cash',
                 paymentData.createdBy,
-                paymentData.notes || 'PhÃ¢n bá»• thanh toÃ¡n tá»± Ä‘á»™ng',
+                paymentData.notes || 'Phân bổ thanh toán tự động',
             ]
         );
+
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: personType === 'driver' ? 'driver_debt_paid' : 'customer_payment',
+            debitAccount: paymentData.paymentMethod === 'bank_transfer' ? '1121' : '1111',
+            creditAccount: personType === 'driver' ? '1388' : '131',
+            amount: totalAllocated,
+            description: personType === 'driver'
+                ? `Tài xế nộp quỹ (phân bổ ${debtIds.length} công nợ)`
+                : `Khách hàng thanh toán (phân bổ ${debtIds.length} công nợ)`,
+            refType: 'debt', refId: debtIds[0], actorId: paymentData.createdBy,
+        });
 
         await client.query('COMMIT');
         return { success: true, totalAllocated, overpayment: remaining, allocations: details, payments };
@@ -516,20 +553,37 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
             if (!s) throw new Error('KhÃ´ng tÃ¬m tháº¥y chuyáº¿n xe');
 
             const shipmentPrice = Number(s.actual_price || s.estimated_price) || 0;
-            await client.query(
+            const { rows: [newDebt] } = await client.query(
                 `INSERT INTO debts (debt_type, driver_id, customer_id, partner_id, order_id, shipment_id, total_amount, updated_by, created_at, updated_at)
-                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, $5, NOW(), NOW())`,
+                 VALUES ('driver', $1, NULL, NULL, $2, $3, $4, $5, NOW(), NOW())
+                 RETURNING id`,
                 [s.owner_driver_id, s.order_id, shipmentId, shipmentPrice, confirmedBy]
             );
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'driver_debt_created',
+                debitAccount: '1388', creditAccount: '131',
+                amount: shipmentPrice,
+                description: `Ghi nhận công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
+                refType: 'debt', refId: newDebt.id, actorId: confirmedBy,
+            });
         }
 
         if (Number(amount) > 0) {
             await client.query(
                 `INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
                  SELECT d.id, $1, $2, 'confirmed', NOW(), NOW(), $3, $3, 'Káº¿ toÃ¡n xÃ¡c nháº­n thu tiá»n tÃ i xáº¿'
-                 FROM debts d WHERE d.shipment_id = $4 AND d.debt_type = 'driver'`,
+                 FROM debts d WHERE d.shipment_id = $4 AND d.debt_type = 'driver'
+                 RETURNING debt_id`,
                 [amount, paymentMethod || 'cash', confirmedBy, shipmentId]
             );
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: 'driver_debt_paid',
+                debitAccount: paymentMethod === 'bank_transfer' ? '1121' : '1111',
+                creditAccount: '1388',
+                amount: Number(amount),
+                description: `Kế toán xác nhận tài xế nộp tiền — chuyến #${shipmentId}`,
+                refType: 'shipment', refId: shipmentId, actorId: confirmedBy,
+            });
         }
 
         await client.query('COMMIT');

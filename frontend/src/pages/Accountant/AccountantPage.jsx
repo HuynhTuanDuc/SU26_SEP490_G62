@@ -9,6 +9,7 @@ import { DebtView } from "./views/DebtView";
 import { PayrollView } from "./views/PayrollView";
 import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
+import { LedgerView } from "./views/LedgerView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
@@ -42,6 +43,11 @@ const VIEW_META = {
   report: {
     title: "Báo cáo tổng quan",
     subtitle: "Phân tích doanh thu, công nợ và lương theo kỳ",
+    searchPlaceholder: "",
+  },
+  ledger: {
+    title: "Nhật ký tài chính",
+    subtitle: "Sổ ghi mọi chuyển động tiền trong hệ thống, xuất kỳ kế toán sang MISA",
     searchPlaceholder: "",
   },
 };
@@ -78,7 +84,7 @@ export default function AccountantPage({ user, onLogout }) {
     ? { label: "Nhập đơn ngoài", onPress: () => setShowExternalModal(true) }
     : null;
 
-  const showSearch = activeView !== "report";
+  const showSearch = activeView !== "report" && activeView !== "ledger";
 
   return (
     <HeroUIProvider>
@@ -122,6 +128,9 @@ export default function AccountantPage({ user, onLogout }) {
             )}
             {activeView === "report" && (
               <ReportView />
+            )}
+            {activeView === "ledger" && (
+              <LedgerView />
             )}
           </main>
         </div>
