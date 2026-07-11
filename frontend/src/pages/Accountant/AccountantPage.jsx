@@ -11,6 +11,7 @@ import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
 import { LedgerView } from "./views/LedgerView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
+import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
 
@@ -58,6 +59,7 @@ export default function AccountantPage({ user, onLogout }) {
   const [search, setSearch] = useState("");
 
   const [showExternalModal, setShowExternalModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [revenueRefreshKey, setRevenueRefreshKey] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -84,6 +86,10 @@ export default function AccountantPage({ user, onLogout }) {
     ? { label: "Nhập đơn ngoài", onPress: () => setShowExternalModal(true) }
     : null;
 
+  const secondaryAction = activeView === "revenue"
+    ? { label: "Import Excel", onPress: () => setShowImportModal(true) }
+    : null;
+
   const showSearch = activeView !== "report" && activeView !== "ledger";
 
   return (
@@ -107,6 +113,7 @@ export default function AccountantPage({ user, onLogout }) {
             onSearchChange={showSearch ? setSearch : undefined}
             searchPlaceholder={meta.searchPlaceholder}
             primaryAction={primaryAction}
+            secondaryAction={secondaryAction}
           />
 
           <main className="flex-1 overflow-y-auto p-6">
@@ -140,6 +147,12 @@ export default function AccountantPage({ user, onLogout }) {
         isOpen={showExternalModal}
         onClose={() => setShowExternalModal(false)}
         onOrderCreated={handleOrderCreated}
+      />
+
+      <ImportExcelModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImported={() => setRevenueRefreshKey((k) => k + 1)}
       />
 
       <ProfileModal

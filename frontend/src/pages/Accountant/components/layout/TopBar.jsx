@@ -103,6 +103,7 @@ export function TopBar({
   onSearchChange,
   searchPlaceholder = "Tìm kiếm...",
   primaryAction,
+  secondaryAction,
 }) {
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, loading, markAllRead } = useNotifications();
@@ -138,6 +139,18 @@ export function TopBar({
             isClearable
             onClear={() => onSearchChange("")}
           />
+        )}
+
+        {secondaryAction && (
+          <Button
+            variant="flat"
+            color="primary"
+            size="sm"
+            onPress={secondaryAction.onPress}
+            className="h-9 font-medium px-4"
+          >
+            {secondaryAction.label}
+          </Button>
         )}
 
         {primaryAction && (
