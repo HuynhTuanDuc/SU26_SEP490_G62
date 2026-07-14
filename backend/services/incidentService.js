@@ -226,7 +226,11 @@ const getIncidentDetail = async (incidentId, driverId) => {
     return incident;
 };
 
-const buildRevenueAllocationPlan = ({ originalDriverId, replacementDriverId, pickupCompleted }) => {
+// Chia doanh thu khi điều chuyển giữa đường:
+// - Chưa lấy hàng → tài mới hưởng 100%
+// - Đã lấy hàng   → chia ĐỀU cho mọi tài từng tham gia chuyến + tài mới
+//   (điều 1 lần: 50/50; điều lần 2: 33.33/33.33/33.34 — không xoá phần tài trước)
+const buildRevenueAllocationPlan = ({ existingDriverIds = [], originalDriverId, replacementDriverId, pickupCompleted }) => {
     if (!pickupCompleted) {
         return {
             allocationReason: 'incident_full_transfer',
@@ -237,13 +241,22 @@ const buildRevenueAllocationPlan = ({ originalDriverId, replacementDriverId, pic
         };
     }
 
+    const participants = [...new Set([
+        ...(existingDriverIds.length > 0 ? existingDriverIds : [originalDriverId]),
+        replacementDriverId,
+    ].map(Number).filter(Boolean))];
+
+    const n = participants.length;
+    const base = Math.floor(10000 / n) / 100;                       // 2 chữ số thập phân
+    const last = Math.round((100 - base * (n - 1)) * 100) / 100;    // dồn phần dư cho tài mới
+
     return {
         allocationReason: 'incident_split',
-        allocations: [
-            { driverId: originalDriverId, sharePercent: 50 },
-            { driverId: replacementDriverId, sharePercent: 50 },
-        ],
-        modeLabel: 'split_50_50',
+        allocations: participants.map((driverId, idx) => ({
+            driverId,
+            sharePercent: idx === n - 1 ? last : base,
+        })),
+        modeLabel: n === 2 ? 'split_50_50' : `split_equal_${n}`,
     };
 };
 
@@ -305,7 +318,14 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
                     client,
                 });
 
+                // Giữ phần các tài từng tham gia (điều chuyển lần 2+ không xoá phần tài trước)
+                const existingDriverIds = await revenueAllocationRepository.getDriverIdsForShipment(
+                    incident.shipment_id,
+                    originalDriverId,
+                );
+
                 const allocationPlan = buildRevenueAllocationPlan({
+                    existingDriverIds,
                     originalDriverId,
                     replacementDriverId: parsedReplacementDriverId,
                     pickupCompleted: Boolean(reassignedShipment.pickup_completed_at),
@@ -381,9 +401,11 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     if (replacementDriver) {
         notificationService.createForUser(replacementDriver.id, {
             title: 'Bạn được điều chuyển thay chuyến',
-            message: revenueMode === 'split_50_50'
-                ? `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến sẽ chia 50/50.`
-                : `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến thuộc về bạn.`,
+            message: revenueMode === 'full_transfer'
+                ? `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến thuộc về bạn.`
+                : revenueMode === 'split_50_50'
+                    ? `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến sẽ chia 50/50.`
+                    : `Bạn đã được phân công tiếp quản chuyến #${incident.shipment_id}. Doanh thu chuyến chia đều cho các tài xế tham gia.`,
             type: 'TRIP_ASSIGNED',
             entityType: 'shipments',
             entityId: incident.shipment_id,

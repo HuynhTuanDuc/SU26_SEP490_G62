@@ -5,9 +5,9 @@ services:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "root"
-      POSTGRES_DB: SEP490
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
+      POSTGRES_DB: ${POSTGRES_DB:-SEP490}
     volumes:
       - db_data:/var/lib/postgresql/data
       - './DB script/DB script.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro'
@@ -36,9 +36,9 @@ services:
       # Override để trỏ vào service db nội bộ, không dùng localhost
       DB_HOST: db
       DB_PORT: "5432"
-      DB_NAME: SEP490
-      DB_USER: postgres
-      DB_PASSWORD: "root"
+      DB_NAME: ${POSTGRES_DB:-SEP490}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-root}
       DB_SSL: "false"
     volumes:
       - ./backend:/usr/src/app

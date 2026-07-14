@@ -16,7 +16,18 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
     const shipment = await tripRepository.getTripById(shipmentId);
     if (!shipment) throw new Error('Chuyến không tồn tại');
-    if (Number(shipment.owner_driver_id) !== Number(driverId)) throw new Error('Bạn không có quyền thêm chi phí cho chuyến này');
+
+    // Owner hiện tại HOẶC tài từng giữ chuyến (bị điều chuyển giữa đường do sự cố)
+    // đều được khai chi phí — tài cũ vẫn có tiền dầu/vé đã ứng ở nửa đầu chuyến
+    if (Number(shipment.owner_driver_id) !== Number(driverId)) {
+        const { rows: [wasAssigned] } = await pool.query(
+            `SELECT 1 FROM shipment_assignment_history
+             WHERE shipment_id = $1 AND (to_driver_id = $2 OR from_driver_id = $2)
+             LIMIT 1`,
+            [shipmentId, driverId],
+        );
+        if (!wasAssigned) throw new Error('Bạn không có quyền thêm chi phí cho chuyến này');
+    }
     if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
 
     const vehicleId = await tripRepository.getDriverVehicleId(driverId);

@@ -176,6 +176,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
                 amount: exp.amount,
                 description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — đơn ngoài, chuyến #${shipmentId}`,
                 refType: 'expense', refId: exp.id, actorId: createdByUserId,
+                occurredAt: completedAt,
             });
         }
     }
@@ -195,6 +196,7 @@ const insertDebtForShipment = async (client, {
     actualPrice,
     driverPaymentState, paymentType,
     createdByUserId,
+    occurredAt = null,
 }) => {
     const normalizedPaymentType = normalizeCustomerDebtPaymentType(paymentType);
     if (Number(actualPrice || 0) <= 0) return;
@@ -227,6 +229,7 @@ const insertDebtForShipment = async (client, {
             amount: actualPrice,
             description: `Công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
             refType: 'shipment', refId: shipmentId, actorId: createdByUserId,
+            occurredAt,
         });
 
         if (driverPaymentState === 'driver_paid') {
@@ -243,6 +246,7 @@ const insertDebtForShipment = async (client, {
                 amount: actualPrice,
                 description: `Tài xế đã nộp tiền — đơn ngoài, chuyến #${shipmentId}`,
                 refType: 'debt', refId: driverDebtId, actorId: createdByUserId,
+                occurredAt,
             });
         }
     } else if (normalizedPaymentType === 'client_credit') {
@@ -326,13 +330,14 @@ const createOrderWithShipments = async (orderData) => {
     );
         const newOrder = orderResult.rows[0];
 
-        // Ghi sổ tiền khách ứng trước (nếu có)
+        // Ghi sổ tiền khách ứng trước (nếu có) — occurred_at theo ngày chạy với đơn import quá khứ
         await financialLedgerRepository.insertTransaction(client, {
             eventType: 'prepaid_received',
             debitAccount: '1121', creditAccount: '131',
             amount: Number(orderData.prepaid_amount || 0),
             description: `Khách ứng trước — đơn ngoài #${newOrder.id}`,
             refType: 'order', refId: newOrder.id, actorId: orderData.created_by,
+            occurredAt: orderData.completed_at || null,
         });
 
         const shipmentIds = [];
@@ -373,6 +378,8 @@ const createOrderWithShipments = async (orderData) => {
                 ? Number(s.driver_holding_amount)
                 : actualPrice + passThrough;
 
+            const shipmentOccurredAt = s.completed_at || orderData.completed_at || null;
+
             await insertDebtForShipment(client, {
                 shipmentId,
                 orderId: newOrder.id,
@@ -383,6 +390,7 @@ const createOrderWithShipments = async (orderData) => {
                 driverPaymentState: s.driver_payment_state || 'company_received',
                 paymentType: s.payment_type || null,
                 createdByUserId: orderData.created_by,
+                occurredAt: shipmentOccurredAt,
             });
 
             // Ghi sổ doanh thu chuyến (đơn ngoài đã hoàn thành, giá là thực tế)
@@ -392,6 +400,7 @@ const createOrderWithShipments = async (orderData) => {
                 amount: actualPrice,
                 description: `Doanh thu chuyến #${shipmentId} — đơn ngoài #${newOrder.id}`,
                 refType: 'shipment', refId: shipmentId, actorId: orderData.created_by,
+                occurredAt: shipmentOccurredAt,
             });
 
             shipmentIds.push(shipmentId);

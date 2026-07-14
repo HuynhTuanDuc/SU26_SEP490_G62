@@ -35,5 +35,6 @@ router.post('/receipts/:receiptId/confirm-bank-transfer',           accountantBa
 router.get ('/ledger',        accountantLedgerController.getJournal);
 router.get ('/ledger/stats',  accountantLedgerController.getJournalStats);
 router.post('/ledger/export', accountantLedgerController.exportPeriod);
+router.post('/ledger/:id/reverse', accountantLedgerController.reverseEntry);
 
 module.exports = router;

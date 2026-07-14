@@ -25,9 +25,10 @@ const PAYMENT_STATUS_CHIP = {
   confirmed: { label: "Đã xác nhận",  color: "success" },
   pending:   { label: "Chờ xác nhận", color: "warning" },
   rejected:  { label: "Từ chối",      color: "danger"  },
+  voided:    { label: "Đã hủy",       color: "default" },
 };
 
-function HistoryItem({ payment }) {
+function HistoryItem({ payment, onVoid }) {
   const rawDate = payment.paid_at ?? payment.confirmed_at ?? payment.created_at;
   const date = rawDate
     ? new Date(rawDate).toLocaleDateString("vi-VN", {
@@ -49,10 +50,18 @@ function HistoryItem({ payment }) {
           <span className="text-[11px] text-gray-400 italic">{payment.notes}</span>
         )}
       </div>
-      <Chip size="sm" color={statusChip.color} variant="flat" className="text-[10px] h-5">
-        <RiCheckboxCircleLine size={10} className="inline mr-0.5" />
-        {statusChip.label}
-      </Chip>
+      <div className="flex items-center gap-1.5">
+        <Chip size="sm" color={statusChip.color} variant="flat" className="text-[10px] h-5">
+          <RiCheckboxCircleLine size={10} className="inline mr-0.5" />
+          {statusChip.label}
+        </Chip>
+        {payment.payment_status === "confirmed" && onVoid && (
+          <Button size="sm" variant="light" color="danger" className="h-5 min-w-0 px-2 text-[10px]"
+            onPress={() => onVoid(payment)}>
+            Hủy
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -96,6 +105,21 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const [customerDebt, setCustDebt] = useState(null);
   const [debtLoading, setDebtL]    = useState(false);
   const [result, setResult]        = useState(null);
+
+  // Hủy xác nhận khoản đã confirmed — nợ hồi phục + hệ thống tự ghi bút toán đảo
+  const handleVoidPayment = async (payment) => {
+    const reason = window.prompt(
+      `Hủy xác nhận khoản ${Number(payment.amount).toLocaleString("vi-VN")}đ?\nNhập lý do (bắt buộc):`
+    );
+    if (!reason?.trim()) return;
+    try {
+      await accountantService.voidRepayment(payment.id, reason.trim());
+      await loadData();
+      onPaymentRecorded?.();
+    } catch (err) {
+      setError(err.message ?? "Hủy xác nhận thất bại");
+    }
+  };
 
   const loadData = useCallback(async () => {
     if (!order?.id) return;
@@ -304,7 +328,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
             ) : history.length === 0 ? (
               <p className="text-xs text-gray-400 py-2 italic">Chưa có thanh toán nào.</p>
             ) : (
-              history.map((p, i) => <HistoryItem key={i} payment={p} />)
+              history.map((p, i) => <HistoryItem key={i} payment={p} onVoid={handleVoidPayment} />)
             )}
           </div>
         </ModalBody>

@@ -41,6 +41,14 @@ const rejectRepayment = async (paymentId, rejectedBy, reason) => {
     return pay;
 };
 
+// Kế toán hủy xác nhận khoản đã confirmed (ghi nhầm) — nợ hồi phục + bút toán đảo tự sinh
+const voidRepayment = async (paymentId, voidedBy, reason) => {
+    if (!reason?.trim()) throw new Error('Cần ghi lý do hủy xác nhận');
+    const result = await debtRepository.voidRepayment(paymentId, voidedBy, reason.trim());
+    if (result?.driverId) broadcastToUser(result.driverId, { type: 'debt.updated', debtId: result.debtId });
+    return result;
+};
+
 const getPendingRepayments = async () => {
     const result = await pool.query(
         `SELECT
@@ -94,5 +102,5 @@ const getPendingRepayments = async () => {
 module.exports = {
     getMyDebts, getMyDebtSummary, getDebtPayments,
     submitRepayment, cancelRepayment,
-    confirmRepayment, rejectRepayment, getPendingRepayments,
+    confirmRepayment, rejectRepayment, voidRepayment, getPendingRepayments,
 };
