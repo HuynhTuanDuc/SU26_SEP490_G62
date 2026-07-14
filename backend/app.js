@@ -26,17 +26,27 @@ app.set('trust proxy', 1);
 // API thuần JSON — tắt CSP để không ảnh hưởng swagger-ui.
 app.use(helmet({ contentSecurityPolicy: false }));
 
-// CORS: chỉ cho origin trong danh sách (CORS_ORIGINS="https://a.com,https://b.com").
-// Mặc định dev: FE docker (5173) + vite dev (3000). Request không có Origin (mobile app,
-// curl, server-to-server) không bị CORS chặn — bảo vệ thêm bằng JWT ở tầng route.
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173')
+// CORS: chỉ cho origin trong danh sách, cấu hình qua biến môi trường CORS_ORIGINS
+// (VD: CORS_ORIGINS="https://logiscount.icu,https://www.logiscount.icu").
+// Domain KHÔNG hardcode trong code — đổi domain chỉ cần sửa env trên Cloud Run, không cần build lại.
+// Mặc định dev (không set CORS_ORIGINS): FE docker (5173) + vite dev (3000).
+// Request không có Origin (mobile app, curl, server-to-server) không bị CORS chặn — bảo vệ thêm bằng JWT ở tầng route.
+const DEV_DEFAULT_ORIGINS = 'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173';
+const allowedOrigins = (process.env.CORS_ORIGINS || (isProduction ? '' : DEV_DEFAULT_ORIGINS))
     .split(',')
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/$/, ''))
     .filter(Boolean);
+
+if (isProduction && allowedOrigins.length === 0) {
+    console.warn('[CORS] CẢNH BÁO: chưa set CORS_ORIGINS trên production — mọi request có Origin sẽ bị chặn.');
+} else {
+    console.log('[CORS] Allowed origins:', allowedOrigins.join(', ') || '(none)');
+}
 
 app.use(cors({
     origin(origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+        console.warn(`[CORS] Blocked origin: ${origin}`);
         return callback(new Error('Origin không được phép truy cập'));
     },
     credentials: true,
