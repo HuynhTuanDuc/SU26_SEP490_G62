@@ -3,7 +3,8 @@ const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, sendError
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
-const CREATE_DRIVER_STATES = ['company_received', 'driver_holding'];
+// driver_paid: tài xế đã thu tiền VÀ đã nộp về công ty (import đơn cũ) — nợ tạo + tất toán ngay
+const CREATE_DRIVER_STATES = ['company_received', 'driver_holding', 'driver_paid'];
 const DRIVER_STATES        = ['driver_holding', 'settled', 'pending'];
 const PAYMENT_METHODS      = ['cash', 'bank_transfer'];
 
@@ -31,24 +32,28 @@ const getVehicleDriverLookup = async (_req, res) => {
     }
 };
 
-const createOrder = async (req, res) => {
-    try {
-        const {
-            customer_name, customer_phone, customer_company,
-            customer_id, order_date, notes, prepaid_amount,
-            shipments,
-        } = req.body;
+// Validate 1 payload đơn ngoài (dùng chung cho tạo tay + import Excel)
+const validateOrderBody = (body, { requirePhone = true } = {}) => {
+    const {
+        customer_name, customer_phone, customer_company,
+        customer_id, order_date, notes, prepaid_amount,
+        shipments,
+    } = body;
 
-        if (!customer_id) {
-            if (!customer_name?.trim())
-                throw err400('Tên khách hàng là bắt buộc.');
+    if (!customer_id) {
+        if (!customer_name?.trim())
+            throw err400('Tên khách hàng là bắt buộc.');
+        if (requirePhone) {
             if (!customer_phone?.trim())
                 throw err400('Số điện thoại khách hàng là bắt buộc.');
             if (!phoneVN(customer_phone.trim()))
                 throw err400('Số điện thoại không đúng định dạng (VD: 0901234567).');
+        } else if (customer_phone?.trim() && !phoneVN(customer_phone.trim())) {
+            throw err400('Số điện thoại không đúng định dạng (VD: 0901234567).');
         }
+    }
 
-        nonNegAmount(prepaid_amount ?? 0, 'Số tiền đặt cọc');
+    nonNegAmount(prepaid_amount ?? 0, 'Số tiền đặt cọc');
 
         if (!Array.isArray(shipments) || shipments.length === 0)
             throw err400('Đơn hàng phải có ít nhất 1 chuyến xe.');
@@ -78,8 +83,11 @@ const createOrder = async (req, res) => {
             const driverState = s.driver_payment_state ?? 'company_received';
             enumVal(driverState, CREATE_DRIVER_STATES, `${idx}: Trạng thái tài xế`);
 
-            if (s.payment_type === 'client_credit' && driverState === 'driver_holding')
-                throw err400(`${idx}: Ghi nợ khách không thể kết hợp với "Tài xế đang giữ tiền".`);
+            if (s.payment_type === 'client_credit' && ['driver_holding', 'driver_paid'].includes(driverState))
+                throw err400(`${idx}: Ghi nợ khách không thể kết hợp với trạng thái tài xế giữ/nộp tiền.`);
+
+            if (s.driver_holding_amount != null) nonNegAmount(s.driver_holding_amount, `${idx}: Tiền tài đang giữ`);
+            if (s.distance_km != null)           nonNegAmount(s.distance_km,           `${idx}: Quãng đường`);
 
             const expenses = Array.isArray(s.expenses) ? s.expenses : [];
             if (expenses.length > 20)
@@ -107,19 +115,80 @@ const createOrder = async (req, res) => {
                 throw err400(`${idx}: Ghi chú chuyến không quá 500 ký tự.`);
         }
 
+    return {
+        customer_name:    customer_name?.trim() || null,
+        customer_phone:   customer_phone?.trim() || null,
+        customer_company: customer_company?.trim() || null,
+        customer_id:      customer_id || null,
+        order_date:       order_date  || null,
+        completed_at:     body.completed_at || null,
+        notes:            notes?.trim() || null,
+        prepaid_amount:   Number(prepaid_amount ?? 0),
+        shipments,
+    };
+};
+
+const createOrder = async (req, res) => {
+    try {
+        const payload = validateOrderBody(req.body);
         const newOrder = await accountantOrderService.createOrder({
-            customer_name:    customer_name?.trim() || null,
-            customer_phone:   customer_phone?.trim() || null,
-            customer_company: customer_company?.trim() || null,
-            customer_id:      customer_id || null,
-            order_date:       order_date  || null,
-            notes:            notes?.trim() || null,
-            prepaid_amount:   Number(prepaid_amount ?? 0),
-            shipments,
+            ...payload,
             created_by: req.user.userId,
         });
 
         res.status(201).json({ message: 'Tạo đơn hàng thành công.', order: newOrder });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+// POST /accountant/orders/import — import hàng loạt từ template Excel
+// Body: { orders: [payload như createOrder, kèm row_index để báo lỗi theo dòng] }
+const importOrders = async (req, res) => {
+    try {
+        const { orders } = req.body;
+        if (!Array.isArray(orders) || orders.length === 0)
+            throw err400('Không có đơn nào để import.');
+        if (orders.length > 1000)
+            throw err400('Tối đa 1000 dòng mỗi lần import.');
+
+        const imported = [];
+        const errors = [];
+
+        for (const order of orders) {
+            const rowLabel = order.row_index != null ? `Dòng ${order.row_index}` : `Đơn thứ ${imported.length + errors.length + 1}`;
+            try {
+                // Import cho phép khách lẻ không SĐT/không tên (khác tạo tay)
+                if (!order.customer_id && !order.customer_name?.trim()) {
+                    order.customer_name = 'Khách lẻ';
+                }
+                // Khách nợ bắt buộc có SĐT — không định danh được thì không theo dõi nợ được
+                const hasClientCredit = (order.shipments || []).some((s) => s.payment_type === 'client_credit');
+                if (hasClientCredit && !order.customer_id && !order.customer_phone?.trim()) {
+                    throw err400('Chuyến "Khách nợ" bắt buộc có SĐT khách hàng để theo dõi công nợ.');
+                }
+                // customers.phone NOT NULL — khách lẻ không SĐT gom chung 1 hồ sơ phone rỗng
+                if (!order.customer_id && !order.customer_phone?.trim()) {
+                    order.customer_phone = '';
+                }
+                const payload = validateOrderBody(order, { requirePhone: false });
+                const created = await accountantOrderService.createOrder({
+                    ...payload,
+                    created_by: req.user.userId,
+                });
+                imported.push({ row_index: order.row_index ?? null, order_id: created.id });
+            } catch (err) {
+                errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
+            }
+        }
+
+        res.status(errors.length > 0 && imported.length === 0 ? 400 : 201).json({
+            message: `Import xong: ${imported.length} đơn thành công${errors.length ? `, ${errors.length} dòng lỗi` : ''}.`,
+            imported_count: imported.length,
+            error_count: errors.length,
+            imported,
+            errors,
+        });
     } catch (err) {
         sendError(res, err);
     }
@@ -241,6 +310,7 @@ module.exports = {
     getShipments,
     getVehicleDriverLookup,
     createOrder,
+    importOrders,
     getPayments,
     getCustomerDebt,
     createPayment,

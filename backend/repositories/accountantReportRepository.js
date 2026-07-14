@@ -1,18 +1,20 @@
 ﻿const pool = require('../config/database');
 
-const getReportOverview = async ({ months = 6 } = {}) => {
+const getReportOverview = async ({ months = 6, granularity = 'month' } = {}) => {
     const [
         revenueChart,
         topCustomers,
         debtAging,
         payrollSummary,
-        revenueByPaymentType,
+        revenueByVehicle,
+        driverHoldings,
     ] = await Promise.all([
-        _getMonthlyRevenue(months),
+        _getRevenueTrend(granularity, months),
         _getTopCustomers(),
         _getDebtAging(),
         _getPayrollSummary(),
-        _getRevenueByPaymentType(months),
+        _getRevenueByVehicle(months),
+        _getDriverHoldings(),
     ]);
 
     return {
@@ -20,32 +22,41 @@ const getReportOverview = async ({ months = 6 } = {}) => {
         topCustomers,
         debtAging,
         payrollSummary,
-        revenueByPaymentType,
+        revenueByVehicle,
+        driverHoldings,
     };
 };
 
-const _getMonthlyRevenue = async (months) => {
+// Xu hướng doanh thu theo ngày / tuần / tháng.
+// Doanh thu tính theo completed_at của chuyến (đúng ngày chạy — nhất quán KPI/lương/sổ).
+// Cửa sổ thời gian: day = 30 ngày, week = 12 tuần, month = theo bộ lọc months.
+const _getRevenueTrend = async (granularity, months) => {
+    const CONFIG = {
+        day:   { trunc: 'day',   step: '1 day',   span: `29 days`,               labelFmt: 'DD/MM' },
+        week:  { trunc: 'week',  step: '1 week',  span: `11 weeks`,              labelFmt: '"T"DD/MM' },
+        month: { trunc: 'month', step: '1 month', span: `${months - 1} months`,  labelFmt: 'MM/YYYY' },
+    };
+    const cfg = CONFIG[granularity] ?? CONFIG.month;
+
     const { rows } = await pool.query(`
-        WITH month_series AS (
+        WITH bucket_series AS (
             SELECT generate_series(
-                DATE_TRUNC('month', NOW() - ($1 - 1) * INTERVAL '1 month'),
-                DATE_TRUNC('month', NOW()),
-                INTERVAL '1 month'
-            )::DATE AS month
+                DATE_TRUNC('${cfg.trunc}', NOW() - INTERVAL '${cfg.span}'),
+                DATE_TRUNC('${cfg.trunc}', NOW()),
+                INTERVAL '${cfg.step}'
+            )::DATE AS bucket
         )
         SELECT
-            TO_CHAR(ms.month, 'MM/YYYY')          AS label,
-            COALESCE(SUM(os.actual_price), 0)::float AS revenue,
-            COUNT(DISTINCT o.id)::int              AS order_count
-        FROM month_series ms
-        LEFT JOIN orders o
-            ON DATE_TRUNC('month', o.created_at) = ms.month
-            AND o.derived_status = 'completed'
+            TO_CHAR(bs.bucket, '${cfg.labelFmt}')       AS label,
+            COALESCE(SUM(os.actual_price), 0)::float    AS revenue,
+            COUNT(DISTINCT os.order_id)::int            AS order_count
+        FROM bucket_series bs
         LEFT JOIN order_shipments os
-            ON os.order_id = o.id
-        GROUP BY ms.month
-        ORDER BY ms.month
-    `, [months]);
+            ON DATE_TRUNC('${cfg.trunc}', os.completed_at) = bs.bucket
+            AND os.status = 'completed'
+        GROUP BY bs.bucket
+        ORDER BY bs.bucket
+    `);
     return rows;
 };
 
@@ -128,19 +139,47 @@ const _getPayrollSummary = async () => {
     return summary;
 };
 
-const _getRevenueByPaymentType = async (months) => {
+// Doanh thu theo từng xe (cước thuần, chuyến hoàn thành trong kỳ)
+const _getRevenueByVehicle = async (months) => {
     const { rows } = await pool.query(`
         SELECT
-            o.payment_type,
+            v.plate_number,
+            vg.name AS vehicle_group_name,
             COALESCE(SUM(os.actual_price), 0)::float AS revenue,
-            COUNT(DISTINCT o.id)::int AS count
+            COUNT(os.id)::int AS trip_count
         FROM order_shipments os
-        JOIN orders o ON o.id = os.order_id
-        WHERE o.derived_status = 'completed'
-          AND o.created_at >= NOW() - $1 * INTERVAL '1 month'
-        GROUP BY o.payment_type
+        JOIN v_shipment_current sc ON sc.shipment_id = os.id
+        JOIN vehicles v ON v.id = sc.vehicle_id
+        LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+        WHERE os.status = 'completed'
+          AND os.completed_at >= NOW() - $1 * INTERVAL '1 month'
+        GROUP BY v.plate_number, vg.name
         ORDER BY revenue DESC
+        LIMIT 12
     `, [months]);
+    return rows;
+};
+
+// Tiền tài xế đang cầm (nợ driver còn lại, tính động từ debt_payments confirmed)
+const _getDriverHoldings = async () => {
+    const { rows } = await pool.query(`
+        WITH dp_agg AS (
+            SELECT debt_id, COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+            FROM debt_payments GROUP BY debt_id
+        )
+        SELECT
+            p.full_name AS driver_name,
+            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0)::float AS holding,
+            COUNT(d.id) FILTER (WHERE GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0) > 0.01)::int AS debt_count
+        FROM debts d
+        JOIN profiles p ON p.id = d.driver_id
+        LEFT JOIN dp_agg ON dp_agg.debt_id = d.id
+        WHERE d.debt_type = 'driver'
+        GROUP BY p.id, p.full_name
+        HAVING COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0) > 0.01
+        ORDER BY holding DESC
+        LIMIT 10
+    `);
     return rows;
 };
 

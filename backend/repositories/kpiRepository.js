@@ -223,8 +223,15 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     if (!vehicleGroupId) return null;
     const shipRes = await pool.query(
         `SELECT
-            COUNT(*) FILTER (
-                WHERE sc.owner_driver_id = $1
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN alloc.allocation_count > 0 THEN alloc.driver_share_percent / 100.0
+                        WHEN sc.owner_driver_id = $1 THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
             )                                                           AS completed_shipments,
             COALESCE(
                 SUM(

@@ -4,7 +4,9 @@ import { MoneyText } from "../shared/MoneyText";
 
 const CARDS = [
   {
-    key: "total_revenue",
+    // Doanh thu ghi nhận = tổng cước các đơn hoàn thành (không gồm chi hộ khách,
+    // không phụ thuộc đã thu tiền hay chưa). "Đã thu về" mới là tiền thực nắm.
+    key: "total_gross_revenue",
     label: "Tổng doanh thu",
     icon: RiLineChartLine,
     gradient: "from-blue-500 to-blue-600",

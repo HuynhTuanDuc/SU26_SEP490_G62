@@ -83,8 +83,8 @@ export const accountantService = {
       body: { reason },
     }),
 
-  getReportOverview: (months = 6) =>
-    apiRequest(`${BASE}/reports/overview?months=${months}`),
+  getReportOverview: (months = 6, granularity = "month") =>
+    apiRequest(`${BASE}/reports/overview?months=${months}&granularity=${granularity}`),
 
   getPayrolls: (params) =>
     apiRequest(`${BASE}/payroll?${new URLSearchParams(params)}`),
@@ -139,4 +139,15 @@ export const accountantService = {
   // Trả về CSV text — caller tự tạo blob download
   exportLedgerPeriod: (from, to) =>
     apiRequest(`${BASE}/ledger/export`, { method: "POST", body: { from, to } }),
+
+  // Bút toán đảo — ghi dòng ngược chiều, không sửa/xóa dòng gốc
+  reverseLedgerEntry: (id, reason) =>
+    apiRequest(`${BASE}/ledger/${id}/reverse`, { method: "POST", body: { reason } }),
+
+  // Hủy xác nhận khoản nộp tiền đã confirmed (nợ hồi phục + tự đảo sổ)
+  voidRepayment: (paymentId, reason) =>
+    apiRequest(`/api/debts/repayments/${paymentId}/void`, {
+      method: "PATCH",
+      body: { reason },
+    }),
 };

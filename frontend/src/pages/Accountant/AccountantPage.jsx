@@ -11,6 +11,7 @@ import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
 import { LedgerView } from "./views/LedgerView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
+import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
 
@@ -52,12 +53,25 @@ const VIEW_META = {
   },
 };
 
+const VIEW_STORAGE_KEY = "accountant_active_view";
+const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger"];
+
+// Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
+const getInitialView = () => {
+  try {
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (saved && VALID_VIEWS.includes(saved)) return saved;
+  } catch { /* localStorage bị chặn thì dùng mặc định */ }
+  return "report";
+};
+
 export default function AccountantPage({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(user);
-  const [activeView, setActiveView] = useState("revenue");
+  const [activeView, setActiveView] = useState(getInitialView);
   const [search, setSearch] = useState("");
 
   const [showExternalModal, setShowExternalModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [revenueRefreshKey, setRevenueRefreshKey] = useState(0);
   const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -76,12 +90,17 @@ export default function AccountantPage({ user, onLogout }) {
   const handleViewChange = (view) => {
     setActiveView(view);
     setSearch("");
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* ignore */ }
   };
 
   const meta = VIEW_META[activeView] ?? VIEW_META.revenue;
 
   const primaryAction = activeView === "revenue"
     ? { label: "Nhập đơn ngoài", onPress: () => setShowExternalModal(true) }
+    : null;
+
+  const secondaryAction = activeView === "revenue"
+    ? { label: "Import Excel", onPress: () => setShowImportModal(true) }
     : null;
 
   const showSearch = activeView !== "report" && activeView !== "ledger";
@@ -107,6 +126,7 @@ export default function AccountantPage({ user, onLogout }) {
             onSearchChange={showSearch ? setSearch : undefined}
             searchPlaceholder={meta.searchPlaceholder}
             primaryAction={primaryAction}
+            secondaryAction={secondaryAction}
           />
 
           <main className="flex-1 overflow-y-auto p-6">
@@ -140,6 +160,12 @@ export default function AccountantPage({ user, onLogout }) {
         isOpen={showExternalModal}
         onClose={() => setShowExternalModal(false)}
         onOrderCreated={handleOrderCreated}
+      />
+
+      <ImportExcelModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImported={() => setRevenueRefreshKey((k) => k + 1)}
       />
 
       <ProfileModal

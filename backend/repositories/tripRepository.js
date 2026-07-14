@@ -1197,11 +1197,17 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     try {
         await client.query('BEGIN');
 
-        // Cập nhật payment_type lên shipment_receipts
-        await client.query(
-            `UPDATE shipment_receipts SET payment_type = $1 WHERE id = $2`,
+        // Cập nhật payment_type — điều kiện IS NULL chống race:
+        // 2 request song song (double-tap/mạng chập chờn) thì chỉ 1 request thắng,
+        // request kia bị chặn tại đây (tránh tạo nợ + ghi sổ 2 lần)
+        const { rowCount: claimedCount } = await client.query(
+            `UPDATE shipment_receipts
+             SET payment_type = $1
+             WHERE id = $2
+               AND payment_type IS NULL`,
             [paymentType, rec.sr_id],
         );
+        if (claimedCount === 0) throw new Error('Phiếu thu đã được ghi nhận thanh toán rồi');
 
         if (paymentType === 'cash_collected') {
             // Driver cầm tiền mặt → Driver Debt = số thực nhận (không phải toàn bộ phiếu thu)

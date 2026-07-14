@@ -29,11 +29,7 @@ const MONTH_OPTIONS = [
   { key: "12", label: "12 tháng gần nhất" },
 ];
 
-const PAYMENT_TYPE_LABEL = {
-  cash:          { label: "Tiền mặt",     color: "#f59e0b" },
-  bank_transfer: { label: "Chuyển khoản", color: "#3b82f6" },
-  client_credit: { label: "Ghi nợ",       color: "#ef4444" },
-};
+const VEHICLE_BAR_COLORS = ["#3b82f6", "#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b"];
 
 function StatCard({ label, value, icon: Icon, sub, gradient, lightBg, text, border }) {
   return (
@@ -161,30 +157,72 @@ function DebtAgingBars({ data }) {
   );
 }
 
-function PaymentTypeChart({ data }) {
+// Doanh thu theo từng xe (cước thuần trong kỳ báo cáo)
+function VehicleRevenueChart({ data }) {
   if (!data?.length) return <p className="text-xs text-gray-400 text-center py-8">Chưa có dữ liệu.</p>;
 
-  const chartData = data.map((d) => ({
-    name: PAYMENT_TYPE_LABEL[d.payment_type]?.label ?? d.payment_type,
+  const chartData = data.map((d, i) => ({
+    name: d.plate_number,
+    group: d.vehicle_group_name,
     revenue: d.revenue,
-    count: d.count,
-    color: PAYMENT_TYPE_LABEL[d.payment_type]?.color ?? "#64748b",
+    trips: d.trip_count,
+    color: VEHICLE_BAR_COLORS[i % VEHICLE_BAR_COLORS.length],
   }));
 
+  // Bar ngang: biển số nằm thẳng bên trái, không bị nghiêng dù khung hẹp
   return (
-    <ResponsiveContainer width="100%" height={180}>
-      <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-        <YAxis tickFormatter={VND} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={55} />
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={chartData.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+        <XAxis type="number" tickFormatter={VND} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+        <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "#6b7280", fontWeight: 600 }} axisLine={false} tickLine={false} width={82} interval={0} />
         <RechartTooltip content={<ChartTooltip />} />
-        <Bar dataKey="revenue" name="Doanh thu" radius={[6, 6, 0, 0]}>
-          {chartData.map((entry, i) => (
+        <Bar dataKey="revenue" name="Doanh thu" radius={[0, 6, 6, 0]} barSize={16}>
+          {chartData.slice(0, 8).map((entry, i) => (
             <Cell key={i} fill={entry.color} />
           ))}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+  );
+}
+
+// Tiền tài xế đang cầm (nợ driver còn lại)
+function DriverHoldingsList({ data }) {
+  if (!data?.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 gap-2">
+        <RiCheckboxCircleLine size={24} className="text-emerald-400" />
+        <p className="text-xs text-gray-400">Không có tài xế nào đang giữ tiền.</p>
+      </div>
+    );
+  }
+
+  const total = data.reduce((s, d) => s + Number(d.holding || 0), 0);
+  const max = Math.max(...data.map((d) => Number(d.holding || 0)), 1);
+
+  return (
+    <div className="flex flex-col gap-1">
+      {data.map((d, i) => (
+        <div key={i} className="py-2 border-b border-gray-50 last:border-0">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-gray-800 truncate">{d.driver_name}</span>
+            <span className="text-xs font-bold text-amber-600 flex-shrink-0 ml-2">{VND(d.holding)}</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
+              style={{ width: `${(Number(d.holding) / max) * 100}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-gray-400">{d.debt_count} khoản nợ</span>
+        </div>
+      ))}
+      <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100">
+        <span className="text-xs text-gray-400 font-medium">Tổng tiền tài xế đang cầm</span>
+        <span className="text-sm font-bold text-amber-600">{VND_FULL(total)}</span>
+      </div>
+    </div>
   );
 }
 
@@ -269,17 +307,24 @@ function PayrollQuickStats({ data }) {
   );
 }
 
+const GRANULARITY_OPTIONS = [
+  { key: "day",   label: "Ngày" },
+  { key: "week",  label: "Tuần" },
+  { key: "month", label: "Tháng" },
+];
+
 export function ReportView() {
   const [months, setMonths]   = useState("6");
+  const [granularity, setGranularity] = useState("month");
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
-  const load = useCallback(async (m) => {
+  const load = useCallback(async (m, g) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await accountantService.getReportOverview(Number(m));
+      const res = await accountantService.getReportOverview(Number(m), g);
       setData(res);
     } catch (err) {
       setError(err.message ?? "Không thể tải báo cáo.");
@@ -288,7 +333,7 @@ export function ReportView() {
     }
   }, []);
 
-  useEffect(() => { load(months); }, [months, load]);
+  useEffect(() => { load(months, granularity); }, [months, granularity, load]);
 
   const totalRevenue   = data?.revenueChart?.reduce((s, r) => s + Number(r.revenue || 0), 0) ?? 0;
   const totalOrders    = data?.revenueChart?.reduce((s, r) => s + Number(r.order_count || 0), 0) ?? 0;
@@ -341,7 +386,9 @@ export function ReportView() {
       {}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
-          label={`Doanh thu ${months} tháng`}
+          label={granularity === "day" ? "Doanh thu 30 ngày"
+            : granularity === "week" ? "Doanh thu 12 tuần"
+            : `Doanh thu ${months} tháng`}
           value={VND(totalRevenue)}
           icon={RiLineChartLine}
           sub={`${totalOrders} đơn hoàn thành`}
@@ -374,19 +421,38 @@ export function ReportView() {
         />
       </div>
 
-      {}
-      <div className="grid grid-cols-3 gap-4">
-        {}
-        <div className="col-span-2">
-          <Section title="Xu hướng doanh thu" icon={RiLineChartLine}>
+      {/* Xu hướng doanh thu 3/5 — Doanh thu theo xe 2/5 */}
+      <div className="grid grid-cols-5 gap-4">
+        <div className="col-span-3">
+          <Section
+            title="Xu hướng doanh thu"
+            icon={RiLineChartLine}
+            action={
+              <div className="flex gap-0.5 bg-gray-100 p-0.5 rounded-lg">
+                {GRANULARITY_OPTIONS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setGranularity(key)}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all
+                      ${granularity === key
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-gray-400 hover:text-gray-600"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            }
+          >
             <RevenueChart data={data?.revenueChart} />
           </Section>
         </div>
 
-        {}
-        <Section title="Theo hình thức thanh toán" icon={RiBankCard2Line}>
-          <PaymentTypeChart data={data?.revenueByPaymentType} />
-        </Section>
+        <div className="col-span-2">
+          <Section title="Doanh thu theo từng xe" icon={RiBankCard2Line}>
+            <VehicleRevenueChart data={data?.revenueByVehicle} />
+          </Section>
+        </div>
       </div>
 
       {}
@@ -399,15 +465,20 @@ export function ReportView() {
         </div>
 
         {}
-        <div className="flex flex-col gap-4">
-          <Section title="Phân tích nợ theo thời gian" icon={RiTimeLine}>
-            <DebtAgingBars data={data?.debtAging} />
-          </Section>
+        <Section title="Tiền tài xế đang cầm" icon={RiCoinLine}>
+          <DriverHoldingsList data={data?.driverHoldings} />
+        </Section>
+      </div>
 
-          <Section title="Tổng quan bảng lương" icon={RiShieldUserLine}>
-            <PayrollQuickStats data={data?.payrollSummary} />
-          </Section>
-        </div>
+      {}
+      <div className="grid grid-cols-2 gap-4">
+        <Section title="Phân tích nợ theo thời gian" icon={RiTimeLine}>
+          <DebtAgingBars data={data?.debtAging} />
+        </Section>
+
+        <Section title="Tổng quan bảng lương" icon={RiShieldUserLine}>
+          <PayrollQuickStats data={data?.payrollSummary} />
+        </Section>
       </div>
 
     </div>

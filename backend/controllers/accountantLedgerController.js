@@ -86,18 +86,31 @@ const exportPeriod = async (req, res) => {
             return res.status(404).json({ error: 'Không có bút toán nào chưa xuất trong kỳ này' });
         }
 
-        const header = ['id', 'ngay_phat_sinh', 'loai_su_kien', 'dien_giai', 'tk_no', 'tk_co', 'so_tien', 'ref_type', 'ref_id'];
-        const lines = rows.map((r) => [
-            r.id,
-            new Date(r.occurred_at).toISOString(),
-            EVENT_TYPE_LABEL[r.event_type] ?? r.event_type,
-            _csvEscape(r.description),
-            r.debit_account,
-            r.credit_account,
-            r.amount,
-            r.ref_type ?? '',
-            r.ref_id ?? '',
-        ].join(','));
+        // tien_cuoc / tien_chi_ho: chỉ có ở sự kiện tiền về — kế toán MISA dùng để
+        // tách bút toán (Có 131 phần cước / Có 3388 phần chi hộ). Quy ước: chi hộ thu trước.
+        // but_toan_dao: id bút toán gốc khi dòng này là bút toán điều chỉnh của kỳ đã xuất.
+        const header = [
+            'id', 'ngay_phat_sinh', 'loai_su_kien', 'dien_giai', 'tk_no', 'tk_co',
+            'so_tien', 'tien_cuoc', 'tien_chi_ho', 'but_toan_dao', 'ref_type', 'ref_id',
+        ];
+        const lines = rows.map((r) => {
+            const chiHo = r.chi_ho_amount != null ? Number(r.chi_ho_amount) : null;
+            const cuoc  = chiHo != null ? Number(r.amount) - chiHo : null;
+            return [
+                r.id,
+                new Date(r.occurred_at).toISOString(),
+                EVENT_TYPE_LABEL[r.event_type] ?? r.event_type,
+                _csvEscape(r.description),
+                r.debit_account,
+                r.credit_account,
+                r.amount,
+                cuoc != null ? cuoc.toFixed(2) : '',
+                chiHo != null ? chiHo.toFixed(2) : '',
+                r.reversal_of_id ?? '',
+                r.ref_type ?? '',
+                r.ref_id ?? '',
+            ].join(',');
+        });
 
         // BOM để Excel/MISA đọc đúng UTF-8 tiếng Việt
         const csv = `﻿${header.join(',')}\n${lines.join('\n')}`;
@@ -110,4 +123,25 @@ const exportPeriod = async (req, res) => {
     }
 };
 
-module.exports = { getJournal, getJournalStats, exportPeriod };
+// POST /api/accountant/ledger/:id/reverse  Body: { reason }
+// Bút toán đảo: ghi dòng ngược chiều cùng số tiền, không sửa/xóa dòng gốc
+const reverseEntry = async (req, res) => {
+    try {
+        const ftId = Number(req.params.id);
+        if (!ftId) return res.status(400).json({ error: 'ID bút toán không hợp lệ' });
+        const reason = String(req.body?.reason || '').trim();
+        if (!reason) return res.status(400).json({ error: 'Cần ghi lý do đảo bút toán' });
+
+        const result = await financialLedgerRepository.reverseTransaction(ftId, {
+            reason, actorId: req.user.userId,
+        });
+        res.status(201).json({ message: `Đã tạo bút toán đảo #${result.reversalId} cho bút toán #${result.originalId}`, ...result });
+    } catch (err) {
+        const code = err.message.includes('Không tìm thấy') ? 404
+            : err.message.includes('đã') ? 409
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+module.exports = { getJournal, getJournalStats, exportPeriod, reverseEntry };

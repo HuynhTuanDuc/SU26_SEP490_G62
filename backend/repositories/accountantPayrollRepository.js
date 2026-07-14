@@ -370,6 +370,8 @@ const markPayrollPaid = async (payrollId, accountantId) => {
 
         // 2. Cấn trừ công nợ tài xế đã khấu trừ vào lương → ghi debt_payments (FIFO nợ cũ nhất trước)
         const debtDeduction = Number(row.driver_debt_deduction ?? 0);
+        let clearedTotal = 0;
+        let deductionAdjusted = false;
         if (debtDeduction > 0.01) {
             // Postgres cấm FOR UPDATE + GROUP BY — tính tổng qua LATERAL để vẫn lock được dòng debts
             const { rows: openDebts } = await client.query(`
@@ -409,7 +411,7 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                     ids, amounts, accountantId,
                     `Cấn trừ công nợ vào lương tháng ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
                 ]);
-                const clearedTotal = amounts.reduce((s, a) => s + a, 0);
+                clearedTotal = amounts.reduce((s, a) => s + a, 0);
                 await financialLedgerRepository.insertTransaction(client, {
                     eventType: 'driver_debt_paid',
                     debitAccount: '334', creditAccount: '1388',
@@ -417,6 +419,21 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                     description: `Cấn trừ nợ tài xế vào lương ${row.payroll_month}/${row.payroll_year} — bảng lương #${payrollId}`,
                     refType: 'payroll', refId: payrollId, actorId: accountantId,
                 });
+            }
+
+            // Bảo vệ lương tài xế: nợ thực còn ÍT hơn snapshot (tài đã nộp quỹ sau khi chốt lương)
+            // → chỉ trừ đúng số cấn được, phần chênh trả lại vào lương (net_salary tự tính lại)
+            if (clearedTotal < debtDeduction - 0.01) {
+                const { rows: [adjusted] } = await client.query(
+                    `UPDATE payrolls
+                     SET driver_debt_deduction = $2, updated_at = NOW()
+                     WHERE id = $1
+                     RETURNING net_salary, driver_debt_deduction`,
+                    [payrollId, clearedTotal],
+                );
+                row.net_salary = adjusted.net_salary;
+                row.driver_debt_deduction = adjusted.driver_debt_deduction;
+                deductionAdjusted = true;
             }
         }
 
@@ -446,6 +463,9 @@ const markPayrollPaid = async (payrollId, accountantId) => {
             bonuses_marked_paid: paidBonuses.length,
             bonus_mismatch_warning: bonusMismatch
                 ? `Tổng thưởng phúc lợi đã duyệt (${bonusPaidTotal.toLocaleString('vi-VN')}đ) khác snapshot trong bảng lương (${bonusSnapshot.toLocaleString('vi-VN')}đ) — có khoản duyệt sau lần tính lương cuối.`
+                : null,
+            debt_deduction_adjusted: deductionAdjusted
+                ? `Nợ tài xế thực còn ${clearedTotal.toLocaleString('vi-VN')}đ (thấp hơn khấu trừ đã chốt ${debtDeduction.toLocaleString('vi-VN')}đ — tài xế đã nộp quỹ sau khi tính lương). Đã tự điều chỉnh: chỉ trừ ${clearedTotal.toLocaleString('vi-VN')}đ, lương thực nhận cập nhật ${Number(row.net_salary).toLocaleString('vi-VN')}đ.`
                 : null,
         };
     } catch (err) {
