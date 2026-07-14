@@ -51,7 +51,7 @@ async function isRefreshableAuthFailure(response) {
   }
 }
 
-async function refreshAuthSession() {
+export async function refreshAuthSession() {
   if (!refreshPromise) {
     refreshPromise = fetch(buildUrl("/auth/refresh"), {
       method: "POST",

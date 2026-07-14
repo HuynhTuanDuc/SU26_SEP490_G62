@@ -4,6 +4,7 @@ const driverRepository = require('../repositories/driverRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const pool = require('../config/database');
 const notificationService = require('./notificationService');
+const notificationGateway = require('./notificationGateway');
 const vehicleManagementService = require('./vehicleManagementService');
 const {
     ALLOWED_INCIDENT_TYPES,
@@ -14,6 +15,14 @@ const {
 } = require('../constants/incidentConstants');
 
 const ACTIVE_STATUSES = ['claimed', 'picking', 'transit', 'arrived', 'failed', 'returning'];
+
+const broadcastCoordinatorIncidentChange = (action, incidentId) => {
+    notificationGateway.broadcastToRole('coordinator', {
+        type: 'coordinator.incidents.changed',
+        action,
+        incidentId: incidentId ?? null,
+    });
+};
 
 const TRAFFIC_TYPES = new Set(['road_incident', 'traffic_jam']);
 
@@ -78,6 +87,7 @@ const updateMyIncident = async (incidentId, driverId, { severityLevel, descripti
         entityType: 'incidents',
         entityId: incidentId,
     }, { displayMode: 'silent' }).catch(() => {});
+    broadcastCoordinatorIncidentChange('updated', incidentId);
 
     return incidentRepository.getIncidentById(incidentId);
 };
@@ -162,6 +172,7 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
         entityType: 'incidents',
         entityId: incident.id,
     }, { displayMode: 'alert' }).catch(() => {});
+    broadcastCoordinatorIncidentChange('created', incident.id);
 
     // Notify driver — xác nhận sự cố đã được ghi nhận (silent — họ vừa submit xong)
     notificationService.createForUser(driverId, {
@@ -476,6 +487,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
         entityType: 'incidents',
         entityId: incidentId,
     }, { displayMode: status === 'resolved' || status === 'closed' ? 'toast' : 'silent' }).catch(() => {});
+    broadcastCoordinatorIncidentChange('status_updated', incidentId);
 
     if (replacementDriver) {
         notificationService.createForUser(replacementDriver.id, {
