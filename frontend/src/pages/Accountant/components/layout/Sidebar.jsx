@@ -4,7 +4,6 @@ import {
   RiFileList3Line,
   RiMoneyDollarCircleLine,
   RiHandCoinLine,
-  RiBarChartBoxLine,
   RiLogoutBoxLine,
   RiArrowRightSLine,
   RiMenuFoldLine,
@@ -100,8 +99,8 @@ export function Sidebar({ activeView, onViewChange, user, onLogout, onProfile, c
       <div className={`flex items-center h-16 border-b border-gray-100
                        ${collapsed ? "justify-center px-0" : "gap-3 px-4"}`}>
         {!collapsed && (
-          <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-blue-600 flex-shrink-0">
-            <RiBarChartBoxLine size={17} className="text-white" />
+          <div className="w-8 h-8 rounded-xl overflow-hidden flex-shrink-0 bg-gray-50 border border-gray-100">
+            <img src="/logo.png" alt="LogisCount" className="w-full h-[125%] object-cover object-top" />
           </div>
         )}
         {!collapsed && (

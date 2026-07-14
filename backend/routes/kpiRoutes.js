@@ -18,4 +18,13 @@ const financeStaff   = [verifyToken, requireRole('coordinator', 'manager', 'acco
 router.get('/me',          driverOnly, kpiController.getMyKPI);
 router.get('/leaderboard', driverOnly, kpiController.getLeaderboard);
 
+// ─── Coordinator/Manager routes ───────────────────────────────────────────────
+
+router.get('/all',                          staffOnly,    kpiController.getAllDriversKPI);
+router.get('/leaderboard/group/:vehicleGroupId', staffOnly, kpiController.getLeaderboardByGroup);
+
+// ─── Coordinator/Manager/Accountant: KPI của 1 driver cụ thể ─────────────────
+
+router.get('/driver/:driverId', financeStaff, kpiController.getDriverKPIById);
+
 module.exports = router;

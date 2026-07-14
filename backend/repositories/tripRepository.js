@@ -601,6 +601,7 @@ const reassignShipmentAfterIncident = async (
         toVehicleId,
         changedBy,
         note,
+        changeReason = 'incident_reassign',
         client: existingClient = null,
     },
 ) => {
@@ -701,7 +702,7 @@ const reassignShipmentAfterIncident = async (
             toDriverId,
             toVehicleId,
             changedBy,
-            changeReason: 'incident_reassign',
+            changeReason,
             incidentId,
             notes: note ?? null,
         });

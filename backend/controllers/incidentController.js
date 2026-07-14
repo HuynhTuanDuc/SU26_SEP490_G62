@@ -38,6 +38,39 @@ const createIncident = async (req, res) => {
     }
 };
 
+// ─── POST /api/incidents/staff (coordinator/manager tự tạo) ──────────────────
+
+const createIncidentByStaff = async (req, res) => {
+    try {
+        const actorId = req.user.userId;
+        const { shipmentId, incidentType, severityLevel, description, location } = req.body;
+        const parsedShipmentId = Number(shipmentId);
+        const imageUrls = (req.files ?? []).map((f) => f.path);
+
+        const incident = await incidentService.createIncidentByStaff(
+            actorId,
+            {
+                shipmentId: Number.isInteger(parsedShipmentId) && parsedShipmentId > 0 ? parsedShipmentId : null,
+                incidentType,
+                severityLevel,
+                description,
+                location,
+            },
+            imageUrls,
+        );
+
+        res.status(201).json({ incident });
+    } catch (err) {
+        if (err.message.startsWith('DUPLICATE_TYPE:')) {
+            return res.status(409).json({ error: err.message.replace('DUPLICATE_TYPE:', '') });
+        }
+        const status = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('không hợp lệ') || err.message.includes('bắt buộc') || err.message.includes('ít nhất') || err.message.includes('Tối đa') ? 400
+            : 500;
+        res.status(status).json({ error: err.message });
+    }
+};
+
 // ─── GET /api/incidents/my/counts ────────────────────────────────────────────
 
 const getMyCounts = async (req, res) => {
@@ -139,6 +172,6 @@ const updateMyIncident = async (req, res) => {
 };
 
 module.exports = {
-    createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
+    createIncident, createIncidentByStaff, getMyCounts, getMyIncidents, getIncidentDetail,
     getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };

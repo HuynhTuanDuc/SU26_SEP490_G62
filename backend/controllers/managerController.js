@@ -179,6 +179,66 @@ const reviewPayroll = async (req, res) => {
     }
 };
 
+const approveExpense = async (req, res) => {
+    try {
+        const expenseId = parseId(req.params.id, 'Expense ID');
+        const expenseService = require('../services/expenseService');
+        const expense = await expenseService.approveExpense(expenseId, req.user.userId);
+        res.json({ message: 'Đã duyệt chi phí', expense });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const rejectExpense = async (req, res) => {
+    try {
+        const expenseId = parseId(req.params.id, 'Expense ID');
+        const expenseService = require('../services/expenseService');
+        const expense = await expenseService.rejectExpense(expenseId, req.user.userId, req.body?.reason);
+        res.json({ message: 'Đã từ chối chi phí', expense });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const getIncidents = async (req, res) => {
+    try {
+        const { status, search, page, limit } = req.query;
+        const coordinatorService = require('../services/coordinatorService');
+        const result = await coordinatorService.getIncidents({
+            status: status || null,
+            search: search || '',
+            page,
+            limit,
+        });
+        res.json(result);
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const cancelShipment = async (req, res) => {
+    try {
+        const shipmentId = parseId(req.params.id, 'Shipment ID');
+        const coordinatorService = require('../services/coordinatorService');
+        const updated = await coordinatorService.cancelShipment(shipmentId, req.body?.reason, req.user.userId);
+        res.json({ message: 'Đã hủy chuyến', shipment: updated });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+const reassignShipment = async (req, res) => {
+    try {
+        const shipmentId = parseId(req.params.id, 'Shipment ID');
+        const coordinatorService = require('../services/coordinatorService');
+        const updated = await coordinatorService.reassignShipment(shipmentId, { toDriverId: req.body?.toDriverId }, req.user.userId);
+        res.json({ message: 'Đã điều chuyển chuyến', shipment: updated });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 module.exports = {
     getDashboard,
     getSalaryAdvances,
@@ -194,4 +254,9 @@ module.exports = {
     getPartnerDebtDetails,
     getPayrolls,
     reviewPayroll,
+    approveExpense,
+    rejectExpense,
+    cancelShipment,
+    reassignShipment,
+    getIncidents,
 };

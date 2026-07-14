@@ -66,6 +66,23 @@ const getDriverKPIById = async (driverId, { month, year } = {}) => {
     return kpiRepository.getDriverKPIById(driverId, { month: m, year: y });
 };
 
+// ─── Coordinator / Manager: leaderboard của 1 nhóm xe bất kỳ (không cần là driver) ─
+
+const getLeaderboardByGroup = async (vehicleGroupId, { month, year } = {}) => {
+    const m = month ? Number(month) : currentMonth();
+    const y = year  ? Number(year)  : currentYear();
+    if (m < 1 || m > 12) throw new Error('Tháng không hợp lệ (1-12)');
+
+    const rows = await kpiRepository.getLeaderboard(0, vehicleGroupId, { month: m, year: y });
+    return {
+        vehicle_group_id: vehicleGroupId,
+        month: m,
+        year:  y,
+        total_in_group: Number(rows[0]?.total_in_group ?? 0),
+        leaderboard: rows,
+    };
+};
+
 // Trigger tự động sau khi trip hoàn thành — gọi fire-and-forget (không await)
 const recalculateAfterCompletion = (driverIds, completedAt = new Date()) => {
     const month = completedAt.getMonth() + 1;
@@ -83,5 +100,6 @@ module.exports = {
     getLeaderboard,
     getAllDriversKPI,
     getDriverKPIById,
+    getLeaderboardByGroup,
     recalculateAfterCompletion,
 };

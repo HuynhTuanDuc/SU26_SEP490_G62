@@ -1060,6 +1060,123 @@ const rejectReceiptRequest = async (requestId, coordinatorId, { notes } = {}) =>
     return { success: true };
 };
 
+// Chuyến chưa hoàn thành/hủy — cho phép Coordinator/Manager chủ động hủy
+const CANCELLABLE_STATUSES = [
+    SHIPMENT_STATUS.AVAILABLE,
+    SHIPMENT_STATUS.CLAIMED,
+    SHIPMENT_STATUS.PICKING,
+    SHIPMENT_STATUS.TRANSIT,
+    SHIPMENT_STATUS.ARRIVED,
+    SHIPMENT_STATUS.RETURNING,
+    SHIPMENT_STATUS.FAILED,
+];
+
+// Hủy 1 trip cụ thể (khác cancelOrder — chỉ hủy 1 shipment, giữ nguyên các shipment khác cùng order)
+const cancelShipment = async (shipmentId, reason, actorId) => {
+    const tripRepository = require('../repositories/tripRepository');
+    const notificationService = require('./notificationService');
+
+    if (!reason?.trim()) throw new Error('Lý do hủy chuyến là bắt buộc');
+
+    const shipment = await tripRepository.getTripById(shipmentId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+    if (!CANCELLABLE_STATUSES.includes(shipment.status)) {
+        throw new Error('Chuyến đã hoàn thành hoặc đã hủy, không thể hủy thêm');
+    }
+
+    const updated = await tripRepository.updateTripStatus(shipmentId, SHIPMENT_STATUS.CANCELLED, reason.trim());
+    if (!updated) throw new Error('Không thể hủy chuyến');
+
+    if (shipment.owner_driver_id) {
+        notificationService.createForUser(shipment.owner_driver_id, {
+            title: 'Chuyến của bạn đã bị hủy',
+            message: `Chuyến #${shipmentId} đã bị hủy. Lý do: ${reason.trim()}`,
+            type: 'TRIP_CANCELLED',
+            entityType: 'shipments',
+            entityId: shipmentId,
+        }, { displayMode: 'alert' }).catch(() => {});
+    }
+
+    return updated;
+};
+
+// Điều chuyển tài xế/xe thủ công cho 1 trip — KHÔNG qua Incident, KHÔNG chia doanh thu
+// (chỉ áp dụng khi chưa lấy hàng; nếu đã lấy hàng cần dùng luồng Incident để chia doanh thu công bằng)
+const reassignShipment = async (shipmentId, { toDriverId }, actorId) => {
+    const tripRepository = require('../repositories/tripRepository');
+    const driverRepository = require('../repositories/driverRepository');
+    const notificationService = require('./notificationService');
+
+    const parsedToDriverId = Number(toDriverId);
+    if (!parsedToDriverId) throw new Error('Tài xế thay thế là bắt buộc');
+
+    const shipment = await tripRepository.getTripById(shipmentId);
+    if (!shipment) throw new Error('Chuyến không tồn tại');
+    if (!shipment.owner_driver_id) {
+        throw new Error('Chuyến chưa có tài xế nhận — không thể điều chuyển, chỉ có thể chờ tài xế claim');
+    }
+    if (Number(shipment.owner_driver_id) === parsedToDriverId) {
+        throw new Error('Tài xế thay thế phải khác tài xế đang giữ chuyến');
+    }
+    if (shipment.pickup_completed_at) {
+        throw new Error('Chuyến đã lấy hàng — vui lòng dùng luồng Sự cố (Incident) để điều chuyển kèm chia doanh thu công bằng');
+    }
+
+    const toDriver = (await driverRepository.getAllDrivers()).find((d) => Number(d.id) === parsedToDriverId);
+    if (!toDriver) throw new Error('Tài xế thay thế không tồn tại');
+    if (!toDriver.vehicle_id) throw new Error('Tài xế thay thế chưa được gán xe');
+
+    const fromDriverId = Number(shipment.owner_driver_id);
+    const reassigned = await tripRepository.reassignShipmentAfterIncident(shipmentId, {
+        incidentId: null,
+        fromDriverId,
+        toDriverId: parsedToDriverId,
+        toVehicleId: Number(toDriver.vehicle_id),
+        changedBy: actorId,
+        changeReason: 'manual_reassign',
+        note: 'Điều phối viên/Quản lý chủ động điều chuyển (ngoài luồng sự cố)',
+    });
+
+    notificationService.createForUser(fromDriverId, {
+        title: 'Chuyến của bạn đã được điều chuyển',
+        message: `Chuyến #${shipmentId} đã được điều chuyển cho tài xế khác.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: shipmentId,
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    notificationService.createForUser(parsedToDriverId, {
+        title: 'Bạn được điều chuyển 1 chuyến mới',
+        message: `Bạn đã được phân công tiếp quản chuyến #${shipmentId}.`,
+        type: 'TRIP_ASSIGNED',
+        entityType: 'shipments',
+        entityId: shipmentId,
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    return reassigned;
+};
+
+// Tổng quan cho Coordinator — số đơn/trip đang xử lý, sự cố mở, phiếu thu/chi phí chờ duyệt
+const getDashboard = async () => {
+    const statsResult = await pool.query(`
+        SELECT
+            (SELECT COUNT(*)::int FROM orders WHERE derived_status NOT IN ('completed', 'cancelled')) AS active_orders,
+            (SELECT COUNT(*)::int FROM order_shipments WHERE status = 'available') AS pool_trips,
+            (SELECT COUNT(*)::int FROM order_shipments
+                WHERE status IN ('claimed','picking','transit','arrived','returning')) AS active_trips,
+            (SELECT COUNT(*)::int FROM incidents WHERE status IN ('open','investigating')) AS open_incidents,
+            (SELECT COUNT(*)::int FROM order_receipt_requests WHERE status = 'pending') AS pending_receipts,
+            (SELECT COUNT(*)::int FROM expenses WHERE status = 'pending') AS pending_expenses
+    `);
+
+    const recentIncidents = await incidentRepository.getCoordinatorIncidents({ status: 'open', page: 1, limit: 5 });
+
+    return {
+        overview: statsResult.rows[0],
+        recent_incidents: recentIncidents.incidents,
+    };
+};
+
 module.exports = {
   importExcel,
   listVehicleGroups,
@@ -1069,4 +1186,7 @@ module.exports = {
   getReceiptRequestDetail,
   approveReceiptRequest,
     rejectReceiptRequest,
+    cancelShipment,
+    reassignShipment,
+    getDashboard,
 };

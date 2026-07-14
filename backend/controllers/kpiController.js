@@ -25,4 +25,44 @@ const getLeaderboard = async (req, res) => {
     }
 };
 
-module.exports = { getMyKPI, getLeaderboard };
+// ─── Coordinator/Manager: GET /api/kpi/all?month=6&year=2026&vehicleGroupId=1 ─
+
+const getAllDriversKPI = async (req, res) => {
+    try {
+        const { month, year, vehicleGroupId } = req.query;
+        const data = await kpiService.getAllDriversKPI({ month, year, vehicleGroupId });
+        res.json({ kpi: data });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+// ─── Coordinator/Manager/Accountant: GET /api/kpi/driver/:driverId ───────────
+
+const getDriverKPIById = async (req, res) => {
+    try {
+        const driverId = Number(req.params.driverId);
+        if (!driverId) return res.status(400).json({ error: 'Driver ID không hợp lệ' });
+        const { month, year } = req.query;
+        const data = await kpiService.getDriverKPIById(driverId, { month, year });
+        res.json({ kpi: data });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+// ─── Coordinator/Manager: GET /api/kpi/leaderboard/group/:vehicleGroupId ─────
+
+const getLeaderboardByGroup = async (req, res) => {
+    try {
+        const vehicleGroupId = Number(req.params.vehicleGroupId);
+        if (!vehicleGroupId) return res.status(400).json({ error: 'Vehicle group ID không hợp lệ' });
+        const { month, year } = req.query;
+        const data = await kpiService.getLeaderboardByGroup(vehicleGroupId, { month, year });
+        res.json(data);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+module.exports = { getMyKPI, getLeaderboard, getAllDriversKPI, getDriverKPIById, getLeaderboardByGroup };

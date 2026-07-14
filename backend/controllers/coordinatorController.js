@@ -172,8 +172,48 @@ const rejectExpense = async (req, res) => {
     }
 };
 
+// PATCH /api/coordinator/trips/:id/cancel  Body: { reason }
+const cancelShipment = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
+        const updated = await coordinatorService.cancelShipment(shipmentId, req.body?.reason, req.user.userId);
+        res.json({ message: 'Đã hủy chuyến', shipment: updated });
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('bắt buộc') || err.message.includes('không thể') ? 422
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+// PATCH /api/coordinator/trips/:id/reassign  Body: { toDriverId }
+const reassignShipment = async (req, res) => {
+    try {
+        const shipmentId = Number(req.params.id);
+        if (!shipmentId) return res.status(400).json({ error: 'Shipment ID không hợp lệ' });
+        const updated = await coordinatorService.reassignShipment(shipmentId, { toDriverId: req.body?.toDriverId }, req.user.userId);
+        res.json({ message: 'Đã điều chuyển chuyến', shipment: updated });
+    } catch (err) {
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('bắt buộc') || err.message.includes('phải khác') || err.message.includes('vui lòng') || err.message.includes('chưa') ? 422
+            : 500;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+const getDashboard = async (_req, res) => {
+    try {
+        const dashboard = await coordinatorService.getDashboard();
+        res.json(dashboard);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
 module.exports = {
     listVehicleGroups,
+    getDashboard,
     listPartners,
     getIncidents,
     getReceiptRequests,
@@ -183,4 +223,6 @@ module.exports = {
     scanReceiptExpenses,
     approveExpense,
     rejectExpense,
+    cancelShipment,
+    reassignShipment,
 };

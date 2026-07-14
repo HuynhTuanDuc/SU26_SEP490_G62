@@ -4,6 +4,7 @@ const driverRepository = require('../repositories/driverRepository');
 const revenueAllocationRepository = require('../repositories/revenueAllocationRepository');
 const pool = require('../config/database');
 const notificationService = require('./notificationService');
+const vehicleManagementService = require('./vehicleManagementService');
 const {
     ALLOWED_INCIDENT_TYPES,
     ALLOWED_SEVERITIES,
@@ -187,6 +188,68 @@ const createIncident = async (driverId, { shipmentId, incidentType, severityLeve
     return incidentRepository.getIncidentById(incident.id);
 };
 
+// Coordinator/Manager tự tạo sự cố (khách báo qua điện thoại, giám sát phát hiện...).
+// Khác createIncident (driver): không giới hạn theo owner_driver_id của chuyến,
+// không bắt buộc chuyến đang ACTIVE (staff có thể ghi nhận cả sau khi việc đã xảy ra).
+const createIncidentByStaff = async (actorId, { shipmentId, incidentType, severityLevel, description, location }, imageUrls = []) => {
+    if (!incidentType || !ALLOWED_INCIDENT_TYPES.includes(incidentType)) {
+        throw new Error('Loại sự cố không hợp lệ');
+    }
+    if (!description || !description.trim()) {
+        throw new Error('Mô tả sự cố là bắt buộc');
+    }
+    if (description.trim().length < 10) {
+        throw new Error('Mô tả sự cố phải có ít nhất 10 ký tự');
+    }
+
+    const severity = severityLevel && ALLOWED_SEVERITIES.includes(severityLevel)
+        ? severityLevel
+        : INCIDENT_SEVERITY.MEDIUM;
+
+    const parsedShipmentId = shipmentId ? Number(shipmentId) : null;
+    if (parsedShipmentId) {
+        const shipment = await tripRepository.getTripById(parsedShipmentId);
+        if (!shipment) throw new Error('Chuyến vận chuyển không tồn tại');
+
+        const existing = await incidentRepository.getIncidentsByShipment(parsedShipmentId);
+        const duplicate = existing.find((i) => i.incident_type === incidentType);
+        if (duplicate) {
+            throw new Error(`DUPLICATE_TYPE:Chuyến này đã có sự cố loại "${TYPE_LABEL[incidentType] ?? incidentType}". Vui lòng cập nhật sự cố đã tạo thay vì tạo mới.`);
+        }
+    }
+
+    if (imageUrls.length > MAX_IMAGES_PER_INCIDENT) {
+        throw new Error(`Tối đa ${MAX_IMAGES_PER_INCIDENT} ảnh minh chứng`);
+    }
+
+    const incident = await incidentRepository.createIncident({
+        shipmentId: parsedShipmentId,
+        reportedBy: actorId,
+        incidentType,
+        severityLevel: severity,
+        description: description.trim(),
+        location: location?.trim() || null,
+    });
+
+    await Promise.all(imageUrls.map((url) => incidentRepository.addIncidentEvidence(incident.id, url)));
+
+    // Nếu có gắn chuyến, thông báo cho tài xế đang giữ chuyến biết sự cố đã được ghi nhận hộ
+    if (parsedShipmentId) {
+        const shipment = await tripRepository.getTripById(parsedShipmentId);
+        if (shipment?.owner_driver_id) {
+            notificationService.createForUser(shipment.owner_driver_id, {
+                title: `Sự cố được ghi nhận: ${TYPE_LABEL[incidentType]}`,
+                message: `Điều phối/Quản lý đã ghi nhận sự cố cho chuyến #${parsedShipmentId} của bạn.`,
+                type: 'INCIDENT_REPORTED',
+                entityType: 'incidents',
+                entityId: incident.id,
+            }, { displayMode: 'silent' }).catch(() => {});
+        }
+    }
+
+    return incidentRepository.getIncidentById(incident.id);
+};
+
 const getMyCounts = async (driverId) => {
     const result = await require('../config/database').query(
         `SELECT
@@ -272,6 +335,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     let replacementDriver = null;
     let replacementVehicleId = null;
     let revenueMode = null;
+    let originalVehicleId = null;
 
     const parsedReplacementDriverId = replacementDriverId ? Number(replacementDriverId) : null;
     if (parsedReplacementDriverId) {
@@ -306,6 +370,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
                 }
 
                 const originalDriverId = Number(currentShipment.owner_driver_id);
+                originalVehicleId = currentShipment.vehicle_id ?? null;
                 const reassignedShipment = await tripRepository.reassignShipmentAfterIncident(incident.shipment_id, {
                     incidentId,
                     fromDriverId: originalDriverId,
@@ -383,6 +448,20 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
         })();
     if (!updated) throw new Error('Không thể cập nhật sự cố');
 
+    // Xe hỏng giữa chuyến + đã điều tài xế thay thế → tự đồng bộ trạng thái xe cũ sang "broken"
+    // để Manager thấy đồng nhất bên Vehicle Management, không cần tự cập nhật thủ công.
+    // Best-effort: không chặn kết quả resolve incident nếu đồng bộ thất bại (VD: xe đã broken/maintenance từ trước).
+    if (incident.incident_type === 'vehicle_breakdown' && originalVehicleId) {
+        vehicleManagementService.markVehicleAsBroken(originalVehicleId, coordinatorId, {
+            failure_type: 'breakdown_in_transit',
+            description: resolution?.trim() || incident.description || 'Xe hỏng giữa chuyến — ghi nhận tự động từ sự cố',
+            severity_level: 'high',
+            note: `Tự động đồng bộ từ sự cố #${incidentId}`,
+        }).catch((err) => {
+            console.error(`[Incident] Không thể đồng bộ trạng thái xe #${originalVehicleId} sau sự cố #${incidentId}:`, err.message);
+        });
+    }
+
     // Notify driver về phản hồi từ coordinator
     const driverId = incident.reported_by;
     const statusText = STATUS_LABEL[status] ?? status;
@@ -416,6 +495,6 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
 };
 
 module.exports = {
-    createIncident, getMyCounts, getMyIncidents, getIncidentDetail,
+    createIncident, createIncidentByStaff, getMyCounts, getMyIncidents, getIncidentDetail,
     getShipmentIncidents, updateMyIncident, updateIncidentStatus,
 };
