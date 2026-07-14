@@ -209,6 +209,9 @@ const recordPaymentWithOverflow = async (orderId, paymentData) => {
         const totalRemaining  = debts.reduce((s, d) => s + Number(d.remaining), 0);
         const requestedAmount = Number(paymentData.amount);
 
+        if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+            throw new Error('Số tiền thanh toán phải lớn hơn 0');
+        }
         if (requestedAmount > totalRemaining + 0.01) {
             throw new Error(
                 `Số tiền thanh toán (${Math.round(requestedAmount).toLocaleString('vi-VN')}đ) vượt quá tổng công nợ khách hàng (${Math.round(totalRemaining).toLocaleString('vi-VN')}đ).`
@@ -463,6 +466,9 @@ const allocatePayment = async (personType, personId, paymentData) => {
         const totalRemaining  = debts.reduce((s, d) => s + Number(d.remaining), 0);
         const requestedAmount = Number(paymentData.amount);
 
+        if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+            throw new Error('Số tiền thanh toán phải lớn hơn 0');
+        }
         if (requestedAmount > totalRemaining + 0.01) {
             throw new Error(
                 `Sá»‘ tiá»n thanh toÃ¡n (${requestedAmount.toLocaleString('vi-VN')}Ä‘) vÆ°á»£t quÃ¡ sá»‘ dÆ° cÃ´ng ná»£ (${totalRemaining.toLocaleString('vi-VN')}Ä‘)`
@@ -580,6 +586,25 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
         }
 
         if (Number(amount) > 0) {
+            // Chặn nộp vượt số nợ còn lại (tránh remaining âm + ghi sổ thu tiền ảo)
+            const { rows: [debtRemaining] } = await client.query(
+                `SELECT d.id,
+                        GREATEST(0, d.total_amount - COALESCE((
+                            SELECT SUM(dp.amount) FROM debt_payments dp
+                            WHERE dp.debt_id = d.id AND dp.status = 'confirmed'
+                        ), 0)) AS remaining
+                 FROM debts d
+                 WHERE d.shipment_id = $1 AND d.debt_type = 'driver'
+                 FOR UPDATE OF d`,
+                [shipmentId]
+            );
+            const remaining = Number(debtRemaining?.remaining ?? 0);
+            if (Number(amount) > remaining + 0.01) {
+                throw new Error(
+                    `Số tiền nộp (${Number(amount).toLocaleString('vi-VN')}đ) vượt quá nợ còn lại (${remaining.toLocaleString('vi-VN')}đ)`
+                );
+            }
+
             await client.query(
                 `INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
                  SELECT d.id, $1, $2, 'confirmed', NOW(), NOW(), $3, $3, 'Káº¿ toÃ¡n xÃ¡c nháº­n thu tiá»n tÃ i xáº¿'

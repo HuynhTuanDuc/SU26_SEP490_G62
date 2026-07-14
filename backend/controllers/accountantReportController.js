@@ -7,7 +7,11 @@ const getOverview = async (req, res) => {
         if (isNaN(months) || months < 1 || months > 24)
             throw err400('Số tháng thống kê không hợp lệ (1–24).');
 
-        const data = await getReportOverview({ months });
+        const granularity = req.query.granularity || 'month';
+        if (!['day', 'week', 'month'].includes(granularity))
+            throw err400('Mức thời gian không hợp lệ (day/week/month).');
+
+        const data = await getReportOverview({ months, granularity });
         res.json(data);
     } catch (err) {
         sendError(res, err);

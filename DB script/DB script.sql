@@ -388,7 +388,7 @@ CREATE TABLE debt_payments (
     amount          NUMERIC(12,2) NOT NULL CHECK (amount > 0),
     payment_method  TEXT CHECK (payment_method IN ('cash','bank_transfer','offset')),
     status          TEXT NOT NULL DEFAULT 'pending'
-                        CHECK (status IN ('pending','confirmed','rejected')),
+                        CHECK (status IN ('pending','confirmed','rejected','voided')),
     receipt_url     TEXT,
     reject_reason   TEXT,
     paid_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -431,7 +431,7 @@ CREATE TABLE kpi_records (
     vehicle_group_id        INT NOT NULL REFERENCES vehicle_groups(id),
     month                   SMALLINT NOT NULL CHECK (month BETWEEN 1 AND 12),
     year                    SMALLINT NOT NULL CHECK (year >= 2020),
-    completed_shipments     INT NOT NULL DEFAULT 0,
+    completed_shipments     NUMERIC(8,1) NOT NULL DEFAULT 0,
     total_revenue           NUMERIC(12,2) NOT NULL DEFAULT 0,
     incident_count          INT NOT NULL DEFAULT 0,
     major_incident_count    INT NOT NULL DEFAULT 0,
@@ -701,7 +701,8 @@ CREATE TABLE shipment_revenue_allocations (
                             )),
     incident_id         INT REFERENCES incidents(id) ON DELETE SET NULL,
     created_by          INT REFERENCES profiles(id),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (shipment_id, driver_id)
 );
 
 CREATE INDEX idx_svupgrades_shipment_id ON shipment_vehicle_upgrades(shipment_id);
@@ -740,6 +741,8 @@ CREATE INDEX idx_order_rr_status              ON order_receipt_requests(status)
 CREATE INDEX idx_ptc_shipment_id          ON pass_through_costs(shipment_id);
 
 CREATE INDEX idx_sreceipts_shipment_id    ON shipment_receipts(shipment_id);
+CREATE INDEX idx_sreceipts_orr_id         ON shipment_receipts(order_receipt_request_id);
+CREATE INDEX idx_shipments_completed_at   ON order_shipments(completed_at) WHERE status = 'completed';
 CREATE INDEX idx_dproofs_shipment_id      ON delivery_proofs(shipment_id);
 
 CREATE INDEX idx_expenses_shipment_id     ON expenses(shipment_id);
@@ -749,6 +752,9 @@ CREATE INDEX idx_expenses_created_by      ON expenses(created_by);
 CREATE INDEX idx_debts_customer_id        ON debts(customer_id);
 CREATE INDEX idx_debts_driver_id          ON debts(driver_id);
 CREATE INDEX idx_debts_shipment_id        ON debts(shipment_id);
+CREATE INDEX idx_debts_order_id           ON debts(order_id);
+CREATE INDEX idx_debt_payments_debt_status ON debt_payments(debt_id, status);
+CREATE INDEX idx_debt_payments_pending     ON debt_payments(status) WHERE status = 'pending';
 
 CREATE INDEX idx_invoices_customer_id     ON invoices(customer_id);
 CREATE INDEX idx_invoices_order_id        ON invoices(order_id);
@@ -892,7 +898,10 @@ CREATE TABLE financial_transactions (
     occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     exported_at     TIMESTAMPTZ,
-    export_batch_id TEXT
+    export_batch_id TEXT,
+
+    reversal_of_id  BIGINT REFERENCES financial_transactions(id),
+    reversal_reason TEXT
 );
 
 CREATE INDEX idx_ftx_event_type    ON financial_transactions(event_type);
@@ -900,6 +909,7 @@ CREATE INDEX idx_ftx_ref           ON financial_transactions(ref_type, ref_id);
 CREATE INDEX idx_ftx_actor         ON financial_transactions(actor_id);
 CREATE INDEX idx_ftx_occurred_at   ON financial_transactions(occurred_at DESC);
 CREATE INDEX idx_ftx_export        ON financial_transactions(exported_at) WHERE exported_at IS NULL;
+CREATE INDEX idx_ftx_reversal_of   ON financial_transactions(reversal_of_id) WHERE reversal_of_id IS NOT NULL;
 
 CREATE TABLE driver_bonuses (
     id                      SERIAL PRIMARY KEY,

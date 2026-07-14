@@ -53,9 +53,21 @@ const VIEW_META = {
   },
 };
 
+const VIEW_STORAGE_KEY = "accountant_active_view";
+const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger"];
+
+// Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
+const getInitialView = () => {
+  try {
+    const saved = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (saved && VALID_VIEWS.includes(saved)) return saved;
+  } catch { /* localStorage bị chặn thì dùng mặc định */ }
+  return "report";
+};
+
 export default function AccountantPage({ user, onLogout }) {
   const [currentUser, setCurrentUser] = useState(user);
-  const [activeView, setActiveView] = useState("revenue");
+  const [activeView, setActiveView] = useState(getInitialView);
   const [search, setSearch] = useState("");
 
   const [showExternalModal, setShowExternalModal] = useState(false);
@@ -78,6 +90,7 @@ export default function AccountantPage({ user, onLogout }) {
   const handleViewChange = (view) => {
     setActiveView(view);
     setSearch("");
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* ignore */ }
   };
 
   const meta = VIEW_META[activeView] ?? VIEW_META.revenue;

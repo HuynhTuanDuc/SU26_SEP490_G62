@@ -100,6 +100,22 @@ const rejectRepayment = async (req, res) => {
     }
 };
 
+// PATCH /api/debts/repayments/:paymentId/void  (accountant/manager — hủy xác nhận khoản đã confirmed)
+const voidRepayment = async (req, res) => {
+    try {
+        const paymentId = Number(req.params.paymentId);
+        if (!paymentId) return res.status(400).json({ error: 'Payment ID không hợp lệ' });
+        const { reason } = req.body;
+        const result = await debtService.voidRepayment(paymentId, req.user.userId, reason);
+        res.json({ message: 'Đã hủy xác nhận khoản thanh toán — công nợ hồi phục, bút toán đảo đã ghi sổ', ...result });
+    } catch (err) {
+        const code = err.message.includes('Không tìm thấy') ? 404
+            : err.message.includes('Chỉ hủy') || err.message.includes('đã được xử lý') ? 409
+            : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
 // GET /api/debts/repayments/pending  (accountant/manager — xem tất cả yêu cầu pending)
 const getPendingRepayments = async (req, res) => {
     try {
@@ -113,5 +129,5 @@ const getPendingRepayments = async (req, res) => {
 module.exports = {
     getMyDebts, getMyDebtSummary, getDebtPayments,
     submitRepayment, cancelRepayment,
-    confirmRepayment, rejectRepayment, getPendingRepayments,
+    confirmRepayment, rejectRepayment, voidRepayment, getPendingRepayments,
 };

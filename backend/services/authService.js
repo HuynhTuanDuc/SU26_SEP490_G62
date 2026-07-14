@@ -6,7 +6,15 @@ const { OAuth2Client } = require('google-auth-library');
 const emailService = require('./emailService');
 const pool = require('../config/database');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'MY_SECRET_KEY';
+// KHÔNG dùng secret hardcode — thiếu JWT_SECRET là lỗi cấu hình:
+// production: chặn khởi động; dev: sinh secret ngẫu nhiên mỗi lần boot (token cũ vô hiệu) + cảnh báo
+if (!process.env.JWT_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('JWT_SECRET chưa được cấu hình — từ chối khởi động ở production.');
+    }
+    console.warn('[SECURITY] JWT_SECRET chưa cấu hình — đang dùng secret ngẫu nhiên tạm (token mất hiệu lực khi restart).');
+}
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString('hex');
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || `${JWT_SECRET}_refresh`;
 const GOOGLE_CLIENT_ID = process.env.GG_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);

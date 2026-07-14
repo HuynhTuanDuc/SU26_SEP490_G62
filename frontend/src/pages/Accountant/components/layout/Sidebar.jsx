@@ -16,6 +16,12 @@ import { TbReportAnalytics } from "react-icons/tb";
 
 const NAV_GROUPS = [
   {
+    label: "Phân tích",
+    items: [
+      { key: "report", label: "Báo cáo", icon: TbReportAnalytics },
+    ],
+  },
+  {
     label: "Tài chính",
     items: [
       { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
@@ -29,12 +35,6 @@ const NAV_GROUPS = [
       { key: "salary",  label: "Bảng lương",        icon: RiMoneyDollarCircleLine },
       { key: "advance", label: "Ứng lương",          icon: RiHandCoinLine },
       { key: "bonus",   label: "Thưởng & Phúc lợi", icon: RiGiftLine },
-    ],
-  },
-  {
-    label: "Phân tích",
-    items: [
-      { key: "report", label: "Báo cáo", icon: TbReportAnalytics },
     ],
   },
 ];

@@ -21,6 +21,7 @@ function handleUpload(middleware) {
 router.get('/repayments/pending',              financeRoles, debtController.getPendingRepayments);
 router.patch('/repayments/:paymentId/confirm', financeRoles, debtController.confirmRepayment);
 router.patch('/repayments/:paymentId/reject',  financeRoles, debtController.rejectRepayment);
+router.patch('/repayments/:paymentId/void',    financeRoles, debtController.voidRepayment);
 
 // Driver endpoints
 router.get('/me',                             driverOnly, debtController.getMyDebts);

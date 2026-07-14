@@ -183,13 +183,16 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
         if (!pay) throw new Error('Không tìm thấy yêu cầu nộp tiền');
         if (pay.status !== 'pending') throw new Error('Yêu cầu này đã được xử lý');
 
-        // Xác nhận payment
-        await client.query(
+        // Xác nhận payment — UPDATE có điều kiện status để chống race:
+        // 2 người cùng xác nhận thì chỉ 1 request thắng, request kia bị chặn (tránh ghi sổ 2 lần)
+        const { rowCount: confirmedCount } = await client.query(
             `UPDATE debt_payments
              SET status = 'confirmed', confirmed_at = NOW(), confirmed_by = $1
-             WHERE id = $2`,
+             WHERE id = $2
+               AND status = 'pending'`,
             [confirmedBy, paymentId],
         );
+        if (confirmedCount === 0) throw new Error('Yêu cầu này đã được xử lý');
 
         // Ghi sổ nhật ký tài chính.
         // method = 'offset' (cấn trừ nội bộ — vd. khách trả thừa qua tài xế, tiền đã nằm trong
@@ -225,6 +228,77 @@ const confirmRepayment = async (paymentId, confirmedBy) => {
     }
 };
 
+// Hủy xác nhận 1 khoản nộp tiền ĐÃ confirmed (kế toán ghi nhầm):
+// - debt_payments → 'voided' (số dư nợ tự hồi phục vì mọi phép tính chỉ đếm 'confirmed')
+// - Tự tạo BÚT TOÁN ĐẢO cho dòng sổ tương ứng (không sửa/xóa dòng gốc)
+const voidRepayment = async (paymentId, voidedBy, reason) => {
+    const financialLedgerRepository = require('./financialLedgerRepository');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const { rows: [pay] } = await client.query(
+            `SELECT dp.id, dp.debt_id, dp.amount, dp.status, dp.payment_method,
+                    d.driver_id, d.debt_type
+             FROM debt_payments dp
+             JOIN debts d ON d.id = dp.debt_id
+             WHERE dp.id = $1
+             FOR UPDATE OF dp`,
+            [paymentId],
+        );
+        if (!pay) throw new Error('Không tìm thấy khoản thanh toán');
+        if (pay.status !== 'confirmed') throw new Error('Chỉ hủy được khoản đã xác nhận');
+
+        const { rowCount } = await client.query(
+            `UPDATE debt_payments
+             SET status = 'voided',
+                 reject_reason = $1,
+                 confirmed_by = $2,
+                 confirmed_at = NOW()
+             WHERE id = $3
+               AND status = 'confirmed'`,
+            [`HỦY XÁC NHẬN: ${reason}`, voidedBy, paymentId],
+        );
+        if (rowCount === 0) throw new Error('Khoản thanh toán đã được xử lý');
+
+        // Đảo dòng sổ tương ứng (khoản 'offset' không có dòng tiền mặt → không cần đảo)
+        let reversalId = null;
+        if (pay.payment_method !== 'offset') {
+            const eventType = pay.debt_type === 'driver' ? 'driver_debt_paid' : 'customer_payment';
+            const { rows: [originalFt] } = await client.query(
+                `SELECT ft.id
+                 FROM financial_transactions ft
+                 LEFT JOIN financial_transactions rev ON rev.reversal_of_id = ft.id
+                 WHERE ft.ref_type = 'debt'
+                   AND ft.ref_id = $1
+                   AND ft.event_type = $2
+                   AND ft.amount = $3
+                   AND ft.reversal_of_id IS NULL
+                   AND rev.id IS NULL
+                 ORDER BY ft.id DESC
+                 LIMIT 1`,
+                [pay.debt_id, eventType, pay.amount],
+            );
+            if (originalFt) {
+                const result = await financialLedgerRepository.reverseTransaction(
+                    originalFt.id,
+                    { reason: `Hủy xác nhận khoản nộp #${paymentId} — ${reason}`, actorId: voidedBy },
+                    client,
+                );
+                reversalId = result.reversalId;
+            }
+        }
+
+        await client.query('COMMIT');
+        return { paymentId, debtId: pay.debt_id, driverId: pay.driver_id, reversalId };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
 const rejectRepayment = async (paymentId, rejectedBy, reason) => {
     const res = await pool.query(
         `SELECT dp.id, dp.status, dp.debt_id, d.driver_id
@@ -237,17 +311,19 @@ const rejectRepayment = async (paymentId, rejectedBy, reason) => {
     if (!pay) throw new Error('Không tìm thấy yêu cầu nộp tiền');
     if (pay.status !== 'pending') throw new Error('Yêu cầu này đã được xử lý');
 
-    await pool.query(
+    const { rowCount } = await pool.query(
         `UPDATE debt_payments
          SET status = 'rejected', reject_reason = $1, confirmed_by = $2, confirmed_at = NOW()
-         WHERE id = $3`,
+         WHERE id = $3
+           AND status = 'pending'`,
         [reason ?? null, rejectedBy, paymentId],
     );
+    if (rowCount === 0) throw new Error('Yêu cầu này đã được xử lý');
     return { debtId: pay.debt_id, driverId: pay.driver_id };
 };
 
 module.exports = {
     getDriverDebts, getDebtPayments, getDriverDebtSummary,
     submitRepayment, cancelRepayment,
-    confirmRepayment, rejectRepayment,
+    confirmRepayment, rejectRepayment, voidRepayment,
 };
