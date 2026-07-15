@@ -56,4 +56,16 @@ const deleteLeave = async (leaveId, driverId) => {
     return result.rows[0];
 };
 
-module.exports = { getDriverLeaves, getAttendanceSummary, createLeave, deleteLeave };
+// Cron: tự động reject các đơn nghỉ còn "pending" nhưng đã qua ngày nghỉ
+const rejectExpiredLeaveRequests = async () => {
+    const result = await pool.query(
+        `UPDATE leave_requests
+         SET status = 'rejected'
+         WHERE status    = 'pending'
+           AND leave_date < CURRENT_DATE
+         RETURNING id`,
+    );
+    return result.rowCount;
+};
+
+module.exports = { getDriverLeaves, getAttendanceSummary, createLeave, deleteLeave, rejectExpiredLeaveRequests };

@@ -1,8 +1,4 @@
 const tripService     = require('../services/tripService');
-const expenseService  = require('../services/expenseService');
-const stopRepository  = require('../repositories/stopRepository');
-const tripRepository  = require('../repositories/tripRepository');
-const pool            = require('../config/database');
 
 // GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
@@ -226,16 +222,14 @@ const arriveAtStop = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
         const stopId     = Number(req.params.stopId);
-        const trip = await tripRepository.getTripById(shipmentId);
-        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
-        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
-            return res.status(403).json({ error: 'Bạn không có quyền cập nhật stop này' });
-        }
-        const stop = await stopRepository.markStopArrived(stopId, shipmentId);
-        if (!stop) return res.status(409).json({ error: 'Stop không tồn tại hoặc đã đánh dấu đến' });
+        const stop = await tripService.arriveAtStop(shipmentId, stopId, req.user.userId);
         res.json({ message: 'Đã đánh dấu đến điểm dừng', stop });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('không có quyền') ? 403
+            : err.message.includes('đã đánh dấu') ? 409
+            : 500;
+        res.status(code).json({ error: err.message });
     }
 };
 
@@ -244,24 +238,19 @@ const completeStop = async (req, res) => {
     try {
         const shipmentId = Number(req.params.id);
         const stopId     = Number(req.params.stopId);
-        const trip = await tripRepository.getTripById(shipmentId);
-        if (!trip) return res.status(404).json({ error: 'Chuyến không tồn tại' });
-        if (Number(trip.owner_driver_id) !== Number(req.user.userId)) {
-            return res.status(403).json({ error: 'Bạn không có quyền cập nhật stop này' });
-        }
-        // BR-011: phải đúng thứ tự
-        const prevDone = await stopRepository.isPreviousStopDone(stopId, shipmentId);
-        if (!prevDone) return res.status(422).json({ error: 'Phải hoàn thành stop trước (BR-011)' });
-
         const proofUrl = req.files?.['proof']?.[0]?.path
             ?? req.files?.['image']?.[0]?.path
             ?? req.body.proof_url
             ?? null;
-        const stop = await stopRepository.markStopCompleted(stopId, shipmentId, proofUrl);
-        if (!stop) return res.status(409).json({ error: 'Stop không tồn tại hoặc đã hoàn thành' });
+        const stop = await tripService.completeStop(shipmentId, stopId, req.user.userId, proofUrl);
         res.json({ message: 'Đã hoàn thành điểm dừng', stop });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        const code = err.message.includes('không tồn tại') ? 404
+            : err.message.includes('không có quyền') ? 403
+            : err.message.includes('BR-011') ? 422
+            : err.message.includes('đã hoàn thành') ? 409
+            : 500;
+        res.status(code).json({ error: err.message });
     }
 };
 
@@ -337,71 +326,7 @@ const getDriverReceiptDetail = async (req, res) => {
         const receiptId = Number(req.params.receiptId);
         if (!receiptId) return res.status(400).json({ error: 'Receipt ID không hợp lệ' });
         const receipt = await tripService.getDriverReceiptDetail(receiptId, req.user.userId);
-        // Kèm expenses của shipment (đã verify quyền qua receipt)
-        const expenses = receipt.shipment_id
-            ? await expenseService.getExpensesByShipment(receipt.shipment_id)
-            : [];
-        // Kèm tất cả chuyến trong đơn để hiển thị tổng cộng cho khách
-        const [orderShipmentsResult, orderExpensesResult] = receipt.order_id
-            ? await Promise.all([
-                pool.query(
-                    `SELECT
-                        os.id,
-                        os.shipment_index,
-                        os.status,
-                        os.actual_price,
-                        os.estimated_price,
-                        os.actual_distance_km,
-                        os.estimated_distance_km,
-                        os.completed_at,
-                        p.full_name   AS driver_name,
-                        v.plate_number,
-                        (SELECT ts.address FROM trip_stops ts
-                         WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'
-                         ORDER BY ts.stop_index ASC  LIMIT 1) AS pickup_address,
-                        (SELECT ts.address FROM trip_stops ts
-                         WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery'
-                         ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address
-                     FROM order_shipments os
-                     LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
-                     LEFT JOIN profiles p ON p.id = sc.owner_driver_id
-                     LEFT JOIN vehicles v ON v.id   = sc.vehicle_id
-                     WHERE os.order_id = $1
-                     ORDER BY os.shipment_index ASC`,
-                    [receipt.order_id],
-                ),
-                pool.query(
-                    `SELECT
-                        e.id, e.shipment_id, e.expense_type, e.amount::text AS amount,
-                        e.description, e.expense_date,
-                        COALESCE(
-                            json_agg(ea.file_url ORDER BY ea.id) FILTER (WHERE ea.file_url IS NOT NULL),
-                            '[]'
-                        ) AS receipt_urls
-                     FROM expenses e
-                     JOIN order_shipments os ON os.id = e.shipment_id
-                     LEFT JOIN expense_attachments ea ON ea.expense_id = e.id
-                     WHERE os.order_id = $1
-                     GROUP BY e.id
-                     ORDER BY e.shipment_id, e.expense_date, e.id`,
-                    [receipt.order_id],
-                ),
-            ])
-            : [{ rows: [] }, { rows: [] }];
-
-        // Group expenses theo shipment_id
-        const expensesByShipment = {};
-        for (const exp of orderExpensesResult.rows) {
-            if (!expensesByShipment[exp.shipment_id]) expensesByShipment[exp.shipment_id] = [];
-            expensesByShipment[exp.shipment_id].push(exp);
-        }
-
-        const orderShipments = orderShipmentsResult.rows.map(s => ({
-            ...s,
-            expenses: expensesByShipment[s.id] ?? [],
-        }));
-
-        res.json({ receipt: { ...receipt, expenses, order_shipments: orderShipments } });
+        res.json({ receipt });
     } catch (err) {
         const code = err.message.includes('không có quyền') ? 403 : 500;
         res.status(code).json({ error: err.message });

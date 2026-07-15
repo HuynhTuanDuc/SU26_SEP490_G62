@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { connectRealtime } from "../services/realtime";
+import { refreshAuthSession } from "../services/apiClient";
 
 const ENABLED_ROLES = new Set(["manager", "coordinator"]);
 const RECONNECT_DELAY_MS = 3000;
@@ -30,7 +31,13 @@ export function useRoleRealtime(user, handlers = {}) {
         onClose: () => {
           handlersRef.current.onClose?.();
           if (disposed) return;
-          reconnectTimer = window.setTimeout(connect, RECONNECT_DELAY_MS);
+          reconnectTimer = window.setTimeout(() => {
+            // Access-token cookie may have expired while the socket was open/idle;
+            // refresh it first so the reconnect handshake doesn't 401 in a loop.
+            refreshAuthSession()
+              .catch(() => {})
+              .finally(connect);
+          }, RECONNECT_DELAY_MS);
         },
         onError: (event) => {
           handlersRef.current.onError?.(event);

@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const pool = require('../config/database');
+const leaveService = require('../services/leaveService');
 
 
 // Trạng thái nợ (unpaid/partial/paid/overdue) được tính động từ debt_payments
@@ -7,15 +7,9 @@ const pool = require('../config/database');
 
 const rejectExpiredLeaveRequests = async () => {
     try {
-        const result = await pool.query(
-            `UPDATE leave_requests
-             SET status = 'rejected'
-             WHERE status    = 'pending'
-               AND leave_date < CURRENT_DATE
-             RETURNING id`,
-        );
-        if (result.rowCount > 0) {
-            console.info(`[debtCron] Tự động reject ${result.rowCount} leave request hết hạn`);
+        const rowCount = await leaveService.rejectExpiredLeaveRequests();
+        if (rowCount > 0) {
+            console.info(`[debtCron] Tự động reject ${rowCount} leave request hết hạn`);
         }
     } catch (err) {
         console.error('[debtCron] Lỗi khi reject leave request:', err.message);

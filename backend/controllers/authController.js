@@ -1,4 +1,5 @@
 const authService = require('../services/authService');
+const logger = require('../config/logger');
 
 // Cookie phải sống đúng bằng thời hạn thực của JWT/DB refresh token,
 // nếu không cookie sẽ tự rụng trước (hoặc sau) khi token còn hạn,
@@ -58,7 +59,7 @@ const login = async (req, res) => {
             user: result.user,
         });
     } catch (err) {
-        console.error('Login error:', err);
+        logger.error('Login error', { message: err.message });
         const status = Number.isInteger(err.status) ? err.status : 500;
         const message = status === 500 ? 'Internal server error' : err.message;
         res.status(status).json({ error: message });
@@ -79,7 +80,7 @@ const googleLogin = async (req, res) => {
             user: result.user,
         });
     } catch (err) {
-        console.error('Google login error:', err);
+        logger.error('Google login error', { message: err.message });
         const status = Number.isInteger(err.status) ? err.status : 500;
         const message = status === 500 ? 'Internal server error' : err.message;
         res.status(status).json({ error: message });
@@ -92,7 +93,7 @@ const requestPasswordReset = async (req, res) => {
         const result = await authService.requestPasswordReset(email);
         res.json(result);
     } catch (err) {
-        console.error('Request password reset error:', err);
+        logger.error('Request password reset error', { message: err.message });
         const status = Number.isInteger(err.status) ? err.status : 500;
         res.status(status).json({
             error: status === 500 ? 'Internal server error' : err.message,
@@ -107,7 +108,7 @@ const verifyPasswordResetCode = async (req, res) => {
         const result = await authService.verifyPasswordResetCode(email, code);
         res.json(result);
     } catch (err) {
-        console.error('Verify password reset code error:', err);
+        logger.error('Verify password reset code error', { message: err.message });
         const status = Number.isInteger(err.status) ? err.status : 500;
         res.status(status).json({ error: status === 500 ? 'Internal server error' : err.message });
     }
@@ -119,7 +120,7 @@ const resetPassword = async (req, res) => {
         const result = await authService.resetPassword(email, code, newPassword, confirmPassword);
         res.json(result);
     } catch (err) {
-        console.error('Reset password error:', err);
+        logger.error('Reset password error', { message: err.message });
         const status = Number.isInteger(err.status) ? err.status : 500;
         res.status(status).json({ error: status === 500 ? 'Internal server error' : err.message });
     }
@@ -131,7 +132,7 @@ const getCurrentUser = async (req, res) => {
         const user = await authService.getUserFromToken(req.user.userId);
         res.json(user);
     } catch (err) {
-        console.error('Get user error:', err);
+        logger.error('Get user error', { message: err.message });
         res.status(404).json({ error: err.message });
     }
 };

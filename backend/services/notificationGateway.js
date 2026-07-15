@@ -6,6 +6,26 @@ const clientsByRole   = new Map();
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+// Origin allow-list cho WS handshake — cùng quy ước với CORS_ORIGINS ở app.js
+// (VD: CORS_ORIGINS="https://logiscount.icu,https://www.logiscount.icu").
+// Không set trên production = chặn hết origin có gửi header Origin (browser).
+// Request không có Origin (mobile app, curl) không bị chặn ở đây — JWT ở dưới vẫn bắt buộc.
+const isProduction = process.env.NODE_ENV === 'production';
+const DEV_DEFAULT_ORIGINS = 'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173';
+const allowedOrigins = (process.env.CORS_ORIGINS || (isProduction ? '' : DEV_DEFAULT_ORIGINS))
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+if (isProduction && allowedOrigins.length === 0) {
+    console.warn('[WS] CẢNH BÁO: chưa set CORS_ORIGINS trên production — mọi handshake có Origin sẽ bị chặn.');
+}
+
+const isOriginAllowed = (origin) => {
+    if (!origin) return true;
+    return allowedOrigins.includes(origin.replace(/\/$/, ''));
+};
+
 const readCookieValue = (cookieHeader, cookieName) => {
     if (!cookieHeader) return null;
 
@@ -90,6 +110,14 @@ const initNotificationGateway = (server) => {
     server.on('upgrade', (req, socket, head) => {
         const url = new URL(req.url, 'http://localhost');
         if (url.pathname !== '/ws/notifications') return;
+
+        const origin = req.headers.origin;
+        if (!isOriginAllowed(origin)) {
+            console.warn(`[WS] Blocked origin: ${origin}`);
+            socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+            socket.destroy();
+            return;
+        }
 
         // Dual-mode auth:
         // - web clients authenticate with the HttpOnly access-token cookie

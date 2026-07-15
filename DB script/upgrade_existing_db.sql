@@ -141,4 +141,12 @@ CREATE INDEX IF NOT EXISTS idx_debt_payments_pending    ON debt_payments(status)
 CREATE INDEX IF NOT EXISTS idx_sreceipts_orr_id         ON shipment_receipts(order_receipt_request_id);
 CREATE INDEX IF NOT EXISTS idx_shipments_completed_at   ON order_shipments(completed_at) WHERE status = 'completed';
 
+-- 9. Index còn thiếu (audit production 07/2026) — chủ yếu cột lọc theo ngày cho báo cáo tài chính,
+-- vốn không lộ ra khi test thủ công nhưng sẽ chậm dần khi dữ liệu tăng.
+CREATE INDEX IF NOT EXISTS idx_shipments_vehicle_group  ON order_shipments(vehicle_group_id);
+CREATE INDEX IF NOT EXISTS idx_debts_due_date           ON debts(due_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_due_date        ON invoices(due_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date    ON invoices(invoice_date);
+CREATE INDEX IF NOT EXISTS idx_debt_payments_paid_at    ON debt_payments(paid_at);
+
 COMMIT;

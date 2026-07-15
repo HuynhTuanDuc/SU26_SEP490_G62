@@ -53,4 +53,15 @@ const cancelOrder = async (req, res) => {
     }
 };
 
-module.exports = { createOrder, listOrders, updateOrder, cancelOrder };
+// POST /orders/import — coordinator/manager import đơn hàng loạt từ file Excel chấm công
+const importOrders = async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'Thiếu file Excel (field "file")' });
+        const orders = await orderService.importOrdersFromExcel(req.user.userId, req.file.buffer);
+        res.status(201).json({ message: `Import thành công ${orders.length} đơn hàng`, orders });
+    } catch (err) {
+        res.status(422).json({ error: err.message });
+    }
+};
+
+module.exports = { createOrder, listOrders, updateOrder, cancelOrder, importOrders };

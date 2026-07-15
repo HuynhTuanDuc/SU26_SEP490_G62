@@ -24,4 +24,16 @@ const updateCompanyInfo = async (req, res) => {
     }
 };
 
-module.exports = { getCompanyInfo, updateCompanyInfo };
+// POST /api/company/bank-qr — manager only
+const uploadBankQr = async (req, res) => {
+    try {
+        const fileUrl = req.file?.path ?? null;
+        if (!fileUrl) return res.status(422).json({ error: 'Vui lòng chọn ảnh QR' });
+        const info = await companyService.uploadBankQr(fileUrl, req.user.userId);
+        res.json({ info });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+module.exports = { getCompanyInfo, updateCompanyInfo, uploadBankQr };

@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const logger = require('./logger');
 
 // Cloud Run sets K_SERVICE automatically; only there do we have the
 // /cloudsql Unix socket mounted. Everywhere else (local dev, whether
@@ -16,6 +17,13 @@ const poolConfig = {
     password: process.env.DB_PASSWORD,
     max: 10,
     idleTimeoutMillis: 30000,
+    // Chờ tối đa 5s để lấy được 1 connection từ pool — tránh request bị treo vô thời hạn
+    // khi pool đã full (mặc định của pg là chờ vô hạn).
+    connectionTimeoutMillis: 5000,
+    // Hủy query chạy quá 15s — 1 query chậm/vòng lặp sai không được phép chiếm connection mãi
+    // và làm cạn kiệt pool (chỉ có 10 connection) kéo sập cả hệ thống theo dây chuyền.
+    statement_timeout: 15000,
+    query_timeout: 15000,
 };
 
 const dbSsl = process.env.DB_SSL && String(process.env.DB_SSL).toLowerCase() !== 'false';
@@ -24,7 +32,7 @@ if (dbSsl) poolConfig.ssl = { rejectUnauthorized: false };
 const pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
-    console.error('Unexpected error on idle client', err);
+    logger.error('Unexpected error on idle client', { message: err.message, stack: err.stack });
 });
 
 module.exports = pool;

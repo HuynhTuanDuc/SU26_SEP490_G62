@@ -1,5 +1,6 @@
-const pool             = require('../config/database');
 const bonusRepository  = require('../repositories/bonusRepository');
+const roleRepository   = require('../repositories/roleRepository');
+const driverRepository = require('../repositories/driverRepository');
 const notificationService = require('./notificationService');
 
 const TYPE_LABEL = {
@@ -20,19 +21,11 @@ const FUNERAL_AMOUNTS = {
     child:         500_000,
 };
 
-const _getUserIdsByRole = async (role) => {
-    const { rows } = await pool.query(
-        `SELECT p.id FROM profiles p JOIN roles r ON r.id = p.role_id WHERE r.name = $1`,
-        [role],
-    );
-    return rows.map((r) => r.id);
-};
+const _getUserIdsByRole = async (role) => roleRepository.getUserIdsByRole(role);
 
 const _assertDriverExists = async (driverId) => {
-    const { rows } = await pool.query(
-        `SELECT profile_id FROM drivers WHERE profile_id = $1`, [driverId],
-    );
-    if (!rows[0]) throw new Error(`Tài xế #${driverId} không tồn tại`);
+    const exists = await driverRepository.driverExists(driverId);
+    if (!exists) throw new Error(`Tài xế #${driverId} không tồn tại`);
 };
 
 // ─── Tet ─────────────────────────────────────────────────────────────────────

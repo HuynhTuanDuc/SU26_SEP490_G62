@@ -14,7 +14,7 @@ function handleUpload(middleware) {
     };
 }
 
-router.get('/', verifyToken, requireRole('coordinator', 'admin'), driverController.getAllDrivers);
+router.get('/', verifyToken, requireRole('coordinator', 'manager', 'admin'), driverController.getAllDrivers);
 
 router.get('/me/vehicle', verifyToken, requireRole('driver'), driverController.getMyVehicle);
 

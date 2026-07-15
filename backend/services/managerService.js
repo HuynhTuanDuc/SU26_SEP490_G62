@@ -1,4 +1,5 @@
 ﻿const managerRepository = require('../repositories/managerRepository');
+const accountantReportRepository = require('../repositories/accountantReportRepository');
 const debtService = require('./debtService');
 const companyService = require('./companyService');
 const coordinatorService = require('./coordinatorService');
@@ -38,6 +39,12 @@ const getDashboard = async () => {
         },
         company: companyInfo ?? {},
     };
+};
+
+// Báo cáo tổng quan (revenue chart, top customers, debt aging, payroll summary,
+// revenue by vehicle, driver holdings) — Manager xem cùng dữ liệu với Accountant's ReportView.
+const getReportsOverview = async ({ months, granularity } = {}) => {
+    return accountantReportRepository.getReportOverview({ months, granularity });
 };
 
 const listSalaryAdvances = async ({ status, limit } = {}) => {
@@ -213,6 +220,7 @@ const getPartnerDebtDetails = async (partnerId) => {
 
 module.exports = {
     getDashboard,
+    getReportsOverview,
     listSalaryAdvances,
     approveSalaryAdvance,
     rejectSalaryAdvance,

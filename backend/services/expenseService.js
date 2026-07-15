@@ -1,8 +1,6 @@
 const expenseRepository = require('../repositories/expenseRepository');
 const tripRepository    = require('../repositories/tripRepository');
-const pool              = require('../config/database');
-const { ALLOWED_EXPENSE_TYPES, PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
-const financialLedgerRepository = require('../repositories/financialLedgerRepository');
+const { ALLOWED_EXPENSE_TYPES } = require('../constants/expenseConstants');
 
 // Trạng thái trip cho phép thêm chi phí (chưa kết thúc)
 const EXPENSE_ALLOWED_STATUSES = [
@@ -20,12 +18,7 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
     // Owner hiện tại HOẶC tài từng giữ chuyến (bị điều chuyển giữa đường do sự cố)
     // đều được khai chi phí — tài cũ vẫn có tiền dầu/vé đã ứng ở nửa đầu chuyến
     if (Number(shipment.owner_driver_id) !== Number(driverId)) {
-        const { rows: [wasAssigned] } = await pool.query(
-            `SELECT 1 FROM shipment_assignment_history
-             WHERE shipment_id = $1 AND (to_driver_id = $2 OR from_driver_id = $2)
-             LIMIT 1`,
-            [shipmentId, driverId],
-        );
+        const wasAssigned = await expenseRepository.wasDriverAssignedToShipment(shipmentId, driverId);
         if (!wasAssigned) throw new Error('Bạn không có quyền thêm chi phí cho chuyến này');
     }
     if (!EXPENSE_ALLOWED_STATUSES.includes(shipment.status)) throw new Error('Không thể thêm chi phí khi chuyến đã kết thúc');
@@ -50,47 +43,11 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
 // Coordinator/Manager duyệt chi phí — ghi sổ nhật ký tài chính tại thời điểm duyệt
 const approveExpense = async (expenseId, reviewerId) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const { rows: [expense] } = await client.query(
-            `UPDATE expenses
-             SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
-             WHERE id = $1 AND status = 'pending'
-             RETURNING id, shipment_id, expense_type, amount, created_by`,
-            [expenseId, reviewerId],
-        );
-        if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
-
-        const isPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type);
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: isPassThrough ? 'pass_through_cost' : 'expense_recorded',
-            debitAccount: isPassThrough ? '3388' : '642',
-            creditAccount: '1111',
-            amount: Number(expense.amount),
-            description: `${isPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${expense.expense_type}) — chuyến #${expense.shipment_id}, duyệt chi phí tài xế khai`,
-            refType: 'expense', refId: expense.id, actorId: reviewerId,
-        });
-
-        await client.query('COMMIT');
-        return expense;
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    return expenseRepository.approveExpense(expenseId, reviewerId);
 };
 
 const rejectExpense = async (expenseId, reviewerId, reason) => {
-    const { rows: [expense] } = await pool.query(
-        `UPDATE expenses
-         SET status = 'rejected', reviewed_by = $2, reviewed_at = NOW(),
-             reject_reason = $3, updated_at = NOW()
-         WHERE id = $1 AND status = 'pending'
-         RETURNING id, shipment_id, expense_type, amount, created_by`,
-        [expenseId, reviewerId, reason ?? null],
-    );
+    const expense = await expenseRepository.rejectExpense(expenseId, reviewerId, reason);
     if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
     return expense;
 };
