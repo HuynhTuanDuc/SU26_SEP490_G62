@@ -116,7 +116,7 @@ export function BonusView({ search }) {
           onSelectionChange={(keys) => setFilterYear([...keys][0] ?? "")}
         >
           {YEARS.map((y) => (
-            <SelectItem key={String(y)} value={String(y)}>{y}</SelectItem>
+            <SelectItem key={String(y)} value={String(y)} textValue={String(y)}>{y}</SelectItem>
           ))}
         </Select>
 
@@ -124,12 +124,12 @@ export function BonusView({ search }) {
           size="sm"
           label="Loại"
           className="w-44"
-          selectedKeys={filterType ? new Set([filterType]) : new Set()}
+          selectedKeys={new Set([filterType])}
           onSelectionChange={(keys) => setFilterType([...keys][0] ?? "")}
         >
-          <SelectItem key="">Tất cả loại</SelectItem>
+          <SelectItem key="" textValue="Tất cả loại">Tất cả loại</SelectItem>
           {Object.entries(TYPE_LABEL).map(([k, v]) => (
-            <SelectItem key={k} value={k}>{v}</SelectItem>
+            <SelectItem key={k} value={k} textValue={v}>{v}</SelectItem>
           ))}
         </Select>
 
@@ -137,12 +137,12 @@ export function BonusView({ search }) {
           size="sm"
           label="Trạng thái"
           className="w-36"
-          selectedKeys={filterStatus ? new Set([filterStatus]) : new Set()}
+          selectedKeys={new Set([filterStatus])}
           onSelectionChange={(keys) => setFilterStatus([...keys][0] ?? "")}
         >
-          <SelectItem key="">Tất cả</SelectItem>
+          <SelectItem key="" textValue="Tất cả">Tất cả</SelectItem>
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
-            <SelectItem key={k} value={k}>{v}</SelectItem>
+            <SelectItem key={k} value={k} textValue={v}>{v}</SelectItem>
           ))}
         </Select>
 

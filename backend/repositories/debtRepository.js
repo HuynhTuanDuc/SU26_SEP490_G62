@@ -372,8 +372,31 @@ const getPendingRepayments = async () => {
     return result.rows;
 };
 
+// Tổng hợp công nợ quá hạn (driver_debt + customer_debt) — dùng cho cron nhắc nhở hàng ngày
+const getOverdueDebtsSummary = async () => {
+    const result = await pool.query(
+        `SELECT
+            d.debt_type,
+            COUNT(*)::int AS debt_count,
+            SUM(d.total_amount - COALESCE(dp.confirmed_paid, 0))::text AS total_remaining
+         FROM debts d
+         LEFT JOIN LATERAL (
+             SELECT COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS confirmed_paid
+             FROM debt_payments
+             WHERE debt_id = d.id
+         ) dp ON TRUE
+         WHERE d.due_date IS NOT NULL
+           AND d.due_date < CURRENT_DATE
+           AND d.debt_type IN ('driver', 'customer')
+           AND d.total_amount - COALESCE(dp.confirmed_paid, 0) > 0.01
+         GROUP BY d.debt_type`,
+    );
+    return result.rows;
+};
+
 module.exports = {
     getDriverDebts, getDebtPayments, getDriverDebtSummary,
     submitRepayment, cancelRepayment,
     confirmRepayment, rejectRepayment, voidRepayment, getPendingRepayments,
+    getOverdueDebtsSummary,
 };

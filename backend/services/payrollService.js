@@ -1,4 +1,7 @@
 const payrollRepository = require('../repositories/payrollRepository');
+const profileRepository = require('../repositories/profileRepository');
+const roleRepository = require('../repositories/roleRepository');
+const notificationService = require('./notificationService');
 const { MAX_ADVANCE_AMOUNT } = payrollRepository;
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
@@ -30,13 +33,25 @@ const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, re
         throw new Error('Chi duoc ung luong cho thang hien tai');
     }
 
-    return payrollRepository.createSalaryAdvance({
+    const advance = await payrollRepository.createSalaryAdvance({
         driverId,
         amount: Number(amount),
         reason: reason?.trim() ?? null,
         requestMonth: m,
         requestYear:  y,
     });
+
+    const driver = await profileRepository.getProfileById(driverId);
+    const managerIds = await roleRepository.getUserIdsByRole('manager');
+    notificationService.createForUsers(managerIds, {
+        title: 'Yêu cầu ứng lương mới',
+        message: `${driver?.full_name ?? 'Tài xế'} yêu cầu ứng ${Number(amount).toLocaleString('vi-VN')}đ cho tháng ${m}/${y}.`,
+        type: 'SALARY_ADVANCE_REQUESTED',
+        entityType: 'salary_advances',
+        entityId: advance.id,
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    return advance;
 };
 
 const getMyAdvances = async (driverId, { status } = {}) => {
