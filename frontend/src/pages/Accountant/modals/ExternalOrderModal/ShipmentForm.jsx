@@ -1,4 +1,4 @@
-import { Button, Input, Select, SelectItem, Divider } from "@heroui/react";
+import { Button, Input, Select, SelectItem, Autocomplete, AutocompleteItem, Divider } from "@heroui/react";
 import { RiAddLine, RiDeleteBinLine, RiTruckLine, RiMapPin2Line, RiMoneyDollarCircleLine, RiReceiptLine } from "react-icons/ri";
 
 const PAYMENT_TYPES = [
@@ -31,7 +31,7 @@ function SectionLabel({ icon: Icon, children }) {
   );
 }
 
-export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove, canRemove }) {
+export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove, canRemove, drivers = [] }) {
   const e = (key) => errors[`shipment_${index}_${key}`];
   const isCash = ["cash", "bank_transfer"].includes(shipment.payment_type);
 
@@ -205,14 +205,40 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
       <div className="flex flex-col gap-2">
         <SectionLabel icon={RiTruckLine}>Tài xế / Xe</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
-          <Input
-            label="Tên tài xế"
-            placeholder="Tuỳ chọn"
-            value={shipment.driver_name ?? ""}
-            onValueChange={(v) => onChange("driver_name", v)}
+          <Autocomplete
+            label="Tài xế"
+            placeholder="Chọn tài xế hoặc gõ tên (ngoài hệ thống)"
             size="sm"
-            classNames={{ inputWrapper: "bg-white" }}
-          />
+            variant="bordered"
+            inputValue={shipment.driver_name ?? ""}
+            onInputChange={(v) => {
+              onChange("driver_name", v);
+              // Gõ lại khác tên tài xế đã chọn → coi như tài xế ngoài hệ thống, bỏ liên kết cũ
+              if (shipment.driver_id && v !== drivers.find((d) => d.id === shipment.driver_id)?.full_name) {
+                onChange("driver_id", null);
+              }
+            }}
+            onSelectionChange={(key) => {
+              const driver = drivers.find((d) => String(d.id) === key);
+              if (!driver) return;
+              onChange("driver_name", driver.full_name);
+              onChange("driver_id", driver.id);
+              if (driver.plate_number) onChange("vehicle_plate", driver.plate_number);
+            }}
+            allowsCustomValue
+            defaultItems={drivers}
+            classNames={{ base: "bg-white" }}
+            listboxProps={{ emptyContent: "Không tìm thấy tài xế — sẽ lưu dạng tên tự do (ngoài hệ thống)." }}
+          >
+            {(driver) => (
+              <AutocompleteItem key={String(driver.id)} textValue={driver.full_name}>
+                <div className="flex flex-col">
+                  <span className="text-sm">{driver.full_name}</span>
+                  {driver.plate_number && <span className="text-xs text-gray-400">{driver.plate_number}</span>}
+                </div>
+              </AutocompleteItem>
+            )}
+          </Autocomplete>
           <Input
             label="Biển số xe"
             placeholder="51C-12345"

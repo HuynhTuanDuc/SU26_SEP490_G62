@@ -230,9 +230,9 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                   <TableCell><StatusBadge status={request.status} /></TableCell>
                   <TableCell>
                     {status === "approved" ? (
-                      <Button size="sm" color="primary" startContent={<RiEyeLine size={14} />} onPress={() => openModal(request.id)}>Xem phiếu thu</Button>
+                      <Button isIconOnly size="sm" variant="flat" color="primary" title="Xem phiếu thu" onPress={() => openModal(request.id)}><RiEyeLine size={16} /></Button>
                     ) : status === "rejected" ? (
-                      <Button isIconOnly size="sm" variant="light" onPress={() => openModal(request.id)}><RiEyeLine size={16} /></Button>
+                      <Button isIconOnly size="sm" variant="light" title="Xem chi tiết" onPress={() => openModal(request.id)}><RiEyeLine size={16} /></Button>
                     ) : (
                       <div className="flex gap-1 justify-end">
                         <Button isIconOnly size="sm" variant="flat" color="primary" title="Tạo phiếu thu" onPress={() => openModal(request.id)}>
