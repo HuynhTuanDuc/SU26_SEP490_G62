@@ -429,14 +429,7 @@ const updateOrder = async (orderId, payload) => {
 
     try {
         const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(dbClient);
-        const existingShipmentsRes = await dbClient.query(
-            `SELECT id
-             FROM order_shipments
-             WHERE order_id = $1
-             ORDER BY shipment_index ASC`,
-            [orderId],
-        );
-        const existingShipments = existingShipmentsRes.rows;
+        const existingShipments = await orderRepository.getExistingShipmentIds(dbClient, orderId);
         const usedVehicleIds = new Set();
         const usedDriverIds = new Set();
 

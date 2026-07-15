@@ -45,6 +45,20 @@ export const formatNotificationTime = (value) => {
   return date.toLocaleString("vi-VN");
 };
 
+export const INCIDENT_TYPE_LABELS = {
+  vehicle_breakdown: "Sự cố xe",
+  cargo_damage: "Hàng hóa bị hỏng",
+  road_incident: "Đường sá / giao thông",
+  customer_refusal: "Khách từ chối nhận",
+  traffic_jam: "Tắc đường",
+};
+export const incidentTypeLabel = (type) => INCIDENT_TYPE_LABELS[type] ?? type ?? "-";
+
+export const RECEIPT_KIND_LABELS = {
+  receipt: "Phiếu thu",
+  request: "Yêu cầu",
+};
+
 export const expenseTypeOptions = [
   { value: "toll",    label: "Phí cầu đường (khách chịu)" },
   { value: "parking", label: "Phí đỗ xe (khách chịu)" },

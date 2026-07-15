@@ -12,7 +12,10 @@ import {
   LayoutDashboard,
   Receipt,
   Settings,
+  Sliders,
+  Trophy,
   Truck,
+  UserSquare2,
   Users,
 } from 'lucide-react';
 
@@ -28,21 +31,28 @@ const BORDER = '#C2C6D340';
 
 const MENU_CONFIG = {
   manager: [
-    { key: 'partners',  Icon: Building2,      label: 'Đối tác' },
     { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan' },
+    { key: 'partners',  Icon: Building2,      label: 'Đối tác' },
+    { key: 'customers', Icon: UserSquare2,    label: 'Khách hàng' },
     { key: 'users',     Icon: Users,           label: 'Người dùng' },
     { key: 'vehicles',  Icon: Car,             label: 'Quản lý xe' },
+    { key: 'incidents', Icon: FileText,        label: 'Sự cố' },
     { type: 'divider' },
     { key: 'payroll',   Icon: Receipt,         label: 'Duyệt lương' },
     { key: 'bonus',     Icon: Gift,            label: 'Thưởng & Phúc lợi' },
+    { key: 'bonus-rules', Icon: Sliders,       label: 'Quy tắc thưởng' },
+    { key: 'kpi',       Icon: Trophy,          label: 'KPI & Xếp hạng' },
     { key: 'holidays',  Icon: Calendar,        label: 'Ngày lễ' },
     { type: 'divider' },
     { key: 'settings',  Icon: Settings,        label: 'Cài đặt', disabled: true },
   ],
   coordinator: [
+    { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan' },
     { key: 'orders', Icon: Truck, label: 'Đơn hàng' },
     { key: 'incidents', Icon: FileText, label: 'Sự cố' },
     { key: 'receipts', Icon: FileText, label: 'Phiếu thu' },
+    { key: 'customers', Icon: UserSquare2, label: 'Khách hàng' },
+    { key: 'kpi', Icon: Trophy, label: 'KPI & Xếp hạng' },
   ],
   accountant: [
     { key: 'dashboard', Icon: LayoutDashboard, label: 'Tổng quan', disabled: true },

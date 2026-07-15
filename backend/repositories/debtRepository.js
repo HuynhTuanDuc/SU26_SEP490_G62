@@ -322,8 +322,58 @@ const rejectRepayment = async (paymentId, rejectedBy, reason) => {
     return { debtId: pay.debt_id, driverId: pay.driver_id };
 };
 
+const getPendingRepayments = async () => {
+    const result = await pool.query(
+        `SELECT
+            dp.id,
+            dp.debt_id,
+            dp.amount::text,
+            dp.payment_method,
+            dp.receipt_url,
+            dp.notes,
+            dp.paid_at,
+            dp.paid_at AS created_at,
+            d.total_amount::text,
+            d.driver_id,
+            p.full_name  AS driver_name,
+            o.cargo_name,
+            d.debt_type
+         FROM debt_payments dp
+         JOIN debts d ON d.id = dp.debt_id
+         JOIN profiles p ON p.id = d.driver_id
+         LEFT JOIN order_shipments os ON os.id = d.shipment_id
+         LEFT JOIN orders o ON o.id = d.order_id
+         WHERE dp.status = 'pending' AND d.debt_type = 'driver'
+
+         UNION ALL
+
+         SELECT
+            dp.id,
+            dp.debt_id,
+            dp.amount::text,
+            dp.payment_method,
+            dp.receipt_url,
+            dp.notes,
+            dp.paid_at,
+            dp.paid_at AS created_at,
+            d.total_amount::text,
+            d.customer_id AS driver_id,
+            COALESCE(c.company_name, c.full_name, 'Khách hàng') AS driver_name,
+            o.cargo_name,
+            d.debt_type
+         FROM debt_payments dp
+         JOIN debts d ON d.id = dp.debt_id
+         JOIN customers c ON c.id = d.customer_id
+         LEFT JOIN orders o ON o.id = d.order_id
+         WHERE dp.status = 'pending' AND d.debt_type = 'customer'
+
+         ORDER BY paid_at DESC, id DESC`,
+    );
+    return result.rows;
+};
+
 module.exports = {
     getDriverDebts, getDebtPayments, getDriverDebtSummary,
     submitRepayment, cancelRepayment,
-    confirmRepayment, rejectRepayment, voidRepayment,
+    confirmRepayment, rejectRepayment, voidRepayment, getPendingRepayments,
 };

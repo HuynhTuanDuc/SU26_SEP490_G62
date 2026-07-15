@@ -2,7 +2,6 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const profileRepository = require('../repositories/profileRepository');
 const emailService = require('./emailService');
-const pool = require('../config/database');
 const {
     normalizeOptionalText,
     normalizePhone,
@@ -68,21 +67,14 @@ const changePassword = async (userId, { currentPassword, newPassword } = {}) => 
         throw new Error('Mật khẩu mới phải có ít nhất 6 ký tự');
     }
 
-    const accountResult = await pool.query(
-        `SELECT password_hash FROM accounts WHERE id = $1`,
-        [userId],
-    );
-    if (!accountResult.rows[0]) throw new Error('Không tìm thấy tài khoản');
+    const password_hash = await profileRepository.getPasswordHash(userId);
+    if (!password_hash) throw new Error('Không tìm thấy tài khoản');
 
-    const { password_hash } = accountResult.rows[0];
     const valid = await bcrypt.compare(currentPassword, password_hash);
     if (!valid) throw new Error('Mật khẩu hiện tại không đúng');
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    await pool.query(
-        `UPDATE accounts SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
-        [newHash, userId],
-    );
+    await profileRepository.updatePasswordHash(userId, newHash);
 
     return { message: 'Đổi mật khẩu thành công' };
 };

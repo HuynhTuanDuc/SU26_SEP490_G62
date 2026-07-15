@@ -256,6 +256,17 @@ const getDefaultVehicleGroupId = async (client) => {
     return result.rows[0]?.id ?? null;
 };
 
+const getExistingShipmentIds = async (client, orderId) => {
+    const result = await client.query(
+        `SELECT id
+         FROM order_shipments
+         WHERE order_id = $1
+         ORDER BY shipment_index ASC`,
+        [orderId],
+    );
+    return result.rows;
+};
+
 //Lấy thông tin lái xe theo BKS
 const getDriverByPlate = async (client, plateNumber) => {
     if (!plateNumber) return null;
@@ -405,7 +416,16 @@ const getVehicleGroupById = async (client, vehicleGroupId) => {
     return result.rows[0] ?? null;
 };
 
-//Chọn loại xe rồi hiển thị các phương tiện 
+const listCoordinatorPartners = async () => {
+    const result = await pool.query(
+        `SELECT id, company_name, contact_person, phone
+         FROM partners
+         ORDER BY company_name ASC`,
+    );
+    return result.rows;
+};
+
+//Chọn loại xe rồi hiển thị các phương tiện
 const listCoordinatorVehicleGroups = async () => {
     const result = await pool.query(
         `SELECT
@@ -602,6 +622,18 @@ const findOrCreateCustomer = async (client, customerName, customerPhone, normali
         [normalizedName || normalizedPhone, normalizedPhone],
     );
     return createdCustomer.rows[0];
+};
+
+// Excel import: khách không có SĐT — chỉ khớp theo tên đã tồn tại (không tạo mới)
+const findCustomerByName = async (client, customerName) => {
+    const result = await client.query(
+        `SELECT id, full_name, phone
+         FROM customers
+         WHERE LOWER(full_name) = LOWER($1)
+         LIMIT 1`,
+        [customerName],
+    );
+    return result.rows[0] ?? null;
 };
 
 // phương thức thêm điểm đi và điểm dừng
@@ -1149,9 +1181,12 @@ module.exports = {
     getVehicleByPlate,
     getVehicleGroupById,
     listCoordinatorVehicleGroups,
+    listCoordinatorPartners,
     findOrCreateDriverWithVehicle,
     getDefaultVehicleGroupId,
+    getExistingShipmentIds,
     findOrCreateCustomer,
+    findCustomerByName,
     validateVehicleShipmentAssignment,
     createOrderWithShipment,
     createOrderWithMultipleShipments,

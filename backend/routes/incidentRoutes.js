@@ -7,6 +7,7 @@ const incidentController = require('../controllers/incidentController');
 
 const driverOnly      = [verifyToken, requireRole('driver')];
 const coordinatorOnly = [verifyToken, requireRole('coordinator')];
+const staffOnly       = [verifyToken, requireRole('coordinator', 'manager')];
 
 function handleUpload(middleware) {
     return (req, res, next) => {
@@ -23,6 +24,9 @@ router.get('/my',                        driverOnly,      incidentController.get
 router.get('/shipment/:shipmentId',      driverOnly,      incidentController.getShipmentIncidents);
 router.get('/:id',                       driverOnly,      incidentController.getIncidentDetail);
 router.patch('/:id',                     driverOnly,      incidentController.updateMyIncident);
-router.patch('/:id/status',              coordinatorOnly, incidentController.updateIncidentStatus);
+router.patch('/:id/status',              staffOnly,       incidentController.updateIncidentStatus);
+
+// Coordinator/Manager tự tạo sự cố (VD: khách gọi điện báo, phát hiện qua giám sát)
+router.post('/staff',                    staffOnly,       handleUpload(uploadIncident.array('images', 3)), incidentController.createIncidentByStaff);
 
 module.exports = router;

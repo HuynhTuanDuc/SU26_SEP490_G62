@@ -241,6 +241,21 @@ const updateAccountEmail = async (userId, email) => {
     return result.rows[0] ?? null;
 };
 
+const getPasswordHash = async (userId) => {
+    const { rows } = await pool.query(
+        `SELECT password_hash FROM accounts WHERE id = $1`,
+        [userId],
+    );
+    return rows[0]?.password_hash ?? null;
+};
+
+const updatePasswordHash = async (userId, newHash) => {
+    await pool.query(
+        `UPDATE accounts SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+        [newHash, userId],
+    );
+};
+
 module.exports = {
     getAccountByEmail,
     getAccountById,
@@ -257,4 +272,6 @@ module.exports = {
     adminUpdateUser,
     adminToggleUserStatus,
     updateAccountEmail,
+    getPasswordHash,
+    updatePasswordHash,
 };

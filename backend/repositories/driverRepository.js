@@ -49,4 +49,11 @@ const getAllDrivers = async () => {
     return result.rows;
 };
 
-module.exports = { getAllDrivers, getDriverVehicle };
+const driverExists = async (driverId) => {
+    const { rows } = await pool.query(
+        `SELECT profile_id FROM drivers WHERE profile_id = $1`, [driverId],
+    );
+    return !!rows[0];
+};
+
+module.exports = { getAllDrivers, getDriverVehicle, driverExists };

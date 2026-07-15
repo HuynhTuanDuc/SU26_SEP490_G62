@@ -1,11 +1,14 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { Button, Table, message } from "antd";
-import { EyeOutlined } from "@ant-design/icons";
+import { EyeOutlined, PlusOutlined } from "@ant-design/icons";
 import { apiRequest } from "../../services/apiClient";
 import IncidentDetailModal from "./components/IncidentDetailModal";
+import CreateIncidentModal from "./components/CreateIncidentModal";
 import StatusTag from "./components/StatusTag";
 
-export default function IncidentsPage({ search, refreshKey, onIncidentResolved }) {
+const EMPTY_CREATE_FORM = { incidentType: "", severityLevel: "medium", shipmentId: "", description: "", location: "" };
+
+export default function IncidentsPage({ search, refreshKey, onIncidentResolved, basePath = "/api/coordinator" }) {
   const [incidents, setIncidents] = useState([]);
   const [incidentsLoading, setIncidentsLoading] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
@@ -15,6 +18,10 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved }
   const [saving, setSaving] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [form, setForm] = useState({ status: "investigating", resolution: "", replacement_driver_id: "" });
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
 
   const deferredSearch = useDeferredValue(search);
 
@@ -27,7 +34,7 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved }
       });
       if (deferredSearch.trim()) params.set("search", deferredSearch.trim());
       const queryString = params.toString();
-      const data = await apiRequest(`/api/coordinator/incidents${queryString ? `?${queryString}` : ""}`);
+      const data = await apiRequest(`${basePath}/incidents${queryString ? `?${queryString}` : ""}`);
       setIncidents(data.incidents || []);
       if (data.pagination) {
         setIncidentPaginationSafe(data.pagination);
@@ -98,6 +105,42 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved }
     }
   };
 
+  const closeCreateModal = () => {
+    setCreateOpen(false);
+    setCreateForm(EMPTY_CREATE_FORM);
+  };
+
+  const handleCreateIncident = async () => {
+    if (!createForm.incidentType) {
+      message.error("Vui lòng chọn loại sự cố.");
+      return;
+    }
+    if (!createForm.description?.trim() || createForm.description.trim().length < 10) {
+      message.error("Mô tả phải có ít nhất 10 ký tự.");
+      return;
+    }
+    setCreating(true);
+    try {
+      await apiRequest("/api/incidents/staff", {
+        method: "POST",
+        body: {
+          shipmentId: createForm.shipmentId?.trim() || null,
+          incidentType: createForm.incidentType,
+          severityLevel: createForm.severityLevel,
+          description: createForm.description.trim(),
+          location: createForm.location?.trim() || null,
+        },
+      });
+      message.success("Đã tạo sự cố.");
+      closeCreateModal();
+      loadIncidents();
+    } catch (error) {
+      message.error(error.message || "Không thể tạo sự cố.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const columns = [
     {
       title: "Sự cố",
@@ -154,6 +197,14 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved }
           <div className="upload-hint">{incidentsLoading ? "Đang tải..." : `${incidents.length} sự cố`}</div>
           <div className="upload-hint">{incidents.filter((item) => item.status === "open").length} mới tiếp nhận</div>
           <div className="upload-hint">{incidents.filter((item) => item.pickup_completed).length} đã lấy hàng</div>
+          <Button
+            type="primary"
+            className="coordinator-primary-btn"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateOpen(true)}
+          >
+            Tạo sự cố
+          </Button>
         </div>
       </section>
 
@@ -191,6 +242,15 @@ export default function IncidentsPage({ search, refreshKey, onIncidentResolved }
         drivers={drivers}
         onClose={closeModal}
         onSubmit={handleSubmit}
+      />
+
+      <CreateIncidentModal
+        open={createOpen}
+        form={createForm}
+        setForm={setCreateForm}
+        saving={creating}
+        onClose={closeCreateModal}
+        onSubmit={handleCreateIncident}
       />
     </>
   );

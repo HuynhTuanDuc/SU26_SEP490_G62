@@ -2,9 +2,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const profileRepository = require('../repositories/profileRepository');
+const authRepository = require('../repositories/authRepository');
 const { OAuth2Client } = require('google-auth-library');
 const emailService = require('./emailService');
-const pool = require('../config/database');
 
 // KHÔNG dùng secret hardcode — thiếu JWT_SECRET là lỗi cấu hình:
 // production: chặn khởi động; dev: sinh secret ngẫu nhiên mỗi lần boot (token cũ vô hiệu) + cảnh báo
@@ -81,17 +81,7 @@ const normalizeEmail = (email) => {
 
 const ensureRefreshTokenTable = async () => {
     if (!refreshTokenTableReadyPromise) {
-        refreshTokenTableReadyPromise = pool.query(
-            `CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
-                token_id TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                token_hash TEXT NOT NULL,
-                expires_at TIMESTAMPTZ NOT NULL,
-                revoked_at TIMESTAMPTZ NULL,
-                replaced_by_token_id TEXT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )`,
-        ).catch((error) => {
+        refreshTokenTableReadyPromise = authRepository.ensureRefreshTokenTable().catch((error) => {
             refreshTokenTableReadyPromise = null;
             throw error;
         });
@@ -154,11 +144,9 @@ const createRefreshTokenRecord = async (account) => {
     );
     const expiresAt = getRefreshTokenExpiryDate();
 
-    await pool.query(
-        `INSERT INTO auth_refresh_tokens (token_id, user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3, $4)`,
-        [tokenId, account.id, hashToken(refreshToken), expiresAt],
-    );
+    await authRepository.insertRefreshToken({
+        tokenId, userId: account.id, tokenHash: hashToken(refreshToken), expiresAt,
+    });
 
     return { refreshToken, tokenId, expiresAt };
 };
@@ -167,13 +155,7 @@ const revokeStoredRefreshToken = async (tokenId, replacedByTokenId = null) => {
     if (!tokenId) return;
 
     await ensureRefreshTokenTable();
-    await pool.query(
-        `UPDATE auth_refresh_tokens
-         SET revoked_at = COALESCE(revoked_at, NOW()),
-             replaced_by_token_id = COALESCE($2, replaced_by_token_id)
-         WHERE token_id = $1`,
-        [tokenId, replacedByTokenId],
-    );
+    await authRepository.revokeRefreshToken(tokenId, replacedByTokenId);
 };
 
 const issueSession = async (account) => {
@@ -381,12 +363,7 @@ const resetPassword = async (email, code, newPassword, confirmPassword) => {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await pool.query(
-        `UPDATE accounts
-         SET password_hash = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [passwordHash, resetRequest.userId],
-    );
+    await profileRepository.updatePasswordHash(resetRequest.userId, passwordHash);
 
     passwordResetStore.delete(normalizedEmail);
     return { message: 'Đặt lại mật khẩu thành công.' };
@@ -408,13 +385,7 @@ const refreshSession = async (refreshToken) => {
     await ensureRefreshTokenTable();
     const decoded = verifyRefreshToken(refreshToken);
 
-    const storedTokenResult = await pool.query(
-        `SELECT token_id, user_id, token_hash, expires_at, revoked_at
-         FROM auth_refresh_tokens
-         WHERE token_id = $1`,
-        [decoded.tokenId],
-    );
-    const storedToken = storedTokenResult.rows[0] ?? null;
+    const storedToken = await authRepository.getRefreshTokenById(decoded.tokenId);
 
     if (!storedToken || Number(storedToken.user_id) !== Number(decoded.userId)) {
         throw new AuthError('Refresh token is invalid', 401);

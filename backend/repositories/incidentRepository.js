@@ -300,8 +300,25 @@ const updateIncidentResolution = async (
     return result.rows[0] ?? null;
 };
 
+const getMyIncidentCounts = async (driverId) => {
+    const result = await pool.query(
+        `SELECT
+            COUNT(*) FILTER (WHERE status IN ('open','investigating'))   AS open_count,
+            COUNT(*) FILTER (WHERE status IN ('resolved','closed'))      AS closed_count
+         FROM incidents
+         WHERE reported_by = $1`,
+        [driverId],
+    );
+    const row = result.rows[0];
+    return {
+        open_count:   Number(row.open_count   ?? 0),
+        closed_count: Number(row.closed_count ?? 0),
+    };
+};
+
 module.exports = {
     createIncident,
+    getMyIncidentCounts,
     addIncidentEvidence,
     getIncidentById,
     getIncidentsByDriver,

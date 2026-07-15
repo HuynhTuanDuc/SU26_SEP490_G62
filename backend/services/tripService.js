@@ -5,7 +5,6 @@ const revenueAllocationRepository = require('../repositories/revenueAllocationRe
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
-const pool = require('../config/database');
 
 const fmtVND = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
 const {
@@ -283,19 +282,12 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
     }
 
     // Get customer_id from orders table via shipment's order_id
-    const orderResult = await pool.query(
-        `SELECT customer_id FROM orders WHERE id = $1`,
-        [trip.order_id],
-    );
-    if (!orderResult.rows[0]) throw new Error('Không tìm thấy đơn hàng liên quan');
-    const customerId = orderResult.rows[0].customer_id;
+    const customerId = await tripRepository.getOrderCustomerId(trip.order_id);
+    if (!customerId) throw new Error('Không tìm thấy đơn hàng liên quan');
 
-    const debtResult = await pool.query(
-        `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, notes, created_at, updated_at)
-         VALUES ('customer', $1, $2, $3, $4, $5, $6, NOW(), NOW())
-         RETURNING *`,
-        [customerId, driverId, tripId, trip.order_id, amt, notes ?? null],
-    );
+    const debt = await tripRepository.createCustomerDebtForTrip({
+        customerId, driverId, shipmentId: tripId, orderId: trip.order_id, amount: amt, notes,
+    });
 
     notificationService.createForUser(driverId, {
         title: 'Đã ghi nhận công nợ khách hàng',
@@ -305,7 +297,7 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
         entityId: tripId,
     }, { displayMode: 'silent' }).catch(() => {});
 
-    return debtResult.rows[0];
+    return debt;
 };
 
 // ITEM 5 — RETURNING → COMPLETED with optional return proof
@@ -324,10 +316,7 @@ const returnComplete = async (tripId, driverId, proofFileUrl) => {
 
     const isFinal = await tripRepository.isFinalShipment(tripId);
     if (isFinal) {
-        await pool.query(
-            `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
-            [trip.order_id],
-        );
+        await tripRepository.markOrderCompleted(trip.order_id);
         notificationGateway.broadcastToRole('coordinator', {
             type: 'coordinator.order.completed',
             action: 'completed',
@@ -410,8 +399,7 @@ const requestOrderReceipt = async (orderId, driverId, { shipmentId, actualKm }) 
     const isFinal = await tripRepository.isFinalShipment(shipmentId);
 
     // Kiểm tra payment_type của order
-    const orderRes = await pool.query(`SELECT payment_type FROM orders WHERE id = $1`, [orderId]);
-    const orderPaymentType = orderRes.rows[0]?.payment_type;
+    const orderPaymentType = await tripRepository.getOrderPaymentType(orderId);
 
     // Chỉ driver cuối của đơn cash mới tạo yêu cầu phiếu thu
     if (!isFinal || orderPaymentType !== 'cash') {
@@ -475,7 +463,18 @@ const getDriverReceipts = async (driverId, opts) => {
 const getDriverReceiptDetail = async (receiptId, driverId) => {
     const receipt = await tripRepository.getDriverReceiptDetail(receiptId, driverId);
     if (!receipt) throw new Error('Phiếu thu không tồn tại hoặc bạn không có quyền xem');
-    return receipt;
+
+    // eslint-disable-next-line global-require
+    const expenseService = require('./expenseService');
+    const expenses = receipt.shipment_id
+        ? await expenseService.getExpensesByShipment(receipt.shipment_id)
+        : [];
+    // Kèm tất cả chuyến trong đơn + chi phí để hiển thị tổng cộng cho khách
+    const orderShipments = receipt.order_id
+        ? await tripRepository.getOrderShipmentsWithExpenses(receipt.order_id)
+        : [];
+
+    return { ...receipt, expenses, order_shipments: orderShipments };
 };
 
 const recordReceiptCollection = async (receiptId, driverId, { paymentType, proofUrl, notes, collectedAmount }) => {
@@ -499,6 +498,32 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     }
 
     return result;
+};
+
+const arriveAtStop = async (shipmentId, stopId, driverId) => {
+    const trip = await tripRepository.getTripById(shipmentId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) {
+        throw new Error('Bạn không có quyền cập nhật stop này');
+    }
+    const stop = await stopRepository.markStopArrived(stopId, shipmentId);
+    if (!stop) throw new Error('Stop không tồn tại hoặc đã đánh dấu đến');
+    return stop;
+};
+
+// BR-011: phải hoàn thành stop trước đó theo đúng thứ tự
+const completeStop = async (shipmentId, stopId, driverId, proofUrl) => {
+    const trip = await tripRepository.getTripById(shipmentId);
+    if (!trip) throw new Error('Chuyến không tồn tại');
+    if (Number(trip.owner_driver_id) !== Number(driverId)) {
+        throw new Error('Bạn không có quyền cập nhật stop này');
+    }
+    const prevDone = await stopRepository.isPreviousStopDone(stopId, shipmentId);
+    if (!prevDone) throw new Error('Phải hoàn thành stop trước (BR-011)');
+
+    const stop = await stopRepository.markStopCompleted(stopId, shipmentId, proofUrl);
+    if (!stop) throw new Error('Stop không tồn tại hoặc đã hoàn thành');
+    return stop;
 };
 
 const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
@@ -527,4 +552,6 @@ module.exports = {
     getDriverReceiptDetail,
     recordReceiptCollection,
     resubmitReceiptRequest,
+    arriveAtStop,
+    completeStop,
 };

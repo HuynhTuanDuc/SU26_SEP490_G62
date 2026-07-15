@@ -22,6 +22,19 @@ CREATE TABLE accounts (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Refresh token cho phiên đăng nhập (JWT refresh flow) — bảng này cũng được app tự tạo
+-- lazy qua "CREATE TABLE IF NOT EXISTS" (authRepository.ensureRefreshTokenTable), khai báo
+-- tường minh ở đây để DB mới có đủ ngay từ đầu, không phụ thuộc lần chạy app đầu tiên.
+CREATE TABLE auth_refresh_tokens (
+    token_id                TEXT PRIMARY KEY,
+    user_id                 INT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    token_hash              TEXT NOT NULL,
+    expires_at              TIMESTAMPTZ NOT NULL,
+    revoked_at              TIMESTAMPTZ,
+    replaced_by_token_id    TEXT,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE profiles (
     id                  INT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     full_name           TEXT NOT NULL,
@@ -964,3 +977,10 @@ CREATE INDEX idx_maintenance_requested
 CREATE INDEX idx_vda_vehicle ON vehicle_driver_assignments(vehicle_id);
 CREATE INDEX idx_vda_driver  ON vehicle_driver_assignments(driver_id);
 CREATE INDEX idx_vda_prev_driver ON vehicle_driver_assignments(previous_driver_id);
+
+-- Index còn thiếu (audit production 07/2026) — cột lọc theo ngày cho báo cáo tài chính
+CREATE INDEX idx_shipments_vehicle_group  ON order_shipments(vehicle_group_id);
+CREATE INDEX idx_debts_due_date           ON debts(due_date);
+CREATE INDEX idx_invoices_due_date        ON invoices(due_date);
+CREATE INDEX idx_invoices_invoice_date    ON invoices(invoice_date);
+CREATE INDEX idx_debt_payments_paid_at    ON debt_payments(paid_at);
