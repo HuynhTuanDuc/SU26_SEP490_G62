@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Input, Divider,
@@ -17,6 +17,7 @@ const EMPTY_SHIPMENT = () => ({
   payment_type: "cash",
   driver_payment_state: "company_received",
   driver_name: "",
+  driver_id: null,
   vehicle_plate: "",
   expenses: [],
   notes: "",
@@ -67,6 +68,14 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    accountantService.getLookup()
+      .then((data) => setDrivers(data.drivers || []))
+      .catch(() => {});
+  }, [isOpen]);
 
   const resetForm = useCallback(() => {
     setCustomer({ name: "", phone: "", company: "" });
@@ -120,6 +129,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
           payment_type: s.payment_type,
           driver_payment_state: s.driver_payment_state,
           driver_name: s.driver_name.trim() || undefined,
+          driver_id: s.driver_id || undefined,
           vehicle_plate: s.vehicle_plate.trim() || undefined,
           expenses: (s.expenses ?? [])
             .filter((e) => Number(e.amount) > 0)
@@ -212,6 +222,7 @@ export function ExternalOrderModal({ isOpen, onClose, onOrderCreated }) {
                 onChange={(field, value) => updateShipment(i, field, value)}
                 onRemove={() => removeShipment(i)}
                 canRemove={shipments.length > 1}
+                drivers={drivers}
               />
             ))}
           </div>
