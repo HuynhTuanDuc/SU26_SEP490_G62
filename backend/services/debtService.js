@@ -1,4 +1,7 @@
 const debtRepository = require('../repositories/debtRepository');
+const profileRepository = require('../repositories/profileRepository');
+const roleRepository = require('../repositories/roleRepository');
+const notificationService = require('./notificationService');
 const { broadcastToUser } = require('./notificationGateway');
 
 const VALID_METHODS = ['cash', 'bank_transfer'];
@@ -20,7 +23,22 @@ const submitRepayment = async (driverId, debtId, { amount, paymentMethod, notes 
     if (!amt || amt <= 0) throw new Error('Số tiền phải lớn hơn 0');
     if (!receiptUrl) throw new Error('Ảnh chứng từ là bắt buộc');
     if (paymentMethod && !VALID_METHODS.includes(paymentMethod)) throw new Error('Hình thức thanh toán không hợp lệ');
-    return debtRepository.submitRepayment(driverId, debtId, { amount: amt, paymentMethod, notes, receiptUrl });
+    const payment = await debtRepository.submitRepayment(driverId, debtId, { amount: amt, paymentMethod, notes, receiptUrl });
+
+    const driver = await profileRepository.getProfileById(driverId);
+    const [managerIds, accountantIds] = await Promise.all([
+        roleRepository.getUserIdsByRole('manager'),
+        roleRepository.getUserIdsByRole('accountant'),
+    ]);
+    notificationService.createForUsers([...managerIds, ...accountantIds], {
+        title: 'Báo nộp tiền công nợ mới',
+        message: `${driver?.full_name ?? 'Tài xế'} báo đã nộp ${amt.toLocaleString('vi-VN')}đ cho công nợ #${debtId} — chờ xác nhận.`,
+        type: 'DEBT_REPAYMENT_SUBMITTED',
+        entityType: 'debt_payments',
+        entityId: payment.id,
+    }, { displayMode: 'alert' }).catch(() => {});
+
+    return payment;
 };
 
 const cancelRepayment = async (driverId, paymentId) => {
@@ -50,8 +68,32 @@ const voidRepayment = async (paymentId, voidedBy, reason) => {
 
 const getPendingRepayments = async () => debtRepository.getPendingRepayments();
 
+// Nhắc nhở hàng ngày (cron) — công nợ khách hàng/tài xế đã quá hạn thu hồi
+const notifyOverdueDebts = async () => {
+    const rows = await debtRepository.getOverdueDebtsSummary();
+    if (rows.length === 0) return { notified: false };
+
+    const labelByType = { driver: 'công nợ tài xế', customer: 'công nợ khách hàng' };
+    const lines = rows.map((r) =>
+        `${r.debt_count} khoản ${labelByType[r.debt_type] ?? r.debt_type} quá hạn — tổng ${Number(r.total_remaining).toLocaleString('vi-VN')}đ`);
+
+    const [managerIds, accountantIds] = await Promise.all([
+        roleRepository.getUserIdsByRole('manager'),
+        roleRepository.getUserIdsByRole('accountant'),
+    ]);
+    await notificationService.createForUsers([...managerIds, ...accountantIds], {
+        title: 'Công nợ quá hạn cần xử lý',
+        message: lines.join('. '),
+        type: 'DEBT_OVERDUE',
+        entityType: 'debts',
+    }, { displayMode: 'alert' });
+
+    return { notified: true, rows };
+};
+
 module.exports = {
     getMyDebts, getMyDebtSummary, getDebtPayments,
     submitRepayment, cancelRepayment,
     confirmRepayment, rejectRepayment, voidRepayment, getPendingRepayments,
+    notifyOverdueDebts,
 };

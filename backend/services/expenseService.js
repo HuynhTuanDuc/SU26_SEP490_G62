@@ -1,6 +1,9 @@
 const expenseRepository = require('../repositories/expenseRepository');
 const tripRepository    = require('../repositories/tripRepository');
-const { ALLOWED_EXPENSE_TYPES } = require('../constants/expenseConstants');
+const profileRepository = require('../repositories/profileRepository');
+const roleRepository    = require('../repositories/roleRepository');
+const notificationService = require('./notificationService');
+const { ALLOWED_EXPENSE_TYPES, EXPENSE_TYPE_LABEL } = require('../constants/expenseConstants');
 
 // Trạng thái trip cho phép thêm chi phí (chưa kết thúc)
 const EXPENSE_ALLOWED_STATUSES = [
@@ -38,17 +41,49 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
 
     // Không ghi sổ FT ở đây — expense đang pending, FT được ghi khi coordinator duyệt
 
+    const driver = await profileRepository.getProfileById(driverId);
+    const [coordinatorIds, managerIds] = await Promise.all([
+        roleRepository.getUserIdsByRole('coordinator'),
+        roleRepository.getUserIdsByRole('manager'),
+    ]);
+    notificationService.createForUsers([...coordinatorIds, ...managerIds], {
+        title: 'Chi phí mới chờ duyệt',
+        message: `${driver?.full_name ?? 'Tài xế'} khai ${EXPENSE_TYPE_LABEL[expenseType] ?? expenseType} — ${Number(amount).toLocaleString('vi-VN')}đ cho chuyến #${shipmentId}.`,
+        type: 'EXPENSE_SUBMITTED',
+        entityType: 'expenses',
+        entityId: expense.id,
+    }, { displayMode: 'silent' }).catch(() => {});
+
     return expenseRepository.getShipmentExpenses(shipmentId);
 };
 
 // Coordinator/Manager duyệt chi phí — ghi sổ nhật ký tài chính tại thời điểm duyệt
 const approveExpense = async (expenseId, reviewerId) => {
-    return expenseRepository.approveExpense(expenseId, reviewerId);
+    const expense = await expenseRepository.approveExpense(expenseId, reviewerId);
+
+    notificationService.createForUser(expense.created_by, {
+        title: 'Chi phí đã được duyệt',
+        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${Number(expense.amount).toLocaleString('vi-VN')}đ đã được duyệt.`,
+        type: 'EXPENSE_APPROVED',
+        entityType: 'expenses',
+        entityId: expense.id,
+    }, { displayMode: 'silent' }).catch(() => {});
+
+    return expense;
 };
 
 const rejectExpense = async (expenseId, reviewerId, reason) => {
     const expense = await expenseRepository.rejectExpense(expenseId, reviewerId, reason);
     if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
+
+    notificationService.createForUser(expense.created_by, {
+        title: 'Chi phí bị từ chối',
+        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" bị từ chối${reason ? `: ${reason}` : ''}.`,
+        type: 'EXPENSE_REJECTED',
+        entityType: 'expenses',
+        entityId: expense.id,
+    }, { displayMode: 'alert' }).catch(() => {});
+
     return expense;
 };
 
