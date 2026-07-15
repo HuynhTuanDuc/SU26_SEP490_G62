@@ -9,7 +9,7 @@ import {
   RiArrowRightSLine, RiArrowDownSLine,
   RiBankCard2Line, RiGroupLine,
   RiCheckboxCircleLine, RiTimeLine,
-  RiFileList3Line,
+  RiFileList3Line, RiListCheck2,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
@@ -57,7 +57,7 @@ const REPAY_METHOD_LABEL = {
 };
 
 // ─── Hàng chờ tài xế / khách báo nộp tiền ─────────────────────────────────────
-function PendingRepaymentsPanel({ onChanged }) {
+function PendingRepaymentsPanel({ onChanged, onCountChange }) {
   const [items, setItems]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [actingId, setActingId]     = useState(null);
@@ -69,10 +69,14 @@ function PendingRepaymentsPanel({ onChanged }) {
   const load = useCallback(() => {
     setLoading(true);
     accountantService.getPendingRepayments()
-      .then((data) => setItems(data.repayments ?? []))
+      .then((data) => {
+        const rows = data.repayments ?? [];
+        setItems(rows);
+        onCountChange?.(rows.length);
+      })
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onCountChange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -108,8 +112,6 @@ function PendingRepaymentsPanel({ onChanged }) {
     }
   };
 
-  if (!loading && items.length === 0) return null;
-
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -123,8 +125,15 @@ function PendingRepaymentsPanel({ onChanged }) {
 
       {loading ? (
         <div className="flex justify-center py-3"><Spinner size="sm" /></div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 gap-2">
+          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+            <RiCheckboxCircleLine size={18} className="text-green-400" />
+          </div>
+          <p className="text-xs text-gray-400">Không có báo nộp tiền nào đang chờ.</p>
+        </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 max-h-[560px] overflow-y-auto pr-1">
           {items.map((item) => (
             <div key={item.id}
               className="flex items-center gap-3 bg-white rounded-xl border border-amber-100 px-4 py-3">
@@ -522,6 +531,8 @@ export function DebtView({ search = "" }) {
 
   const [payPerson, setPayPerson]       = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [tab, setTab] = useState("debts");
+  const [pendingCount, setPendingCount] = useState(0);
 
   const [page, setPage]         = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -553,9 +564,38 @@ export function DebtView({ search = "" }) {
   return (
     <div className="flex flex-col gap-5">
 
-      {/* Hàng chờ tài xế / khách báo nộp tiền */}
-      <PendingRepaymentsPanel onChanged={refetch} />
+      {/* Tab chuyển giữa Công nợ và Báo nộp tiền chờ xác nhận */}
+      <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-fit">
+        <button
+          onClick={() => setTab("debts")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
+            ${tab === "debts" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+        >
+          <RiListCheck2 size={15} />
+          Công nợ
+        </button>
+        <button
+          onClick={() => setTab("pending")}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
+            ${tab === "pending" ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+        >
+          <RiTimeLine size={15} />
+          Chờ xác nhận
+          {pendingCount > 0 && (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${tab === "pending" ? "bg-white/20" : "bg-amber-100 text-amber-600"}`}>
+              {pendingCount}
+            </span>
+          )}
+        </button>
+      </div>
 
+      {/* Giữ panel luôn mount để đếm số lượng chính xác trên tab, chỉ ẩn/hiện bằng CSS */}
+      <div className={tab === "pending" ? "" : "hidden"}>
+        <PendingRepaymentsPanel onChanged={refetch} onCountChange={setPendingCount} />
+      </div>
+
+      {tab === "debts" && (
+      <>
       {}
       <div className="grid grid-cols-3 gap-4">
         <DebtStatCard
@@ -702,6 +742,8 @@ export function DebtView({ search = "" }) {
           onPageChange={setPage}
           onPageSizeChange={handlePageSizeChange}
         />
+      )}
+      </>
       )}
 
       {payPerson && (

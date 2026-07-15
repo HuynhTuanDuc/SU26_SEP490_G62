@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import {
   Button, Input, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
@@ -127,11 +128,122 @@ export default function UsersView({ user }) {
 
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const handleDownloadSample = () => {
-    const worksheet = XLSX.utils.json_to_sheet(SAMPLE_ROWS, { header: IMPORT_HEADERS });
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "users");
-    XLSX.writeFile(workbook, "user-import-sample.xlsx");
+  const handleDownloadSample = async () => {
+    const REQUIRED_HEADERS = new Set(["email", "full_name", "phone", "role"]);
+    const BRAND_BLUE = "FF2563EB";
+    const HEADER_TEXT = "FFFFFFFF";
+    const REQUIRED_FILL = "FFF59E0B";
+    const ZEBRA_FILL = "FFF8FAFC";
+    const BORDER_COLOR = "FFE2E8F0";
+    const thinBorder = { style: "thin", color: { argb: BORDER_COLOR } };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "LogisCount";
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet("users", { views: [{ state: "frozen", ySplit: 1 }] });
+    ws.columns = IMPORT_HEADERS.map((h) => ({ header: h, key: h, width: Math.max(h.length + 2, 16) }));
+
+    const headerRow = ws.getRow(1);
+    headerRow.height = 24;
+    headerRow.eachCell((cell, colNumber) => {
+      const h = IMPORT_HEADERS[colNumber - 1];
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REQUIRED_HEADERS.has(h) ? REQUIRED_FILL : BRAND_BLUE } };
+      cell.font = { bold: true, color: { argb: HEADER_TEXT }, size: 11 };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    });
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: IMPORT_HEADERS.length } };
+
+    SAMPLE_ROWS.forEach((sample, i) => {
+      const row = ws.addRow(IMPORT_HEADERS.map((h) => sample[h] ?? ""));
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+        cell.alignment = { vertical: "middle" };
+        if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+      });
+    });
+
+    // Dropdown cho "role" và "gender" — áp dụng 300 dòng đầu để chừa chỗ nhập thêm
+    const roleColIndex = IMPORT_HEADERS.indexOf("role") + 1;
+    const genderColIndex = IMPORT_HEADERS.indexOf("gender") + 1;
+    const roleOptions = Object.keys(ROLE_LABEL);
+    const genderOptions = Object.keys(GENDER_LABEL);
+    for (let r = 2; r <= 300; r += 1) {
+      ws.getCell(r, roleColIndex).dataValidation = {
+        type: "list", allowBlank: true,
+        formulae: [`"${roleOptions.join(",")}"`],
+        showErrorMessage: true, errorTitle: "Vai trò không hợp lệ",
+        error: `Chỉ chọn 1 trong: ${roleOptions.join(" / ")}`,
+      };
+      ws.getCell(r, genderColIndex).dataValidation = {
+        type: "list", allowBlank: true,
+        formulae: [`"${genderOptions.join(",")}"`],
+        showErrorMessage: true, errorTitle: "Giới tính không hợp lệ",
+        error: `Chỉ chọn 1 trong: ${genderOptions.join(" / ")}`,
+      };
+    }
+
+    // ─── Sheet hướng dẫn ────────────────────────────────────────────────────
+    const wsGuide = wb.addWorksheet("HUONG_DAN", { views: [{ showGridLines: false }] });
+    wsGuide.columns = [{ width: 24 }, { width: 70 }];
+
+    const titleRow = wsGuide.addRow(["HƯỚNG DẪN NHẬP LIỆU — TEMPLATE IMPORT NGƯỜI DÙNG"]);
+    wsGuide.mergeCells(`A${titleRow.number}:B${titleRow.number}`);
+    titleRow.height = 28;
+    titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: HEADER_TEXT } };
+    titleRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+    titleRow.getCell(1).alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    wsGuide.addRow([]);
+
+    const addNote = (text) => {
+      const row = wsGuide.addRow([text]);
+      wsGuide.mergeCells(`A${row.number}:B${row.number}`);
+      row.getCell(1).font = { size: 10.5 };
+      row.getCell(1).alignment = { wrapText: true, vertical: "top" };
+    };
+    addNote("• Cột có nền cam ở sheet \"users\" (email, full_name, phone, role) là BẮT BUỘC — thiếu sẽ bị từ chối.");
+    addNote("• Ngày sinh (dob) nhập dạng yyyy-mm-dd hoặc dd/mm/yyyy.");
+    addNote("• country để trống sẽ mặc định là VN.");
+    wsGuide.addRow([]);
+
+    const roleTableHeader = wsGuide.addRow(["Giá trị role", "Diễn giải"]);
+    roleTableHeader.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: HEADER_TEXT } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    });
+    roleOptions.forEach((r, i) => {
+      const row = wsGuide.addRow([r, ROLE_LABEL[r]]);
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+        if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+      });
+    });
+
+    wsGuide.addRow([]);
+    const genderTableHeader = wsGuide.addRow(["Giá trị gender", "Diễn giải"]);
+    genderTableHeader.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: HEADER_TEXT } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND_BLUE } };
+      cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+    });
+    genderOptions.forEach((g, i) => {
+      const row = wsGuide.addRow([g, GENDER_LABEL[g]]);
+      row.eachCell((cell) => {
+        cell.border = { top: thinBorder, left: thinBorder, right: thinBorder, bottom: thinBorder };
+        if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ZEBRA_FILL } };
+      });
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "user-import-sample.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleImport = async (event) => {
