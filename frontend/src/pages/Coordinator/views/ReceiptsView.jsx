@@ -3,7 +3,7 @@ import {
   Button, Select, SelectItem, Input, Spinner,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
 } from "@heroui/react";
-import { RiRefreshLine, RiEyeLine, RiFileTextLine, RiCloseLine } from "react-icons/ri";
+import { RiRefreshLine, RiEyeLine, RiFileEditLine, RiForbidLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
@@ -235,16 +235,19 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                       <Button isIconOnly size="sm" variant="light" onPress={() => openModal(request.id)}><RiEyeLine size={16} /></Button>
                     ) : (
                       <div className="flex gap-1 justify-end">
-                        <Button size="sm" color="primary" startContent={<RiFileTextLine size={14} />} onPress={() => openModal(request.id)}>Tạo phiếu thu</Button>
+                        <Button isIconOnly size="sm" variant="flat" color="primary" title="Tạo phiếu thu" onPress={() => openModal(request.id)}>
+                          <RiFileEditLine size={16} />
+                        </Button>
                         <Button
                           isIconOnly
                           size="sm"
-                          variant="light"
+                          variant="flat"
                           color="danger"
+                          title="Từ chối yêu cầu"
                           isLoading={rejectingId === request.id}
                           onPress={() => rejectReceiptRequest(request.id)}
                         >
-                          <RiCloseLine size={16} />
+                          <RiForbidLine size={16} />
                         </Button>
                       </div>
                     )}

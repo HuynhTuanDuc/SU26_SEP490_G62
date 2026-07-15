@@ -9,6 +9,7 @@ router.use(verifyToken);
 router.use(requireRole('manager'));
 
 router.get('/dashboard', managerController.getDashboard);
+router.get('/reports/overview', managerController.getReportsOverview);
 
 // Xem Trip Pool (read-only, không claim được)
 router.get('/trip-pool', tripController.getTripPool);

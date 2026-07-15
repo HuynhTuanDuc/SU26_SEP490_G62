@@ -1,19 +1,41 @@
 import { useEffect, useState } from "react";
-import { Button, Input, Textarea, Chip, Spinner } from "@heroui/react";
+import { Button, Input, Textarea, Spinner, Select, SelectItem } from "@heroui/react";
 import {
   RiUserSettingsLine, RiTruckLine, RiWalletLine, RiExchangeLine,
   RiCloseLine, RiCheckLine, RiFileTextLine, RiBuilding2Line,
+  RiDashboardLine, RiLineChartLine, RiAlertLine,
+  RiTrophyLine, RiGroupLine, RiCoinLine, RiTimeLine, RiShieldUserLine,
+  RiBankCard2Line, RiQrCodeLine, RiUploadCloud2Line,
 } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { Section } from "../../../components/shared-ui/Section";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { BankSelect } from "../../../components/shared-ui/BankSelect";
+import { KpiLeaderboard } from "../../../components/shared-ui/KpiLeaderboard";
+import {
+  VND, VND_FULL, RevenueChart, VehicleRevenueChart,
+  DebtAgingBars, TopCustomersTable, DriverHoldingsList, PayrollQuickStats,
+} from "../../../components/shared-ui/reportCharts";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import { managerService } from "../services/manager.service";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
 
+const REPORT_MONTH_OPTIONS = [
+  { key: "3",  label: "3 tháng gần nhất" },
+  { key: "6",  label: "6 tháng gần nhất" },
+  { key: "12", label: "12 tháng gần nhất" },
+];
+
+const TABS = [
+  { key: "overview",  label: "Tổng quan",       icon: RiDashboardLine },
+  { key: "financial", label: "Tài chính",       icon: RiLineChartLine },
+  { key: "debt",      label: "Công nợ",         icon: RiAlertLine },
+  { key: "kpi",       label: "KPI & Xếp hạng", icon: RiTrophyLine },
+];
+
 export default function DashboardView({ user }) {
+  const [tab, setTab] = useState("overview");
   const [dashboard, setDashboard] = useState(null);
   const [salaryAdvances, setSalaryAdvances] = useState([]);
   const [debtRepayments, setDebtRepayments] = useState([]);
@@ -21,11 +43,17 @@ export default function DashboardView({ user }) {
   const [companyForm, setCompanyForm] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingCompany, setSavingCompany] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
   const [actingId, setActingId] = useState(null);
 
   const [rejectAdvanceTarget, setRejectAdvanceTarget] = useState(null);
   const [rejectRepaymentTarget, setRejectRepaymentTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
+
+  const [reportMonths, setReportMonths] = useState("6");
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState(null);
 
   const refreshAll = async () => {
     setLoading(true);
@@ -48,6 +76,7 @@ export default function DashboardView({ user }) {
         bank_name: companyData.info?.bank_name || "",
         bank_account_number: companyData.info?.bank_account_number || "",
         bank_account_name: companyData.info?.bank_account_name || "",
+        bank_qr_url: companyData.info?.bank_qr_url || "",
         updated_at: companyData.info?.updated_at || null,
       });
     } catch (error) {
@@ -78,6 +107,25 @@ export default function DashboardView({ user }) {
   const overview = dashboard?.overview;
   const finance = dashboard?.finance;
   const workflow = overview?.workflow || {};
+
+  // Chỉ tải báo cáo tài chính/công nợ khi mở tới tab tương ứng — tránh gọi API nặng không cần thiết
+  useEffect(() => {
+    if (tab !== "financial" && tab !== "debt") return;
+    if (report) return;
+    let cancelled = false;
+    setReportLoading(true);
+    setReportError(null);
+    managerService.getReportOverview(Number(reportMonths), "month")
+      .then((res) => { if (!cancelled) setReport(res); })
+      .catch((err) => { if (!cancelled) setReportError(err.message || "Không thể tải báo cáo."); })
+      .finally(() => { if (!cancelled) setReportLoading(false); });
+    return () => { cancelled = true; };
+  }, [tab, report, reportMonths]);
+
+  const handleReportMonthsChange = (value) => {
+    setReportMonths(value);
+    setReport(null);
+  };
 
   const handleApproveAdvance = async (record) => {
     setActingId(`advance-approve-${record.id}`);
@@ -143,59 +191,112 @@ export default function DashboardView({ user }) {
     }
   };
 
+  const handleUploadQr = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingQr(true);
+    try {
+      const result = await managerService.uploadBankQr(file);
+      setCompanyForm((p) => ({ ...p, ...result.info }));
+    } catch (error) {
+      alert(error.message || "Không thể tải ảnh QR lên.");
+    } finally {
+      setUploadingQr(false);
+    }
+  };
+
   if (loading && !dashboard) {
     return <div className="flex items-center justify-center py-32"><Spinner color="primary" label="Đang tải tổng quan..." size="lg" /></div>;
   }
 
+  const reportTotalRevenue = report?.revenueChart?.reduce((s, r) => s + Number(r.revenue || 0), 0) ?? 0;
+  const reportTotalOrders  = report?.revenueChart?.reduce((s, r) => s + Number(r.order_count || 0), 0) ?? 0;
+  const reportTotalDebt = report?.debtAging
+    ? ["d0_30", "d30_60", "d60_90", "d90_plus"].reduce((s, k) => s + Number(report.debtAging[k] || 0), 0)
+    : 0;
+  const reportOverdueDebt = Number(report?.debtAging?.d90_plus || 0);
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="rounded-2xl p-6 text-white relative overflow-hidden" style={{ background: "linear-gradient(135deg, #0B1C30 0%, #1D3268 55%, #3B4FD8 100%)" }}>
-        <div className="absolute -right-8 -bottom-24 w-72 h-72 rounded-full" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 70%)" }} />
-        <div className="relative flex flex-col gap-3 max-w-3xl">
-          <Chip size="sm" color="secondary" variant="flat" className="w-fit">QUẢN LÝ VẬN HÀNH</Chip>
-          <h2 className="text-xl font-bold">Quản lý công việc liên phòng ban trong một màn hình.</h2>
-          <p className="text-sm text-white/80">
-            Theo dõi các điểm nghẽn giữa tài xế, điều phối và kế toán, phê duyệt yêu cầu quan trọng và giữ thông tin công ty luôn sẵn sàng cho vận hành.
-          </p>
-          <div className="flex flex-wrap gap-2 mt-1">
-            <Chip size="sm" className="bg-white/15 text-white">{workflow.pending_advances || 0} yêu cầu ứng lương</Chip>
-            <Chip size="sm" className="bg-white/15 text-white">{workflow.pending_repayments || 0} yêu cầu nộp tiền</Chip>
-            <Chip size="sm" className="bg-white/15 text-white">{(workflow.pending_receipts || 0) + (workflow.processing_receipts || 0)} phiếu thu đang chờ</Chip>
-          </div>
+      {/* Thanh chuyển tab — gom mọi loại báo cáo (tổng quan, vận hành, tài chính, công nợ, KPI) vào 1 màn hình */}
+      <div className="flex gap-1 bg-white border border-gray-100 rounded-2xl p-1.5 shadow-sm w-fit">
+        {TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all
+              ${tab === key ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"}`}
+          >
+            <Icon size={15} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div className="grid grid-cols-4 gap-4">
+          <StatCard
+            label="Nhân sự đang hoạt động"
+            value={overview?.workforce?.active_users || 0}
+            icon={RiUserSettingsLine}
+            sub={`${overview?.workforce?.driver_count || 0} tài xế, ${overview?.workforce?.active_staff || 0} nhân sự văn phòng`}
+            border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600"
+          />
+          <StatCard
+            label="Xe sẵn sàng"
+            value={overview?.fleet?.active || 0}
+            icon={RiTruckLine}
+            sub={`${overview?.fleet?.maintenance || 0} bảo trì, ${overview?.fleet?.broken || 0} hư hỏng`}
+            border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600"
+          />
+          <StatCard
+            label="Công nợ cần thu"
+            value={fmt(finance?.total_receivables)}
+            icon={RiWalletLine}
+            sub={`${finance?.pending_payments_count || 0} đơn chưa thu đủ`}
+            border="border-amber-100" lightBg="bg-amber-50" text="text-amber-600" gradient="from-amber-500 to-amber-600"
+          />
+          <StatCard
+            label="Tiền chờ phê duyệt"
+            value={fmt(workflow.pending_advances_amount)}
+            icon={RiExchangeLine}
+            sub="Ứng lương và nộp tiền đang chờ"
+            border="border-rose-100" lightBg="bg-rose-50" text="text-rose-600" gradient="from-rose-500 to-rose-600"
+          />
+
+          <StatCard
+            label="Tổng nhân sự"
+            value={overview?.workforce?.total_users || 0}
+            icon={RiGroupLine}
+            sub={`${overview?.workforce?.manager_count || 0} quản lý, ${overview?.workforce?.coordinator_count || 0} điều phối, ${overview?.workforce?.accountant_count || 0} kế toán`}
+            border="border-indigo-100" lightBg="bg-indigo-50" text="text-indigo-600" gradient="from-indigo-500 to-indigo-600"
+          />
+          <StatCard
+            label="Xe cần chú ý"
+            value={(overview?.fleet?.maintenance || 0) + (overview?.fleet?.broken || 0)}
+            icon={RiAlertLine}
+            sub={`${overview?.fleet?.broken || 0} hư hỏng, ${overview?.fleet?.retired || 0} ngừng hoạt động`}
+            border="border-orange-100" lightBg="bg-orange-50" text="text-orange-600" gradient="from-orange-500 to-orange-600"
+          />
+          <StatCard
+            label="Doanh thu gộp"
+            value={fmt(finance?.total_gross_revenue)}
+            icon={RiLineChartLine}
+            sub="Tổng cước các đơn đã hoàn thành"
+            border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600"
+          />
+          <StatCard
+            label="Đã thu về"
+            value={fmt(finance?.total_collected)}
+            icon={RiCoinLine}
+            sub="Doanh thu thực nhận sau khi trừ công nợ"
+            border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600"
+          />
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          label="Nhân sự đang hoạt động"
-          value={overview?.workforce?.active_users || 0}
-          icon={RiUserSettingsLine}
-          sub={`${overview?.workforce?.driver_count || 0} tài xế, ${overview?.workforce?.active_staff || 0} nhân sự văn phòng`}
-          border="border-blue-100" lightBg="bg-blue-50" text="text-blue-600" gradient="from-blue-500 to-blue-600"
-        />
-        <StatCard
-          label="Xe sẵn sàng"
-          value={overview?.fleet?.active || 0}
-          icon={RiTruckLine}
-          sub={`${overview?.fleet?.maintenance || 0} bảo trì, ${overview?.fleet?.broken || 0} hư hỏng`}
-          border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600"
-        />
-        <StatCard
-          label="Công nợ cần thu"
-          value={fmt(finance?.total_receivables)}
-          icon={RiWalletLine}
-          sub={`${finance?.pending_payments_count || 0} đơn chưa thu đủ`}
-          border="border-amber-100" lightBg="bg-amber-50" text="text-amber-600" gradient="from-amber-500 to-amber-600"
-        />
-        <StatCard
-          label="Tiền chờ phê duyệt"
-          value={fmt(workflow.pending_advances_amount)}
-          icon={RiExchangeLine}
-          sub="Ứng lương và nộp tiền đang chờ"
-          border="border-rose-100" lightBg="bg-rose-50" text="text-rose-600" gradient="from-rose-500 to-rose-600"
-        />
-      </div>
-
+      {tab === "overview" && (
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 flex flex-col gap-4">
           <Section title="Ứng lương" icon={RiExchangeLine} action={<span className="text-xs text-gray-400">{salaryAdvances.filter((a) => a.status === "pending").length} đang chờ</span>}>
@@ -273,6 +374,27 @@ export default function DashboardView({ user }) {
                 <BankSelect value={companyForm.bank_name} onChange={(v) => setCompanyForm((p) => ({ ...p, bank_name: v }))} />
                 <Input label="Số tài khoản" value={companyForm.bank_account_number} onValueChange={(v) => setCompanyForm((p) => ({ ...p, bank_account_number: v }))} variant="bordered" size="sm" />
                 <Input label="Chủ tài khoản" value={companyForm.bank_account_name} onValueChange={(v) => setCompanyForm((p) => ({ ...p, bank_account_name: v }))} variant="bordered" size="sm" />
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium text-gray-600">Ảnh QR ngân hàng</span>
+                  <div className="flex items-center gap-3">
+                    {companyForm.bank_qr_url ? (
+                      <img src={companyForm.bank_qr_url} alt="QR ngân hàng" className="w-20 h-20 rounded-xl object-cover border border-gray-200" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl border border-dashed border-gray-300 flex items-center justify-center">
+                        <RiQrCodeLine size={22} className="text-gray-300" />
+                      </div>
+                    )}
+                    <label className="cursor-pointer">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleUploadQr} disabled={uploadingQr} />
+                      <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                        {uploadingQr ? <Spinner size="sm" /> : <RiUploadCloud2Line size={14} />}
+                        {companyForm.bank_qr_url ? "Đổi ảnh QR" : "Tải ảnh QR"}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-400">
                     {companyForm.updated_at ? `Cập nhật lần cuối: ${new Date(companyForm.updated_at).toLocaleString("vi-VN")}` : "Chưa có bản ghi công ty."}
@@ -284,6 +406,113 @@ export default function DashboardView({ user }) {
           )}
         </div>
       </div>
+      )}
+
+      {(tab === "financial" || tab === "debt") && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-400">Dữ liệu tổng hợp từ đơn hoàn thành</p>
+            <Select
+              size="sm"
+              selectedKeys={new Set([reportMonths])}
+              onSelectionChange={(keys) => handleReportMonthsChange([...keys][0])}
+              classNames={{ base: "w-48", trigger: "h-8 bg-white border border-gray-200 rounded-lg text-xs" }}
+              aria-label="Kỳ báo cáo"
+            >
+              {REPORT_MONTH_OPTIONS.map(({ key, label }) => (
+                <SelectItem key={key}>{label}</SelectItem>
+              ))}
+            </Select>
+          </div>
+
+          {reportLoading ? (
+            <div className="flex items-center justify-center py-24"><Spinner color="primary" label="Đang tải báo cáo..." size="lg" /></div>
+          ) : reportError ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
+                <RiAlertLine size={22} className="text-red-400" />
+              </div>
+              <p className="text-sm text-gray-500">{reportError}</p>
+            </div>
+          ) : tab === "financial" ? (
+            <>
+              <div className="grid grid-cols-4 gap-4">
+                <StatCard
+                  label={`Doanh thu ${reportMonths} tháng`}
+                  value={VND(reportTotalRevenue)}
+                  icon={RiLineChartLine}
+                  sub={`${reportTotalOrders} đơn hoàn thành`}
+                  gradient="from-blue-500 to-blue-600" lightBg="bg-blue-50" text="text-blue-600" border="border-blue-100"
+                />
+                <StatCard
+                  label="Nợ phải thu"
+                  value={VND(reportTotalDebt)}
+                  icon={RiFileTextLine}
+                  sub={reportTotalDebt > 0 ? "Từ khách hàng chưa thu đủ" : "Không có công nợ"}
+                  gradient="from-orange-500 to-orange-600" lightBg="bg-orange-50" text="text-orange-600" border="border-orange-100"
+                />
+                <StatCard
+                  label="Nợ quá hạn > 90 ngày"
+                  value={VND(reportOverdueDebt)}
+                  icon={RiAlertLine}
+                  sub={reportOverdueDebt > 0 ? "Cần xử lý khẩn" : "Không có"}
+                  gradient="from-red-500 to-rose-600" lightBg="bg-red-50" text="text-red-600" border="border-red-100"
+                />
+                <StatCard
+                  label="Lương tháng này"
+                  value={VND(report?.payrollSummary?.total_net ?? 0)}
+                  icon={RiWalletLine}
+                  sub={`${report?.payrollSummary?.paid ?? 0} tài xế đã chi`}
+                  gradient="from-emerald-500 to-emerald-600" lightBg="bg-emerald-50" text="text-emerald-600" border="border-emerald-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-5 gap-4">
+                <div className="col-span-3">
+                  <Section title="Xu hướng doanh thu" icon={RiLineChartLine}>
+                    <RevenueChart data={report?.revenueChart} />
+                  </Section>
+                </div>
+                <div className="col-span-2">
+                  <Section title="Doanh thu theo từng xe" icon={RiBankCard2Line}>
+                    <VehicleRevenueChart data={report?.revenueByVehicle} />
+                  </Section>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                  <Section title="Top khách hàng theo doanh thu" icon={RiGroupLine}>
+                    <TopCustomersTable data={report?.topCustomers} />
+                  </Section>
+                </div>
+                <Section title="Tổng quan bảng lương" icon={RiShieldUserLine}>
+                  <PayrollQuickStats data={report?.payrollSummary} />
+                </Section>
+              </div>
+            </>
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2">
+                <Section title="Phân tích nợ theo thời gian" icon={RiTimeLine}>
+                  <DebtAgingBars data={report?.debtAging} />
+                </Section>
+              </div>
+              <Section title="Tiền tài xế đang cầm" icon={RiCoinLine}>
+                <DriverHoldingsList data={report?.driverHoldings} />
+              </Section>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "kpi" && (
+        <KpiLeaderboard
+          getVehicleGroups={managerService.getVehicleGroupsForKpi}
+          getAllDriversKPI={managerService.getAllDriversKPI}
+          getLeaderboardByGroup={managerService.getLeaderboardByGroup}
+        />
+      )}
 
       {rejectAdvanceTarget && (
         <RejectDialog

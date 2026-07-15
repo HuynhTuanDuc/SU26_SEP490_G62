@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { HeroUIProvider } from "@heroui/react";
+import {
+  RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
+  RiHandCoinLine, RiGiftLine, RiBookOpenLine,
+} from "react-icons/ri";
+import { TbReportAnalytics } from "react-icons/tb";
 import "../../styles/accountant.css";
 
-import { Sidebar } from "./components/layout/Sidebar";
+import { Sidebar } from "../../components/shared-ui/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
 import { RevenueView } from "./views/RevenueView";
 import { DebtView } from "./views/DebtView";
@@ -14,6 +19,31 @@ import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
 import { saveSession } from "../../services/storage";
+
+const NAV_GROUPS = [
+  {
+    label: "Tổng quan",
+    items: [
+      { key: "report", label: "Báo cáo", icon: TbReportAnalytics },
+    ],
+  },
+  {
+    label: "Tài chính",
+    items: [
+      { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
+      { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
+      { key: "ledger",  label: "Nhật ký tài chính", icon: RiBookOpenLine },
+    ],
+  },
+  {
+    label: "Nhân sự & Lương",
+    items: [
+      { key: "salary",  label: "Bảng lương",        icon: RiMoneyDollarCircleLine },
+      { key: "advance", label: "Ứng lương",          icon: RiHandCoinLine },
+      { key: "bonus",   label: "Thưởng & Phúc lợi", icon: RiGiftLine },
+    ],
+  },
+];
 
 const VIEW_META = {
   revenue: {
@@ -109,6 +139,9 @@ export default function AccountantPage({ user, onLogout }) {
     <HeroUIProvider>
       <div className="flex h-screen bg-gray-50 overflow-hidden">
         <Sidebar
+          navGroups={NAV_GROUPS}
+          brandLabel="LogisCount"
+          brandSubLabel="Kế toán"
           activeView={activeView}
           onViewChange={handleViewChange}
           user={currentUser}

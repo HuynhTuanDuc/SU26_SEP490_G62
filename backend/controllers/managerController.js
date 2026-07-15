@@ -31,6 +31,27 @@ const getDashboard = async (_req, res) => {
     }
 };
 
+const getReportsOverview = async (req, res) => {
+    try {
+        const months = parseInt(req.query.months, 10) || 6;
+        if (Number.isNaN(months) || months < 1 || months > 24) {
+            const error = new Error('Số tháng thống kê không hợp lệ (1–24)');
+            error.statusCode = 400;
+            throw error;
+        }
+        const granularity = req.query.granularity || 'month';
+        if (!['day', 'week', 'month'].includes(granularity)) {
+            const error = new Error('Mức thời gian không hợp lệ (day/week/month)');
+            error.statusCode = 400;
+            throw error;
+        }
+        const data = await managerService.getReportsOverview({ months, granularity });
+        res.json(data);
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 const getSalaryAdvances = async (req, res) => {
     try {
         const advances = await managerService.listSalaryAdvances(req.query);
@@ -241,6 +262,7 @@ const reassignShipment = async (req, res) => {
 
 module.exports = {
     getDashboard,
+    getReportsOverview,
     getSalaryAdvances,
     approveSalaryAdvance,
     rejectSalaryAdvance,

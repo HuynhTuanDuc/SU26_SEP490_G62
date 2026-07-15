@@ -5,6 +5,7 @@ const BASE = "/api/manager";
 export const managerService = {
   // ─── Dashboard ────────────────────────────────────────────────────────────
   getDashboard: () => apiRequest(`${BASE}/dashboard`),
+  getReportOverview: (months, granularity) => apiRequest(`${BASE}/reports/overview?months=${months}&granularity=${granularity}`),
 
   // ─── Salary advances ──────────────────────────────────────────────────────
   getSalaryAdvances: (params = {}) => apiRequest(`${BASE}/salary-advances?${new URLSearchParams(params)}`),
@@ -22,6 +23,11 @@ export const managerService = {
   // ─── Company info ─────────────────────────────────────────────────────────
   getCompanyInfo: () => apiRequest("/api/company/info"),
   updateCompanyInfo: (payload) => apiRequest("/api/company/info", { method: "PUT", body: payload }),
+  uploadBankQr: (file) => {
+    const formData = new FormData();
+    formData.append("qr", file);
+    return apiRequest("/api/company/bank-qr", { method: "POST", body: formData });
+  },
 
   // ─── Partners ─────────────────────────────────────────────────────────────
   getPartners: (search = "") => apiRequest(`${BASE}/partners${search ? `?search=${encodeURIComponent(search)}` : ""}`),

@@ -101,4 +101,65 @@ const updateExpense = async (expenseId, driverId, { expenseType, amount, descrip
     }
 };
 
-module.exports = { createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense };
+const wasDriverAssignedToShipment = async (shipmentId, driverId) => {
+    const { rows: [row] } = await pool.query(
+        `SELECT 1 FROM shipment_assignment_history
+         WHERE shipment_id = $1 AND (to_driver_id = $2 OR from_driver_id = $2)
+         LIMIT 1`,
+        [shipmentId, driverId],
+    );
+    return !!row;
+};
+
+// Coordinator/Manager duyệt chi phí — ghi sổ nhật ký tài chính trong cùng transaction
+const approveExpense = async (expenseId, reviewerId) => {
+    const financialLedgerRepository = require('./financialLedgerRepository');
+    const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const { rows: [expense] } = await client.query(
+            `UPDATE expenses
+             SET status = 'approved', reviewed_by = $2, reviewed_at = NOW(), updated_at = NOW()
+             WHERE id = $1 AND status = 'pending'
+             RETURNING id, shipment_id, expense_type, amount, created_by`,
+            [expenseId, reviewerId],
+        );
+        if (!expense) throw new Error('Không tìm thấy chi phí hoặc chi phí đã được xử lý');
+
+        const isPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(expense.expense_type);
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: isPassThrough ? 'pass_through_cost' : 'expense_recorded',
+            debitAccount: isPassThrough ? '3388' : '642',
+            creditAccount: '1111',
+            amount: Number(expense.amount),
+            description: `${isPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${expense.expense_type}) — chuyến #${expense.shipment_id}, duyệt chi phí tài xế khai`,
+            refType: 'expense', refId: expense.id, actorId: reviewerId,
+        });
+
+        await client.query('COMMIT');
+        return expense;
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+const rejectExpense = async (expenseId, reviewerId, reason) => {
+    const { rows: [expense] } = await pool.query(
+        `UPDATE expenses
+         SET status = 'rejected', reviewed_by = $2, reviewed_at = NOW(),
+             reject_reason = $3, updated_at = NOW()
+         WHERE id = $1 AND status = 'pending'
+         RETURNING id, shipment_id, expense_type, amount, created_by`,
+        [expenseId, reviewerId, reason ?? null],
+    );
+    return expense;
+};
+
+module.exports = {
+    createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense,
+    wasDriverAssignedToShipment, approveExpense, rejectExpense,
+};

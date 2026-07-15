@@ -25,17 +25,17 @@ import KpiView from "./views/KpiView";
 
 const NAV_GROUPS = [
   {
-    label: "Điều phối",
+    label: "Tổng quan",
     items: [
       { key: "dashboard", label: "Tổng quan", icon: RiDashboardLine },
-      { key: "orders", label: "Đơn hàng", icon: RiTruckLine },
-      { key: "incidents", label: "Sự cố", icon: RiAlertLine },
-      { key: "receipts", label: "Phiếu thu", icon: RiFileList3Line },
     ],
   },
   {
     label: "Vận hành",
     items: [
+      { key: "orders", label: "Đơn hàng", icon: RiTruckLine },
+      { key: "incidents", label: "Sự cố", icon: RiAlertLine },
+      { key: "receipts", label: "Phiếu thu", icon: RiFileList3Line },
       { key: "customers", label: "Khách hàng", icon: RiUserSearchLine },
       { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
     ],

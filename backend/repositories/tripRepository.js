@@ -1148,6 +1148,65 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
     return result.rows[0] ?? null;
 };
 
+// Toàn bộ chuyến + chi phí của 1 order — dùng để show tổng cộng cho khách ở màn hình chi tiết phiếu thu
+const getOrderShipmentsWithExpenses = async (orderId) => {
+    const [shipmentsResult, expensesResult] = await Promise.all([
+        pool.query(
+            `SELECT
+                os.id,
+                os.shipment_index,
+                os.status,
+                os.actual_price,
+                os.estimated_price,
+                os.actual_distance_km,
+                os.estimated_distance_km,
+                os.completed_at,
+                p.full_name   AS driver_name,
+                v.plate_number,
+                (SELECT ts.address FROM trip_stops ts
+                 WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup'
+                 ORDER BY ts.stop_index ASC  LIMIT 1) AS pickup_address,
+                (SELECT ts.address FROM trip_stops ts
+                 WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery'
+                 ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address
+             FROM order_shipments os
+             LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
+             LEFT JOIN profiles p ON p.id = sc.owner_driver_id
+             LEFT JOIN vehicles v ON v.id   = sc.vehicle_id
+             WHERE os.order_id = $1
+             ORDER BY os.shipment_index ASC`,
+            [orderId],
+        ),
+        pool.query(
+            `SELECT
+                e.id, e.shipment_id, e.expense_type, e.amount::text AS amount,
+                e.description, e.expense_date,
+                COALESCE(
+                    json_agg(ea.file_url ORDER BY ea.id) FILTER (WHERE ea.file_url IS NOT NULL),
+                    '[]'
+                ) AS receipt_urls
+             FROM expenses e
+             JOIN order_shipments os ON os.id = e.shipment_id
+             LEFT JOIN expense_attachments ea ON ea.expense_id = e.id
+             WHERE os.order_id = $1
+             GROUP BY e.id
+             ORDER BY e.shipment_id, e.expense_date, e.id`,
+            [orderId],
+        ),
+    ]);
+
+    const expensesByShipment = {};
+    for (const exp of expensesResult.rows) {
+        if (!expensesByShipment[exp.shipment_id]) expensesByShipment[exp.shipment_id] = [];
+        expensesByShipment[exp.shipment_id].push(exp);
+    }
+
+    return shipmentsResult.rows.map((s) => ({
+        ...s,
+        expenses: expensesByShipment[s.id] ?? [],
+    }));
+};
+
 const resubmitReceiptRequest = async (orrId, driverId, driverNotes) => {
     const result = await pool.query(
         `UPDATE order_receipt_requests
@@ -1352,6 +1411,34 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
     }
 };
 
+const getOrderCustomerId = async (orderId) => {
+    const { rows } = await pool.query(`SELECT customer_id FROM orders WHERE id = $1`, [orderId]);
+    return rows[0]?.customer_id ?? null;
+};
+
+const getOrderPaymentType = async (orderId) => {
+    const { rows } = await pool.query(`SELECT payment_type FROM orders WHERE id = $1`, [orderId]);
+    return rows[0]?.payment_type ?? null;
+};
+
+const markOrderCompleted = async (orderId) => {
+    await pool.query(
+        `UPDATE orders SET derived_status = 'completed', updated_at = NOW() WHERE id = $1`,
+        [orderId],
+    );
+};
+
+// Khách chưa thanh toán khi driver báo nợ (không qua flow phiếu thu — customer_debt trực tiếp trên trip)
+const createCustomerDebtForTrip = async ({ customerId, driverId, shipmentId, orderId, amount, notes }) => {
+    const { rows: [debt] } = await pool.query(
+        `INSERT INTO debts (debt_type, customer_id, driver_id, shipment_id, order_id, total_amount, notes, created_at, updated_at)
+         VALUES ('customer', $1, $2, $3, $4, $5, $6, NOW(), NOW())
+         RETURNING *`,
+        [customerId, driverId, shipmentId, orderId, amount, notes ?? null],
+    );
+    return debt;
+};
+
 module.exports = {
     insertAssignmentHistory,
     getDriverVehicleGroupId,
@@ -1381,6 +1468,11 @@ module.exports = {
     getOrderWithShipments,
     getDriverReceipts,
     getDriverReceiptDetail,
+    getOrderShipmentsWithExpenses,
     resubmitReceiptRequest,
     recordReceiptCollection,
+    getOrderCustomerId,
+    getOrderPaymentType,
+    markOrderCompleted,
+    createCustomerDebtForTrip,
 };

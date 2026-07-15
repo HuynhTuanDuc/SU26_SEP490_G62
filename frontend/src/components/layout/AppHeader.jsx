@@ -12,12 +12,12 @@ const NOTIFICATION_ENABLED_ROLES = new Set(['manager', 'coordinator']);
 
 function roleLabel(role) {
   const labels = {
-    manager: 'Manager',
-    coordinator: 'Coordinator',
-    accountant: 'Accountant',
-    driver: 'Driver',
+    manager: 'Quản lý',
+    coordinator: 'Điều phối viên',
+    accountant: 'Kế toán',
+    driver: 'Tài xế',
   };
-  return labels[role] || 'User';
+  return labels[role] || 'Người dùng';
 }
 
 function formatNotificationTime(value) {

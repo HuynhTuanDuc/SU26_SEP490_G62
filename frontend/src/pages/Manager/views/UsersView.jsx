@@ -12,6 +12,7 @@ import { managerService } from "../services/manager.service";
 
 const GENDER_LABEL = { male: "Nam", female: "Nữ", other: "Khác" };
 const ROLE_COLOR = { manager: "danger", coordinator: "primary", accountant: "secondary", driver: "warning" };
+const ROLE_LABEL = { manager: "Quản lý", coordinator: "Điều phối viên", accountant: "Kế toán", driver: "Tài xế" };
 
 const IMPORT_HEADERS = [
   "email", "full_name", "phone", "role", "gender", "dob", "city", "address", "country",
@@ -249,7 +250,7 @@ export default function UsersView({ user }) {
                 <TableCell>{GENDER_LABEL[u.gender] || "-"}</TableCell>
                 <TableCell>{formatDate(u.dob) || "-"}</TableCell>
                 <TableCell>{u.city || "-"}</TableCell>
-                <TableCell><Chip size="sm" variant="flat" color={ROLE_COLOR[u.role] || "default"}>{(u.role || "").toUpperCase()}</Chip></TableCell>
+                <TableCell><Chip size="sm" variant="flat" color={ROLE_COLOR[u.role] || "default"}>{ROLE_LABEL[u.role] || (u.role || "").toUpperCase()}</Chip></TableCell>
                 <TableCell><Chip size="sm" variant="flat" color={u.is_active ? "success" : "danger"}>{u.is_active ? "Hoạt động" : "Đã khóa"}</Chip></TableCell>
                 <TableCell>
                   <div className="flex gap-1 justify-end">

@@ -1,7 +1,7 @@
 const notificationRepository = require('../repositories/notificationRepository');
 const notificationGateway    = require('./notificationGateway');
 const fcmService             = require('./fcmService');
-const pool                   = require('../config/database');
+const roleRepository         = require('../repositories/roleRepository');
 
 const createForUser = async (userId, payload, options = {}) => {
     if (!userId) throw new Error('userId is required');
@@ -96,15 +96,7 @@ const broadcastToRole = (role, payload) => {
 };
 
 // ─── Lấy tất cả userId theo role để dùng với createForUsers() ─────────────────
-const getUserIdsByRole = async (role) => {
-    const result = await pool.query(
-        `SELECT p.id FROM profiles p
-         JOIN roles r ON r.id = p.role_id
-         WHERE r.name = $1`,
-        [role],
-    );
-    return result.rows.map((r) => r.id);
-};
+const getUserIdsByRole = async (role) => roleRepository.getUserIdsByRole(role);
 
 const getById = async (userId, notificationId) => {
     const notification = await notificationRepository.getById(userId, notificationId);

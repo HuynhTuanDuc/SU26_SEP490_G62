@@ -34,23 +34,28 @@ import HolidaysView from "./views/HolidaysView";
 
 const NAV_GROUPS = [
   {
-    label: "Vận hành",
+    label: "Tổng quan",
     items: [
       { key: "dashboard", label: "Tổng quan", icon: RiDashboardLine },
-      { key: "partners", label: "Đối tác", icon: RiBuilding2Line },
-      { key: "customers", label: "Khách hàng", icon: RiUserSearchLine },
-      { key: "users", label: "Người dùng", icon: RiUserSettingsLine },
-      { key: "vehicles", label: "Quản lý xe", icon: RiTruckLine },
-      { key: "incidents", label: "Sự cố", icon: RiAlertLine },
     ],
   },
   {
-    label: "Nhân sự & Tài chính",
+    label: "Vận hành",
     items: [
+      { key: "partners", label: "Đối tác", icon: RiBuilding2Line },
+      { key: "customers", label: "Khách hàng", icon: RiUserSearchLine },
+      { key: "vehicles", label: "Quản lý xe", icon: RiTruckLine },
+      { key: "incidents", label: "Sự cố", icon: RiAlertLine },
+      { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
+    ],
+  },
+  {
+    label: "Nhân sự & Lương",
+    items: [
+      { key: "users", label: "Người dùng", icon: RiUserSettingsLine },
       { key: "payroll", label: "Duyệt lương", icon: RiMoneyDollarCircleLine },
       { key: "bonus", label: "Thưởng & Phúc lợi", icon: RiGiftLine },
       { key: "bonus-rules", label: "Quy tắc thưởng", icon: RiEqualizerLine },
-      { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
       { key: "holidays", label: "Ngày lễ", icon: RiCalendarLine },
     ],
   },
