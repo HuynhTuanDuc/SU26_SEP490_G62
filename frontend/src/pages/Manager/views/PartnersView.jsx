@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Input, Spinner, Chip, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiSearchLine, RiAddLine, RiBuilding2Line, RiFileSearchLine, RiWalletLine, RiPencilLine, RiFileList3Line } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import PartnerFormModal from "../modals/PartnerFormModal";
 import PartnerDebtModal from "../modals/PartnerDebtModal";
@@ -31,12 +32,17 @@ export default function PartnersView({ user }) {
   const [selectedPartner, setSelectedPartner] = useState(null);
   const [selectedDebts, setSelectedDebts] = useState([]);
 
-  const load = async (nextSearch = search) => {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+
+  const load = async (nextSearch = search, nextPage = page, nextPageSize = pageSize) => {
     setLoading(true);
     try {
-      const data = await managerService.getPartners(nextSearch);
+      const data = await managerService.getPartners(nextSearch, { page: nextPage, limit: nextPageSize });
       setPartners(data.partners || []);
       setSummary(data.summary || {});
+      setPagination(data.pagination || { total: (data.partners || []).length, totalPages: 1 });
     } catch (error) {
       alert(error.message || "Không thể tải danh sách đối tác.");
     } finally {
@@ -44,7 +50,7 @@ export default function PartnersView({ user }) {
     }
   };
 
-  useEffect(() => { load(""); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load("", 1, pageSize); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useRoleRealtime(user, {
     onMessage: (payload) => {
@@ -121,14 +127,14 @@ export default function PartnersView({ user }) {
               placeholder="Tìm theo tên công ty, người liên hệ..."
               value={search}
               onValueChange={setSearch}
-              onKeyDown={(e) => e.key === "Enter" && load(search)}
+              onKeyDown={(e) => e.key === "Enter" && load(search, 1, pageSize)}
               startContent={<RiSearchLine size={14} className="text-gray-400" />}
               variant="bordered"
               size="sm"
               className="w-72"
               isClearable
             />
-            <Button variant="flat" size="sm" onPress={() => load(search)}>Tìm</Button>
+            <Button variant="flat" size="sm" onPress={() => load(search, 1, pageSize)}>Tìm</Button>
             <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate}>Thêm đối tác</Button>
           </div>
         </div>
@@ -184,6 +190,19 @@ export default function PartnersView({ user }) {
             )}
           </TableBody>
         </Table>
+
+        {partners.length > 0 && (
+          <div className="px-5 py-4 border-t border-gray-100">
+            <PaginationBar
+              page={page}
+              pageSize={pageSize}
+              totalItems={pagination.total}
+              totalPages={pagination.totalPages}
+              onPageChange={(p) => { setPage(p); load(search, p, pageSize); }}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1); load(search, 1, size); }}
+            />
+          </div>
+        )}
       </div>
 
       <PartnerFormModal

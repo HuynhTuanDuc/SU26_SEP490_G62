@@ -174,7 +174,7 @@ const BASE = `
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-const getAll = async ({ type, status, year, search, driverId } = {}) => {
+const getAll = async ({ type, status, year, search, driverId, page, limit } = {}) => {
     const conds  = [];
     const params = [];
     let   i      = 1;
@@ -190,8 +190,28 @@ const getAll = async ({ type, status, year, search, driverId } = {}) => {
     }
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const { rows } = await pool.query(`${BASE} ${where} ORDER BY db.created_at DESC`, params);
-    return rows;
+
+    if (!limit) {
+        const { rows } = await pool.query(`${BASE} ${where} ORDER BY db.created_at DESC`, params);
+        return rows;
+    }
+
+    const safeLimit  = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safePage   = Math.max(1, Number(page) || 1);
+    const offset     = (safePage - 1) * safeLimit;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        pool.query(`${BASE} ${where} ORDER BY db.created_at DESC LIMIT $${i} OFFSET $${i + 1}`, [...params, safeLimit, offset]),
+        pool.query(`SELECT COUNT(*)::int AS total FROM driver_bonuses db JOIN profiles p ON p.id = db.driver_id ${where}`, params),
+    ]);
+
+    return {
+        rows,
+        total: countRows[0]?.total ?? 0,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil((countRows[0]?.total ?? 0) / safeLimit)),
+    };
 };
 
 const getById = async (id) => {

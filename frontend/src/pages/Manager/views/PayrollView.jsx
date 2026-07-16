@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Input, Select, SelectItem, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiSearchLine, RiRefreshLine, RiCheckLine } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
@@ -30,6 +31,8 @@ export default function PayrollView() {
   const [year, setYear] = useState(NOW.getFullYear());
   const [status, setStatus] = useState("");
   const [reviewing, setReviewing] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +47,14 @@ export default function PayrollView() {
   }, [month, year, status, search]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [month, year, status, search]);
+
+  const totalPages = Math.max(1, Math.ceil(payrolls.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedPayrolls = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return payrolls.slice(start, start + pageSize);
+  }, [payrolls, safePage, pageSize]);
 
   const handleReview = async (record) => {
     setReviewing(record.id);
@@ -116,7 +127,7 @@ export default function PayrollView() {
             <TableColumn> </TableColumn>
           </TableHeader>
           <TableBody
-            items={payrolls}
+            items={pagedPayrolls}
             isLoading={loading}
             loadingContent={<Spinner color="primary" />}
             emptyContent="Không có bảng lương nào."
@@ -146,6 +157,19 @@ export default function PayrollView() {
             )}
           </TableBody>
         </Table>
+
+        {payrolls.length > 0 && (
+          <div className="mt-4">
+            <PaginationBar
+              page={safePage}
+              pageSize={pageSize}
+              totalItems={payrolls.length}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -181,13 +181,18 @@ const broadcastPartnerChange = (action, extra = {}) => {
     });
 };
 
-const listPartners = async ({ search } = {}) => {
-    const [partners, summary] = await Promise.all([
-        managerRepository.listPartners({ search }),
+const listPartners = async ({ search, page, limit } = {}) => {
+    const [result, summary] = await Promise.all([
+        managerRepository.listPartners({ search, page, limit }),
         managerRepository.getPartnerSummary(),
     ]);
 
-    return { partners, summary };
+    if (Array.isArray(result)) return { partners: result, summary };
+    return {
+        partners: result.rows,
+        summary,
+        pagination: { total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages },
+    };
 };
 
 const createPartner = async (payload) => {

@@ -8,6 +8,7 @@ export function useBonuses(filters = {}) {
   const [stats,    setStats]    = useState(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10, totalPages: 1 });
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -19,6 +20,8 @@ export function useBonuses(filters = {}) {
       if (filters.year)     params.year     = filters.year;
       if (filters.search)   params.search   = filters.search;
       if (filters.driverId) params.driver_id = filters.driverId;
+      params.page  = filters.page  || 1;
+      params.limit = filters.limit || 10;
 
       const [listRes, statsRes] = await Promise.all([
         accountantService.getBonuses(params),
@@ -26,12 +29,13 @@ export function useBonuses(filters = {}) {
       ]);
       setBonuses(listRes.bonuses ?? []);
       setStats(statsRes);
+      setPagination(listRes.pagination ?? { total: (listRes.bonuses ?? []).length, page: 1, limit: params.limit, totalPages: 1 });
     } catch (err) {
       setError(err.message ?? "Lỗi tải dữ liệu");
     } finally {
       setLoading(false);
     }
-  }, [filters.type, filters.status, filters.year, filters.search, filters.driverId]);
+  }, [filters.type, filters.status, filters.year, filters.search, filters.driverId, filters.page, filters.limit]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -40,5 +44,5 @@ export function useBonuses(filters = {}) {
     await fetchAll();
   };
 
-  return { bonuses, stats, loading, error, refresh: fetchAll, payBonus };
+  return { bonuses, stats, loading, error, pagination, refresh: fetchAll, payBonus };
 }

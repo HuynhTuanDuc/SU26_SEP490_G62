@@ -75,7 +75,7 @@ const getByDriver = async (driverId) => bonusRepository.getByDriver(driverId);
  * Tạo khoản phúc lợi / thưởng đột xuất.
  * amount được tính tự động với welfare_birthday, welfare_wedding, welfare_funeral.
  */
-const createWelfare = async (data, createdBy) => {
+const createWelfare = async (data, createdBy, createdByRole) => {
     const { driver_id, type, beneficiary_name, beneficiary_relation, notes, proof_url, year } = data;
 
     if (type === 'tet_annual') throw new Error('Thưởng Tết phải dùng chức năng tạo hàng loạt');
@@ -111,18 +111,20 @@ const createWelfare = async (data, createdBy) => {
         proof_url:            proof_url ?? null,
     }, createdBy);
 
-    // Notify managers to approve (nếu người tạo không phải manager)
-    const managerIds = await _getUserIdsByRole('manager');
-    const notifyIds  = managerIds.filter((id) => id !== createdBy);
-    if (notifyIds.length) {
-        notificationService.createForUsers(notifyIds, {
-            title:      'Yêu cầu phúc lợi mới',
-            message:    `Có phiếu "${TYPE_LABEL[type] ?? type}" mới chờ duyệt.`,
-            type:       'BONUS_REQUEST',
-            entityType: 'driver_bonuses',
-            entityId:   bonus.id,
-        }, { displayMode: 'alert' }).catch(() => {});
+    // Manager tự tạo → tự động duyệt luôn, không cần đợi thêm 1 bước duyệt thừa.
+    // Accountant tạo → vẫn giữ pending, chờ Manager duyệt như bình thường.
+    if (createdByRole === 'manager') {
+        return approve(bonus.id, createdBy, null);
     }
+
+    const managerIds = await _getUserIdsByRole('manager');
+    notificationService.createForUsers(managerIds, {
+        title:      'Yêu cầu phúc lợi mới',
+        message:    `Có phiếu "${TYPE_LABEL[type] ?? type}" mới chờ duyệt.`,
+        type:       'BONUS_REQUEST',
+        entityType: 'driver_bonuses',
+        entityId:   bonus.id,
+    }, { displayMode: 'alert' }).catch(() => {});
 
     return bonus;
 };

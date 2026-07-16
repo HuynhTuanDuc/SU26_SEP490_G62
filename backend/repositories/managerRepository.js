@@ -178,7 +178,7 @@ const getPartnerSummary = async () => {
     return result.rows[0];
 };
 
-const listPartners = async ({ search = '' } = {}) => {
+const listPartners = async ({ search = '', page, limit } = {}) => {
     const params = [];
     const conditions = [];
     const normalizedSearch = String(search || '').trim();
@@ -196,6 +196,15 @@ const listPartners = async ({ search = '' } = {}) => {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    let limitClause = '';
+    if (limit) {
+        const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+        const safePage  = Math.max(1, Number(page) || 1);
+        params.push(safeLimit, (safePage - 1) * safeLimit);
+        limitClause = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    }
+
     const result = await pool.query(
         `SELECT
             p.id,
@@ -232,11 +241,27 @@ const listPartners = async ({ search = '' } = {}) => {
          GROUP BY p.id
          ORDER BY
             COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0) DESC,
-            p.company_name ASC`,
+            p.company_name ASC
+         ${limitClause}`,
         params,
     );
 
-    return result.rows;
+    if (!limit) return result.rows;
+
+    const countParams = normalizedSearch ? [params[0]] : [];
+    const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM partners p ${whereClause}`,
+        countParams,
+    );
+    const total = countRows[0]?.total ?? 0;
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    return {
+        rows: result.rows,
+        total,
+        page: Math.max(1, Number(page) || 1),
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil(total / safeLimit)),
+    };
 };
 
 const getPartnerById = async (partnerId) => {

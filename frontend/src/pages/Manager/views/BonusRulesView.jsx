@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button, Input, NumberInput, Select, SelectItem, Switch, Chip, Spinner,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
 } from "@heroui/react";
 import { RiAddLine, RiPencilLine, RiDeleteBinLine } from "react-icons/ri";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
+
+const PAGE_SIZE = 10;
 
 const BONUS_TYPES = [
   { value: "kpi", label: "Vượt KPI (ngưỡng doanh thu)" },
@@ -35,6 +38,7 @@ export default function BonusRulesView() {
   const [error, setError] = useState(null);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [page, setPage] = useState(1);
 
   const load = async () => {
     setLoading(true);
@@ -111,6 +115,13 @@ export default function BonusRulesView() {
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil(rules.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRules = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return rules.slice(start, start + PAGE_SIZE);
+  }, [rules, safePage]);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
@@ -126,7 +137,7 @@ export default function BonusRulesView() {
           <p className="text-xs text-gray-400 text-center py-8">Chưa có quy tắc thưởng nào.</p>
         ) : (
           <div className="flex flex-col divide-y divide-gray-50">
-            {rules.map((rule) => (
+            {pagedRules.map((rule) => (
               <div key={rule.id} className="flex items-center justify-between px-5 py-4 gap-4">
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <div className="flex items-center gap-2">
@@ -160,6 +171,16 @@ export default function BonusRulesView() {
           </div>
         )}
       </div>
+
+      {rules.length > 0 && (
+        <PaginationBar
+          page={safePage}
+          pageSize={PAGE_SIZE}
+          totalItems={rules.length}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
+      )}
 
       <Modal isOpen={modalOpen} onOpenChange={(open) => !open && closeModal()} size="2xl">
         <ModalContent>

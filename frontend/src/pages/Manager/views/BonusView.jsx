@@ -6,6 +6,7 @@ import {
 } from "@heroui/react";
 import { RiRefreshLine, RiGiftLine, RiCheckLine, RiCloseLine, RiAddLine } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
 const NOW = new Date();
@@ -54,23 +55,33 @@ export default function BonusView() {
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [creating, setCreating] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+
   const loadBonuses = useCallback(async () => {
     setLoading(true);
     try {
       const [bonusRes, statsRes] = await Promise.all([
-        managerService.getBonuses({ year, ...(typeFilter ? { type: typeFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}) }),
+        managerService.getBonuses({
+          year, page, limit: pageSize,
+          ...(typeFilter ? { type: typeFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+        }),
         managerService.getBonusStats(year),
       ]);
       setBonuses(bonusRes.bonuses || []);
       setStats(statsRes);
+      setPagination(bonusRes.pagination || { total: (bonusRes.bonuses || []).length, totalPages: 1 });
     } catch (e) {
       alert(e.message || "Lỗi tải dữ liệu thưởng");
     } finally {
       setLoading(false);
     }
-  }, [year, typeFilter, statusFilter]);
+  }, [year, typeFilter, statusFilter, page, pageSize]);
 
   useEffect(() => { loadBonuses(); }, [loadBonuses]);
+  useEffect(() => { setPage(1); }, [year, typeFilter, statusFilter]);
 
   useEffect(() => {
     managerService.getDriverList().then((res) => setDrivers((res.users || []).filter((u) => u.role === "driver"))).catch(() => {});
@@ -240,6 +251,19 @@ export default function BonusView() {
                 )}
               </TableBody>
             </Table>
+
+            {bonuses.length > 0 && (
+              <div className="mt-3">
+                <PaginationBar
+                  page={page}
+                  pageSize={pageSize}
+                  totalItems={pagination.total}
+                  totalPages={pagination.totalPages}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+                />
+              </div>
+            )}
           </Tab>
 
           <Tab key="tet" title="Thưởng Tết">
