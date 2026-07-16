@@ -102,6 +102,7 @@ const buildUserPayload = (account, profile) => ({
     avatar_url: profile?.avatar_url ?? null,
     role_id: profile?.role_id ?? account.role_id ?? null,
     role: account.role,
+    must_change_password: account.must_change_password ?? false,
 });
 
 const signAccessToken = (account) => jwt.sign(

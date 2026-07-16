@@ -106,8 +106,42 @@ const sendPasswordResetCodeEmail = async (toEmail, fullName, code) => {
     }
 };
 
+const sendPasswordResetEmail = async (toEmail, rawPassword, fullName) => {
+    try {
+        if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
+            return;
+        }
+
+        const transporter = createTransporter();
+        const mailOptions = {
+            from: `"Hệ thống Quản lý (Admin)" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
+            to: toEmail,
+            subject: 'Mật khẩu đăng nhập của bạn đã được đặt lại',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.5; color: #333;">
+                    <h2 style="color: #DC2626;">Xin chào ${fullName || 'bạn'},</h2>
+                    <p>Quản trị viên vừa đặt lại mật khẩu cho tài khoản của bạn. Mật khẩu tạm thời:</p>
+                    <div style="background-color: #F3F4F6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 5px 0;"><strong>Email:</strong> ${toEmail}</p>
+                        <p style="margin: 5px 0;"><strong>Mật khẩu tạm thời:</strong> <span style="color: #DC2626; font-weight: bold;">${rawPassword}</span></p>
+                    </div>
+                    <p>Vui lòng đăng nhập bằng mật khẩu này — hệ thống sẽ yêu cầu bạn đổi sang mật khẩu mới ngay lập tức.</p>
+                    <p>Nếu bạn không yêu cầu việc này, hãy liên hệ quản trị viên ngay.</p>
+                    <p>Trân trọng,<br/>Đội ngũ Quản trị Logiscount.</p>
+                    <p style="color: #9CA3AF;">Email này được gửi tự động, vui lòng không trả lời.</p>
+                </div>
+            `,
+        };
+
+        await transporter.sendMail(mailOptions);
+    } catch (error) {
+        console.error('[Email Service] Lỗi khi gửi email reset mật khẩu:', error);
+    }
+};
+
 module.exports = {
     sendWelcomeEmail,
     sendEmailChangeVerificationCode,
     sendPasswordResetCodeEmail,
+    sendPasswordResetEmail,
 };

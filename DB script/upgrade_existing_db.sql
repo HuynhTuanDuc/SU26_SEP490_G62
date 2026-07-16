@@ -149,4 +149,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_due_date        ON invoices(due_date);
 CREATE INDEX IF NOT EXISTS idx_invoices_invoice_date    ON invoices(invoice_date);
 CREATE INDEX IF NOT EXISTS idx_debt_payments_paid_at    ON debt_payments(paid_at);
 
+-- 10. Manager reset mật khẩu nhân viên — bắt đổi mật khẩu ở lần đăng nhập kế tiếp
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+
 COMMIT;

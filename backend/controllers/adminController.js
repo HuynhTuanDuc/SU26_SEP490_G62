@@ -60,11 +60,12 @@ const updateUser = async (req, res) => {
             emergency_contact_name,
             emergency_contact_phone,
             notes,
+            email,
         } = req.body;
         await adminService.updateUser(
             userId, full_name, phone, role, gender, dob, city,
             address, country, national_id, tax_code,
-            emergency_contact_name, emergency_contact_phone, notes,
+            emergency_contact_name, emergency_contact_phone, notes, email,
         );
         res.json({ message: 'Cập nhật thành công.' });
     } catch (err) {
@@ -95,9 +96,23 @@ const toggleUserStatus = async (req, res) => {
     }
 };
 
+const resetUserPassword = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const currentUserId = req.user.userId;
+        await adminService.resetUserPassword(userId, currentUserId);
+        res.json({ message: 'Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email của nhân viên.' });
+    } catch (err) {
+        console.error('Error resetting user password:', err);
+        const status = err.status || 500;
+        res.status(status).json({ error: err.status ? err.message : 'Lỗi máy chủ', details: err.message });
+    }
+};
+
 module.exports = {
     getAllUsers,
     createUser,
     updateUser,
+    resetUserPassword,
     toggleUserStatus,
 };

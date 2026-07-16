@@ -5,7 +5,7 @@ const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address',
 const getAccountByEmail = async (email) => {
     const normalizedEmail = email.trim().toLowerCase();
     const result = await pool.query(
-        `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_active, a.last_login_at, a.created_at, a.updated_at
+        `SELECT a.id, a.email, a.password_hash, a.role_id, r.name AS role, a.is_active, a.must_change_password, a.last_login_at, a.created_at, a.updated_at
          FROM accounts a
          JOIN roles r ON a.role_id = r.id
          WHERE LOWER(a.email) = $1`,
@@ -16,7 +16,7 @@ const getAccountByEmail = async (email) => {
 
 const getAccountById = async (accountId) => {
     const result = await pool.query(
-        `SELECT a.id, a.email, a.role_id, r.name AS role, a.is_active
+        `SELECT a.id, a.email, a.role_id, r.name AS role, a.is_active, a.must_change_password
          FROM accounts a
          JOIN roles r ON a.role_id = r.id
          WHERE a.id = $1`,
@@ -39,7 +39,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, a.must_change_password, p.avatar_url, p.dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id
@@ -151,8 +151,8 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
         await client.query('BEGIN');
 
         const accountResult = await client.query(
-            `INSERT INTO accounts (email, password_hash, role_id, is_active)
-             VALUES ($1, $2, $3, true)
+            `INSERT INTO accounts (email, password_hash, role_id, is_active, must_change_password)
+             VALUES ($1, $2, $3, true, true)
              RETURNING id`,
             [email.toLowerCase(), passwordHash, roleId],
         );
@@ -250,10 +250,24 @@ const getPasswordHash = async (userId) => {
 };
 
 const updatePasswordHash = async (userId, newHash) => {
+    // Đổi mật khẩu thành công qua bất kỳ luồng tự phục vụ nào (đổi mk / quên mk) —
+    // luôn xoá cờ bắt đổi mật khẩu vì yêu cầu đã được thoả.
     await pool.query(
-        `UPDATE accounts SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+        `UPDATE accounts SET password_hash = $1, must_change_password = FALSE, updated_at = NOW() WHERE id = $2`,
         [newHash, userId],
     );
+};
+
+// Manager reset mật khẩu cho nhân viên — đặt lại hash + bắt đổi mật khẩu ở lần đăng nhập kế tiếp.
+const resetPassword = async (userId, newHash) => {
+    const result = await pool.query(
+        `UPDATE accounts
+         SET password_hash = $1, must_change_password = TRUE, updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, email`,
+        [newHash, userId],
+    );
+    return result.rows[0] ?? null;
 };
 
 module.exports = {
@@ -274,4 +288,5 @@ module.exports = {
     updateAccountEmail,
     getPasswordHash,
     updatePasswordHash,
+    resetPassword,
 };

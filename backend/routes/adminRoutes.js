@@ -11,5 +11,6 @@ router.get('/users', adminController.getAllUsers);
 router.post('/users', adminController.createUser);
 router.put('/users/:id', adminController.updateUser);
 router.patch('/users/:id/status', adminController.toggleUserStatus);
+router.post('/users/:id/reset-password', adminController.resetUserPassword);
 
 module.exports = router;
