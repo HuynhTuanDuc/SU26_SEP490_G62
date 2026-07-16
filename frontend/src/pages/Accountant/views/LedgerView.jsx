@@ -103,6 +103,7 @@ export function LedgerView() {
   const [filterFrom, setFilterFrom]         = useState("");
   const [filterTo, setFilterTo]             = useState("");
   const [filterExported, setFilterExported] = useState("");
+  const [sortBy, setSortBy]                 = useState("");
   const [showExport, setShowExport]         = useState(false);
 
   const [reverseTarget, setReverseTarget]   = useState(null);
@@ -135,6 +136,7 @@ export function LedgerView() {
       if (filterFrom)     params.from = filterFrom;
       if (filterTo)       params.to = filterTo;
       if (filterExported) params.exported = filterExported;
+      if (sortBy)         params.sort = sortBy;
       const data = await accountantService.getLedger(params);
       setRows(data.transactions ?? []);
       setTotal(data.total ?? 0);
@@ -144,7 +146,7 @@ export function LedgerView() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, filterEvent, filterFrom, filterTo, filterExported]);
+  }, [page, pageSize, filterEvent, filterFrom, filterTo, filterExported, sortBy]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -183,6 +185,19 @@ export function LedgerView() {
         >
           <SelectItem key="pending">Chưa xuất</SelectItem>
           <SelectItem key="exported">Đã xuất</SelectItem>
+        </Select>
+        <Select
+          label="Sắp xếp"
+          size="sm"
+          variant="bordered"
+          className="w-52"
+          selectedKeys={new Set([sortBy])}
+          onChange={(e) => resetPageAnd(setSortBy)(e.target.value)}
+        >
+          <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+          <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+          <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+          <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
         </Select>
         <div className="flex-1" />
         <Button

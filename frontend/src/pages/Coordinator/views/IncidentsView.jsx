@@ -1,5 +1,5 @@
 import { forwardRef, useDeferredValue, useEffect, useImperativeHandle, useState } from "react";
-import { Button, Spinner, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
+import { Button, Spinner, Select, SelectItem, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiEyeLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import IncidentDetailModal from "../modals/IncidentDetailModal";
@@ -9,11 +9,36 @@ import { incidentTypeLabel } from "../utils";
 
 const EMPTY_CREATE_FORM = { incidentType: "", severityLevel: "medium", shipmentId: "", description: "", location: "" };
 
+const STATUS_FILTER_OPTIONS = [
+  { value: "", label: "Tất cả trạng thái" },
+  { value: "open", label: "Mới tiếp nhận" },
+  { value: "investigating", label: "Đang xử lý" },
+  { value: "resolved", label: "Đã giải quyết" },
+  { value: "closed", label: "Đã đóng" },
+];
+
+const SEVERITY_FILTER_OPTIONS = [
+  { value: "", label: "Tất cả mức độ" },
+  { value: "low", label: "Thấp" },
+  { value: "medium", label: "Trung bình" },
+  { value: "high", label: "Cao" },
+  { value: "critical", label: "Khẩn cấp" },
+];
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Mới nhất" },
+  { value: "oldest", label: "Cũ nhất" },
+  { value: "severity", label: "Mức độ nghiêm trọng" },
+];
+
 const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, onIncidentResolved, basePath }, ref) {
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [drivers, setDrivers] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,8 +54,10 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
   const loadIncidents = async (page = pagination.page) => {
     setLoading(true);
     try {
-      const params = { page: String(page), limit: String(pagination.limit) };
+      const params = { page: String(page), limit: String(pagination.limit), sort: sortBy };
       if (deferredSearch?.trim()) params.search = deferredSearch.trim();
+      if (statusFilter) params.status = statusFilter;
+      if (severityFilter) params.severity_level = severityFilter;
       const data = await coordinatorService.getIncidents(params);
       setIncidents(data.incidents || []);
       setPagination(data.pagination || { page, limit: pagination.limit, total: data.incidents?.length || 0, totalPages: 1 });
@@ -44,7 +71,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
   useEffect(() => {
     loadIncidents(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deferredSearch, refreshKey]);
+  }, [deferredSearch, refreshKey, statusFilter, severityFilter, sortBy]);
 
   useEffect(() => {
     coordinatorService.getDrivers().then((data) => setDrivers(data.drivers || [])).catch(() => {});
@@ -123,12 +150,48 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
   return (
     <div className="flex flex-col gap-5">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
           <div>
             <div className="text-sm font-bold text-gray-800">Danh sách sự cố</div>
             <div className="text-xs text-gray-400">Nếu chưa lấy hàng, doanh thu thuộc về tài xế thay thế. Nếu đã lấy hàng, doanh thu chia 50/50.</div>
           </div>
-          <span className="text-xs text-gray-400">{incidents.length} sự cố · {incidents.filter((i) => i.status === "open").length} mới tiếp nhận</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select
+              size="sm"
+              variant="bordered"
+              className="w-44"
+              selectedKeys={new Set([statusFilter])}
+              onSelectionChange={(keys) => setStatusFilter([...keys][0] ?? "")}
+            >
+              {STATUS_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} textValue={o.label}>{o.label}</SelectItem>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              variant="bordered"
+              className="w-40"
+              selectedKeys={new Set([severityFilter])}
+              onSelectionChange={(keys) => setSeverityFilter([...keys][0] ?? "")}
+            >
+              {SEVERITY_FILTER_OPTIONS.map((o) => (
+                <SelectItem key={o.value} textValue={o.label}>{o.label}</SelectItem>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              variant="bordered"
+              className="w-44"
+              placeholder="Sắp xếp"
+              selectedKeys={new Set([sortBy])}
+              onSelectionChange={(keys) => setSortBy([...keys][0] ?? "newest")}
+            >
+              {SORT_OPTIONS.map((o) => (
+                <SelectItem key={o.value} textValue={o.label}>{o.label}</SelectItem>
+              ))}
+            </Select>
+            <span className="text-xs text-gray-400 whitespace-nowrap">{incidents.length} sự cố · {incidents.filter((i) => i.status === "open").length} mới tiếp nhận</span>
+          </div>
         </div>
 
         <Table

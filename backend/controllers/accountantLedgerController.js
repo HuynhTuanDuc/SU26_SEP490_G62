@@ -21,7 +21,7 @@ const EVENT_TYPE_LABEL = {
 // GET /api/accountant/ledger?event_type=&from=&to=&exported=&page=&pageSize=
 const getJournal = async (req, res) => {
     try {
-        const { event_type, from, to, exported } = req.query;
+        const { event_type, from, to, exported, sort } = req.query;
         const page     = Math.max(1, Number(req.query.page) || 1);
         const pageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 50));
 
@@ -34,6 +34,7 @@ const getJournal = async (req, res) => {
             from: from || null,
             to:   to   || null,
             exported: exported || null,
+            sort: sort || null,
             limit: pageSize,
             offset: (page - 1) * pageSize,
         });

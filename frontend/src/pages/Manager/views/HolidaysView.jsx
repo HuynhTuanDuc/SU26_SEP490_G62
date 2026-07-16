@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Input, Select, SelectItem, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/react";
 import { RiCalendarLine, RiAddLine, RiDeleteBinLine } from "react-icons/ri";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
 const WEEKDAYS = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
+const PAGE_SIZE = 10;
 
 const fmtDate = (iso) => {
   const d = new Date(iso);
@@ -22,6 +24,7 @@ export default function HolidaysView() {
   const [saving, setSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [page, setPage] = useState(1);
 
   const load = async (y = year) => {
     setLoading(true);
@@ -36,6 +39,14 @@ export default function HolidaysView() {
   };
 
   useEffect(() => { load(year); }, [year]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1); }, [year]);
+
+  const totalPages = Math.max(1, Math.ceil(holidays.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedHolidays = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return holidays.slice(start, start + PAGE_SIZE);
+  }, [holidays, safePage]);
 
   const handleAdd = async () => {
     if (!newDate) { alert("Chọn ngày lễ"); return; }
@@ -102,20 +113,33 @@ export default function HolidaysView() {
       ) : holidays.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-8">Chưa có ngày lễ nào cho năm {year}.</p>
       ) : (
-        <div className="flex flex-col divide-y divide-gray-50">
-          {holidays.map((h) => (
-            <div key={h.holiday_date} className="flex items-center justify-between py-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-gray-800 w-24">{fmtDate(h.holiday_date)}</span>
-                <Chip size="sm" variant="flat">{WEEKDAYS[new Date(h.holiday_date).getDay()]}</Chip>
-                <span className="text-sm text-gray-600">{h.name}</span>
+        <>
+          <div className="flex flex-col divide-y divide-gray-50">
+            {pagedHolidays.map((h) => (
+              <div key={h.holiday_date} className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold text-gray-800 w-24">{fmtDate(h.holiday_date)}</span>
+                  <Chip size="sm" variant="flat">{WEEKDAYS[new Date(h.holiday_date).getDay()]}</Chip>
+                  <span className="text-sm text-gray-600">{h.name}</span>
+                </div>
+                <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => setDeleteTarget(h)}>
+                  <RiDeleteBinLine size={15} />
+                </Button>
               </div>
-              <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => setDeleteTarget(h)}>
-                <RiDeleteBinLine size={15} />
-              </Button>
+            ))}
+          </div>
+          {holidays.length > 0 && (
+            <div className="mt-3">
+              <PaginationBar
+                page={safePage}
+                pageSize={PAGE_SIZE}
+                totalItems={holidays.length}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       <Modal isOpen={modalOpen} onOpenChange={(open) => !open && setModalOpen(false)} size="sm">

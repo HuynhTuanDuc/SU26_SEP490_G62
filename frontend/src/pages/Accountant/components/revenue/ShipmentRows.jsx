@@ -1,10 +1,11 @@
 import { Spinner } from "@heroui/react";
-import { RiMapPin2Line, RiArrowRightLine, RiTruckLine, RiCheckboxCircleLine, RiTimeLine } from "react-icons/ri";
+import { RiTruckLine, RiCheckboxCircleLine, RiTimeLine } from "react-icons/ri";
 import { MoneyText } from "../shared/MoneyText";
+import { RouteStops } from "../shared/RouteStops";
 
 function ShipmentRow({ shipment }) {
-  const pickup   = shipment.pickup_addresses?.[0]?.address ?? "—";
-  const delivery = shipment.delivery_address ?? "—";
+  const deliveries = shipment.delivery_addresses?.length ? shipment.delivery_addresses
+    : (shipment.delivery_address ? [shipment.delivery_address] : []);
 
   // Trạng thái nộp tiền của tài xế: paid / partial / unpaid
   const driverTotal     = Number(shipment.driver_total || 0);
@@ -25,12 +26,8 @@ function ShipmentRow({ shipment }) {
                            rounded-full bg-blue-100 text-[10px] font-bold text-blue-500">
             {shipment.shipment_index}
           </span>
-          <div className="flex items-center gap-1 text-xs text-gray-500 min-w-0">
-            <RiMapPin2Line size={11} className="text-green-500 flex-shrink-0" />
-            <span className="truncate max-w-[90px]">{pickup}</span>
-            <RiArrowRightLine size={11} className="text-gray-300 flex-shrink-0" />
-            <RiMapPin2Line size={11} className="text-red-400 flex-shrink-0" />
-            <span className="truncate max-w-[90px]">{delivery}</span>
+          <div className="text-xs text-gray-500 min-w-0">
+            <RouteStops pickups={shipment.pickup_addresses || []} deliveries={deliveries} />
           </div>
         </div>
       </td>

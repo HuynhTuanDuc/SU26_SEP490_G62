@@ -30,7 +30,13 @@ export const managerService = {
   },
 
   // ─── Partners ─────────────────────────────────────────────────────────────
-  getPartners: (search = "") => apiRequest(`${BASE}/partners${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+  getPartners: (search = "", { page = 1, limit = 10, hasDebt = "", sort = "" } = {}) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (search) params.set("search", search);
+    if (hasDebt) params.set("hasDebt", hasDebt);
+    if (sort) params.set("sort", sort);
+    return apiRequest(`${BASE}/partners?${params}`);
+  },
   createPartner: (payload) => apiRequest(`${BASE}/partners`, { method: "POST", body: payload }),
   updatePartner: (id, payload) => apiRequest(`${BASE}/partners/${id}`, { method: "PUT", body: payload }),
   getPartnerDebts: (id) => apiRequest(`${BASE}/partners/${id}/debts`),

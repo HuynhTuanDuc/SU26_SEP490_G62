@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button, Input, NumberInput, Select, SelectItem, Switch, Chip, Spinner,
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
 } from "@heroui/react";
 import { RiAddLine, RiPencilLine, RiDeleteBinLine } from "react-icons/ri";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
+
+const PAGE_SIZE = 10;
 
 const BONUS_TYPES = [
   { value: "kpi", label: "Vượt KPI (ngưỡng doanh thu)" },
@@ -35,6 +38,10 @@ export default function BonusRulesView() {
   const [error, setError] = useState(null);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [page, setPage] = useState(1);
+  const [filterType, setFilterType] = useState("");
+  const [filterActive, setFilterActive] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -111,9 +118,64 @@ export default function BonusRulesView() {
     }
   };
 
+  const filteredRules = useMemo(() => {
+    let list = rules;
+    if (filterType) list = list.filter((r) => r.bonus_type === filterType);
+    if (filterActive) list = list.filter((r) => String(r.is_active) === filterActive);
+    list = [...list];
+    if (sortBy === "amount-desc") list.sort((a, b) => (b.reward_amount ?? 0) - (a.reward_amount ?? 0));
+    else if (sortBy === "amount-asc") list.sort((a, b) => (a.reward_amount ?? 0) - (b.reward_amount ?? 0));
+    else list.sort((a, b) => (b.is_active === a.is_active ? b.id - a.id : b.is_active ? 1 : -1));
+    return list;
+  }, [rules, filterType, filterActive, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRules.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedRules = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredRules.slice(start, start + PAGE_SIZE);
+  }, [filteredRules, safePage]);
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Select
+            label="Loại thưởng"
+            size="sm"
+            variant="bordered"
+            className="w-56"
+            selectedKeys={new Set([filterType])}
+            onChange={(e) => { setPage(1); setFilterType(e.target.value); }}
+          >
+            <SelectItem key="" textValue="Tất cả loại">Tất cả loại</SelectItem>
+            {BONUS_TYPES.map((t) => <SelectItem key={t.value} textValue={t.label}>{t.label}</SelectItem>)}
+          </Select>
+          <Select
+            label="Trạng thái"
+            size="sm"
+            variant="bordered"
+            className="w-44"
+            selectedKeys={new Set([filterActive])}
+            onChange={(e) => { setPage(1); setFilterActive(e.target.value); }}
+          >
+            <SelectItem key="" textValue="Tất cả">Tất cả</SelectItem>
+            <SelectItem key="true" textValue="Đang áp dụng">Đang áp dụng</SelectItem>
+            <SelectItem key="false" textValue="Ngừng áp dụng">Ngừng áp dụng</SelectItem>
+          </Select>
+          <Select
+            label="Sắp xếp"
+            size="sm"
+            variant="bordered"
+            className="w-56"
+            selectedKeys={new Set([sortBy])}
+            onChange={(e) => { setPage(1); setSortBy(e.target.value); }}
+          >
+            <SelectItem key="" textValue="Mặc định">Mặc định</SelectItem>
+            <SelectItem key="amount-desc" textValue="Số tiền thưởng cao nhất">Số tiền thưởng cao nhất</SelectItem>
+            <SelectItem key="amount-asc" textValue="Số tiền thưởng thấp nhất">Số tiền thưởng thấp nhất</SelectItem>
+          </Select>
+        </div>
         <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate} className="h-9 font-medium px-4">
           Thêm quy tắc thưởng
         </Button>
@@ -122,11 +184,11 @@ export default function BonusRulesView() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-10"><Spinner color="primary" /></div>
-        ) : rules.length === 0 ? (
+        ) : filteredRules.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-8">Chưa có quy tắc thưởng nào.</p>
         ) : (
           <div className="flex flex-col divide-y divide-gray-50">
-            {rules.map((rule) => (
+            {pagedRules.map((rule) => (
               <div key={rule.id} className="flex items-center justify-between px-5 py-4 gap-4">
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <div className="flex items-center gap-2">
@@ -160,6 +222,16 @@ export default function BonusRulesView() {
           </div>
         )}
       </div>
+
+      {filteredRules.length > 0 && (
+        <PaginationBar
+          page={safePage}
+          pageSize={PAGE_SIZE}
+          totalItems={filteredRules.length}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
+      )}
 
       <Modal isOpen={modalOpen} onOpenChange={(open) => !open && closeModal()} size="2xl">
         <ModalContent>

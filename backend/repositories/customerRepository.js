@@ -1,20 +1,32 @@
 const pool = require('../config/database');
 
-const listCustomers = async ({ search = '', page = 1, limit = 20 } = {}) => {
+const SORT_OPTIONS = {
+    newest: 'c.created_at DESC',
+    name_asc: 'COALESCE(c.company_name, c.full_name) ASC',
+    orders_desc: 'total_orders DESC',
+};
+
+const listCustomers = async ({ search = '', page = 1, limit = 20, type = '', sort = 'newest' } = {}) => {
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (pageNum - 1) * limitNum;
 
     const params = [];
-    let whereSql = '';
+    const conditions = [];
     if (search?.trim()) {
         const keyword = `%${search.trim()}%`;
         params.push(keyword);
-        whereSql = `WHERE c.full_name ILIKE $${params.length}
+        conditions.push(`(c.full_name ILIKE $${params.length}
             OR c.company_name ILIKE $${params.length}
             OR c.phone ILIKE $${params.length}
-            OR c.tax_code ILIKE $${params.length}`;
+            OR c.tax_code ILIKE $${params.length})`);
     }
+    if (type?.trim()) {
+        params.push(type.trim());
+        conditions.push(`c.customer_type = $${params.length}`);
+    }
+    const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const orderBySql = SORT_OPTIONS[sort] || SORT_OPTIONS.newest;
 
     const countResult = await pool.query(
         `SELECT COUNT(*)::int AS total FROM customers c ${whereSql}`,
@@ -29,7 +41,7 @@ const listCustomers = async ({ search = '', page = 1, limit = 20 } = {}) => {
          LEFT JOIN orders o ON o.customer_id = c.id
          ${whereSql}
          GROUP BY c.id
-         ORDER BY c.created_at DESC
+         ORDER BY ${orderBySql}
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limitNum, offset],
     );
