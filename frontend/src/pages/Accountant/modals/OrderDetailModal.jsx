@@ -4,7 +4,7 @@ import {
   Button, Chip, Spinner, Divider, Textarea,
 } from "@heroui/react";
 import {
-  RiFileList3Line, RiMapPin2Line, RiArrowRightLine,
+  RiFileList3Line,
   RiTruckLine, RiUserLine, RiPhoneLine, RiBuildingLine,
   RiCheckboxCircleLine, RiTimeLine, RiCalendarLine,
   RiMoneyDollarCircleLine, RiBox2Line, RiScalesLine,
@@ -12,6 +12,7 @@ import {
   RiArrowUpLine, RiArrowDownLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
+import { RouteStops } from "../components/shared/RouteStops";
 import { accountantService } from "../services/accountant.service";
 
 const PAYMENT_LABELS = {
@@ -206,8 +207,8 @@ function BankTransferPanel({ s, onConfirmed }) {
 }
 
 function ShipmentCard({ s, index, onBankConfirmed }) {
-  const pickup   = s.pickup_addresses?.[0]?.address ?? s.pickup_address ?? "—";
-  const delivery = s.delivery_address ?? "—";
+  const pickups   = s.pickup_addresses?.length ? s.pickup_addresses : (s.pickup_address ? [s.pickup_address] : []);
+  const deliveries = s.delivery_addresses?.length ? s.delivery_addresses : (s.delivery_address ? [s.delivery_address] : []);
   const state    = DRIVER_STATE[s.driver_payment_state] ?? { label: "Không có nợ TX", color: "text-gray-400", bg: "bg-gray-50", icon: RiTimeLine };
   const StateIcon = state.icon;
 
@@ -244,12 +245,8 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
       {}
       <div className="px-4 py-3 flex flex-col gap-2.5">
         {}
-        <div className="flex items-start gap-1.5 text-xs text-gray-600">
-          <RiMapPin2Line size={13} className="text-green-500 flex-shrink-0 mt-0.5" />
-          <span className="flex-1">{pickup}</span>
-          <RiArrowRightLine size={12} className="text-gray-300 flex-shrink-0 mx-1 mt-0.5" />
-          <RiMapPin2Line size={13} className="text-red-400 flex-shrink-0 mt-0.5" />
-          <span className="flex-1">{delivery}</span>
+        <div className="text-xs text-gray-600">
+          <RouteStops pickups={pickups} deliveries={deliveries} />
         </div>
 
         <Divider className="my-0" />

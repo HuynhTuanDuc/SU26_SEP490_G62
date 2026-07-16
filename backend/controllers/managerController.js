@@ -161,7 +161,7 @@ const PAYROLL_STATUSES = ['pending', 'reviewed', 'approved', 'paid'];
 
 const getPayrolls = async (req, res) => {
     try {
-        const { status, search } = req.query;
+        const { status, search, sort } = req.query;
         const now   = new Date();
         const month = Number(req.query.month) || now.getMonth() + 1;
         const year  = Number(req.query.year)  || now.getFullYear();
@@ -170,7 +170,7 @@ const getPayrolls = async (req, res) => {
             return res.status(400).json({ error: 'Trạng thái bảng lương không hợp lệ' });
 
         const [rows, stats] = await Promise.all([
-            accountantPayrollRepository.getAllPayrolls({ month, year, status: status || null, search: search?.trim() || null }),
+            accountantPayrollRepository.getAllPayrolls({ month, year, status: status || null, search: search?.trim() || null, sort: sort || null }),
             accountantPayrollRepository.getPayrollStats({ month, year }),
         ]);
         res.json({ payrolls: rows, stats, month, year });
@@ -224,11 +224,13 @@ const rejectExpense = async (req, res) => {
 
 const getIncidents = async (req, res) => {
     try {
-        const { status, search, page, limit } = req.query;
+        const { status, severity_level, search, sort, page, limit } = req.query;
         const coordinatorService = require('../services/coordinatorService');
         const result = await coordinatorService.getIncidents({
             status: status || null,
+            severityLevel: severity_level || null,
             search: search || '',
+            sort: sort || 'newest',
             page,
             limit,
         });

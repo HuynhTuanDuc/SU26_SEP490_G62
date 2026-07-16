@@ -20,6 +20,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -39,6 +40,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
       if (deferredSearch?.trim()) params.search = deferredSearch.trim();
       if (dateFromFilter) params.dateFrom = dateFromFilter;
       if (dateToFilter) params.dateTo = dateToFilter;
+      if (sortBy) params.sort = sortBy;
 
       const data = await coordinatorService.getReceiptRequests(params);
       setReceiptRequests(data.requests || []);
@@ -53,13 +55,14 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
   useEffect(() => {
     loadReceiptRequests(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kindFilter, statusFilter, dateFromFilter, dateToFilter, deferredSearch, refreshKey]);
+  }, [kindFilter, statusFilter, dateFromFilter, dateToFilter, sortBy, deferredSearch, refreshKey]);
 
   const resetFilters = () => {
     setKindFilter("all");
     setStatusFilter("all");
     setDateFromFilter("");
     setDateToFilter("");
+    setSortBy("");
   };
 
   const closeModal = () => {
@@ -163,6 +166,11 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
         </Select>
         <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" />
         <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" />
+        <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48">
+          <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+          <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+          <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
+        </Select>
         <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={resetFilters}>Xóa lọc</Button>
         <div className="ml-auto text-xs text-gray-400">
           {summary.total} bản ghi · {summary.approved} đã tạo · {summary.pending} chờ xử lý

@@ -20,20 +20,34 @@ const _send = (res, err) => {
 
 const getAll = async (req, res) => {
     try {
-        const { type, status, year, search, driver_id } = req.query;
+        const { type, status, year, search, driver_id, sort, page, limit } = req.query;
         if (type   && !bonusRepository.BONUS_TYPES.includes(type))
             return res.status(400).json({ error: 'Loại thưởng không hợp lệ' });
         if (status && !bonusRepository.BONUS_STATUSES.includes(status))
             return res.status(400).json({ error: 'Trạng thái không hợp lệ' });
 
-        const rows = await bonusService.getAll({
+        const result = await bonusService.getAll({
             type:     type   || null,
             status:   status || null,
             year:     year   ? Number(year) : null,
             search:   search?.trim() || null,
             driverId: driver_id ? Number(driver_id) : null,
+            sort:     sort   || null,
+            page:     page  || null,
+            limit:    limit || null,
         });
-        res.json({ bonuses: rows });
+
+        if (Array.isArray(result)) {
+            res.json({ bonuses: result });
+        } else {
+            res.json({
+                bonuses: result.rows,
+                pagination: {
+                    total: result.total, page: result.page,
+                    limit: result.limit, totalPages: result.totalPages,
+                },
+            });
+        }
     } catch (err) { _send(res, err); }
 };
 
@@ -106,9 +120,12 @@ const create = async (req, res) => {
             beneficiary_name,
             beneficiary_relation,
             proof_url,
-        }, req.user.userId);
+        }, req.user.userId, req.user.role);
 
-        res.status(201).json({ message: 'Tạo khoản thưởng/phúc lợi thành công', bonus });
+        const message = req.user.role === 'manager'
+            ? 'Tạo và duyệt khoản thưởng/phúc lợi thành công'
+            : 'Tạo khoản thưởng/phúc lợi thành công — đang chờ Manager duyệt';
+        res.status(201).json({ message, bonus });
     } catch (err) { _send(res, err); }
 };
 

@@ -6,6 +6,7 @@ import {
 } from "@heroui/react";
 import { RiRefreshLine, RiGiftLine, RiCheckLine, RiCloseLine, RiAddLine } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
+import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 
 const NOW = new Date();
@@ -37,6 +38,8 @@ export default function BonusView() {
   const [year, setYear] = useState(NOW.getFullYear());
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [driverFilter, setDriverFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
@@ -54,23 +57,35 @@ export default function BonusView() {
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
   const [creating, setCreating] = useState(false);
 
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
+
   const loadBonuses = useCallback(async () => {
     setLoading(true);
     try {
       const [bonusRes, statsRes] = await Promise.all([
-        managerService.getBonuses({ year, ...(typeFilter ? { type: typeFilter } : {}), ...(statusFilter ? { status: statusFilter } : {}) }),
+        managerService.getBonuses({
+          year, page, limit: pageSize,
+          ...(typeFilter ? { type: typeFilter } : {}),
+          ...(statusFilter ? { status: statusFilter } : {}),
+          ...(driverFilter ? { driver_id: driverFilter } : {}),
+          ...(sortBy ? { sort: sortBy } : {}),
+        }),
         managerService.getBonusStats(year),
       ]);
       setBonuses(bonusRes.bonuses || []);
       setStats(statsRes);
+      setPagination(bonusRes.pagination || { total: (bonusRes.bonuses || []).length, totalPages: 1 });
     } catch (e) {
       alert(e.message || "Lỗi tải dữ liệu thưởng");
     } finally {
       setLoading(false);
     }
-  }, [year, typeFilter, statusFilter]);
+  }, [year, typeFilter, statusFilter, driverFilter, sortBy, page, pageSize]);
 
   useEffect(() => { loadBonuses(); }, [loadBonuses]);
+  useEffect(() => { setPage(1); }, [year, typeFilter, statusFilter, driverFilter, sortBy]);
 
   useEffect(() => {
     managerService.getDriverList().then((res) => setDrivers((res.users || []).filter((u) => u.role === "driver"))).catch(() => {});
@@ -195,6 +210,29 @@ export default function BonusView() {
                 <SelectItem key="rejected">Từ chối</SelectItem>
                 <SelectItem key="paid">Đã chi</SelectItem>
               </Select>
+              <Select
+                selectedKeys={new Set([driverFilter])}
+                onSelectionChange={(k) => setDriverFilter([...k][0] ?? "")}
+                placeholder="Tất cả tài xế"
+                variant="bordered"
+                size="sm"
+                className="w-56"
+              >
+                <SelectItem key="" textValue="Tất cả tài xế">Tất cả tài xế</SelectItem>
+                {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{d.full_name}</SelectItem>)}
+              </Select>
+              <Select
+                selectedKeys={new Set([sortBy])}
+                onSelectionChange={(k) => setSortBy([...k][0] ?? "")}
+                variant="bordered"
+                size="sm"
+                className="w-48"
+              >
+                <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+                <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+                <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+                <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
+              </Select>
               <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={loadBonuses}>Làm mới</Button>
             </div>
 
@@ -240,6 +278,19 @@ export default function BonusView() {
                 )}
               </TableBody>
             </Table>
+
+            {bonuses.length > 0 && (
+              <div className="mt-3">
+                <PaginationBar
+                  page={page}
+                  pageSize={pageSize}
+                  totalItems={pagination.total}
+                  totalPages={pagination.totalPages}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+                />
+              </div>
+            )}
           </Tab>
 
           <Tab key="tet" title="Thưởng Tết">

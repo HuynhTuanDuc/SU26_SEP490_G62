@@ -14,6 +14,10 @@ const getOrders = async (req, res) => {
         const filters = {
             search:      req.query.search?.trim()      || null,
             debt_status: req.query.debt_status?.trim() || null,
+            customer:    req.query.customer?.trim()    || null,
+            dateFrom:    req.query.dateFrom?.trim()     || null,
+            dateTo:      req.query.dateTo?.trim()       || null,
+            sort:        req.query.sort?.trim()         || null,
         };
 
         const result = await accountantOrderService.getOrders(filters, page, limit);
@@ -67,8 +71,10 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
             const pickups = (s.pickup_addresses || []).filter((p) => String(p || '').trim());
             if (pickups.length === 0)
                 throw err400(`${idx}: cần ít nhất 1 điểm lấy hàng.`);
-            if (!s.delivery_address?.trim())
-                throw err400(`${idx}: thiếu địa chỉ giao hàng.`);
+            const deliveries = (Array.isArray(s.delivery_addresses) ? s.delivery_addresses : [s.delivery_address])
+                .filter((d) => String(d || '').trim());
+            if (deliveries.length === 0)
+                throw err400(`${idx}: cần ít nhất 1 điểm giao hàng.`);
 
             if (s.vehicle_group_id != null) posInt(s.vehicle_group_id, `${idx}: Nhóm xe`);
             if (s.vehicle_id != null)       posInt(s.vehicle_id,       `${idx}: Xe`);
@@ -107,8 +113,10 @@ const validateOrderBody = (body, { requirePhone = true } = {}) => {
                 if (String(addr || '').length > 500)
                     throw err400(`${idx}: Địa chỉ lấy hàng không quá 500 ký tự.`);
             }
-            if (s.delivery_address && String(s.delivery_address).length > 500)
-                throw err400(`${idx}: Địa chỉ giao hàng không quá 500 ký tự.`);
+            for (const addr of deliveries) {
+                if (String(addr || '').length > 500)
+                    throw err400(`${idx}: Địa chỉ giao hàng không quá 500 ký tự.`);
+            }
             if (s.cargo_name && String(s.cargo_name).length > 200)
                 throw err400(`${idx}: Tên hàng không quá 200 ký tự.`);
             if (s.notes && String(s.notes).length > 500)

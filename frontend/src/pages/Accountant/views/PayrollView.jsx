@@ -32,6 +32,20 @@ const STATUS_CHIP = {
   paid:     { color: "success",  label: "Đã trả lương" },
 };
 
+const PAYROLL_STATUS_OPTIONS = [
+  { key: "",         label: "Tất cả trạng thái" },
+  { key: "pending",  label: "Chờ duyệt" },
+  { key: "reviewed", label: "Manager đã duyệt" },
+  { key: "approved", label: "Kế toán xác nhận" },
+  { key: "paid",     label: "Đã trả lương" },
+];
+
+const PAYROLL_SORT_OPTIONS = [
+  { key: "net_desc", label: "Thực lĩnh cao nhất" },
+  { key: "net_asc",  label: "Thực lĩnh thấp nhất" },
+  { key: "status",   label: "Trạng thái" },
+];
+
 function StatCard({ label, value, icon: Icon, bg, text, border }) {
   return (
     <div className={`relative overflow-hidden rounded-xl bg-white border ${border} p-5 flex flex-col gap-3 shadow-sm`}>
@@ -283,20 +297,42 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [payPage, setPayPage]         = useState(1);
   const [payPageSize, setPayPageSize] = useState(10);
 
+  const [payrollSearch, setPayrollSearch]             = useState("");
+  const [payrollStatusFilter, setPayrollStatusFilter] = useState("");
+  const [payrollSort, setPayrollSort]                 = useState("net_desc");
+
   const [advPage, setAdvPage]         = useState(1);
   const [advPageSize, setAdvPageSize] = useState(10);
 
+  const filteredPayrolls = useMemo(() => {
+    const rows = payrolls.filter((row) => {
+      if (payrollStatusFilter && row.status !== payrollStatusFilter) return false;
+      if (payrollSearch && !(row.driver_name ?? "").toLowerCase().includes(payrollSearch.toLowerCase())) return false;
+      return true;
+    });
+    const sorted = [...rows];
+    if (payrollSort === "net_asc") {
+      sorted.sort((a, b) => Number(a.net_salary || 0) - Number(b.net_salary || 0));
+    } else if (payrollSort === "status") {
+      const order = { pending: 0, reviewed: 1, approved: 2, paid: 3 };
+      sorted.sort((a, b) => (order[a.status] ?? 99) - (order[b.status] ?? 99));
+    } else {
+      sorted.sort((a, b) => Number(b.net_salary || 0) - Number(a.net_salary || 0));
+    }
+    return sorted;
+  }, [payrolls, payrollStatusFilter, payrollSearch, payrollSort]);
+
   const pagedPayrolls = useMemo(() => {
     const start = (payPage - 1) * payPageSize;
-    return payrolls.slice(start, start + payPageSize);
-  }, [payrolls, payPage, payPageSize]);
+    return filteredPayrolls.slice(start, start + payPageSize);
+  }, [filteredPayrolls, payPage, payPageSize]);
 
   const pagedAdvances = useMemo(() => {
     const start = (advPage - 1) * advPageSize;
     return advances.slice(start, start + advPageSize);
   }, [advances, advPage, advPageSize]);
 
-  const payTotalPages = Math.max(1, Math.ceil(payrolls.length / payPageSize));
+  const payTotalPages = Math.max(1, Math.ceil(filteredPayrolls.length / payPageSize));
   const advTotalPages = Math.max(1, Math.ceil(advances.length / advPageSize));
 
   const handleGenerate = async () => {
@@ -430,6 +466,41 @@ export function PayrollView({ defaultTab = "payroll" }) {
             </Button>
           </div>
 
+          {}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input
+              size="sm"
+              placeholder="Tìm theo tên tài xế..."
+              value={payrollSearch}
+              onValueChange={(v) => { setPayrollSearch(v); setPayPage(1); }}
+              className="w-56"
+            />
+            <Select
+              size="sm"
+              placeholder="Trạng thái"
+              aria-label="Trạng thái"
+              className="w-52"
+              selectedKeys={new Set([payrollStatusFilter])}
+              onChange={(e) => { setPayrollStatusFilter(e.target.value); setPayPage(1); }}
+            >
+              {PAYROLL_STATUS_OPTIONS.map(({ key, label }) => (
+                <SelectItem key={key} textValue={label}>{label}</SelectItem>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              placeholder="Sắp xếp"
+              aria-label="Sắp xếp"
+              className="w-48"
+              selectedKeys={new Set([payrollSort])}
+              onChange={(e) => { setPayrollSort(e.target.value); setPayPage(1); }}
+            >
+              {PAYROLL_SORT_OPTIONS.map(({ key, label }) => (
+                <SelectItem key={key} textValue={label}>{label}</SelectItem>
+              ))}
+            </Select>
+          </div>
+
           {generateErr && (
             <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
               <RiAlertLine size={15} />
@@ -457,6 +528,13 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 <Button size="sm" color="primary" variant="flat" onPress={handleGenerate} isLoading={generating}>
                   Tạo bảng lương ngay
                 </Button>
+              </div>
+            ) : filteredPayrolls.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center">
+                  <RiWalletLine size={20} className="text-violet-400" />
+                </div>
+                <p className="text-gray-500 text-sm">Không tìm thấy bảng lương phù hợp bộ lọc.</p>
               </div>
             ) : (
               <table className="w-full">
@@ -497,11 +575,11 @@ export function PayrollView({ defaultTab = "payroll" }) {
           </div>
 
           {}
-          {!loading && payrolls.length > 0 && (
+          {!loading && filteredPayrolls.length > 0 && (
             <PaginationBar
               page={Math.min(payPage, payTotalPages)}
               pageSize={payPageSize}
-              totalItems={payrolls.length}
+              totalItems={filteredPayrolls.length}
               totalPages={payTotalPages}
               onPageChange={setPayPage}
               onPageSizeChange={(s) => { setPayPageSize(s); setPayPage(1); }}

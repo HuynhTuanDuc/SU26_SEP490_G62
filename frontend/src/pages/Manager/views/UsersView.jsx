@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import {
   Button, Input, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+  Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Select, SelectItem,
 } from "@heroui/react";
 import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine } from "react-icons/ri";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
@@ -89,6 +89,9 @@ export default function UsersView({ user }) {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("name_asc");
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
@@ -119,14 +122,34 @@ export default function UsersView({ user }) {
 
   const filtered = allUsers.filter((u) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch = (
       String(u.id).includes(q) || (u.full_name || "").toLowerCase().includes(q) ||
       (u.email || "").toLowerCase().includes(q) || (u.phone || "").toLowerCase().includes(q) ||
       (u.role || "").toLowerCase().includes(q) || (u.city || "").toLowerCase().includes(q)
     );
+    const matchesRole = !roleFilter || u.role === roleFilter;
+    const matchesStatus = !statusFilter || String(!!u.is_active) === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
   });
 
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    switch (sortBy) {
+      case "name_desc":
+        return list.sort((a, b) => (b.full_name || "").localeCompare(a.full_name || ""));
+      case "role":
+        return list.sort((a, b) => (ROLE_LABEL[a.role] || a.role || "").localeCompare(ROLE_LABEL[b.role] || b.role || ""));
+      case "status":
+        return list.sort((a, b) => Number(!!b.is_active) - Number(!!a.is_active));
+      case "name_asc":
+      default:
+        return list.sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+    }
+  }, [filtered, sortBy]);
+
+  useEffect(() => { setPage(1); }, [roleFilter, statusFilter, sortBy]);
+
+  const paged = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const handleDownloadSample = async () => {
     const REQUIRED_HEADERS = new Set(["email", "full_name", "phone", "role"]);
@@ -330,15 +353,54 @@ export default function UsersView({ user }) {
         </div>
       </div>
 
-      <Input
-        placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
-        value={search}
-        onValueChange={(v) => { setSearch(v); setPage(1); }}
-        startContent={<RiSearchLine size={15} className="text-gray-400" />}
-        variant="bordered"
-        isClearable
-        className="max-w-md"
-      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Input
+          placeholder="Tìm kiếm theo tên, email, SĐT, vai trò..."
+          value={search}
+          onValueChange={(v) => { setSearch(v); setPage(1); }}
+          startContent={<RiSearchLine size={15} className="text-gray-400" />}
+          variant="bordered"
+          size="sm"
+          isClearable
+          className="max-w-md"
+        />
+        <Select
+          size="sm"
+          variant="bordered"
+          className="w-44"
+          selectedKeys={new Set([roleFilter])}
+          onSelectionChange={(keys) => setRoleFilter([...keys][0] ?? "")}
+        >
+          <SelectItem key="" textValue="Tất cả vai trò">Tất cả vai trò</SelectItem>
+          {Object.entries(ROLE_LABEL).map(([k, v]) => (
+            <SelectItem key={k} textValue={v}>{v}</SelectItem>
+          ))}
+        </Select>
+        <Select
+          size="sm"
+          variant="bordered"
+          className="w-40"
+          selectedKeys={new Set([statusFilter])}
+          onSelectionChange={(keys) => setStatusFilter([...keys][0] ?? "")}
+        >
+          <SelectItem key="" textValue="Tất cả trạng thái">Tất cả trạng thái</SelectItem>
+          <SelectItem key="true" textValue="Hoạt động">Hoạt động</SelectItem>
+          <SelectItem key="false" textValue="Đã khóa">Đã khóa</SelectItem>
+        </Select>
+        <Select
+          size="sm"
+          variant="bordered"
+          className="w-44"
+          placeholder="Sắp xếp"
+          selectedKeys={new Set([sortBy])}
+          onSelectionChange={(keys) => setSortBy([...keys][0] ?? "name_asc")}
+        >
+          <SelectItem key="name_asc" textValue="Tên A→Z">Tên A→Z</SelectItem>
+          <SelectItem key="name_desc" textValue="Tên Z→A">Tên Z→A</SelectItem>
+          <SelectItem key="role" textValue="Vai trò">Vai trò</SelectItem>
+          <SelectItem key="status" textValue="Trạng thái (hoạt động trước)">Trạng thái (hoạt động trước)</SelectItem>
+        </Select>
+      </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <Table removeWrapper aria-label="Danh sách người dùng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>

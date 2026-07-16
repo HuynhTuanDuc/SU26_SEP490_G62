@@ -108,7 +108,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     orderId, shipmentIndex,
     vehicleId, driverId, estimatedPrice, actualPrice,
     cargoName, cargoWeight, shipmentNotes,
-    pickupAddresses, deliveryAddress, contactName, contactPhone,
+    pickupAddresses, deliveryAddresses, contactName, contactPhone,
     expenses, createdByUserId,
     distanceKm = null, completedAt = null,
 }) => {
@@ -143,8 +143,8 @@ const insertShipmentWithStopsAndExpenses = async (client, {
         });
     }
 
-    const stopAddresses = [...pickupAddresses, deliveryAddress];
-    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
+    const stopAddresses = [...pickupAddresses, ...deliveryAddresses];
+    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), ...deliveryAddresses.map(() => 'delivery')];
     const stopIndices   = stopAddresses.map((_, i) => i + 1);
     await client.query(
         `INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes, completed_at, created_at)
@@ -349,6 +349,9 @@ const createOrderWithShipments = async (orderData) => {
             const passThrough = computePassThrough(s);
             const shipmentNotes = buildShipmentNotes(s);
             const pickupAddresses = (s.pickup_addresses || []).filter((p) => String(p || '').trim() !== '');
+            const deliveryAddresses = (Array.isArray(s.delivery_addresses) ? s.delivery_addresses : [s.delivery_address])
+                .map((d) => trimToNull(d))
+                .filter(Boolean);
 
             const shipmentId = await insertShipmentWithStopsAndExpenses(client, {
                 orderId: newOrder.id,
@@ -361,7 +364,7 @@ const createOrderWithShipments = async (orderData) => {
                 cargoWeight: s.cargo_weight,
                 shipmentNotes,
                 pickupAddresses,
-                deliveryAddress: trimToNull(s.delivery_address),
+                deliveryAddresses,
                 contactName: trimToNull(orderData.customer_name),
                 contactPhone: trimToNull(orderData.customer_phone),
                 expenses: s.expenses || [],
@@ -433,6 +436,13 @@ const createOrderWithShipments = async (orderData) => {
     }
 };
 
+const ORDER_SORT_OPTIONS = {
+    newest:      'o.created_at DESC',
+    oldest:      'o.created_at ASC',
+    value_desc:  'ship_agg.actual_price DESC NULLS LAST, o.created_at DESC',
+    value_asc:   'ship_agg.actual_price ASC NULLS LAST, o.created_at DESC',
+};
+
 const getAllOrders = async (filters = {}, page = null, limit = null) => {
     const params = [];
     const conditions = [`o.derived_status = 'completed'`];
@@ -447,6 +457,21 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             OR c.phone ILIKE $${params.length}
             OR o.notes ILIKE $${params.length}
         )`);
+    }
+
+    if (filters.customer) {
+        params.push(`%${filters.customer}%`);
+        conditions.push(`(c.full_name ILIKE $${params.length} OR c.company_name ILIKE $${params.length})`);
+    }
+
+    if (filters.dateFrom) {
+        params.push(filters.dateFrom);
+        conditions.push(`o.created_at >= $${params.length}`);
+    }
+
+    if (filters.dateTo) {
+        params.push(filters.dateTo);
+        conditions.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
     // debt_status filter is applied as a compound condition across customer + driver debts
@@ -464,6 +489,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const orderByClause = ORDER_SORT_OPTIONS[filters.sort] || ORDER_SORT_OPTIONS.newest;
 
     const lateralJoins = `
         LEFT JOIN LATERAL (
@@ -578,7 +604,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             ) AS company_received
         ${baseFrom}
         ${whereClause}
-        ORDER BY o.created_at DESC
+        ORDER BY ${orderByClause}
     `;
 
     const queryParams = [...params];
@@ -623,7 +649,10 @@ const getOrderShipments = async (orderId) => {
                     JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
                     ORDER BY ts.stop_index
                 ) FILTER (WHERE ts.stop_type = 'pickup')                                              AS pickups,
-                MAX(ts.address) FILTER (WHERE ts.stop_type = 'delivery')                              AS delivery_address
+                JSON_AGG(
+                    JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
+                    ORDER BY ts.stop_index
+                ) FILTER (WHERE ts.stop_type = 'delivery')                                            AS deliveries
             FROM trip_stops ts
             WHERE ts.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
             GROUP BY ts.shipment_id
@@ -683,7 +712,7 @@ const getOrderShipments = async (orderId) => {
             COALESCE(ea.other, 0)                  AS other,
             COALESCE(ea.pass_through_total, 0)     AS pass_through_total,
             sa.pickups,
-            sa.delivery_address,
+            sa.deliveries,
             da.driver_payment_state,
             da.total_amount                        AS driver_total,
             da.driver_paid,
@@ -735,7 +764,8 @@ const getOrderShipments = async (orderId) => {
         status: row.status,
         notes: row.notes,
         pickup_addresses:  row.pickups || [],
-        delivery_address:  row.delivery_address || null,
+        delivery_addresses: row.deliveries || [],
+        delivery_address:  row.deliveries?.[0]?.address || null,
         payment_type:         row.payment_type || null,
         driver_payment_state: row.driver_payment_state || null,
         driver_total:         row.driver_total ? Number(row.driver_total) : null,

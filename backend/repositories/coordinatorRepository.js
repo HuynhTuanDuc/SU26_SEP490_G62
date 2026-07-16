@@ -61,7 +61,14 @@ const getReceiptRequestPricingHeader = async (db, requestId) => {
     return result.rows[0] ?? null;
 };
 
-const listReceiptRequests = async ({ where, params, limit, offset }) => {
+// sort resolved via allowlist, never interpolated directly from user input
+const RECEIPT_REQUEST_SORTS = {
+    'amount-desc': 'receipt_amount DESC',
+    'amount-asc':  'receipt_amount ASC',
+};
+
+const listReceiptRequests = async ({ where, params, limit, offset, sort = null }) => {
+    const orderClause = RECEIPT_REQUEST_SORTS[sort] ?? 'rr.requested_at DESC';
     const result = await pool.query(
         `SELECT
             rr.id,
@@ -159,7 +166,7 @@ const listReceiptRequests = async ({ where, params, limit, offset }) => {
               AND e.status != 'rejected'
          ) exp ON TRUE
          ${where}
-         ORDER BY rr.requested_at DESC
+         ORDER BY ${orderClause}
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset],
     );
