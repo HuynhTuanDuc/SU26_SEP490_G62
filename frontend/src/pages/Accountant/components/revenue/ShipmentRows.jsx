@@ -3,8 +3,8 @@ import { RiMapPin2Line, RiArrowRightLine, RiTruckLine, RiCheckboxCircleLine, RiT
 import { MoneyText } from "../shared/MoneyText";
 
 function ShipmentRow({ shipment }) {
-  const pickup   = shipment.pickup_addresses?.[0]?.address ?? "—";
-  const delivery = shipment.delivery_address ?? "—";
+  const pickup   = (shipment.pickup_addresses || []).map((p) => p?.address).filter(Boolean).join(", ") || "—";
+  const delivery = (shipment.delivery_addresses || []).map((d) => d?.address).filter(Boolean).join(", ") || shipment.delivery_address || "—";
 
   // Trạng thái nộp tiền của tài xế: paid / partial / unpaid
   const driverTotal     = Number(shipment.driver_total || 0);

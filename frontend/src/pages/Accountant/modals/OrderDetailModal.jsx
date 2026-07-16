@@ -206,8 +206,8 @@ function BankTransferPanel({ s, onConfirmed }) {
 }
 
 function ShipmentCard({ s, index, onBankConfirmed }) {
-  const pickup   = s.pickup_addresses?.[0]?.address ?? s.pickup_address ?? "—";
-  const delivery = s.delivery_address ?? "—";
+  const pickup   = (s.pickup_addresses || []).map((p) => p?.address).filter(Boolean).join(", ") || s.pickup_address || "—";
+  const delivery = (s.delivery_addresses || []).map((d) => d?.address).filter(Boolean).join(", ") || s.delivery_address || "—";
   const state    = DRIVER_STATE[s.driver_payment_state] ?? { label: "Không có nợ TX", color: "text-gray-400", bg: "bg-gray-50", icon: RiTimeLine };
   const StateIcon = state.icon;
 

@@ -160,7 +160,8 @@ const downloadTemplate = async () => {
     row.getCell(1).alignment = { wrapText: true, vertical: "top" };
   };
   addNote("• Mỗi dòng = 1 chuyến đã chạy xong. Cột có nền vàng ở sheet DON_HANG là BẮT BUỘC — thiếu sẽ bị từ chối.");
-  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy). Ngày dạng dd/mm/yyyy.");
+  addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy). Ngày dạng dd/mm/yyyy — định dạng ô để General hoặc Date đều được.");
+  addNote("• Nhiều điểm lấy/điểm trả trong 1 chuyến: gõ nhiều dòng trong CÙNG 1 ô (Alt+Enter) hoặc phân cách bằng dấu \"|\", vd: Kho A|Kho B.");
   addNote("• KHÔNG nhập chấm công / ngày nghỉ / ứng lương / bảo dưỡng vào file này — dùng chức năng riêng.");
 
   wsGuide.addRow([]);
@@ -218,14 +219,36 @@ const parseKm = (v) => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const parseDate = (v) => {
-  const s = String(v ?? "").trim();
-  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+// Đọc trực tiếp cell gốc (không qua sheet_to_json) để tránh SheetJS tự format lại
+// text của ô kiểu "Date" theo bảng định dạng dựng sẵn (thiên về kiểu Mỹ m/d/yy),
+// khiến chuỗi hiển thị khác với dd/mm/yyyy dù Excel vẫn hiện đúng dd/mm/yyyy.
+const parseDateCell = (cell) => {
+  if (!cell) return null;
+
+  if (cell.t === "n" && typeof cell.v === "number") {
+    const d = XLSX.SSF.parse_date_code(cell.v);
+    if (!d) return null;
+    return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+  }
+
+  if (cell.v instanceof Date && !Number.isNaN(cell.v.getTime())) {
+    return `${cell.v.getUTCFullYear()}-${String(cell.v.getUTCMonth() + 1).padStart(2, "0")}-${String(cell.v.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  const s = String(cell.w ?? cell.v ?? "").trim();
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (!m) return null;
-  const [, d, mo, y] = m;
+  let [, d, mo, y] = m;
+  if (y.length === 2) y = (Number(y) < 70 ? "20" : "19") + y;
   const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   return Number.isNaN(new Date(iso).getTime()) ? null : iso;
 };
+
+// Tách nhiều điểm lấy/trả trong cùng 1 ô — phân cách bằng "|" hoặc xuống dòng (Alt+Enter)
+const splitStops = (v) => String(v ?? "")
+  .split(/\r?\n|\|/)
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 // Parse workbook → { rows: [{rowIndex, order, display}], errors: [string] }
 function parseWorkbook(wb) {
@@ -257,7 +280,8 @@ function parseWorkbook(wb) {
     const rowNo = i + 1; // số dòng Excel (1-based, gồm header)
     const rowErr = [];
 
-    const dateIso = parseDate(get(r, "date"));
+    const dateCellAddr = XLSX.utils.encode_cell({ r: i, c: colIndex.date });
+    const dateIso = parseDateCell(ws[dateCellAddr]);
     if (!dateIso) rowErr.push("Ngày chạy sai định dạng (cần dd/mm/yyyy)");
 
     const plate = String(get(r, "plate")).trim();
@@ -265,10 +289,10 @@ function parseWorkbook(wb) {
     const driver = String(get(r, "driver")).trim();
     if (!driver) rowErr.push("Thiếu tên tài xế");
 
-    const pickup = String(get(r, "pickup")).trim();
-    const delivery = String(get(r, "delivery")).trim();
-    if (!pickup) rowErr.push("Thiếu điểm lấy hàng");
-    if (!delivery) rowErr.push("Thiếu điểm giao hàng");
+    const pickups = splitStops(get(r, "pickup"));
+    const deliveries = splitStops(get(r, "delivery"));
+    if (pickups.length === 0) rowErr.push("Thiếu điểm lấy hàng");
+    if (deliveries.length === 0) rowErr.push("Thiếu điểm giao hàng");
 
     const cargoFee = parseMoney(get(r, "cargo_fee"));
     if (cargoFee <= 0) rowErr.push("Cước xe phải lớn hơn 0");
@@ -318,8 +342,8 @@ function parseWorkbook(wb) {
       shipments.push({
         vehicle_plate: plate,
         driver_name: driver,
-        pickup_addresses: [pickup],
-        delivery_address: delivery,
+        pickup_addresses: pickups,
+        delivery_addresses: deliveries,
         cargo_fee: isFirst ? feeFirst : feePerRun,
         cargo_name: String(get(r, "cargo_name")).trim() || null,
         distance_km: isFirst ? distance : null,
@@ -336,7 +360,7 @@ function parseWorkbook(wb) {
       display: {
         date: get(r, "date"), plate, driver,
         customer: customerName || "Khách lẻ",
-        route: `${pickup} → ${delivery}`,
+        route: `${pickups.join(", ")} → ${deliveries.join(", ")}`,
         cargoFee, paymentRaw, runs,
       },
       order: {

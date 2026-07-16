@@ -108,7 +108,7 @@ const insertShipmentWithStopsAndExpenses = async (client, {
     orderId, shipmentIndex,
     vehicleId, driverId, estimatedPrice, actualPrice,
     cargoName, cargoWeight, shipmentNotes,
-    pickupAddresses, deliveryAddress, contactName, contactPhone,
+    pickupAddresses, deliveryAddresses, contactName, contactPhone,
     expenses, createdByUserId,
     distanceKm = null, completedAt = null,
 }) => {
@@ -143,8 +143,8 @@ const insertShipmentWithStopsAndExpenses = async (client, {
         });
     }
 
-    const stopAddresses = [...pickupAddresses, deliveryAddress];
-    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), 'delivery'];
+    const stopAddresses = [...pickupAddresses, ...deliveryAddresses];
+    const stopTypes     = [...pickupAddresses.map(() => 'pickup'), ...deliveryAddresses.map(() => 'delivery')];
     const stopIndices   = stopAddresses.map((_, i) => i + 1);
     await client.query(
         `INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, notes, completed_at, created_at)
@@ -349,6 +349,9 @@ const createOrderWithShipments = async (orderData) => {
             const passThrough = computePassThrough(s);
             const shipmentNotes = buildShipmentNotes(s);
             const pickupAddresses = (s.pickup_addresses || []).filter((p) => String(p || '').trim() !== '');
+            const deliveryAddresses = (Array.isArray(s.delivery_addresses) ? s.delivery_addresses : [s.delivery_address])
+                .map((d) => trimToNull(d))
+                .filter(Boolean);
 
             const shipmentId = await insertShipmentWithStopsAndExpenses(client, {
                 orderId: newOrder.id,
@@ -361,7 +364,7 @@ const createOrderWithShipments = async (orderData) => {
                 cargoWeight: s.cargo_weight,
                 shipmentNotes,
                 pickupAddresses,
-                deliveryAddress: trimToNull(s.delivery_address),
+                deliveryAddresses,
                 contactName: trimToNull(orderData.customer_name),
                 contactPhone: trimToNull(orderData.customer_phone),
                 expenses: s.expenses || [],
@@ -646,7 +649,10 @@ const getOrderShipments = async (orderId) => {
                     JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
                     ORDER BY ts.stop_index
                 ) FILTER (WHERE ts.stop_type = 'pickup')                                              AS pickups,
-                MAX(ts.address) FILTER (WHERE ts.stop_type = 'delivery')                              AS delivery_address
+                JSON_AGG(
+                    JSON_BUILD_OBJECT('address', ts.address, 'contact_name', ts.contact_name, 'contact_phone', ts.contact_phone)
+                    ORDER BY ts.stop_index
+                ) FILTER (WHERE ts.stop_type = 'delivery')                                            AS deliveries
             FROM trip_stops ts
             WHERE ts.shipment_id IN (SELECT id FROM order_shipments WHERE order_id = $1)
             GROUP BY ts.shipment_id
@@ -706,7 +712,7 @@ const getOrderShipments = async (orderId) => {
             COALESCE(ea.other, 0)                  AS other,
             COALESCE(ea.pass_through_total, 0)     AS pass_through_total,
             sa.pickups,
-            sa.delivery_address,
+            sa.deliveries,
             da.driver_payment_state,
             da.total_amount                        AS driver_total,
             da.driver_paid,
@@ -758,7 +764,8 @@ const getOrderShipments = async (orderId) => {
         status: row.status,
         notes: row.notes,
         pickup_addresses:  row.pickups || [],
-        delivery_address:  row.delivery_address || null,
+        delivery_addresses: row.deliveries || [],
+        delivery_address:  row.deliveries?.[0]?.address || null,
         payment_type:         row.payment_type || null,
         driver_payment_state: row.driver_payment_state || null,
         driver_total:         row.driver_total ? Number(row.driver_total) : null,

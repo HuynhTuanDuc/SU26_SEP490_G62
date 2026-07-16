@@ -357,9 +357,10 @@ export default function OrderDetailModal({
                     const pickupAddrs = Array.isArray(s.pickup_addresses)
                       ? s.pickup_addresses.map(a => typeof a === 'string' ? a : a?.address)
                       : [];
-                    const deliveryAddr = typeof s.delivery_address === 'string'
-                      ? s.delivery_address
-                      : s.delivery_address?.address;
+                    const deliveryAddrs = Array.isArray(s.delivery_addresses)
+                      ? s.delivery_addresses.map(a => typeof a === 'string' ? a : a?.address)
+                      : (typeof s.delivery_address === 'string' ? [s.delivery_address] : (s.delivery_address?.address ? [s.delivery_address.address] : []));
+                    const deliveryAddr = deliveryAddrs.join(" → ");
 
                     return (
                       <div key={s.id} style={{
