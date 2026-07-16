@@ -30,6 +30,7 @@ export default function PayrollView() {
   const [month, setMonth] = useState(NOW.getMonth() + 1);
   const [year, setYear] = useState(NOW.getFullYear());
   const [status, setStatus] = useState("");
+  const [sort, setSort] = useState("");
   const [reviewing, setReviewing] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -37,17 +38,17 @@ export default function PayrollView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await managerService.getPayrolls({ month, year, ...(status ? { status } : {}), ...(search ? { search } : {}) });
+      const res = await managerService.getPayrolls({ month, year, ...(status ? { status } : {}), ...(search ? { search } : {}), ...(sort ? { sort } : {}) });
       setPayrolls(res.payrolls || []);
     } catch (e) {
       alert(e.message || "Lỗi tải bảng lương");
     } finally {
       setLoading(false);
     }
-  }, [month, year, status, search]);
+  }, [month, year, status, search, sort]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [month, year, status, search]);
+  useEffect(() => { setPage(1); }, [month, year, status, search, sort]);
 
   const totalPages = Math.max(1, Math.ceil(payrolls.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -112,6 +113,19 @@ export default function PayrollView() {
             className="w-56"
             isClearable
           />
+          <Select
+            selectedKeys={new Set([sort])}
+            onSelectionChange={(k) => setSort([...k][0] ?? "")}
+            variant="bordered"
+            size="sm"
+            className="w-52"
+            aria-label="Sắp xếp"
+          >
+            <SelectItem key="" textValue="Mặc định">Mặc định</SelectItem>
+            <SelectItem key="net-salary-desc" textValue="Thực lĩnh cao nhất">Thực lĩnh cao nhất</SelectItem>
+            <SelectItem key="net-salary-asc" textValue="Thực lĩnh thấp nhất">Thực lĩnh thấp nhất</SelectItem>
+            <SelectItem key="status" textValue="Trạng thái">Trạng thái</SelectItem>
+          </Select>
           <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={load}>Làm mới</Button>
         </div>
 

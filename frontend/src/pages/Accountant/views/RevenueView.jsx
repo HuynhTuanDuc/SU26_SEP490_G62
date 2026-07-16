@@ -14,6 +14,10 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
     orders, loading: ordersLoading,
     onSearchChange,
     debtFilter, setDebtFilter,
+    dateFrom, setDateFrom,
+    dateTo, setDateTo,
+    customer, setCustomer,
+    sort, setSort,
     page, setPage,
     pageSize, setPageSize,
     meta,
@@ -55,6 +59,14 @@ export function RevenueView({ refreshKey = 0, search = "" }) {
         activeFilter={debtFilter}
         onFilterChange={setDebtFilter}
         totalItems={meta.totalItems}
+        dateFrom={dateFrom}
+        onDateFromChange={setDateFrom}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
+        customer={customer}
+        onCustomerChange={setCustomer}
+        sort={sort}
+        onSortChange={setSort}
       />
 
       <OrdersTable

@@ -22,10 +22,12 @@ const listPartners = async (_req, res) => {
 
 const getIncidents = async (req, res) => {
     try {
-        const { status, search, page, limit } = req.query;
+        const { status, severity_level, search, sort, page, limit } = req.query;
         const result = await coordinatorService.getIncidents({
             status: status || null,
+            severityLevel: severity_level || null,
             search: search || '',
+            sort: sort || 'newest',
             page: page,
             limit: limit,
         });
@@ -38,13 +40,14 @@ const getIncidents = async (req, res) => {
 // GET /api/coordinator/receipt-requests?status=pending
 const getReceiptRequests = async (req, res) => {
     try {
-        const { status, kind, search, dateFrom, dateTo, page, limit } = req.query;
+        const { status, kind, search, dateFrom, dateTo, sort, page, limit } = req.query;
         const result = await coordinatorService.getReceiptRequests({
             status: status || null,
             kind: kind || 'all',
             search: search || '',
             dateFrom: dateFrom || '',
             dateTo: dateTo || '',
+            sort: sort || null,
             page: page,
             limit: limit,
         });

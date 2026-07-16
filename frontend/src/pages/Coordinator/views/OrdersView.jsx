@@ -28,6 +28,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
   const [dateFromFilter, setDateFromFilter] = useState("");
   const [dateToFilter, setDateToFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [drivers, setDrivers] = useState([]);
   const [vehicleGroups, setVehicleGroups] = useState([]);
@@ -61,6 +62,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       if (dateFromFilter) params.dateFrom = dateFromFilter;
       if (dateToFilter) params.dateTo = dateToFilter;
       if (customerFilter.trim()) params.customer = customerFilter.trim();
+      if (sortBy) params.sort = sortBy;
 
       const data = await coordinatorService.getOrders(params);
       const dbTrips = (data.orders || []).map(buildTripFromOrder);
@@ -76,7 +78,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
   useEffect(() => {
     loadOrders(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, deferredSearch, refreshKey]);
+  }, [activeTab, customerFilter, dateFromFilter, dateToFilter, sortBy, deferredSearch, refreshKey]);
 
   useEffect(() => {
     coordinatorService.getVehicleGroups().then((data) => setVehicleGroups(data.vehicleGroups || [])).catch(() => {});
@@ -407,11 +409,17 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         <Input type="date" label="Từ ngày" value={dateFromFilter} onValueChange={setDateFromFilter} variant="bordered" size="sm" className="w-40" />
         <Input type="date" label="Đến ngày" value={dateToFilter} onValueChange={setDateToFilter} variant="bordered" size="sm" className="w-40" />
         <Input label="Khách hàng" placeholder="Lọc theo khách hàng" value={customerFilter} onValueChange={setCustomerFilter} variant="bordered" size="sm" className="w-56" />
+        <Select label="Sắp xếp" selectedKeys={new Set([sortBy])} onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")} variant="bordered" size="sm" className="w-48">
+          <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+          <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+          <SelectItem key="value-desc" textValue="Giá trị cao nhất">Giá trị cao nhất</SelectItem>
+          <SelectItem key="value-asc" textValue="Giá trị thấp nhất">Giá trị thấp nhất</SelectItem>
+        </Select>
         <Button
           variant="flat"
           size="sm"
           startContent={<RiRefreshLine size={14} />}
-          onPress={() => { setDateFromFilter(""); setDateToFilter(""); setCustomerFilter(""); }}
+          onPress={() => { setDateFromFilter(""); setDateToFilter(""); setCustomerFilter(""); setSortBy(""); }}
         >
           Xóa lọc
         </Button>

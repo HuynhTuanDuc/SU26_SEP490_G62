@@ -181,9 +181,10 @@ const broadcastPartnerChange = (action, extra = {}) => {
     });
 };
 
-const listPartners = async ({ search, page, limit } = {}) => {
+const listPartners = async ({ search, page, limit, hasDebt, sort } = {}) => {
+    const normalizedHasDebt = hasDebt === 'true' ? true : hasDebt === 'false' ? false : null;
     const [result, summary] = await Promise.all([
-        managerRepository.listPartners({ search, page, limit }),
+        managerRepository.listPartners({ search, page, limit, hasDebt: normalizedHasDebt, sort }),
         managerRepository.getPartnerSummary(),
     ]);
 

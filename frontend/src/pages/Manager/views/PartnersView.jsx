@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Input, Spinner, Chip, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
+import { Button, Input, Select, SelectItem, Spinner, Chip, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
 import { RiSearchLine, RiAddLine, RiBuilding2Line, RiFileSearchLine, RiWalletLine, RiPencilLine, RiFileList3Line } from "react-icons/ri";
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
@@ -21,6 +21,8 @@ export default function PartnersView({ user }) {
   const [summary, setSummary] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [hasDebt, setHasDebt] = useState("");
+  const [sort, setSort] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -36,10 +38,10 @@ export default function PartnersView({ user }) {
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
 
-  const load = async (nextSearch = search, nextPage = page, nextPageSize = pageSize) => {
+  const load = async (nextSearch = search, nextPage = page, nextPageSize = pageSize, nextHasDebt = hasDebt, nextSort = sort) => {
     setLoading(true);
     try {
-      const data = await managerService.getPartners(nextSearch, { page: nextPage, limit: nextPageSize });
+      const data = await managerService.getPartners(nextSearch, { page: nextPage, limit: nextPageSize, hasDebt: nextHasDebt, sort: nextSort });
       setPartners(data.partners || []);
       setSummary(data.summary || {});
       setPagination(data.pagination || { total: (data.partners || []).length, totalPages: 1 });
@@ -122,7 +124,7 @@ export default function PartnersView({ user }) {
             <div className="text-sm font-bold text-gray-800">Danh sách đối tác</div>
             <div className="text-xs text-gray-400">Quản lý thông tin đối tác và xem công nợ nếu còn tồn đọng.</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Input
               placeholder="Tìm theo tên công ty, người liên hệ..."
               value={search}
@@ -134,6 +136,30 @@ export default function PartnersView({ user }) {
               className="w-72"
               isClearable
             />
+            <Select
+              size="sm"
+              variant="bordered"
+              className="w-44"
+              aria-label="Trạng thái công nợ"
+              selectedKeys={new Set([hasDebt])}
+              onChange={(e) => { const v = e.target.value; setHasDebt(v); setPage(1); load(search, 1, pageSize, v, sort); }}
+            >
+              <SelectItem key="" textValue="Tất cả">Tất cả</SelectItem>
+              <SelectItem key="true" textValue="Có công nợ">Có công nợ</SelectItem>
+              <SelectItem key="false" textValue="Không nợ">Không nợ</SelectItem>
+            </Select>
+            <Select
+              size="sm"
+              variant="bordered"
+              className="w-52"
+              aria-label="Sắp xếp"
+              selectedKeys={new Set([sort])}
+              onChange={(e) => { const v = e.target.value; setSort(v); setPage(1); load(search, 1, pageSize, hasDebt, v); }}
+            >
+              <SelectItem key="" textValue="Tên A→Z">Tên A→Z</SelectItem>
+              <SelectItem key="debt-desc" textValue="Công nợ cao nhất">Công nợ cao nhất</SelectItem>
+              <SelectItem key="debt-asc" textValue="Công nợ thấp nhất">Công nợ thấp nhất</SelectItem>
+            </Select>
             <Button variant="flat" size="sm" onPress={() => load(search, 1, pageSize)}>Tìm</Button>
             <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate}>Thêm đối tác</Button>
           </div>

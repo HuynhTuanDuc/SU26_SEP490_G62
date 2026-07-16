@@ -112,6 +112,14 @@ const parsePositiveInt = (value, fallback, max = 100) => {
 };
 
 //List orders
+// sort resolved via allowlist, never interpolated directly from user input
+const ORDER_VALUE_EXPR = `COALESCE(NULLIF(actual_totals.total_actual_price, 0), o.total_estimated_price, 0)`;
+const ORDER_SORTS = {
+    oldest:        'o.created_at ASC, o.id ASC',
+    'value-desc':  `${ORDER_VALUE_EXPR} DESC`,
+    'value-asc':   `${ORDER_VALUE_EXPR} ASC`,
+};
+
 const listOrders = async ({
     page = 1,
     limit = 10,
@@ -120,6 +128,7 @@ const listOrders = async ({
     dateFrom = '',
     dateTo = '',
     customer = '',
+    sort = '',
 } = {}) => {
 
     const normalizedPage = parsePositiveInt(page, 1, 1000000);//số trang
@@ -200,6 +209,7 @@ const listOrders = async ({
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const orderClause = ORDER_SORTS[sort] ?? 'o.created_at DESC, o.id DESC';
     const countResult = await pool.query(
         `SELECT COUNT(*)::int AS total FROM (${selectOrderProjection} ${whereClause}) counted_orders`,
         params,
@@ -209,7 +219,7 @@ const listOrders = async ({
     const rowsResult = await pool.query(
         `${selectOrderProjection}
          ${whereClause}
-         ORDER BY o.created_at DESC, o.id DESC
+         ORDER BY ${orderClause}
          LIMIT $${rowsParams.length - 1} OFFSET $${rowsParams.length}`,
         rowsParams,
     );

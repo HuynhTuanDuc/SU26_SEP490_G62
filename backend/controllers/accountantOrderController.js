@@ -14,6 +14,10 @@ const getOrders = async (req, res) => {
         const filters = {
             search:      req.query.search?.trim()      || null,
             debt_status: req.query.debt_status?.trim() || null,
+            customer:    req.query.customer?.trim()    || null,
+            dateFrom:    req.query.dateFrom?.trim()     || null,
+            dateTo:      req.query.dateTo?.trim()       || null,
+            sort:        req.query.sort?.trim()         || null,
         };
 
         const result = await accountantOrderService.getOrders(filters, page, limit);

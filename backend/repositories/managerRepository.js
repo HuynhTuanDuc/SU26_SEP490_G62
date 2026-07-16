@@ -178,7 +178,15 @@ const getPartnerSummary = async () => {
     return result.rows[0];
 };
 
-const listPartners = async ({ search = '', page, limit } = {}) => {
+const PARTNER_REMAINING_EXPR = `COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0)`;
+
+const PARTNER_SORTS = {
+    name: 'p.company_name ASC',
+    'debt-desc': `${PARTNER_REMAINING_EXPR} DESC`,
+    'debt-asc': `${PARTNER_REMAINING_EXPR} ASC`,
+};
+
+const listPartners = async ({ search = '', page, limit, hasDebt = null, sort = null } = {}) => {
     const params = [];
     const conditions = [];
     const normalizedSearch = String(search || '').trim();
@@ -196,6 +204,14 @@ const listPartners = async ({ search = '', page, limit } = {}) => {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // hasDebt filters on the aggregated remaining amount, applied via HAVING since it depends on the GROUP BY
+    let havingClause = '';
+    if (hasDebt === true) havingClause = `HAVING ${PARTNER_REMAINING_EXPR} > 0`;
+    else if (hasDebt === false) havingClause = `HAVING ${PARTNER_REMAINING_EXPR} = 0`;
+
+    // sort is resolved via allowlist, never interpolated directly from user input
+    const orderClause = PARTNER_SORTS[sort] ?? `${PARTNER_REMAINING_EXPR} DESC, p.company_name ASC`;
 
     let limitClause = '';
     if (limit) {
@@ -239,9 +255,8 @@ const listPartners = async ({ search = '', page, limit } = {}) => {
          ) dp_agg ON dp_agg.debt_id = d.id
          ${whereClause}
          GROUP BY p.id
-         ORDER BY
-            COALESCE(SUM(GREATEST(d.total_amount - COALESCE(dp_agg.paid, 0), 0)), 0) DESC,
-            p.company_name ASC
+         ${havingClause}
+         ORDER BY ${orderClause}
          ${limitClause}`,
         params,
     );
@@ -250,7 +265,21 @@ const listPartners = async ({ search = '', page, limit } = {}) => {
 
     const countParams = normalizedSearch ? [params[0]] : [];
     const { rows: countRows } = await pool.query(
-        `SELECT COUNT(*)::int AS total FROM partners p ${whereClause}`,
+        `SELECT COUNT(*)::int AS total FROM (
+            SELECT p.id
+            FROM partners p
+            LEFT JOIN debts d
+               ON d.partner_id = p.id
+              AND d.debt_type = 'partner'
+            LEFT JOIN (
+                SELECT debt_id,
+                       COALESCE(SUM(amount) FILTER (WHERE status = 'confirmed'), 0) AS paid
+                FROM debt_payments GROUP BY debt_id
+            ) dp_agg ON dp_agg.debt_id = d.id
+            ${whereClause}
+            GROUP BY p.id
+            ${havingClause}
+         ) counted`,
         countParams,
     );
     const total = countRows[0]?.total ?? 0;

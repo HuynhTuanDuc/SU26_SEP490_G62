@@ -158,7 +158,14 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     };
 };
 
-const getAllPayrolls = async ({ month, year, status = null, search = null }) => {
+// sort resolved via allowlist, never interpolated directly from user input
+const PAYROLL_SORTS = {
+    'net-salary-desc': 'p.net_salary DESC',
+    'net-salary-asc':  'p.net_salary ASC',
+    status:            'p.status ASC, pr.full_name ASC',
+};
+
+const getAllPayrolls = async ({ month, year, status = null, search = null, sort = null }) => {
     const params = [month, year];
     const conditions = ['p.payroll_month = $1', 'p.payroll_year = $2'];
 
@@ -203,7 +210,7 @@ const getAllPayrolls = async ({ month, year, status = null, search = null }) => 
         LEFT JOIN vehicles v ON v.id = d.vehicle_id
         LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
         WHERE ${conditions.join(' AND ')}
-        ORDER BY pr.full_name
+        ORDER BY ${PAYROLL_SORTS[sort] ?? 'pr.full_name'}
     `, params);
 
     return rows;

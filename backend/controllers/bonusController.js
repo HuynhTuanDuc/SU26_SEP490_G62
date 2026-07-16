@@ -20,7 +20,7 @@ const _send = (res, err) => {
 
 const getAll = async (req, res) => {
     try {
-        const { type, status, year, search, driver_id, page, limit } = req.query;
+        const { type, status, year, search, driver_id, sort, page, limit } = req.query;
         if (type   && !bonusRepository.BONUS_TYPES.includes(type))
             return res.status(400).json({ error: 'Loại thưởng không hợp lệ' });
         if (status && !bonusRepository.BONUS_STATUSES.includes(status))
@@ -32,6 +32,7 @@ const getAll = async (req, res) => {
             year:     year   ? Number(year) : null,
             search:   search?.trim() || null,
             driverId: driver_id ? Number(driver_id) : null,
+            sort:     sort   || null,
             page:     page  || null,
             limit:    limit || null,
         });

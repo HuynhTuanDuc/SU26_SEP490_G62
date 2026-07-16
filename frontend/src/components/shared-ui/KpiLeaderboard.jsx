@@ -11,6 +11,28 @@ const PAGE_SIZE = 10;
 
 const formatCurrency = (value) => Number(value || 0).toLocaleString("vi-VN") + " đ";
 
+const SORT_LABELS = {
+  revenue: "Doanh thu",
+  trips: "Số chuyến",
+  incidents: "Sự cố ít nhất",
+};
+
+const sortKpiRows = (rows, sortBy) => {
+  const sorted = [...rows];
+  if (sortBy === "trips") sorted.sort((a, b) => (b.completed_shipments ?? 0) - (a.completed_shipments ?? 0));
+  else if (sortBy === "incidents") sorted.sort((a, b) => (a.incident_count ?? 0) - (b.incident_count ?? 0));
+  else sorted.sort((a, b) => Number(b.total_revenue ?? 0) - Number(a.total_revenue ?? 0));
+  return sorted;
+};
+
+const sortLeaderboard = (rows, sortBy) => {
+  const sorted = [...rows];
+  if (sortBy === "trips") sorted.sort((a, b) => (a.trips_rank ?? 0) - (b.trips_rank ?? 0));
+  else if (sortBy === "incidents") sorted.sort((a, b) => (a.incident_count ?? 0) - (b.incident_count ?? 0));
+  else sorted.sort((a, b) => (a.revenue_rank ?? 0) - (b.revenue_rank ?? 0));
+  return sorted;
+};
+
 export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderboardByGroup }) {
   const [tab, setTab] = useState("kpi");
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -20,10 +42,15 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
 
   const [kpiRows, setKpiRows] = useState([]);
   const [kpiLoading, setKpiLoading] = useState(false);
+  const [kpiSortBy, setKpiSortBy] = useState("revenue");
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [kpiPage, setKpiPage] = useState(1);
   const [leaderboardPage, setLeaderboardPage] = useState(1);
+  const [leaderboardSortBy, setLeaderboardSortBy] = useState("revenue");
+
+  const sortedKpiRows = useMemo(() => sortKpiRows(kpiRows, kpiSortBy), [kpiRows, kpiSortBy]);
+  const sortedLeaderboard = useMemo(() => sortLeaderboard(leaderboard, leaderboardSortBy), [leaderboard, leaderboardSortBy]);
 
   useEffect(() => {
     getVehicleGroups()
@@ -56,17 +83,17 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   useEffect(() => { setKpiPage(1); }, [kpiRows]);
   useEffect(() => { setLeaderboardPage(1); }, [leaderboard]);
 
-  const kpiTotalPages = Math.max(1, Math.ceil(kpiRows.length / PAGE_SIZE));
+  const kpiTotalPages = Math.max(1, Math.ceil(sortedKpiRows.length / PAGE_SIZE));
   const pagedKpiRows = useMemo(() => {
     const start = (kpiPage - 1) * PAGE_SIZE;
-    return kpiRows.slice(start, start + PAGE_SIZE);
-  }, [kpiRows, kpiPage]);
+    return sortedKpiRows.slice(start, start + PAGE_SIZE);
+  }, [sortedKpiRows, kpiPage]);
 
-  const leaderboardTotalPages = Math.max(1, Math.ceil(leaderboard.length / PAGE_SIZE));
+  const leaderboardTotalPages = Math.max(1, Math.ceil(sortedLeaderboard.length / PAGE_SIZE));
   const pagedLeaderboard = useMemo(() => {
     const start = (leaderboardPage - 1) * PAGE_SIZE;
-    return leaderboard.slice(start, start + PAGE_SIZE);
-  }, [leaderboard, leaderboardPage]);
+    return sortedLeaderboard.slice(start, start + PAGE_SIZE);
+  }, [sortedLeaderboard, leaderboardPage]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -104,6 +131,20 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
       <Section title="KPI & Xếp hạng tài xế" icon={RiTrophyLine}>
         <Tabs selectedKey={tab} onSelectionChange={setTab} color="primary" size="sm">
           <Tab key="kpi" title="KPI tài xế">
+            <div className="flex justify-end mt-3">
+              <Select
+                placeholder="Sắp xếp"
+                selectedKeys={new Set([kpiSortBy])}
+                onSelectionChange={(keys) => setKpiSortBy([...keys][0] ?? "revenue")}
+                variant="bordered"
+                size="sm"
+                className="w-48"
+              >
+                {Object.entries(SORT_LABELS).map(([key, label]) => (
+                  <SelectItem key={key} textValue={label}>{label}</SelectItem>
+                ))}
+              </Select>
+            </div>
             {kpiLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
             ) : kpiRows.length === 0 ? (
@@ -149,6 +190,20 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
             )}
           </Tab>
           <Tab key="leaderboard" title="Bảng xếp hạng">
+            <div className="flex justify-end mt-3">
+              <Select
+                placeholder="Sắp xếp"
+                selectedKeys={new Set([leaderboardSortBy])}
+                onSelectionChange={(keys) => setLeaderboardSortBy([...keys][0] ?? "revenue")}
+                variant="bordered"
+                size="sm"
+                className="w-48"
+              >
+                {Object.entries(SORT_LABELS).map(([key, label]) => (
+                  <SelectItem key={key} textValue={label}>{label}</SelectItem>
+                ))}
+              </Select>
+            </div>
             {leaderboardLoading ? (
               <div className="flex justify-center py-10"><Spinner color="primary" /></div>
             ) : leaderboard.length === 0 ? (

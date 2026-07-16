@@ -69,20 +69,24 @@ export function BonusView({ search }) {
   const [filterType,   setFilterType]   = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterYear,   setFilterYear]   = useState(String(currentYear));
+  const [filterDriver, setFilterDriver] = useState("");
+  const [sortBy,       setSortBy]       = useState("");
   const [paying,       setPaying]       = useState(null);
   const [confirmId,    setConfirmId]    = useState(null);
   const [page,         setPage]         = useState(1);
   const [pageSize,     setPageSize]     = useState(10);
 
   const { bonuses, stats, loading, error, pagination, refresh, payBonus } = useBonuses({
-    type:   filterType   || undefined,
-    status: filterStatus || undefined,
-    year:   filterYear   || undefined,
-    search: search       || undefined,
+    type:     filterType   || undefined,
+    status:   filterStatus || undefined,
+    year:     filterYear   || undefined,
+    search:   search       || undefined,
+    driverId: filterDriver || undefined,
+    sort:     sortBy       || undefined,
     page, limit: pageSize,
   });
 
-  useEffect(() => { setPage(1); }, [filterType, filterStatus, filterYear, search]);
+  useEffect(() => { setPage(1); }, [filterType, filterStatus, filterYear, filterDriver, sortBy, search]);
 
   const [drivers, setDrivers] = useState([]);
   const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
@@ -187,6 +191,32 @@ export function BonusView({ search }) {
           {Object.entries(STATUS_LABEL).map(([k, v]) => (
             <SelectItem key={k} value={k} textValue={v}>{v}</SelectItem>
           ))}
+        </Select>
+
+        <Select
+          size="sm"
+          label="Tài xế"
+          className="w-56"
+          selectedKeys={new Set([filterDriver])}
+          onSelectionChange={(keys) => setFilterDriver([...keys][0] ?? "")}
+        >
+          <SelectItem key="" textValue="Tất cả tài xế">Tất cả tài xế</SelectItem>
+          {drivers.map((d) => (
+            <SelectItem key={String(d.id)} textValue={d.full_name}>{d.full_name}</SelectItem>
+          ))}
+        </Select>
+
+        <Select
+          size="sm"
+          label="Sắp xếp"
+          className="w-48"
+          selectedKeys={new Set([sortBy])}
+          onSelectionChange={(keys) => setSortBy([...keys][0] ?? "")}
+        >
+          <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+          <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+          <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+          <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
         </Select>
 
         <Button size="sm" variant="flat" onPress={refresh}>Làm mới</Button>

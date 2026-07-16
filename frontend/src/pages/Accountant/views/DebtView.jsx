@@ -25,6 +25,12 @@ const STATUS_OPTIONS = [
   { key: "paid",    label: "Đã thu đủ" },
 ];
 
+const SORT_OPTIONS = [
+  { key: "remaining_desc", label: "Công nợ cao nhất" },
+  { key: "remaining_asc",  label: "Công nợ thấp nhất" },
+  { key: "overdue_first",  label: "Quá hạn trước" },
+];
+
 const STATUS_CHIP = {
   unpaid:  { label: "Chưa thu",     color: "danger"  },
   partial: { label: "Thu 1 phần",   color: "warning" },
@@ -531,6 +537,7 @@ export function DebtView({ search = "" }) {
 
   const [payPerson, setPayPerson]       = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy]             = useState("remaining_desc");
   const [tab, setTab] = useState("debts");
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -539,17 +546,32 @@ export function DebtView({ search = "" }) {
 
   const list = debtType === "customer" ? customerDebts : driverDebts;
 
-  const filteredList = useMemo(() => list.filter((person) => {
-    const { name, phone } = getPersonInfo(person);
-    if (search && (
-      !name.toLowerCase().includes(search.toLowerCase()) &&
-      !(phone ?? "").includes(search)
-    )) return false;
-    if (statusFilter !== "all" && person.computed_status !== statusFilter) return false;
-    return true;
-  }), [list, search, statusFilter]);
+  const filteredList = useMemo(() => {
+    const rows = list.filter((person) => {
+      const { name, phone } = getPersonInfo(person);
+      if (search && (
+        !name.toLowerCase().includes(search.toLowerCase()) &&
+        !(phone ?? "").includes(search)
+      )) return false;
+      if (statusFilter !== "all" && person.computed_status !== statusFilter) return false;
+      return true;
+    });
+    const sorted = [...rows];
+    if (sortBy === "remaining_asc") {
+      sorted.sort((a, b) => Number(a.total_remaining || 0) - Number(b.total_remaining || 0));
+    } else if (sortBy === "overdue_first") {
+      sorted.sort((a, b) => {
+        const aDue = a.earliest_due_date ? new Date(a.earliest_due_date).getTime() : Infinity;
+        const bDue = b.earliest_due_date ? new Date(b.earliest_due_date).getTime() : Infinity;
+        return aDue - bDue;
+      });
+    } else {
+      sorted.sort((a, b) => Number(b.total_remaining || 0) - Number(a.total_remaining || 0));
+    }
+    return sorted;
+  }, [list, search, statusFilter, sortBy]);
 
-  useEffect(() => { setPage(1); }, [debtType, statusFilter, search]);
+  useEffect(() => { setPage(1); }, [debtType, statusFilter, sortBy, search]);
 
   const totalItems = filteredList.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -674,6 +696,19 @@ export function DebtView({ search = "" }) {
             );
           })}
         </div>
+
+        <Select
+          aria-label="Sắp xếp"
+          placeholder="Sắp xếp"
+          size="sm"
+          className="w-48"
+          selectedKeys={new Set([sortBy])}
+          onChange={(e) => setSortBy(e.target.value)}
+        >
+          {SORT_OPTIONS.map(({ key, label }) => (
+            <SelectItem key={key} textValue={label}>{label}</SelectItem>
+          ))}
+        </Select>
       </div>
 
       {}

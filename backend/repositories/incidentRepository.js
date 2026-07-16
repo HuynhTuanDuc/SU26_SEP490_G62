@@ -86,12 +86,20 @@ const getCoordinatorIds = async () => {
     return result.rows.map((r) => r.id);
 };
 
-const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, limit = 10 } = {}) => {
+// Whitelist ORDER BY để tránh SQL injection qua tham số sort — không nội suy chuỗi sort trực tiếp vào SQL
+const INCIDENT_SORT_CLAUSES = {
+    newest: `CASE i.status WHEN 'open' THEN 0 WHEN 'investigating' THEN 1 WHEN 'resolved' THEN 2 ELSE 3 END, i.created_at DESC`,
+    oldest: `CASE i.status WHEN 'open' THEN 0 WHEN 'investigating' THEN 1 WHEN 'resolved' THEN 2 ELSE 3 END, i.created_at ASC`,
+    severity: `CASE i.severity_level WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END, i.created_at DESC`,
+};
+
+const getCoordinatorIncidents = async ({ status = null, severityLevel = null, search = '', sort = 'newest', page = 1, limit = 10 } = {}) => {
     const pageNum = parseInt(page, 10);
     const limitNum = parseInt(limit, 10);
     const normalizedPage = isNaN(pageNum) || pageNum < 1 ? 1 : pageNum;
     const normalizedLimit = isNaN(limitNum) || limitNum < 1 ? 10 : limitNum;
     const offset = (normalizedPage - 1) * normalizedLimit;
+    const orderBySql = INCIDENT_SORT_CLAUSES[sort] || INCIDENT_SORT_CLAUSES.newest;
 
     const conditions = [];
     const params = [];
@@ -99,6 +107,11 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
     if (status && status !== 'all') {
         params.push(status);
         conditions.push(`i.status = $${params.length}`);
+    }
+
+    if (severityLevel && severityLevel !== 'all') {
+        params.push(severityLevel);
+        conditions.push(`i.severity_level = $${params.length}`);
     }
 
     if (search && String(search).trim()) {
@@ -166,14 +179,7 @@ const getCoordinatorIncidents = async ({ status = null, search = '', page = 1, l
          LEFT JOIN profiles p_replace ON p_replace.id = i.replacement_driver_id
          LEFT JOIN vehicles v ON v.id = sc.vehicle_id
          ${whereSql}
-         ORDER BY
-            CASE i.status
-                WHEN 'open' THEN 0
-                WHEN 'investigating' THEN 1
-                WHEN 'resolved' THEN 2
-                ELSE 3
-            END,
-            i.created_at DESC
+         ORDER BY ${orderBySql}
          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, normalizedLimit, offset],
     );

@@ -205,12 +205,19 @@ const deleteVehicleGroup = async (vehicleGroupId) => {
     return result.rows[0] ?? null;
 };
 
+// sort resolved via allowlist, never interpolated directly from user input
+const VEHICLE_SORTS = {
+    plate:  'v.plate_number ASC',
+    status: 'v.status ASC, v.plate_number ASC',
+};
+
 const listVehicles = async ({
     page = 1,
     limit = 10,
     search = null,
     status = null,
     vehicleGroupId = null,
+    sort = null,
 } = {}) => {
     const offset = (page - 1) * limit;
     const conditions = [];
@@ -245,7 +252,7 @@ const listVehicles = async ({
         pool.query(
             `${VEHICLE_DETAIL_SELECT}
              ${whereClause}
-             ORDER BY v.updated_at DESC, v.id DESC
+             ORDER BY ${VEHICLE_SORTS[sort] ?? 'v.updated_at DESC, v.id DESC'}
              LIMIT $${rowsParams.length - 1} OFFSET $${rowsParams.length}`,
             rowsParams,
         ),

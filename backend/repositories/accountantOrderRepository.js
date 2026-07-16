@@ -433,6 +433,13 @@ const createOrderWithShipments = async (orderData) => {
     }
 };
 
+const ORDER_SORT_OPTIONS = {
+    newest:      'o.created_at DESC',
+    oldest:      'o.created_at ASC',
+    value_desc:  'ship_agg.actual_price DESC NULLS LAST, o.created_at DESC',
+    value_asc:   'ship_agg.actual_price ASC NULLS LAST, o.created_at DESC',
+};
+
 const getAllOrders = async (filters = {}, page = null, limit = null) => {
     const params = [];
     const conditions = [`o.derived_status = 'completed'`];
@@ -447,6 +454,21 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             OR c.phone ILIKE $${params.length}
             OR o.notes ILIKE $${params.length}
         )`);
+    }
+
+    if (filters.customer) {
+        params.push(`%${filters.customer}%`);
+        conditions.push(`(c.full_name ILIKE $${params.length} OR c.company_name ILIKE $${params.length})`);
+    }
+
+    if (filters.dateFrom) {
+        params.push(filters.dateFrom);
+        conditions.push(`o.created_at >= $${params.length}`);
+    }
+
+    if (filters.dateTo) {
+        params.push(filters.dateTo);
+        conditions.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
     }
 
     // debt_status filter is applied as a compound condition across customer + driver debts
@@ -464,6 +486,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
     }
 
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const orderByClause = ORDER_SORT_OPTIONS[filters.sort] || ORDER_SORT_OPTIONS.newest;
 
     const lateralJoins = `
         LEFT JOIN LATERAL (
@@ -578,7 +601,7 @@ const getAllOrders = async (filters = {}, page = null, limit = null) => {
             ) AS company_received
         ${baseFrom}
         ${whereClause}
-        ORDER BY o.created_at DESC
+        ORDER BY ${orderByClause}
     `;
 
     const queryParams = [...params];

@@ -27,7 +27,14 @@ const insertTransaction = async (executor, {
     return row;
 };
 
-const getJournal = async ({ eventType = null, from = null, to = null, exported = null, limit = 200, offset = 0 }) => {
+// sort resolved via allowlist, never interpolated directly from user input
+const JOURNAL_SORTS = {
+    oldest:        'ft.occurred_at ASC, ft.id ASC',
+    'amount-desc': 'ft.amount DESC, ft.id DESC',
+    'amount-asc':  'ft.amount ASC, ft.id DESC',
+};
+
+const getJournal = async ({ eventType = null, from = null, to = null, exported = null, sort = null, limit = 200, offset = 0 }) => {
     const params = [];
     const conditions = [];
     if (eventType) { params.push(eventType); conditions.push(`ft.event_type = $${params.length}`); }
@@ -37,6 +44,7 @@ const getJournal = async ({ eventType = null, from = null, to = null, exported =
     if (exported === 'exported') conditions.push('ft.exported_at IS NOT NULL');
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const orderClause = JOURNAL_SORTS[sort] ?? 'ft.occurred_at DESC, ft.id DESC';
     params.push(limit, offset);
 
     const { rows } = await pool.query(
@@ -56,7 +64,7 @@ const getJournal = async ({ eventType = null, from = null, to = null, exported =
          LEFT JOIN profiles p ON p.id = ft.actor_id
          LEFT JOIN financial_transactions rev ON rev.reversal_of_id = ft.id
          ${where}
-         ORDER BY ft.occurred_at DESC, ft.id DESC
+         ORDER BY ${orderClause}
          LIMIT $${params.length - 1} OFFSET $${params.length}`,
         params,
     );

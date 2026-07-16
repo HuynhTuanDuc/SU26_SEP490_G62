@@ -45,6 +45,7 @@ export default function VehiclesView({ user }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
   const [detailVehicle, setDetailVehicle] = useState(null);
@@ -82,6 +83,7 @@ export default function VehiclesView({ user }) {
         search: opts.search ?? search,
         status: opts.status ?? statusFilter,
         vehicle_group_id: opts.group ?? groupFilter,
+        sort: opts.sort ?? sortBy,
       });
       setVehicles(data.items || []);
       setPagination({ page: data.pagination?.page || 1, limit: data.pagination?.limit || 10, total: data.pagination?.total || 0 });
@@ -369,6 +371,11 @@ export default function VehiclesView({ user }) {
           </Select>
           <Select selectedKeys={groupFilter ? [groupFilter] : []} onSelectionChange={(k) => setGroupFilter([...k][0] ?? "")} placeholder="Tất cả nhóm xe" variant="bordered" size="sm">
             {vehicleGroups.map((g) => <SelectItem key={String(g.id)}>{g.name}</SelectItem>)}
+          </Select>
+          <Select selectedKeys={new Set([sortBy])} onSelectionChange={(k) => setSortBy([...k][0] ?? "")} placeholder="Sắp xếp" variant="bordered" size="sm">
+            <SelectItem key="" textValue="Mặc định">Mặc định</SelectItem>
+            <SelectItem key="plate" textValue="Biển số A→Z">Biển số A→Z</SelectItem>
+            <SelectItem key="status" textValue="Trạng thái">Trạng thái</SelectItem>
           </Select>
           <Button color="primary" size="sm" onPress={() => loadVehicles({ page: 1 })}>Áp dụng</Button>
         </div>

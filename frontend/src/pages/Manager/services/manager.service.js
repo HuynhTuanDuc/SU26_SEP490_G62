@@ -30,9 +30,11 @@ export const managerService = {
   },
 
   // ─── Partners ─────────────────────────────────────────────────────────────
-  getPartners: (search = "", { page = 1, limit = 10 } = {}) => {
+  getPartners: (search = "", { page = 1, limit = 10, hasDebt = "", sort = "" } = {}) => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (search) params.set("search", search);
+    if (hasDebt) params.set("hasDebt", hasDebt);
+    if (sort) params.set("sort", sort);
     return apiRequest(`${BASE}/partners?${params}`);
   },
   createPartner: (payload) => apiRequest(`${BASE}/partners`, { method: "POST", body: payload }),

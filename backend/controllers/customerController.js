@@ -10,8 +10,8 @@ const sendError = (res, err) => {
 
 const getAll = async (req, res) => {
     try {
-        const { search, page, limit } = req.query;
-        const data = await customerService.listCustomers({ search, page, limit });
+        const { search, page, limit, type, sort } = req.query;
+        const data = await customerService.listCustomers({ search, page, limit, type, sort });
         res.json(data);
     } catch (err) { sendError(res, err); }
 };

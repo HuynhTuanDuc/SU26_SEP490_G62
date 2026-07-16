@@ -201,8 +201,8 @@ const listVehicleGroups = async () => orderRepository.listCoordinatorVehicleGrou
 
 const listPartners = async () => orderRepository.listCoordinatorPartners();
 
-const getIncidents = async ({ status = null, search = '', page = 1, limit = 10 } = {}) => {
-  return incidentRepository.getCoordinatorIncidents({ status, search, page, limit });
+const getIncidents = async ({ status = null, severityLevel = null, search = '', sort = 'newest', page = 1, limit = 10 } = {}) => {
+  return incidentRepository.getCoordinatorIncidents({ status, severityLevel, search, sort, page, limit });
 };
 
 const importExcel = async (userId, fileBuffer) => {
@@ -508,6 +508,7 @@ const getReceiptRequests = async ({
     search = '',
     dateFrom = '',
     dateTo = '',
+    sort = null,
     page = 1,
     limit = 10,
 } = {}) => {
@@ -561,7 +562,7 @@ const getReceiptRequests = async ({
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const { rows, total } = await coordinatorRepository.listReceiptRequests({
-        where, params, limit: normalizedLimit, offset,
+        where, params, limit: normalizedLimit, offset, sort,
     });
 
     return {

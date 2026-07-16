@@ -38,6 +38,8 @@ export default function BonusView() {
   const [year, setYear] = useState(NOW.getFullYear());
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [driverFilter, setDriverFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
 
   const [approveTarget, setApproveTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
@@ -67,6 +69,8 @@ export default function BonusView() {
           year, page, limit: pageSize,
           ...(typeFilter ? { type: typeFilter } : {}),
           ...(statusFilter ? { status: statusFilter } : {}),
+          ...(driverFilter ? { driver_id: driverFilter } : {}),
+          ...(sortBy ? { sort: sortBy } : {}),
         }),
         managerService.getBonusStats(year),
       ]);
@@ -78,10 +82,10 @@ export default function BonusView() {
     } finally {
       setLoading(false);
     }
-  }, [year, typeFilter, statusFilter, page, pageSize]);
+  }, [year, typeFilter, statusFilter, driverFilter, sortBy, page, pageSize]);
 
   useEffect(() => { loadBonuses(); }, [loadBonuses]);
-  useEffect(() => { setPage(1); }, [year, typeFilter, statusFilter]);
+  useEffect(() => { setPage(1); }, [year, typeFilter, statusFilter, driverFilter, sortBy]);
 
   useEffect(() => {
     managerService.getDriverList().then((res) => setDrivers((res.users || []).filter((u) => u.role === "driver"))).catch(() => {});
@@ -205,6 +209,29 @@ export default function BonusView() {
                 <SelectItem key="approved">Đã duyệt</SelectItem>
                 <SelectItem key="rejected">Từ chối</SelectItem>
                 <SelectItem key="paid">Đã chi</SelectItem>
+              </Select>
+              <Select
+                selectedKeys={new Set([driverFilter])}
+                onSelectionChange={(k) => setDriverFilter([...k][0] ?? "")}
+                placeholder="Tất cả tài xế"
+                variant="bordered"
+                size="sm"
+                className="w-56"
+              >
+                <SelectItem key="" textValue="Tất cả tài xế">Tất cả tài xế</SelectItem>
+                {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{d.full_name}</SelectItem>)}
+              </Select>
+              <Select
+                selectedKeys={new Set([sortBy])}
+                onSelectionChange={(k) => setSortBy([...k][0] ?? "")}
+                variant="bordered"
+                size="sm"
+                className="w-48"
+              >
+                <SelectItem key="" textValue="Mới nhất">Mới nhất</SelectItem>
+                <SelectItem key="oldest" textValue="Cũ nhất">Cũ nhất</SelectItem>
+                <SelectItem key="amount-desc" textValue="Số tiền cao nhất">Số tiền cao nhất</SelectItem>
+                <SelectItem key="amount-asc" textValue="Số tiền thấp nhất">Số tiền thấp nhất</SelectItem>
               </Select>
               <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={loadBonuses}>Làm mới</Button>
             </div>

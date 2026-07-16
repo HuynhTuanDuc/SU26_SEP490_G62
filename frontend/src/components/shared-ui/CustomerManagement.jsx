@@ -26,6 +26,8 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -37,7 +39,13 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
   const load = async (page = 1) => {
     setLoading(true);
     try {
-      const data = await getCustomers({ page: String(page), limit: String(pagination.limit), search: search.trim() });
+      const data = await getCustomers({
+        page: String(page),
+        limit: String(pagination.limit),
+        search: search.trim(),
+        type: typeFilter,
+        sort: sortBy,
+      });
       setCustomers(data.customers || []);
       setPagination(data.pagination || { page, limit: 20, total: 0 });
     } catch (err) {
@@ -51,7 +59,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
     const timer = setTimeout(() => load(1), 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, typeFilter, sortBy]);
 
   const closeModal = () => {
     setModalOpen(false);
@@ -117,17 +125,43 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <Input
-          value={search}
-          onValueChange={setSearch}
-          placeholder="Tìm tên, SĐT, MST khách hàng..."
-          startContent={<RiSearchLine size={15} className="text-gray-400" />}
-          variant="bordered"
-          size="sm"
-          isClearable
-          onClear={() => setSearch("")}
-          classNames={{ base: "w-80", inputWrapper: "bg-white h-9 rounded-lg" }}
-        />
+        <div className="flex items-center gap-3">
+          <Input
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Tìm tên, SĐT, MST khách hàng..."
+            startContent={<RiSearchLine size={15} className="text-gray-400" />}
+            variant="bordered"
+            size="sm"
+            isClearable
+            onClear={() => setSearch("")}
+            classNames={{ base: "w-80", inputWrapper: "bg-white h-9 rounded-lg" }}
+          />
+          <Select
+            placeholder="Loại khách hàng"
+            selectedKeys={new Set([typeFilter])}
+            onSelectionChange={(keys) => setTypeFilter([...keys][0] ?? "")}
+            variant="bordered"
+            size="sm"
+            className="w-44"
+          >
+            <SelectItem key="" textValue="Tất cả">Tất cả</SelectItem>
+            <SelectItem key="individual" textValue="Cá nhân">Cá nhân</SelectItem>
+            <SelectItem key="business" textValue="Doanh nghiệp">Doanh nghiệp</SelectItem>
+          </Select>
+          <Select
+            placeholder="Sắp xếp"
+            selectedKeys={new Set([sortBy])}
+            onSelectionChange={(keys) => setSortBy([...keys][0] ?? "newest")}
+            variant="bordered"
+            size="sm"
+            className="w-48"
+          >
+            <SelectItem key="newest" textValue="Mới nhất">Mới nhất</SelectItem>
+            <SelectItem key="name_asc" textValue="Tên A-Z">Tên A→Z</SelectItem>
+            <SelectItem key="orders_desc" textValue="Số đơn nhiều nhất">Số đơn nhiều nhất</SelectItem>
+          </Select>
+        </div>
         <Button color="primary" size="sm" startContent={<RiAddLine size={16} />} onPress={openCreate} className="h-9 font-medium px-4">
           Thêm khách hàng
         </Button>

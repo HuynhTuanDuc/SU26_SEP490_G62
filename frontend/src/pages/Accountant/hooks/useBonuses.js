@@ -20,6 +20,7 @@ export function useBonuses(filters = {}) {
       if (filters.year)     params.year     = filters.year;
       if (filters.search)   params.search   = filters.search;
       if (filters.driverId) params.driver_id = filters.driverId;
+      if (filters.sort)     params.sort     = filters.sort;
       params.page  = filters.page  || 1;
       params.limit = filters.limit || 10;
 
@@ -35,7 +36,7 @@ export function useBonuses(filters = {}) {
     } finally {
       setLoading(false);
     }
-  }, [filters.type, filters.status, filters.year, filters.search, filters.driverId, filters.page, filters.limit]);
+  }, [filters.type, filters.status, filters.year, filters.search, filters.driverId, filters.sort, filters.page, filters.limit]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
