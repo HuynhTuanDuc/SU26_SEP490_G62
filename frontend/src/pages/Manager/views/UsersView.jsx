@@ -5,7 +5,7 @@ import {
   Button, Input, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Select, SelectItem,
 } from "@heroui/react";
-import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine } from "react-icons/ri";
+import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine, RiKeyLine } from "react-icons/ri";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import UserFormModal from "../modals/UserFormModal";
@@ -100,6 +100,8 @@ export default function UsersView({ user }) {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [toggleTarget, setToggleTarget] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
   const fileInputRef = useRef(null);
 
   const fetchUsers = async () => {
@@ -338,6 +340,20 @@ export default function UsersView({ user }) {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      await managerService.resetUserPassword(resetTarget.id);
+      setResetTarget(null);
+      alert("Đã reset mật khẩu — mật khẩu tạm thời đã được gửi qua email của nhân viên.");
+    } catch (error) {
+      alert(error.message || "Không thể reset mật khẩu.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -432,6 +448,16 @@ export default function UsersView({ user }) {
                     <Button
                       size="sm"
                       variant="flat"
+                      color="warning"
+                      isDisabled={u.role === "manager"}
+                      startContent={<RiKeyLine size={13} />}
+                      onPress={() => setResetTarget(u)}
+                    >
+                      Reset MK
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="flat"
                       color={u.is_active ? "danger" : "success"}
                       isDisabled={u.role === "manager"}
                       startContent={u.is_active ? <RiLockLine size={13} /> : <RiLockUnlockLine size={13} />}
@@ -463,6 +489,21 @@ export default function UsersView({ user }) {
           <ModalFooter>
             <Button variant="flat" onPress={() => setToggleTarget(null)}>Hủy</Button>
             <Button color="danger" onPress={handleToggleStatus}>Xác nhận</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal isOpen={!!resetTarget} onOpenChange={(open) => !open && !resetting && setResetTarget(null)} size="sm">
+        <ModalContent>
+          <ModalHeader>Reset mật khẩu</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-gray-600">
+              Đặt lại mật khẩu cho tài khoản "{resetTarget?.full_name || resetTarget?.email}"? Mật khẩu tạm thời sẽ được gửi qua email <strong>{resetTarget?.email}</strong> — mật khẩu cũ sẽ ngừng hoạt động ngay và nhân viên phải đổi mật khẩu ở lần đăng nhập kế tiếp.
+            </p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="flat" onPress={() => setResetTarget(null)} isDisabled={resetting}>Hủy</Button>
+            <Button color="warning" onPress={handleResetPassword} isLoading={resetting}>Reset mật khẩu</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>

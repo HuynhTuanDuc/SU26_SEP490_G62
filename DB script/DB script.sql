@@ -17,6 +17,7 @@ CREATE TABLE accounts (
     password_hash   TEXT NOT NULL,
     role_id         INT NOT NULL REFERENCES roles(id),
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     last_login_at   TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()

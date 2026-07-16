@@ -73,6 +73,7 @@ export const managerService = {
   createUser: (payload) => apiRequest("/api/admin/users", { method: "POST", body: payload }),
   updateUser: (id, payload) => apiRequest(`/api/admin/users/${id}`, { method: "PUT", body: payload }),
   toggleUserStatus: (id, isActive) => apiRequest(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active: isActive } }),
+  resetUserPassword: (id) => apiRequest(`/api/admin/users/${id}/reset-password`, { method: "POST" }),
   getDriverList: () => apiRequest("/api/admin/users?role=driver&limit=200"),
   getDrivers: () => apiRequest("/api/drivers"),
 
