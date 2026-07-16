@@ -120,6 +120,9 @@ export const accountantService = {
   payBonus: (id) =>
     apiRequest(`/api/bonuses/${id}/pay`, { method: "PATCH" }),
 
+  getBonusStaffLookup: () =>
+    apiRequest("/api/bonuses/staff-lookup"),
+
   getPendingBankTransfers: (params) =>
     apiRequest(`${BASE}/receipts/bank-transfer?${new URLSearchParams(params)}`),
 

@@ -7,6 +7,7 @@ import {
   RiUserSearchLine,
   RiTrophyLine,
   RiDashboardLine,
+  RiCalendarCheckLine,
 } from "react-icons/ri";
 import "../../styles/shared-ui.css";
 
@@ -22,6 +23,7 @@ import IncidentsView from "./views/IncidentsView";
 import ReceiptsView from "./views/ReceiptsView";
 import CustomersView from "./views/CustomersView";
 import KpiView from "./views/KpiView";
+import AttendanceView from "./views/AttendanceView";
 
 const NAV_GROUPS = [
   {
@@ -38,6 +40,7 @@ const NAV_GROUPS = [
       { key: "receipts", label: "Phiếu thu", icon: RiFileList3Line },
       { key: "customers", label: "Khách hàng", icon: RiUserSearchLine },
       { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
+      { key: "attendance", label: "Chấm công", icon: RiCalendarCheckLine },
     ],
   },
 ];
@@ -71,6 +74,11 @@ const VIEW_META = {
   kpi: {
     title: "KPI & Xếp hạng",
     subtitle: "Theo dõi KPI và bảng xếp hạng của toàn bộ tài xế theo tháng, theo nhóm xe.",
+    searchPlaceholder: "",
+  },
+  attendance: {
+    title: "Chấm công tài xế",
+    subtitle: "Theo dõi và điều chỉnh chấm công theo tháng — ảnh hưởng trực tiếp tới ngày công tính lương.",
     searchPlaceholder: "",
   },
 };
@@ -190,6 +198,7 @@ export default function CoordinatorPage({ user, onLogout }) {
             )}
             {activeView === "customers" && <CustomersView />}
             {activeView === "kpi" && <KpiView />}
+            {activeView === "attendance" && <AttendanceView />}
           </main>
         </div>
       </div>

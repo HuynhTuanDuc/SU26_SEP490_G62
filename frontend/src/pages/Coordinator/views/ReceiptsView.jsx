@@ -185,6 +185,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
           </div>
         </div>
 
+        <div className="overflow-x-auto">
         <Table
           removeWrapper
           aria-label="Danh sách yêu cầu phiếu thu"
@@ -265,6 +266,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
             }}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <ReceiptDetailModal

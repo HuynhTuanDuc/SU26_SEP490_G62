@@ -12,6 +12,7 @@ import {
   RiEqualizerLine,
   RiTrophyLine,
   RiCalendarLine,
+  RiCalendarCheckLine,
 } from "react-icons/ri";
 import "../../styles/shared-ui.css";
 
@@ -31,6 +32,7 @@ import BonusView from "./views/BonusView";
 import BonusRulesView from "./views/BonusRulesView";
 import KpiView from "./views/KpiView";
 import HolidaysView from "./views/HolidaysView";
+import AttendanceView from "./views/AttendanceView";
 
 const NAV_GROUPS = [
   {
@@ -53,6 +55,7 @@ const NAV_GROUPS = [
     label: "Nhân sự & Lương",
     items: [
       { key: "users", label: "Người dùng", icon: RiUserSettingsLine },
+      { key: "attendance", label: "Chấm công", icon: RiCalendarCheckLine },
       { key: "payroll", label: "Duyệt lương", icon: RiMoneyDollarCircleLine },
       { key: "bonus", label: "Thưởng & Phúc lợi", icon: RiGiftLine },
       { key: "bonus-rules", label: "Quy tắc thưởng", icon: RiEqualizerLine },
@@ -73,6 +76,7 @@ const VIEW_META = {
   "bonus-rules": { title: "Quy tắc thưởng", subtitle: "Cấu hình ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo từng nhóm xe." },
   kpi: { title: "KPI & Xếp hạng", subtitle: "Theo dõi KPI và bảng xếp hạng của toàn bộ tài xế theo tháng, theo nhóm xe." },
   holidays: { title: "Quản lý ngày lễ", subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương." },
+  attendance: { title: "Chấm công tài xế", subtitle: "Theo dõi và điều chỉnh chấm công theo tháng — ảnh hưởng trực tiếp tới ngày công tính lương." },
 };
 
 const VIEW_STORAGE_KEY = "manager_active_view";
@@ -131,6 +135,7 @@ export default function ManagerPage({ user, onLogout }) {
             {activeView === "partners" && <PartnersView user={currentUser} />}
             {activeView === "customers" && <CustomersView />}
             {activeView === "users" && <UsersView user={currentUser} />}
+            {activeView === "attendance" && <AttendanceView />}
             {activeView === "vehicles" && <VehiclesView user={currentUser} />}
             {activeView === "incidents" && <IncidentsView />}
             {activeView === "payroll" && <PayrollView />}

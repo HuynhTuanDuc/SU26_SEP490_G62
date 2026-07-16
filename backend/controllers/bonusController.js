@@ -158,6 +158,13 @@ const pay = async (req, res) => {
     } catch (err) { _send(res, err); }
 };
 
+const getStaffLookup = async (req, res) => {
+    try {
+        const staff = await bonusService.getStaffLookup();
+        res.json({ staff });
+    } catch (err) { _send(res, err); }
+};
+
 module.exports = {
     getAll,
     getStats,
@@ -169,4 +176,5 @@ module.exports = {
     approve,
     reject,
     pay,
+    getStaffLookup,
 };
