@@ -26,20 +26,29 @@ export function RouteStops({ pickups = [], deliveries = [], className = "" }) {
   if (stops.length === 1) return <span className={className}>{stops[0].address}</span>;
 
   return (
-    <div className={`flex flex-col gap-0.5 ${className}`}>
-      {stops.map((s, i) => (
-        <div key={i} className="flex items-center gap-1.5 min-w-0">
-          <span
-            className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold flex-shrink-0 ${
-              s.kind === "Lấy" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-            }`}
-            title={`Điểm ${s.kind.toLowerCase()} hàng`}
-          >
-            {i + 1}
-          </span>
-          <span className="truncate">{s.address}</span>
-        </div>
-      ))}
+    <div className={`flex flex-col gap-1 ${className}`}>
+      {stops.map((s, i) => {
+        const isPickup = s.kind === "Lấy";
+        return (
+          <div key={i} className="flex items-center gap-1.5 min-w-0">
+            <span
+              className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold flex-shrink-0 ${
+                isPickup ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+              }`}
+            >
+              {i + 1}
+            </span>
+            <span
+              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${
+                isPickup ? "bg-green-50 text-green-700" : "bg-orange-50 text-orange-700"
+              }`}
+            >
+              {isPickup ? "Lấy" : "Trả"}
+            </span>
+            <span className="truncate">{s.address}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
