@@ -194,6 +194,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
           </div>
         </div>
 
+        <div className="overflow-x-auto">
         <Table
           removeWrapper
           aria-label="Danh sách sự cố"
@@ -259,6 +260,7 @@ const IncidentsView = forwardRef(function IncidentsView({ search, refreshKey, on
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <IncidentDetailModal

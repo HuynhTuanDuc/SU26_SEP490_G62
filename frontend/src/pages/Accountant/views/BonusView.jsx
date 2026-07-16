@@ -31,6 +31,13 @@ const STATUS_LABEL = {
   rejected: "Từ chối",
 };
 
+const ROLE_LABEL = {
+  driver:      "Tài xế",
+  coordinator: "Điều phối",
+  accountant:  "Kế toán",
+  manager:     "Quản lý",
+};
+
 const RELATION_LABEL = {
   self:          "Bản thân",
   spouse:        "Vợ/Chồng",
@@ -93,7 +100,7 @@ export function BonusView({ search }) {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    accountantService.getLookup().then((res) => setDrivers(res.drivers || [])).catch(() => {});
+    accountantService.getBonusStaffLookup().then((res) => setDrivers(res.staff || [])).catch(() => {});
   }, []);
 
   const onWelfareTypeChange = (t) => {
@@ -195,12 +202,12 @@ export function BonusView({ search }) {
 
         <Select
           size="sm"
-          label="Tài xế"
+          label="Nhân viên"
           className="w-56"
           selectedKeys={new Set([filterDriver])}
           onSelectionChange={(keys) => setFilterDriver([...keys][0] ?? "")}
         >
-          <SelectItem key="" textValue="Tất cả tài xế">Tất cả tài xế</SelectItem>
+          <SelectItem key="" textValue="Tất cả nhân viên">Tất cả nhân viên</SelectItem>
           {drivers.map((d) => (
             <SelectItem key={String(d.id)} textValue={d.full_name}>{d.full_name}</SelectItem>
           ))}
@@ -234,7 +241,7 @@ export function BonusView({ search }) {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-500 border-b border-gray-100">
-                <th className="px-4 py-3 text-left font-semibold">Tài xế</th>
+                <th className="px-4 py-3 text-left font-semibold">Nhân viên</th>
                 <th className="px-4 py-3 text-left font-semibold">Loại</th>
                 <th className="px-4 py-3 text-left font-semibold">Năm</th>
                 <th className="px-4 py-3 text-right font-semibold">Số tiền</th>
@@ -330,13 +337,13 @@ export function BonusView({ search }) {
       <Tab key="create" title="Tạo phúc lợi">
         <div className="max-w-xl flex flex-col gap-4 mt-3">
           <Select
-            label="Tài xế"
-            placeholder="Chọn tài xế..."
+            label="Nhân viên"
+            placeholder="Chọn nhân viên..."
             selectedKeys={createForm.driver_id ? new Set([String(createForm.driver_id)]) : new Set()}
             onSelectionChange={(k) => setCreateForm((p) => ({ ...p, driver_id: [...k][0] }))}
             variant="bordered"
           >
-            {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{`${d.full_name} — ${d.plate_number ?? ""}`}</SelectItem>)}
+            {drivers.map((d) => <SelectItem key={String(d.id)} textValue={d.full_name}>{`${d.full_name} — ${ROLE_LABEL[d.role] || d.role}`}</SelectItem>)}
           </Select>
 
           <Select

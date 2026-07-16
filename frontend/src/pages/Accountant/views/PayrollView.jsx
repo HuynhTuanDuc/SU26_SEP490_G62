@@ -537,6 +537,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 <p className="text-gray-500 text-sm">Không tìm thấy bảng lương phù hợp bộ lọc.</p>
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -571,6 +572,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
@@ -628,6 +630,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                 <p className="text-gray-500 text-sm">Không có yêu cầu ứng lương nào.</p>
               </div>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -660,6 +663,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 

@@ -143,8 +143,13 @@ const createOrder = async (req, res) => {
             ...payload,
             created_by: req.user.userId,
         });
+        const { autoResolvedDrivers, ...order } = newOrder;
 
-        res.status(201).json({ message: 'Tạo đơn hàng thành công.', order: newOrder });
+        res.status(201).json({
+            message: 'Tạo đơn hàng thành công.',
+            order,
+            new_drivers: (autoResolvedDrivers || []).map((d) => ({ driver_name: d.driverName, driver_id: d.driverId })),
+        });
     } catch (err) {
         sendError(res, err);
     }
@@ -162,6 +167,7 @@ const importOrders = async (req, res) => {
 
         const imported = [];
         const errors = [];
+        const newDrivers = [];
 
         for (const order of orders) {
             const rowLabel = order.row_index != null ? `Dòng ${order.row_index}` : `Đơn thứ ${imported.length + errors.length + 1}`;
@@ -185,6 +191,9 @@ const importOrders = async (req, res) => {
                     created_by: req.user.userId,
                 });
                 imported.push({ row_index: order.row_index ?? null, order_id: created.id });
+                (created.autoResolvedDrivers || []).forEach((d) => {
+                    newDrivers.push({ row_index: order.row_index ?? null, driver_name: d.driverName, driver_id: d.driverId });
+                });
             } catch (err) {
                 errors.push({ row_index: order.row_index ?? null, error: `${rowLabel}: ${err.message}` });
             }
@@ -196,6 +205,7 @@ const importOrders = async (req, res) => {
             error_count: errors.length,
             imported,
             errors,
+            new_drivers: newDrivers,
         });
     } catch (err) {
         sendError(res, err);

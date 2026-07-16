@@ -725,7 +725,8 @@ export function DebtView({ search = "" }) {
             <p className="text-gray-500 text-sm">Không có công nợ nào.</p>
           </div>
         ) : (
-          <table className="w-full" style={{ tableLayout: "fixed" }}>
+          <div className="overflow-x-auto">
+          <table className="w-full" style={{ tableLayout: "fixed", minWidth: 900 }}>
             <colgroup>
               <col style={{ width: 40 }} />
               <col />
@@ -764,6 +765,7 @@ export function DebtView({ search = "" }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

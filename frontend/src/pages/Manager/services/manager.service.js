@@ -48,6 +48,7 @@ export const managerService = {
   // ─── Bonus ────────────────────────────────────────────────────────────────
   getBonuses: (params = {}) => apiRequest(`/api/bonuses?${new URLSearchParams(params)}`),
   getBonusStats: (year) => apiRequest(`/api/bonuses/stats?year=${year}`),
+  getBonusStaffLookup: () => apiRequest("/api/bonuses/staff-lookup"),
   previewTetBonuses: (year) => apiRequest(`/api/bonuses/tet/preview?year=${year}`),
   generateTetBonuses: (year) => apiRequest("/api/bonuses/tet/generate", { method: "POST", body: { year } }),
   createBonus: (data) => apiRequest("/api/bonuses", { method: "POST", body: data }),
@@ -63,6 +64,11 @@ export const managerService = {
   updateBonusRule: (id, data) => apiRequest(`/api/bonus-rules/${id}`, { method: "PUT", body: data }),
   deleteBonusRule: (id) => apiRequest(`/api/bonus-rules/${id}`, { method: "DELETE" }),
 
+  // ─── Attendance (chấm công) ────────────────────────────────────────────────
+  getAttendanceGrid: (params = {}) => apiRequest(`/api/attendance/grid?${new URLSearchParams(params)}`),
+  markAttendance: (data) => apiRequest("/api/attendance", { method: "POST", body: data }),
+  clearAttendance: (driverId, workDate) => apiRequest(`/api/attendance/${driverId}/${workDate}`, { method: "DELETE" }),
+
   // ─── Holidays ─────────────────────────────────────────────────────────────
   getHolidays: (year) => apiRequest(`/api/admin/holidays?year=${year}`),
   createHoliday: (payload) => apiRequest("/api/admin/holidays", { method: "POST", body: payload }),
@@ -73,6 +79,7 @@ export const managerService = {
   createUser: (payload) => apiRequest("/api/admin/users", { method: "POST", body: payload }),
   updateUser: (id, payload) => apiRequest(`/api/admin/users/${id}`, { method: "PUT", body: payload }),
   toggleUserStatus: (id, isActive) => apiRequest(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active: isActive } }),
+  resetUserPassword: (id) => apiRequest(`/api/admin/users/${id}/reset-password`, { method: "POST" }),
   getDriverList: () => apiRequest("/api/admin/users?role=driver&limit=200"),
   getDrivers: () => apiRequest("/api/drivers"),
 

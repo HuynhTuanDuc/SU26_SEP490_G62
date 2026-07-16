@@ -50,7 +50,7 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
         <ModalBody className="gap-4">
           {error && <p className="text-xs text-rose-500">{error}</p>}
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Email *" value={form.email} onValueChange={update("email")} isDisabled={!!editingUser} variant="bordered" />
+            <Input label="Email *" value={form.email} onValueChange={update("email")} variant="bordered" />
             <Select label="Vai trò *" selectedKeys={[form.role]} onSelectionChange={(k) => update("role")([...k][0])} variant="bordered">
               <SelectItem key="coordinator">Coordinator (Điều phối)</SelectItem>
               <SelectItem key="accountant">Accountant (Kế toán)</SelectItem>

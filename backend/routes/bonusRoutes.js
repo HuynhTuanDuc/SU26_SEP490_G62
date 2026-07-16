@@ -9,9 +9,10 @@ router.use(verifyToken);
 router.get('/my', requireRole('driver'), bonusController.getMyBonuses);
 
 // ─── Manager + Accountant (read) ─────────────────────────────────────────────
-router.get('/',      requireRole('manager', 'accountant'), bonusController.getAll);
-router.get('/stats', requireRole('manager', 'accountant'), bonusController.getStats);
-router.get('/:id',   requireRole('manager', 'accountant'), bonusController.getOne);
+router.get('/',            requireRole('manager', 'accountant'), bonusController.getAll);
+router.get('/stats',       requireRole('manager', 'accountant'), bonusController.getStats);
+router.get('/staff-lookup', requireRole('manager', 'accountant'), bonusController.getStaffLookup);
+router.get('/:id',         requireRole('manager', 'accountant'), bonusController.getOne);
 
 // ─── Tet (manager only) ───────────────────────────────────────────────────────
 router.get('/tet/preview',    requireRole('manager'), bonusController.previewTet);

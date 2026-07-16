@@ -2,6 +2,7 @@ const profileRepository = require('../repositories/profileRepository');
 const bcrypt = require('bcryptjs');
 const emailService = require('./emailService');
 const notificationGateway = require('./notificationGateway');
+const { generateRandomPassword } = require('../utils/passwordGenerator');
 const {
     normalizePositiveInteger,
     normalizeRole,
@@ -11,6 +12,7 @@ const {
     normalizeDob,
     normalizeOptionalText,
     normalizeNationalId,
+    normalizeEmail,
     assertBoolean,
     isProtectedUserRole,
 } = require('../utils/userValidation');
@@ -108,7 +110,7 @@ const getAllUsers = async () => {
 };
 
 const createUser = async (email, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes) => {
-    const password = '123123';
+    const password = generateRandomPassword();
     if (!email || !role) {
         throw new AdminError('Thiếu thông tin bắt buộc (email, role).', 400);
     }
@@ -153,6 +155,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
             normalizedEmergencyContactName,
             normalizedEmergencyContactPhone,
             normalizedNotes,
+            normalizedRole === 'driver',
         );
         emailService.sendWelcomeEmail(email, password, normalizedFullName, normalizedRole);
         notificationGateway.broadcastToRole('manager', {
@@ -169,7 +172,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
     }
 };
 
-const updateUser = async (userId, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes) => {
+const updateUser = async (userId, full_name, phone, role, gender, dob, city, address, country, national_id, tax_code, emergency_contact_name, emergency_contact_phone, notes, email) => {
     const normalizedUserId = normalizeUserId(userId);
     const normalizedRole = normalizeManagerRole(role);
     const normalizedFullName = normalizeFullName(full_name);
@@ -184,6 +187,7 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
     const normalizedEmergencyContactName = normalizeEmergencyContactName(emergency_contact_name);
     const normalizedEmergencyContactPhone = normalizeEmergencyContactPhone(emergency_contact_phone);
     const normalizedNotes = normalizeUserNotes(notes);
+    const normalizedEmail = email?.trim() ? normalizeEmail(email, { errorFactory: createAdminError }) : null;
 
     const existingUser = await ensureUserExists(normalizedUserId);
     ensureUserCanBeManaged(existingUser, 'cập nhật');
@@ -209,6 +213,12 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
             },
             roleId,
         );
+        if (normalizedEmail && normalizedEmail !== String(existingUser.email || '').trim().toLowerCase()) {
+            await profileRepository.updateAccountEmail(normalizedUserId, normalizedEmail);
+        }
+        if (normalizedRole === 'driver') {
+            await profileRepository.ensureDriverRow(normalizedUserId);
+        }
         notificationGateway.broadcastToRole('manager', {
             type: 'manager.users.changed',
             action: 'updated',
@@ -216,10 +226,38 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
         });
     } catch (err) {
         if (err.code === '23505') {
-            throw new AdminError('Số điện thoại đã tồn tại.', 409);
+            throw new AdminError('Số điện thoại hoặc Email đã tồn tại.', 409);
         }
         throw err;
     }
+};
+
+const resetUserPassword = async (userId, currentUserId) => {
+    const normalizedUserId = normalizeUserId(userId);
+    const normalizedCurrentUserId = normalizeUserId(currentUserId);
+
+    if (normalizedUserId === normalizedCurrentUserId) {
+        throw new AdminError('Không thể tự reset mật khẩu của chính mình — dùng chức năng đổi mật khẩu.', 400);
+    }
+
+    const existingUser = await ensureUserExists(normalizedUserId);
+    ensureUserCanBeManaged(existingUser, 'reset mật khẩu');
+
+    const newPassword = generateRandomPassword();
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    const updated = await profileRepository.resetPassword(normalizedUserId, passwordHash);
+    if (!updated) {
+        throw new AdminError('Người dùng không tồn tại.', 404);
+    }
+
+    emailService.sendPasswordResetEmail(updated.email, newPassword, existingUser.full_name);
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.users.changed',
+        action: 'password_reset',
+        userId: normalizedUserId,
+    });
 };
 
 const toggleUserStatus = async (userId, is_active, currentUserId) => {
@@ -263,5 +301,6 @@ module.exports = {
     createUser,
     updateUser,
     toggleUserStatus,
+    resetUserPassword,
     AdminError,
 };

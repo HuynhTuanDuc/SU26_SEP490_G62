@@ -532,6 +532,20 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
             </div>
           )}
 
+          {result?.new_drivers?.length > 0 && (
+            <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-blue-700 mb-1">
+                <RiErrorWarningLine size={15} />
+                Đã tự động tạo {result.new_drivers.length} tài xế mới — nhờ Manager bổ sung SĐT/email/nhóm xe đầy đủ
+              </div>
+              <ul className="text-xs text-blue-600 list-disc pl-5 max-h-32 overflow-y-auto">
+                {result.new_drivers.map((d, i) => (
+                  <li key={i}>Dòng {d.row_index}: {d.driver_name} (ID #{d.driver_id})</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {submitting && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <Spinner size="sm" /> Đang import {parsed?.rows.length} chuyến...

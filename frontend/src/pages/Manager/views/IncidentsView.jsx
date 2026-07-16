@@ -193,6 +193,7 @@ export default function IncidentsView() {
           </div>
         </div>
 
+        <div className="overflow-x-auto">
         <Table
           removeWrapper
           aria-label="Danh sách sự cố"
@@ -258,6 +259,7 @@ export default function IncidentsView() {
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <IncidentDetailModal

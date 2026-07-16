@@ -333,6 +333,29 @@ const getStats = async (year) => {
     return row;
 };
 
+// Danh sách người nhận thưởng cho dropdown "Tạo phúc lợi" — thưởng Tết/hiếu hỉ/sinh nhật/
+// đặc biệt áp dụng cho MỌI nhân viên (không chỉ tài xế), khớp với driver_bonuses.driver_id
+// vốn tham chiếu profiles(id) chung, không giới hạn role ở tầng schema.
+const staffExists = async (profileId) => {
+    const { rows } = await pool.query(
+        `SELECT 1 FROM profiles p JOIN accounts a ON a.id = p.id WHERE p.id = $1 AND a.is_active = TRUE`,
+        [profileId],
+    );
+    return rows.length > 0;
+};
+
+const getStaffLookup = async () => {
+    const { rows } = await pool.query(
+        `SELECT p.id, p.full_name, p.phone, r.name AS role
+         FROM profiles p
+         JOIN accounts a ON a.id = p.id
+         JOIN roles r    ON r.id = p.role_id
+         WHERE a.is_active = TRUE
+         ORDER BY p.full_name ASC`
+    );
+    return rows;
+};
+
 module.exports = {
     BONUS_TYPES,
     BONUS_STATUSES,
@@ -346,4 +369,6 @@ module.exports = {
     reject,
     pay,
     getStats,
+    getStaffLookup,
+    staffExists,
 };

@@ -202,7 +202,8 @@ export function OrdersTable({
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-2xl border border-gray-200 overflow-hidden bg-white shadow-sm">
-        <table className="w-full table-fixed">
+        <div className="overflow-x-auto">
+        <table className="w-full table-fixed min-w-[900px]">
           <colgroup>
             <col className="w-10" />
             <col />
@@ -248,6 +249,7 @@ export function OrdersTable({
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <PaginationBar
