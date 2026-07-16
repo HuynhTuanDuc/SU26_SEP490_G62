@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import { accountantService } from "../services/accountant.service";
 import { MoneyText } from "../components/shared/MoneyText";
+import { RouteStops } from "../components/shared/RouteStops";
 
 // ─── Quy ước template "Template Import Don Ngoai.xlsx" ────────────────────────
 // 1 dòng = 1 chuyến đã hoàn thành. Cột nhận diện theo TÊN HEADER (bỏ dấu (*)).
@@ -360,7 +361,7 @@ function parseWorkbook(wb) {
       display: {
         date: get(r, "date"), plate, driver,
         customer: customerName || "Khách lẻ",
-        route: `${pickups.join(", ")} → ${deliveries.join(", ")}`,
+        pickups, deliveries,
         cargoFee, paymentRaw, runs,
       },
       order: {
@@ -502,7 +503,10 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                         <td className="px-3 py-1.5">{display.date}</td>
                         <td className="px-3 py-1.5">{display.plate} · {display.driver}</td>
                         <td className="px-3 py-1.5">{display.customer}</td>
-                        <td className="px-3 py-1.5 max-w-[220px] truncate">{display.route}{display.runs > 1 ? ` (x${display.runs})` : ""}</td>
+                        <td className="px-3 py-1.5 max-w-[220px]">
+                          <RouteStops pickups={display.pickups} deliveries={display.deliveries} />
+                          {display.runs > 1 ? <span className="text-gray-400"> (x{display.runs})</span> : null}
+                        </td>
                         <td className="px-3 py-1.5 text-right font-semibold"><MoneyText amount={display.cargoFee} /></td>
                         <td className="px-3 py-1.5">{display.paymentRaw}</td>
                       </tr>

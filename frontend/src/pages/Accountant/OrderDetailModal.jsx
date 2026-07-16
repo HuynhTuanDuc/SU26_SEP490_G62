@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { RiCheckLine, RiCloseLine } from "react-icons/ri";
 import { apiRequest } from "../../services/apiClient";
+import { RouteStops } from "./components/shared/RouteStops";
 
 const fmt = (v) => Number(v || 0).toLocaleString("vi-VN");
 
@@ -360,7 +361,6 @@ export default function OrderDetailModal({
                     const deliveryAddrs = Array.isArray(s.delivery_addresses)
                       ? s.delivery_addresses.map(a => typeof a === 'string' ? a : a?.address)
                       : (typeof s.delivery_address === 'string' ? [s.delivery_address] : (s.delivery_address?.address ? [s.delivery_address.address] : []));
-                    const deliveryAddr = deliveryAddrs.join(" → ");
 
                     return (
                       <div key={s.id} style={{
@@ -432,12 +432,7 @@ export default function OrderDetailModal({
                               Hành trình
                             </div>
                             <div style={{ fontSize: 12, color: "#475569" }}>
-                              {pickupAddrs.length > 0
-                                ? pickupAddrs.join(" → ")
-                                : "—"
-                              }
-                              {pickupAddrs.length > 0 && deliveryAddr ? " → " : ""}
-                              {deliveryAddr || ""}
+                              <RouteStops pickups={pickupAddrs} deliveries={deliveryAddrs} />
                             </div>
                           </div>
 
