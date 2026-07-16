@@ -155,6 +155,7 @@ const createUser = async (email, full_name, phone, role, gender, dob, city, addr
             normalizedEmergencyContactName,
             normalizedEmergencyContactPhone,
             normalizedNotes,
+            normalizedRole === 'driver',
         );
         emailService.sendWelcomeEmail(email, password, normalizedFullName, normalizedRole);
         notificationGateway.broadcastToRole('manager', {
@@ -214,6 +215,9 @@ const updateUser = async (userId, full_name, phone, role, gender, dob, city, add
         );
         if (normalizedEmail && normalizedEmail !== String(existingUser.email || '').trim().toLowerCase()) {
             await profileRepository.updateAccountEmail(normalizedUserId, normalizedEmail);
+        }
+        if (normalizedRole === 'driver') {
+            await profileRepository.ensureDriverRow(normalizedUserId);
         }
         notificationGateway.broadcastToRole('manager', {
             type: 'manager.users.changed',

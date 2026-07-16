@@ -23,14 +23,30 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const baseSalary      = monthsOfService >= 12 ? BASE_SALARY_SENIOR : BASE_SALARY_JUNIOR;
     const revenuePct      = Number(driver.revenue_share_percent ?? 15);
 
-    const { rows: [leaveRow] } = await client.query(`
-        SELECT COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved')::int AS unpaid_days
-        FROM leave_requests
-        WHERE driver_id = $1
-          AND EXTRACT(MONTH FROM leave_date) = $2
-          AND EXTRACT(YEAR  FROM leave_date) = $3
+    // Ngày công không lương = leave_requests (nghỉ không lương) HOẶC chấm công đánh dấu
+    // 'absent_unexcused' — nhưng nếu Manager/Coordinator đã ghi đè 'present' cho đúng
+    // ngày đó (vd tài xế xin nghỉ nhưng thực tế vẫn đi làm), ghi đè luôn được ưu tiên,
+    // không tính ngày đó là nghỉ nữa.
+    const { rows: [dayRow] } = await client.query(`
+        SELECT COUNT(*)::int AS unpaid_days
+        FROM leave_requests lr
+        LEFT JOIN attendance_overrides ao
+               ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
+        WHERE lr.driver_id = $1
+          AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
+          AND EXTRACT(MONTH FROM lr.leave_date) = $2
+          AND EXTRACT(YEAR  FROM lr.leave_date) = $3
+          AND COALESCE(ao.status, 'leave_unpaid') != 'present'
     `, [driver.driver_id, month, year]);
-    const unpaidDays     = Number(leaveRow.unpaid_days ?? 0);
+    const { rows: [attRow] } = await client.query(`
+        SELECT COUNT(*)::int AS unexcused_days
+        FROM attendance_overrides
+        WHERE driver_id = $1
+          AND status = 'absent_unexcused'
+          AND EXTRACT(MONTH FROM work_date) = $2
+          AND EXTRACT(YEAR  FROM work_date) = $3
+    `, [driver.driver_id, month, year]);
+    const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0);
     const actualWorkDays = Math.max(0, WORKING_DAYS_PER_MONTH - unpaidDays);
     const proRatedBase   = Math.round((baseSalary / WORKING_DAYS_PER_MONTH) * actualWorkDays);
     const absencePenalty = baseSalary - proRatedBase;

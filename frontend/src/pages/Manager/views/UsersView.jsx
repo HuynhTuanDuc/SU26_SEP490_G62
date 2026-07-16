@@ -419,6 +419,7 @@ export default function UsersView({ user }) {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <Table removeWrapper aria-label="Danh sách người dùng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
             <TableColumn>HỌ VÀ TÊN</TableColumn>
@@ -471,6 +472,7 @@ export default function UsersView({ user }) {
             )}
           </TableBody>
         </Table>
+        </div>
         <div className="px-5 py-3">
           <PaginationBar page={page} pageSize={pageSize} totalItems={filtered.length} totalPages={Math.max(1, Math.ceil(filtered.length / pageSize))} onPageChange={setPage} />
         </div>

@@ -165,6 +165,7 @@ export default function PartnersView({ user }) {
           </div>
         </div>
 
+        <div className="overflow-x-auto">
         <Table removeWrapper aria-label="Danh sách đối tác" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
             <TableColumn>ĐỐI TÁC</TableColumn>
@@ -216,6 +217,7 @@ export default function PartnersView({ user }) {
             )}
           </TableBody>
         </Table>
+        </div>
 
         {partners.length > 0 && (
           <div className="px-5 py-4 border-t border-gray-100">

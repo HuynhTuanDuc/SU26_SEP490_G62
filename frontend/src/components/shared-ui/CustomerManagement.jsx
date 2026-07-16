@@ -168,6 +168,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
         <Table
           removeWrapper
           aria-label="Danh sách khách hàng"
@@ -232,6 +233,7 @@ export function CustomerManagement({ getCustomers, createCustomer, updateCustome
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <Modal isOpen={modalOpen} onOpenChange={(open) => !open && closeModal()} size="2xl">

@@ -187,9 +187,9 @@ export default function BonusRulesView() {
         ) : filteredRules.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-8">Chưa có quy tắc thưởng nào.</p>
         ) : (
-          <div className="flex flex-col divide-y divide-gray-50">
+          <div className="flex flex-col divide-y divide-gray-50 overflow-x-auto">
             {pagedRules.map((rule) => (
-              <div key={rule.id} className="flex items-center justify-between px-5 py-4 gap-4">
+              <div key={rule.id} className="flex items-center justify-between px-5 py-4 gap-4 min-w-max">
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-gray-800">{rule.title}</span>

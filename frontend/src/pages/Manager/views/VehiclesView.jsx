@@ -314,6 +314,7 @@ export default function VehiclesView({ user }) {
             <span className="text-sm font-bold text-gray-800">Yêu cầu bảo dưỡng chờ duyệt</span>
           </div>
           <p className="text-xs text-gray-400 mb-3">{maintenanceRequests.length} yêu cầu từ tài xế</p>
+          <div className="overflow-x-auto">
           <Table removeWrapper aria-label="Yêu cầu bảo dưỡng" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
             <TableHeader>
               <TableColumn>XE</TableColumn>
@@ -346,6 +347,7 @@ export default function VehiclesView({ user }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
 
@@ -380,6 +382,7 @@ export default function VehiclesView({ user }) {
           <Button color="primary" size="sm" onPress={() => loadVehicles({ page: 1 })}>Áp dụng</Button>
         </div>
 
+        <div className="overflow-x-auto">
         <Table
           removeWrapper
           aria-label="Danh sách xe"
@@ -453,6 +456,7 @@ export default function VehiclesView({ user }) {
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* Modals */}

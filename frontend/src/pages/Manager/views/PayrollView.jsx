@@ -129,6 +129,7 @@ export default function PayrollView() {
           <Button variant="flat" size="sm" startContent={<RiRefreshLine size={14} />} onPress={load}>Làm mới</Button>
         </div>
 
+        <div className="overflow-x-auto">
         <Table removeWrapper aria-label="Bảng lương tài xế" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
           <TableHeader>
             <TableColumn>TÀI XẾ</TableColumn>
@@ -171,6 +172,7 @@ export default function PayrollView() {
             )}
           </TableBody>
         </Table>
+        </div>
 
         {payrolls.length > 0 && (
           <div className="mt-4">

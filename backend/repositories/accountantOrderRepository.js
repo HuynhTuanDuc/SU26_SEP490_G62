@@ -347,6 +347,23 @@ const createOrderWithShipments = async (orderData) => {
         for (let i = 0; i < (orderData.shipments || []).length; i += 1) {
             const s = orderData.shipments[i];
             let vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
+
+            // Biển số chưa từng có trong hệ thống — tự tạo xe mới ngay (nhóm xe mặc định).
+            // Áp dụng cho MỌI trường hợp (không chỉ khi tài xế cũng mới), vì trước đây xe
+            // chỉ được tạo trong nhánh "tài xế mới" khiến tài xế đã có sẵn nhưng chạy biển
+            // số mới sẽ không có vehicleId → không gán được "xe nhà" → KPI không tính được.
+            if (!vehicleId && trimToNull(s.vehicle_plate)) {
+                const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(client);
+                const vehicleInsert = await client.query(
+                    `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
+                     VALUES ($1, $2, 'active')
+                     ON CONFLICT (plate_number) DO UPDATE SET updated_at = NOW()
+                     RETURNING id`,
+                    [s.vehicle_plate.trim().toUpperCase(), defaultVehicleGroupId],
+                );
+                vehicleId = vehicleInsert.rows[0]?.id || null;
+            }
+
             let driverId = await findDriverById(client, s.driver_id) || await findDriverByName(client, s.driver_name);
 
             // Tài xế nhập tên tự do (import Excel) mà chưa tồn tại trong hệ thống —
@@ -365,6 +382,22 @@ const createOrderWithShipments = async (orderData) => {
                     autoResolvedDrivers.push({ shipmentIndex: i + 1, driverName: s.driver_name, driverId: resolved.id });
                 }
             }
+
+            // Tài xế đã tồn tại nhưng chưa có "xe nhà" (drivers.vehicle_id) — vd tài
+            // xế được Manager tạo qua form thường, chưa từng gán xe. Tính KPI cần
+            // vehicle_group_id truy từ drivers.vehicle_id nên phải gán ngay lần đầu
+            // có đủ thông tin xe, tránh KPI/lương/thưởng bị bỏ sót âm thầm.
+            if (driverId && vehicleId) {
+                await client.query(
+                    `UPDATE drivers SET vehicle_id = $2 WHERE profile_id = $1 AND vehicle_id IS NULL`,
+                    [driverId, vehicleId],
+                );
+                await client.query(
+                    `UPDATE vehicles SET assigned_driver_id = $2, updated_at = NOW() WHERE id = $1 AND assigned_driver_id IS NULL`,
+                    [vehicleId, driverId],
+                );
+            }
+
             const actualPrice = computeActualPrice(s);
             const passThrough = computePassThrough(s);
             const shipmentNotes = buildShipmentNotes(s);

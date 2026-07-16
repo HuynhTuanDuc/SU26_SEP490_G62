@@ -145,7 +145,7 @@ const getRoleIdByName = async (roleName) => {
     return result.rows[0]?.id;
 };
 
-const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes) => {
+const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes, isDriver = false) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -164,6 +164,18 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
             [accountId, fullName, phone, roleId, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes],
         );
 
+        // Vai trò driver PHẢI có dòng trong bảng drivers ngay khi tạo — nếu không,
+        // các nơi tìm tài xế theo tên/ID (import Excel, gán xe...) đều JOIN drivers
+        // nên sẽ không thấy tài khoản này, coi như "chưa tồn tại" dù đã có profile.
+        if (isDriver) {
+            await client.query(
+                `INSERT INTO drivers (profile_id, license_number, hire_date)
+                 VALUES ($1, $2, CURRENT_DATE)
+                 ON CONFLICT (profile_id) DO NOTHING`,
+                [accountId, `PENDING-${accountId}`],
+            );
+        }
+
         await client.query('COMMIT');
         return accountId;
     } catch (err) {
@@ -172,6 +184,17 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
     } finally {
         client.release();
     }
+};
+
+// Đảm bảo tài khoản role=driver có dòng drivers — dùng khi đổi role sang driver
+// ở luồng cập nhật (adminUpdateUser), hoặc vá cho tài khoản driver cũ thiếu dòng này.
+const ensureDriverRow = async (profileId) => {
+    await pool.query(
+        `INSERT INTO drivers (profile_id, license_number, hire_date)
+         VALUES ($1, $2, CURRENT_DATE)
+         ON CONFLICT (profile_id) DO NOTHING`,
+        [profileId, `PENDING-${profileId}`],
+    );
 };
 
 const adminUpdateUser = async (userId, data, roleId) => {
@@ -289,4 +312,5 @@ module.exports = {
     getPasswordHash,
     updatePasswordHash,
     resetPassword,
+    ensureDriverRow,
 };
