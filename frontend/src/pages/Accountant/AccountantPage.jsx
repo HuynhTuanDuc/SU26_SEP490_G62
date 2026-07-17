@@ -2,7 +2,7 @@ import { useState } from "react";
 import { HeroUIProvider } from "@heroui/react";
 import {
   RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
-  RiHandCoinLine, RiGiftLine, RiBookOpenLine,
+  RiHandCoinLine, RiGiftLine, RiBookOpenLine, RiWalletLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
 import "../../styles/accountant.css";
@@ -15,6 +15,7 @@ import { PayrollView } from "./views/PayrollView";
 import { ReportView } from "./views/ReportView";
 import { BonusView } from "./views/BonusView";
 import { LedgerView } from "./views/LedgerView";
+import SpendingView from "./views/SpendingView";
 import { ExternalOrderModal } from "./modals/ExternalOrderModal";
 import { ImportExcelModal } from "./modals/ImportExcelModal";
 import ProfileModal from "../../components/profile/ProfileModal";
@@ -32,6 +33,7 @@ const NAV_GROUPS = [
     items: [
       { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
       { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
+      { key: "spending", label: "Quản lý chi", icon: RiWalletLine },
       { key: "ledger",  label: "Nhật ký tài chính", icon: RiBookOpenLine },
     ],
   },
@@ -81,10 +83,15 @@ const VIEW_META = {
     subtitle: "Sổ ghi mọi chuyển động tiền trong hệ thống, xuất kỳ kế toán sang MISA",
     searchPlaceholder: "",
   },
+  spending: {
+    title: "Quản lý chi",
+    subtitle: "Tạo phiếu chi, xác nhận chi tiền và đối chiếu chi phí tài xế, tổng hợp mọi khoản chi",
+    searchPlaceholder: "",
+  },
 };
 
 const VIEW_STORAGE_KEY = "accountant_active_view";
-const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger"];
+const VALID_VIEWS = ["report", "revenue", "debt", "salary", "advance", "bonus", "ledger", "spending"];
 
 // Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
 const getInitialView = () => {
@@ -133,7 +140,7 @@ export default function AccountantPage({ user, onLogout }) {
     ? { label: "Import Excel", onPress: () => setShowImportModal(true) }
     : null;
 
-  const showSearch = activeView !== "report" && activeView !== "ledger";
+  const showSearch = activeView !== "report" && activeView !== "ledger" && activeView !== "spending";
 
   return (
     <HeroUIProvider>
@@ -184,6 +191,9 @@ export default function AccountantPage({ user, onLogout }) {
             )}
             {activeView === "ledger" && (
               <LedgerView />
+            )}
+            {activeView === "spending" && (
+              <SpendingView />
             )}
           </main>
         </div>

@@ -8,9 +8,12 @@ import { managerService } from "../services/manager.service";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
 
-const net = (r) =>
-  (r.base_salary || 0) + (r.revenue_bonus || 0) + (r.kpi_bonus || 0) + (r.top_driver_bonus || 0) + (r.other_bonus || 0)
-  - (r.insurance_employee || 0) - (r.driver_debt_deduction || 0) - (r.advance_deduction || 0) - (r.other_deduction || 0);
+// Các trường số từ backend là chuỗi (::text, vd "9000000.00") để giữ chính xác thập
+// phân — backend đã tính sẵn net_salary đúng, dùng lại trực tiếp thay vì cộng trừ lại
+// ở FE (trước đây cộng chuỗi bằng "+" bị nối chuỗi thay vì cộng số, ra NaN).
+const net = (r) => Number(r.net_salary || 0);
+const sumBonus = (r) => Number(r.revenue_bonus || 0) + Number(r.kpi_bonus || 0) + Number(r.top_driver_bonus || 0) + Number(r.other_bonus || 0);
+const sumDeduction = (r) => Number(r.insurance_employee || 0) + Number(r.driver_debt_deduction || 0) + Number(r.advance_deduction || 0) + Number(r.other_deduction || 0);
 
 const PAYROLL_STATUS_LABELS = {
   pending: "Chờ xác nhận",
@@ -151,14 +154,14 @@ export default function PayrollView() {
               <TableRow key={r.id}>
                 <TableCell>
                   <div className="flex flex-col">
-                    <span className="font-semibold text-gray-800 text-sm">{r.full_name}</span>
-                    <span className="text-xs text-gray-400">{r.phone}</span>
+                    <span className="font-semibold text-gray-800 text-sm">{r.driver_name}</span>
+                    <span className="text-xs text-gray-400">{r.driver_phone}</span>
                   </div>
                 </TableCell>
                 <TableCell>{`T${r.payroll_month}/${r.payroll_year}`}</TableCell>
                 <TableCell>{fmt(r.base_salary)}</TableCell>
-                <TableCell>{fmt((r.revenue_bonus || 0) + (r.kpi_bonus || 0) + (r.top_driver_bonus || 0) + (r.other_bonus || 0))}</TableCell>
-                <TableCell>{fmt((r.insurance_employee || 0) + (r.driver_debt_deduction || 0) + (r.advance_deduction || 0) + (r.other_deduction || 0))}</TableCell>
+                <TableCell>{fmt(sumBonus(r))}</TableCell>
+                <TableCell>{fmt(sumDeduction(r))}</TableCell>
                 <TableCell><span className="font-bold text-blue-600">{fmt(net(r))}</span></TableCell>
                 <TableCell><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>
                 <TableCell>

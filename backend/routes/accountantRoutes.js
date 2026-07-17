@@ -31,6 +31,22 @@ router.post('/debts/payment/by-debt',    accountantPaymentController.paymentByDe
 router.get ('/receipts/bank-transfer',                              accountantBankTransferController.getPendingBankTransfers);
 router.post('/receipts/:receiptId/confirm-bank-transfer',           accountantBankTransferController.confirmBankTransfer);
 
+// Quản lý chi — xem chi phí tài xế (đối chiếu), phiếu chi thủ công
+// (Accountant tạo → Manager duyệt → Accountant xác nhận chi), tổng hợp chi
+const spendingController = require('../controllers/spendingController');
+const { uploadPaymentVoucher } = require('../middleware/uploadMiddleware');
+const handleUpload = (middleware) => (req, res, next) => {
+    middleware(req, res, (err) => {
+        if (err) return res.status(422).json({ error: err.message });
+        next();
+    });
+};
+router.get  ('/expenses',          spendingController.listExpenses);
+router.get  ('/vouchers',          spendingController.listVouchers);
+router.post ('/vouchers',          handleUpload(uploadPaymentVoucher.single('proof')), spendingController.createVoucher);
+router.patch('/vouchers/:id/pay',  spendingController.payVoucher);
+router.get  ('/spending-summary',  spendingController.getSpendingSummary);
+
 // Nhật ký tài chính (append-only ledger) + xuất kỳ kế toán
 router.get ('/ledger',        accountantLedgerController.getJournal);
 router.get ('/ledger/stats',  accountantLedgerController.getJournalStats);

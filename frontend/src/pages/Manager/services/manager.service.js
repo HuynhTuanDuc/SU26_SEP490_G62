@@ -137,6 +137,13 @@ export const managerService = {
   rejectExpense: (id, reason) => apiRequest(`${BASE}/expenses/${id}/reject`, { method: "PATCH", body: { reason } }),
   cancelShipment: (shipmentId, reason) => apiRequest(`${BASE}/trips/${shipmentId}/cancel`, { method: "PATCH", body: { reason } }),
   reassignShipment: (shipmentId, toDriverId) => apiRequest(`${BASE}/trips/${shipmentId}/reassign`, { method: "PATCH", body: { toDriverId } }),
+
+  // ─── Quản lý chi (chi phí tài xế + phiếu chi + tổng hợp) ─────────────────
+  getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
+  getVouchers: (params = {}) => apiRequest(`${BASE}/vouchers?${new URLSearchParams(params)}`),
+  approveVoucher: (id) => apiRequest(`${BASE}/vouchers/${id}/approve`, { method: "PATCH" }),
+  rejectVoucher: (id, reason) => apiRequest(`${BASE}/vouchers/${id}/reject`, { method: "PATCH", body: { reason } }),
+  getSpendingSummary: (params = {}) => apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
 };
 
 export default managerService;

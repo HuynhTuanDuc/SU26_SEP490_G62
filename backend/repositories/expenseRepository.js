@@ -159,7 +159,97 @@ const rejectExpense = async (expenseId, reviewerId, reason) => {
     return expense;
 };
 
+// sort resolved via allowlist, never interpolated directly from user input
+const EXPENSE_SORTS = {
+    oldest:        'e.created_at ASC',
+    'amount-desc': 'e.amount DESC',
+    'amount-asc':  'e.amount ASC',
+    status:        'e.status ASC, e.created_at DESC',
+};
+
+// Danh sách chi phí toàn hệ thống cho web Manager (duyệt) / Accountant (đối chiếu)
+const listAllExpenses = async ({ status, expenseType, month, year, search, sort, page, limit } = {}) => {
+    const conds  = [];
+    const params = [];
+    let   i      = 1;
+
+    if (status)      { conds.push(`e.status = $${i++}`);       params.push(status); }
+    if (expenseType) { conds.push(`e.expense_type = $${i++}`); params.push(expenseType); }
+    if (month)       { conds.push(`EXTRACT(MONTH FROM e.expense_date) = $${i++}`); params.push(Number(month)); }
+    if (year)        { conds.push(`EXTRACT(YEAR  FROM e.expense_date) = $${i++}`); params.push(Number(year)); }
+    if (search) {
+        conds.push(`(p.full_name ILIKE $${i} OR v.plate_number ILIKE $${i} OR e.description ILIKE $${i})`);
+        params.push(`%${search}%`);
+        i++;
+    }
+
+    const where       = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const orderClause = EXPENSE_SORTS[sort] ?? 'e.created_at DESC';
+    const safeLimit   = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safePage    = Math.max(1, Number(page) || 1);
+    const offset      = (safePage - 1) * safeLimit;
+
+    const baseFrom = `
+        FROM expenses e
+        JOIN profiles p        ON p.id = e.created_by
+        LEFT JOIN vehicles v   ON v.id = e.vehicle_id
+        LEFT JOIN profiles rev ON rev.id = e.reviewed_by
+    `;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+        pool.query(
+            `SELECT
+                e.id, e.shipment_id, e.expense_type, e.amount::text, e.description,
+                e.expense_date, e.status, e.reject_reason, e.reviewed_at, e.created_at,
+                p.full_name      AS driver_name,
+                p.phone          AS driver_phone,
+                v.plate_number   AS vehicle_plate,
+                rev.full_name    AS reviewed_by_name,
+                COALESCE(
+                    (SELECT json_agg(ea.file_url ORDER BY ea.uploaded_at)
+                     FROM expense_attachments ea WHERE ea.expense_id = e.id),
+                    '[]'::json
+                ) AS receipt_urls
+             ${baseFrom} ${where}
+             ORDER BY ${orderClause}
+             LIMIT $${i} OFFSET $${i + 1}`,
+            [...params, safeLimit, offset],
+        ),
+        pool.query(`SELECT COUNT(*)::int AS total ${baseFrom} ${where}`, params),
+    ]);
+
+    return {
+        rows,
+        total: countRows[0]?.total ?? 0,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil((countRows[0]?.total ?? 0) / safeLimit)),
+    };
+};
+
+const getExpenseStats = async ({ month, year } = {}) => {
+    const conds  = [];
+    const params = [];
+    let   i      = 1;
+    if (month) { conds.push(`EXTRACT(MONTH FROM expense_date) = $${i++}`); params.push(Number(month)); }
+    if (year)  { conds.push(`EXTRACT(YEAR  FROM expense_date) = $${i++}`); params.push(Number(year)); }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    const { rows: [row] } = await pool.query(
+        `SELECT
+             COUNT(*)::int                                                     AS total_count,
+             COUNT(*) FILTER (WHERE status = 'pending')::int                   AS pending_count,
+             COUNT(*) FILTER (WHERE status = 'approved')::int                  AS approved_count,
+             COUNT(*) FILTER (WHERE status = 'rejected')::int                  AS rejected_count,
+             COALESCE(SUM(amount) FILTER (WHERE status = 'approved'), 0)::text AS approved_total
+         FROM expenses ${where}`,
+        params,
+    );
+    return row;
+};
+
 module.exports = {
     createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense,
     wasDriverAssignedToShipment, approveExpense, rejectExpense,
+    listAllExpenses, getExpenseStats,
 };
