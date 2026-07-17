@@ -205,4 +205,49 @@ const exportPeriod = async ({ from, to, accountantId }) => {
     }
 };
 
-module.exports = { insertTransaction, getJournal, getJournalStats, exportPeriod, reverseTransaction };
+// ─── Tổng hợp chi (money-out) ─────────────────────────────────────────────────
+// Các event tiền RA khỏi công ty. Bút toán đảo (reversal_of_id) trừ ngược để
+// số liệu tự triệt tiêu khi có sai sót đã đảo.
+const MONEY_OUT_EVENTS = [
+    'expense_recorded', 'pass_through_cost', 'payroll_paid',
+    'bonus_paid', 'advance_disbursed', 'prepaid_refunded',
+];
+
+const getSpendingSummary = async ({ month, year }) => {
+    const m = Number(month);
+    const y = Number(year);
+
+    const [byType, trend] = await Promise.all([
+        // Tổng theo loại trong tháng được chọn
+        pool.query(
+            `SELECT event_type,
+                    COUNT(*) FILTER (WHERE reversal_of_id IS NULL)::int AS tx_count,
+                    COALESCE(SUM(CASE WHEN reversal_of_id IS NULL THEN amount ELSE -amount END), 0)::text AS total_amount
+             FROM financial_transactions
+             WHERE event_type = ANY($1)
+               AND EXTRACT(MONTH FROM occurred_at) = $2
+               AND EXTRACT(YEAR  FROM occurred_at) = $3
+             GROUP BY event_type
+             ORDER BY event_type`,
+            [MONEY_OUT_EVENTS, m, y],
+        ),
+        // Xu hướng 6 tháng gần nhất tính đến tháng được chọn
+        pool.query(
+            `SELECT EXTRACT(YEAR  FROM occurred_at)::int AS year,
+                    EXTRACT(MONTH FROM occurred_at)::int AS month,
+                    COALESCE(SUM(CASE WHEN reversal_of_id IS NULL THEN amount ELSE -amount END), 0)::text AS total_amount
+             FROM financial_transactions
+             WHERE event_type = ANY($1)
+               AND occurred_at >= (make_date($3, $2, 1) - INTERVAL '5 months')
+               AND occurred_at <  (make_date($3, $2, 1) + INTERVAL '1 month')
+             GROUP BY 1, 2
+             ORDER BY 1, 2`,
+            [MONEY_OUT_EVENTS, m, y],
+        ),
+    ]);
+
+    const grandTotal = byType.rows.reduce((s, r) => s + Number(r.total_amount), 0);
+    return { by_type: byType.rows, trend: trend.rows, grand_total: String(grandTotal) };
+};
+
+module.exports = { insertTransaction, getJournal, getJournalStats, exportPeriod, reverseTransaction, getSpendingSummary };

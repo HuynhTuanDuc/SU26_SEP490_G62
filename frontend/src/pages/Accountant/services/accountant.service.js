@@ -153,4 +153,21 @@ export const accountantService = {
       method: "PATCH",
       body: { reason },
     }),
+
+  // ─── Quản lý chi (chi phí tài xế + phiếu chi + tổng hợp) ────────────────────
+  getSpendingExpenses: (params = {}) =>
+    apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
+
+  getVouchers: (params = {}) =>
+    apiRequest(`${BASE}/vouchers?${new URLSearchParams(params)}`),
+
+  // data là FormData (có thể kèm file 'proof')
+  createVoucher: (formData) =>
+    apiRequest(`${BASE}/vouchers`, { method: "POST", body: formData }),
+
+  payVoucher: (id) =>
+    apiRequest(`${BASE}/vouchers/${id}/pay`, { method: "PATCH" }),
+
+  getSpendingSummary: (params = {}) =>
+    apiRequest(`${BASE}/spending-summary?${new URLSearchParams(params)}`),
 };

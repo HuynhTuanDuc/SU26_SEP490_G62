@@ -33,6 +33,7 @@ import BonusRulesView from "./views/BonusRulesView";
 import KpiView from "./views/KpiView";
 import HolidaysView from "./views/HolidaysView";
 import AttendanceView from "./views/AttendanceView";
+import SpendingView from "./views/SpendingView";
 
 const NAV_GROUPS = [
   {
@@ -48,6 +49,7 @@ const NAV_GROUPS = [
       { key: "customers", label: "Khách hàng", icon: RiUserSearchLine },
       { key: "vehicles", label: "Quản lý xe", icon: RiTruckLine },
       { key: "incidents", label: "Sự cố", icon: RiAlertLine },
+      { key: "spending", label: "Quản lý chi", icon: RiMoneyDollarCircleLine },
       { key: "kpi", label: "KPI & Xếp hạng", icon: RiTrophyLine },
     ],
   },
@@ -76,6 +78,7 @@ const VIEW_META = {
   "bonus-rules": { title: "Quy tắc thưởng", subtitle: "Cấu hình ngưỡng và số tiền thưởng KPI, thưởng doanh thu theo từng nhóm xe." },
   kpi: { title: "KPI & Xếp hạng", subtitle: "Theo dõi KPI và bảng xếp hạng của toàn bộ tài xế theo tháng, theo nhóm xe." },
   holidays: { title: "Quản lý ngày lễ", subtitle: "Danh mục ngày lễ hưởng nguyên lương — tài xế đi làm ngày lễ được tính 200% lương." },
+  spending: { title: "Quản lý chi", subtitle: "Duyệt chi phí tài xế, duyệt phiếu chi và theo dõi tổng hợp mọi khoản chi của công ty." },
   attendance: { title: "Chấm công tài xế", subtitle: "Theo dõi và điều chỉnh chấm công theo tháng — ảnh hưởng trực tiếp tới ngày công tính lương." },
 };
 
@@ -143,6 +146,7 @@ export default function ManagerPage({ user, onLogout }) {
             {activeView === "bonus-rules" && <BonusRulesView />}
             {activeView === "kpi" && <KpiView />}
             {activeView === "holidays" && <HolidaysView />}
+            {activeView === "spending" && <SpendingView />}
           </main>
         </div>
       </div>
