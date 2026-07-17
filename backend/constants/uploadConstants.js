@@ -15,6 +15,7 @@ const UPLOAD = Object.freeze({
         CASH_COLLECTION_RECEIPT:    'g62/cash-collection-receipts',
         COMPANY_QR:                 'g62/company-qr',
         RECEIPT_COLLECTION_PROOF:   'g62/receipt-collection-proofs',
+        PAYMENT_VOUCHER:            'g62/payment-vouchers',
     },
 });
 

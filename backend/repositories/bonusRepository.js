@@ -68,16 +68,29 @@ const previewTetBonuses = async (year) => {
 
     const driverIds = drivers.map((d) => d.driver_id);
 
+    // Một tháng bị coi là "thiếu công" (không đủ 28 công) nếu có ít nhất 1 ngày nghỉ
+    // không lương đã duyệt (trừ ngày đã bị Manager/Coordinator override thành 'present')
+    // HOẶC có ít nhất 1 ngày attendance_overrides đánh dấu 'absent_unexcused' — khớp với
+    // cách tính ngày công trong accountantPayrollRepository._calcDriverPayroll.
     const { rows: leaveRows } = await pool.query(
-        `SELECT driver_id,
-                EXTRACT(MONTH FROM leave_date)::int AS month,
-                COUNT(*) AS cnt
-         FROM leave_requests
-         WHERE driver_id = ANY($1)
-           AND EXTRACT(YEAR FROM leave_date) = $2
-           AND leave_type = 'unpaid'
-           AND status     = 'approved'
-         GROUP BY driver_id, EXTRACT(MONTH FROM leave_date)`,
+        `SELECT driver_id, month, COUNT(*) AS cnt
+         FROM (
+             SELECT lr.driver_id, EXTRACT(MONTH FROM lr.leave_date)::int AS month
+             FROM leave_requests lr
+             LEFT JOIN attendance_overrides ao
+                    ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
+             WHERE lr.driver_id = ANY($1)
+               AND EXTRACT(YEAR FROM lr.leave_date) = $2
+               AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
+               AND COALESCE(ao.status, 'leave_unpaid') != 'present'
+             UNION ALL
+             SELECT ao2.driver_id, EXTRACT(MONTH FROM ao2.work_date)::int AS month
+             FROM attendance_overrides ao2
+             WHERE ao2.driver_id = ANY($1)
+               AND EXTRACT(YEAR FROM ao2.work_date) = $2
+               AND ao2.status = 'absent_unexcused'
+         ) x
+         GROUP BY driver_id, month`,
         [driverIds, year],
     );
 

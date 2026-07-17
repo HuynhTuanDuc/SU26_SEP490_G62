@@ -1,2099 +1,307 @@
-INSERT INTO roles (name) VALUES
-    ('manager'), ('coordinator'), ('accountant'), ('driver')
-ON CONFLICT (name) DO NOTHING;
-
-
-INSERT INTO accounts (email, password_hash, role_id, is_active) VALUES
-    ('admin@example.com',       crypt('admin123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
-    ('coord@gmail.com',       crypt('coord123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
-    ('accountant@example.com',  crypt('acct123',   gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'),  TRUE),
-    ('driver1@example.com',     crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
-    ('driver2@example.com',     crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
-    ('driver3@example.com',     crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
-    ('driver4@example.com',     crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE)
-ON CONFLICT (email) DO UPDATE
-    SET password_hash = EXCLUDED.password_hash,
-        role_id       = EXCLUDED.role_id,
-        is_active     = EXCLUDED.is_active;
-
-
-INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, tax_code, address, city, country, emergency_contact_name, emergency_contact_phone, notes)
-SELECT
-    a.id,
-    v.full_name,
-    v.phone,
-    r.id,
-    v.dob::DATE,
-    v.gender,
-    v.national_id,
-    v.tax_code,
-    v.address,
-    v.city,
-    v.country,
-    v.ec_name,
-    v.ec_phone,
-    v.notes
-FROM (VALUES
-    ('admin@example.com',       'Manager',            '0901234560', 'manager',     '1988-05-12', 'male',   '079188001111', '0101234567', '12 Nguyen Hue, District 1',   'Ho Chi Minh', 'VN', 'Tran Thi Huong', '0908888001', 'Tai khoan quan ly he thong'),
-    ('coord@gmail.com',         'Nguyen Coordinator', '0901234561', 'coordinator', '1992-09-21', 'female', '079192002222', '0300123456', '88 Le Loi, Hai Chau',          'Da Nang',     'VN', 'Nguyen Van Phuc', '0908888002', 'Phu trach dieu phoi mien Trung'),
-    ('accountant@example.com',  'Tran Accountant',    '0901234562', 'accountant',  '1991-03-14', 'female', '079191003333', '0312233445', '25 Vo Thi Sau, Ninh Kieu',    'Can Tho',     'VN', 'Tran Minh Chau', '0908888003', 'Theo doi doi soat va cong no'),
-    ('driver1@example.com',     'Le Driver 1',        '0901234563', 'driver',      '1995-07-08', 'male',   '079195004444', '0700112233', '101 Tran Hung Dao, Thu Duc',  'Ho Chi Minh', 'VN', 'Le Thi Lan',      '0908888004', 'Tai xe tuyen noi thanh'),
-    ('driver2@example.com',     'Pham Driver 2',      '0901234564', 'driver',      '1994-11-02', 'male',   '079194005555', '0700223344', '55 Hung Vuong, Thanh Khe',    'Da Nang',     'VN', 'Pham Thi Hanh',   '0908888005', 'Tai xe tuyen lien tinh'),
-    ('driver3@example.com',     'Do Driver 3',        '0901234565', 'driver',      '1997-01-18', 'other',  '079197006666', '0700334455', '7 Nguyen Van Cu, Ninh Kieu',  'Can Tho',     'VN', 'Do Quoc Minh',    '0908888006', 'Tai xe hang trung'),
-    ('driver4@example.com',     'Vo Driver 4',        '0901234566', 'driver',      '1990-12-27', 'male',   '079190007777', '0700445566', '240 Le Duan, Hai Chau',       'Da Nang',     'VN', 'Vo Thi Mai',      '0908888007', 'Tai xe xe tai nhe')
-) AS v(email, full_name, phone, role_name, dob, gender, national_id, tax_code, address, city, country, ec_name, ec_phone, notes)
-JOIN accounts a ON a.email = v.email
-JOIN roles   r ON r.name  = v.role_name
-ON CONFLICT (id) DO UPDATE
-    SET full_name              = EXCLUDED.full_name,
-        phone                  = EXCLUDED.phone,
-        role_id                = EXCLUDED.role_id,
-        dob                    = EXCLUDED.dob,
-        gender                 = EXCLUDED.gender,
-        national_id            = EXCLUDED.national_id,
-        tax_code               = EXCLUDED.tax_code,
-        address                = EXCLUDED.address,
-        city                   = EXCLUDED.city,
-        country                = EXCLUDED.country,
-        emergency_contact_name = EXCLUDED.emergency_contact_name,
-        emergency_contact_phone= EXCLUDED.emergency_contact_phone,
-        notes                  = EXCLUDED.notes;
-
-
-WITH driver_seed AS (
-    SELECT * FROM (VALUES
-        ('driver1@example.com', 'DL123456', DATE '2027-12-31', DATE '2023-01-01', 15.00::NUMERIC, 'Le Van Duc',    '0908888004'),
-        ('driver2@example.com', 'DL223456', DATE '2028-06-30', DATE '2023-07-15', 15.00::NUMERIC, 'Pham Van Khai', '0908888005'),
-        ('driver3@example.com', 'DL323456', DATE '2028-11-15', DATE '2024-02-20', 15.00::NUMERIC, 'Do Thi Ngan',   '0908888006'),
-        ('driver4@example.com', 'DL423456', DATE '2029-04-10', DATE '2022-09-05', 16.50::NUMERIC, 'Vo Van Binh',   '0908888007')
-    ) AS seeded(email, license_number, license_expiry_date, hire_date, revenue_share_percent, ec_name, ec_phone)
-)
-INSERT INTO drivers (profile_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone)
-SELECT p.id, ds.license_number, ds.license_expiry_date, ds.hire_date, ds.revenue_share_percent, ds.ec_name, ds.ec_phone
-FROM driver_seed ds
-JOIN accounts a ON a.email = ds.email
-JOIN profiles p ON p.id = a.id
-ON CONFLICT (profile_id) DO UPDATE
-    SET emergency_contact_name  = EXCLUDED.emergency_contact_name,
-        emergency_contact_phone = EXCLUDED.emergency_contact_phone;
-
-
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
-SELECT 'individual', 'Nguyen Hoang Anh', NULL, 'Nguyen Hoang Anh', '0987654321', 'anh@email.com', '123 Nguyen Hue, District 1, HCMC', NULL, 'Khach hang ca nhan, giao hang noi thanh'
-WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654321');
-
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
-SELECT 'business', NULL, 'ABC Logistics Co.', 'Ms. Lan Anh', '0987654322', 'contact@abclogistics.vn', '456 Le Loi, District 1, HCMC', '0300456789', 'Doi tac logistics, thanh toan hang thang'
-WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654322');
-
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
-SELECT 'individual', 'Tran Van Binh', NULL, 'Tran Van Binh', '0987654323', 'binh@email.com', '789 Tran Hung Dao, District 5, HCMC', NULL, 'Khach hang ca nhan, thong xuyen van chuyen do noi that'
-WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654323');
-
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
-SELECT 'business', NULL, 'XYZ Trading Co.', 'Mr. Hung', '0987654324', 'sales@xyztrading.vn', '321 Nguyen Trai, District 5, HCMC', '0301234567', 'Cong ty thuong mai, van chuyen hang hoa xuat nhap khau'
-WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654324');
-
-INSERT INTO customers (customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes)
-SELECT 'business', NULL, 'Sunrise Manufacturing', 'Mr. Tuan Kiet', '0987654325', 'kiet@sunrisemfg.vn', '50 Nguyen Van Linh, District 7, HCMC', '0302345678', 'Nha may san xuat, van chuyen nguyen lieu va san pham'
-WHERE NOT EXISTS (SELECT 1 FROM customers WHERE phone = '0987654325');
-
-
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
-SELECT 'Small Van (1-2 tấn)', 2000, 10000
-WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Small Van (1-2 tấn)');
-
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
-SELECT 'Medium Truck (2-5 tấn)', 5000, 15000
-WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Medium Truck (2-5 tấn)');
-
-INSERT INTO vehicle_groups (name, max_load_weight_kg, price_per_km)
-SELECT 'Large Truck (5-10 tấn)', 10000, 25000
-WHERE NOT EXISTS (SELECT 1 FROM vehicle_groups WHERE name = 'Large Truck (5-10 tấn)');
-
-
-INSERT INTO vehicles (plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, purchase_date, status) VALUES
-    ('51-A12345', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),          'Toyota',  'Hiace',   2000,  2021, DATE '2021-03-15', 'active'),
-    ('51-B67890', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1), 'Hino',    'FC',      5000,  2020, DATE '2020-08-20', 'active'),
-    ('51-C11111', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1), 'Hyundai', 'HD120S',  10000, 2019, DATE '2019-05-10', 'maintenance'),
-    ('51-D22222', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),          'Ford',    'Transit', 2000,  2022, DATE '2022-01-08', 'active'),
-    ('51-E33333', (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),          'Kia',     'K200',    1800,  2023, DATE '2023-04-25', 'active'),
-    ('51-F44444', (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1), 'Isuzu',   'QKR',     3500,  2021, DATE '2021-11-30', 'active')
-ON CONFLICT (plate_number) DO UPDATE
-    SET purchase_date = EXCLUDED.purchase_date;
-
-
-WITH dvs AS (
-    SELECT * FROM (VALUES
-        ('driver1@example.com', '51-A12345'),
-        ('driver2@example.com', '51-D22222'),
-        ('driver3@example.com', '51-B67890'),
-        ('driver4@example.com', '51-F44444')
-    ) AS t(email, plate_number)
-)
-UPDATE vehicles v
-SET assigned_driver_id = p.id
-FROM dvs JOIN accounts a ON a.email = dvs.email JOIN profiles p ON p.id = a.id
-WHERE v.plate_number = dvs.plate_number
-  AND v.assigned_driver_id IS DISTINCT FROM p.id;
-
-WITH dvs AS (
-    SELECT * FROM (VALUES
-        ('driver1@example.com', '51-A12345'),
-        ('driver2@example.com', '51-D22222'),
-        ('driver3@example.com', '51-B67890'),
-        ('driver4@example.com', '51-F44444')
-    ) AS t(email, plate_number)
-)
-UPDATE drivers d
-SET vehicle_id = v.id
-FROM dvs JOIN accounts a ON a.email = dvs.email JOIN profiles p ON p.id = a.id JOIN vehicles v ON v.plate_number = dvs.plate_number
-WHERE d.profile_id = p.id AND d.vehicle_id IS DISTINCT FROM v.id;
-
-
-INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
-SELECT 'Tech Express Logistics', 'Tech Express', 'Mr. Tuan', '0912345678', 'tuan@techexpress.vn', '100 Pasteur, HCMC', '0314567890', '0314567890-001', 30, 'Vietcombank', '0011008899001', 'TECH EXPRESS LOGISTICS', 'Doi tac giao nhan cong nghe'
-WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'Tech Express Logistics');
-UPDATE partners
-SET short_name = 'Tech Express',
-    contact_person = 'Mr. Tuan',
-    phone = '0912345678',
-    email = 'tuan@techexpress.vn',
-    address = '100 Pasteur, HCMC',
-    tax_code = '0314567890',
-    business_registration_number = '0314567890-001',
-    payment_term_days = 30,
-    bank_name = 'Vietcombank',
-    bank_account_number = '0011008899001',
-    bank_account_name = 'TECH EXPRESS LOGISTICS',
-    notes = 'Doi tac giao nhan cong nghe'
-WHERE company_name = 'Tech Express Logistics';
-
-INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
-SELECT 'Green Delivery Co.', 'Green Delivery', 'Ms. Hoa', '0912345679', 'hoa@greendelivery.vn', '200 Nguyen Trai, HCMC', '0314567891', '0314567891-002', 15, 'ACB', '220055667788', 'GREEN DELIVERY CO.', 'Doi tac giao hang thuong xuyen'
-WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'Green Delivery Co.');
-UPDATE partners
-SET short_name = 'Green Delivery',
-    contact_person = 'Ms. Hoa',
-    phone = '0912345679',
-    email = 'hoa@greendelivery.vn',
-    address = '200 Nguyen Trai, HCMC',
-    tax_code = '0314567891',
-    business_registration_number = '0314567891-002',
-    payment_term_days = 15,
-    bank_name = 'ACB',
-    bank_account_number = '220055667788',
-    bank_account_name = 'GREEN DELIVERY CO.',
-    notes = 'Doi tac giao hang thuong xuyen'
-WHERE company_name = 'Green Delivery Co.';
-
-INSERT INTO partners (company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes)
-SELECT 'FastFreight Vietnam', 'FastFreight', 'Mr. Long', '0912345680', 'long@fastfreight.vn', '300 Landmark 81, HCMC', '0314567892', '0314567892-003', 45, 'BIDV', '991122334455', 'FASTFREIGHT VIETNAM', 'Doi tac van tai duong dai'
-WHERE NOT EXISTS (SELECT 1 FROM partners WHERE company_name = 'FastFreight Vietnam');
-UPDATE partners
-SET short_name = 'FastFreight',
-    contact_person = 'Mr. Long',
-    phone = '0912345680',
-    email = 'long@fastfreight.vn',
-    address = '300 Landmark 81, HCMC',
-    tax_code = '0314567892',
-    business_registration_number = '0314567892-003',
-    payment_term_days = 45,
-    bank_name = 'BIDV',
-    bank_account_number = '991122334455',
-    bank_account_name = 'FASTFREIGHT VIETNAM',
-    notes = 'Doi tac van tai duong dai'
-WHERE company_name = 'FastFreight Vietnam';
-
-
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                    payment_type, derived_status, notes)
-SELECT c.id, p.id, 'Electronics Package', 50.0, 500000, 'cash',
-       'open', 'Fragile - Handle with care'
-FROM customers c
-JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
-WHERE c.phone = '0987654321'
-  AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Electronics Package')
-LIMIT 1;
-
-
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                    payment_type, derived_status, notes)
-SELECT c.id, p.id, 'Furniture Set', 200.0, 1500000, 'bank_transfer',
-       'completed', 'Large furniture item'
-FROM customers c
-JOIN profiles p ON p.role_id = (SELECT id FROM roles WHERE name = 'coordinator')
-WHERE c.phone = '0987654322'
-  AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Furniture Set')
-LIMIT 1;
-
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), o.cargo_weight_kg, o.total_estimated_price, 'available'
-FROM orders o
-WHERE o.cargo_name = 'Electronics Package'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 1, 'pickup', '123 Nguyen Hue, HCMC', 'Nguyen Hoang Anh', '0987654321'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Electronics Package' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address)
-SELECT os.id, 2, 'delivery', '456 Le Loi, HCMC'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Electronics Package' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_weight_kg, estimated_price,
-                              status, claimed_at, completed_at)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), o.cargo_weight_kg, o.total_estimated_price, 'completed',
-       NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day'
-FROM orders o
-WHERE o.cargo_name = 'Furniture Set'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
-
-
-INSERT INTO shipment_assignment_history
-    (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-     changed_by, change_reason, changed_at)
-SELECT os.id, NULL, NULL, drv.id, v.id, drv.id, 'initial_assign', NOW() - INTERVAL '2 days'
-FROM order_shipments os
-JOIN orders o ON o.id = os.order_id
-JOIN accounts a ON a.email = 'driver1@example.com'
-JOIN profiles drv ON drv.id = a.id
-JOIN vehicles v ON v.plate_number = '51-A12345'
-WHERE o.cargo_name = 'Furniture Set' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM shipment_assignment_history h WHERE h.shipment_id = os.id);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-SELECT os.id, 1, 'pickup', '789 Tran Hung Dao, HCMC', 'Tran Van Binh', '0987654323', NOW() - INTERVAL '2 days'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Furniture Set' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, completed_at)
-SELECT os.id, 2, 'delivery', '321 Nguyen Trai, HCMC', NOW() - INTERVAL '1 day'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Furniture Set' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
-       'Thưởng vượt KPI — Small Van', 'kpi', 2000000, '{"min_revenue": 50000000}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1));
-
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1),
-       'Thưởng vượt KPI — Medium Truck', 'kpi', 2000000, '{"min_revenue": 65000000}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1));
-
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1),
-       'Thưởng vượt KPI — Large Truck', 'kpi', 2000000, '{"min_revenue": 70000000}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'kpi' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1));
-
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
-       'Lái xe xuất sắc nhất tháng — Small Van', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1));
-
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1),
-       'Lái xe xuất sắc nhất tháng — Medium Truck', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1));
-
-INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json)
-SELECT (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1),
-       'Lái xe xuất sắc nhất tháng — Large Truck', 'top_revenue', 1000000, '{"rank": 1}'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM bonus_rules
-    WHERE bonus_type = 'top_revenue' AND vehicle_group_id = (SELECT id FROM vehicle_groups ORDER BY id ASC OFFSET 2 LIMIT 1));
-
-
-INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue)
-SELECT p.id, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 5, 2026, 12, 15000000
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver1@example.com'
-ON CONFLICT DO NOTHING;
-
-
-INSERT INTO maintenance_records (vehicle_id, maintenance_type, description, cost,
-                                  maintenance_date, performed_by, status, started_at, created_at, updated_at)
-SELECT v.id, 'scheduled', 'Oil change, filter replacement', 500000, '2026-05-15',
-       p.id, 'open', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days', NOW() - INTERVAL '24 days'
-FROM vehicles v
-JOIN accounts a ON a.email = 'driver3@example.com'
-JOIN profiles p ON p.id = a.id
-WHERE v.plate_number = '51-C11111'
-  AND NOT EXISTS (SELECT 1 FROM maintenance_records mr WHERE mr.vehicle_id = v.id AND mr.maintenance_date = '2026-05-15');
-
-INSERT INTO vehicle_status_history (vehicle_id, action_type, from_status, to_status, note, created_at)
-SELECT v.id, 'send_to_maintenance', 'active', 'maintenance', 'Seeded maintenance workflow', NOW() - INTERVAL '24 days'
-FROM vehicles v
-WHERE v.plate_number = '51-C11111'
-  AND NOT EXISTS (SELECT 1 FROM vehicle_status_history vsh WHERE vsh.vehicle_id = v.id AND vsh.action_type = 'send_to_maintenance');
-
-
-DO $$
-DECLARE
-    v_coordinator_id   INT;
-    v_driver_id        INT;
-    v_customer_id      INT;
-    v_vehicle_id       INT;
-    v_vehicle_group_id INT;
-    v_order_id         INT;
-    v_shipment_id      INT;
-BEGIN
-    SELECT p.id INTO v_coordinator_id
-    FROM profiles p JOIN accounts a ON a.id = p.id
-    WHERE a.email = 'coord@gmail.com';
-
-    SELECT p.id INTO v_driver_id
-    FROM profiles p JOIN accounts a ON a.id = p.id
-    WHERE a.email = 'driver1@example.com';
-
-    SELECT v.id, v.vehicle_group_id INTO v_vehicle_id, v_vehicle_group_id
-    FROM vehicles v
-    WHERE v.plate_number = '51-A12345';
-
-    SELECT c.id INTO v_customer_id
-    FROM customers c
-    WHERE c.phone = '0987654322';
-
-    IF NOT EXISTS (
-        SELECT 1 FROM orders WHERE cargo_name = 'Receipt Pending Demo: Showroom Cabinets'
-    ) THEN
-        INSERT INTO orders (
-            customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, payment_type,
-            derived_status, notes
-        )
-        VALUES (
-            v_customer_id, v_coordinator_id, 'Receipt Pending Demo: Showroom Cabinets', 180.0,
-            220000, 'cash',
-            'completed', 'Completed shipment waiting for coordinator receipt publishing'
-        )
-        RETURNING id INTO v_order_id;
-    ELSE
-        SELECT id INTO v_order_id
-        FROM orders
-        WHERE cargo_name = 'Receipt Pending Demo: Showroom Cabinets'
-        LIMIT 1;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
-    ) THEN
-        INSERT INTO order_shipments (
-            order_id, shipment_index, vehicle_group_id,
-            cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
-            status, claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
-        )
-        VALUES (
-            v_order_id, 1, v_vehicle_group_id,
-            'Showroom Cabinets', 180.0, 220000, 22.0,
-            'completed',
-            NOW() - INTERVAL '30 hours',
-            NOW() - INTERVAL '29 hours',
-            NOW() - INTERVAL '27 hours',
-            NOW() - INTERVAL '25 hours',
-            NOW() - INTERVAL '24 hours',
-            'Driver completed shipment and submitted actual km for receipt request'
-        )
-        RETURNING id INTO v_shipment_id;
-    ELSE
-        SELECT id INTO v_shipment_id
-        FROM order_shipments
-        WHERE order_id = v_order_id AND shipment_index = 1
-        LIMIT 1;
-
-        UPDATE order_shipments
-        SET cargo_name = 'Showroom Cabinets',
-            cargo_weight_kg = 180.0,
-            vehicle_group_id = v_vehicle_group_id,
-            estimated_price = 220000,
-            estimated_distance_km = 22.0,
-            status = 'completed',
-            notes = 'Driver completed shipment and submitted actual km for receipt request'
-        WHERE id = v_shipment_id;
-    END IF;
-
-    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-    SELECT v_shipment_id, 1, 'pickup', '12 Nguyen Van Linh, District 7', 'Warehouse Team', '0901010101', NOW() - INTERVAL '26 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 1
-    );
-
-    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at)
-    SELECT v_shipment_id, 2, 'delivery', '88 Le Thanh Ton, District 1', 'Showroom Admin', '0902020202',
-           NOW() - INTERVAL '25 hours', NOW() - INTERVAL '24 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 2
-    );
-
-    INSERT INTO shipment_assignment_history
-        (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-         changed_by, change_reason, changed_at)
-    SELECT v_shipment_id, NULL, NULL, v_driver_id, v_vehicle_id, v_coordinator_id, 'initial_assign',
-           NOW() - INTERVAL '30 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM shipment_assignment_history WHERE shipment_id = v_shipment_id
-    );
-
-    INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
-    SELECT v_shipment_id, v_driver_id, 'https://res.cloudinary.com/demo/image/upload/receipt-pending-proof.jpg', TRUE, NOW() - INTERVAL '24 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM delivery_proofs WHERE shipment_id = v_shipment_id
-    );
-
-    UPDATE order_shipments
-    SET actual_distance_km = 23.7,
-        updated_at = NOW()
-    WHERE id = v_shipment_id;
-
-    INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at)
-    SELECT v_shipment_id, v_order_id, v_driver_id, 'pending', NOW() - INTERVAL '90 minutes'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM order_receipt_requests WHERE order_id = v_order_id
-    );
-
-    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'toll', 45000,
-           'Seeded toll cost for pending receipt review', CURRENT_DATE - 1
-    WHERE NOT EXISTS (
-        SELECT 1 FROM expenses
-        WHERE shipment_id = v_shipment_id AND description = 'Seeded toll cost for pending receipt review'
-    );
-
-    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'parking', 20000,
-           'Seeded parking cost for pending receipt review', CURRENT_DATE - 1
-    WHERE NOT EXISTS (
-        SELECT 1 FROM expenses
-        WHERE shipment_id = v_shipment_id AND description = 'Seeded parking cost for pending receipt review'
-    );
-END $$;
-
-
-DO $$
-DECLARE
-    v_coordinator_id    INT;
-    v_driver_id         INT;
-    v_customer_id       INT;
-    v_vehicle_id        INT;
-    v_vehicle_group_id  INT;
-    v_price_per_km      NUMERIC(12,2);
-    v_estimated_km      NUMERIC(10,2) := 52.0;
-    v_actual_km         NUMERIC(10,2) := 54.2;
-    v_actual_income     NUMERIC(12,2);
-    v_order_id          INT;
-    v_shipment_id       INT;
-    v_request_id        INT;
-    v_receipt_id        INT;
-BEGIN
-    SELECT p.id INTO v_coordinator_id
-    FROM profiles p JOIN accounts a ON a.id = p.id
-    WHERE a.email = 'coord@gmail.com';
-
-    SELECT p.id INTO v_driver_id
-    FROM profiles p JOIN accounts a ON a.id = p.id
-    WHERE a.email = 'driver4@example.com';
-
-    SELECT v.id, v.vehicle_group_id, vg.price_per_km
-    INTO v_vehicle_id, v_vehicle_group_id, v_price_per_km
-    FROM vehicles v
-    JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
-    WHERE v.plate_number = '51-F44444';
-
-    SELECT c.id INTO v_customer_id
-    FROM customers c
-    WHERE c.phone = '0987654324';
-
-    v_actual_income := v_actual_km * v_price_per_km;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM orders WHERE cargo_name = 'Receipt Approved Demo: Construction AC Units'
-    ) THEN
-        INSERT INTO orders (
-            customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, payment_type,
-            derived_status, notes
-        )
-        VALUES (
-            v_customer_id, v_coordinator_id, 'Receipt Approved Demo: Construction AC Units', 320.0,
-            v_estimated_km * v_price_per_km, 'bank_transfer',
-            'completed', 'Coordinator already published receipt based on driver actual km'
-        )
-        RETURNING id INTO v_order_id;
-    ELSE
-        SELECT id INTO v_order_id
-        FROM orders
-        WHERE cargo_name = 'Receipt Approved Demo: Construction AC Units'
-        LIMIT 1;
-
-        UPDATE orders
-        SET total_estimated_price = v_estimated_km * v_price_per_km,
-            payment_type = 'bank_transfer',
-            derived_status = 'completed',
-            notes = 'Coordinator already published receipt based on driver actual km'
-        WHERE id = v_order_id;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
-    ) THEN
-        INSERT INTO order_shipments (
-            order_id, shipment_index, vehicle_group_id,
-            cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
-            actual_distance_km, actual_price, status,
-            claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
-        )
-        VALUES (
-            v_order_id, 1, v_vehicle_group_id,
-            'Construction AC Units', 320.0, v_estimated_km * v_price_per_km, v_estimated_km,
-            v_actual_km, v_actual_income, 'completed',
-            NOW() - INTERVAL '18 hours',
-            NOW() - INTERVAL '17 hours',
-            NOW() - INTERVAL '15 hours',
-            NOW() - INTERVAL '13 hours',
-            NOW() - INTERVAL '12 hours',
-            'Approved receipt demo with actual distance and saved actual income'
-        )
-        RETURNING id INTO v_shipment_id;
-    ELSE
-        SELECT id INTO v_shipment_id
-        FROM order_shipments
-        WHERE order_id = v_order_id AND shipment_index = 1
-        LIMIT 1;
-
-        UPDATE order_shipments
-        SET cargo_name = 'Construction AC Units',
-            cargo_weight_kg = 320.0,
-            vehicle_group_id = v_vehicle_group_id,
-            estimated_price = v_estimated_km * v_price_per_km,
-            estimated_distance_km = v_estimated_km,
-            actual_distance_km = v_actual_km,
-            actual_price = v_actual_income,
-            status = 'completed',
-            notes = 'Approved receipt demo with actual distance and saved actual income'
-        WHERE id = v_shipment_id;
-    END IF;
-
-    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-    SELECT v_shipment_id, 1, 'pickup', '05 Quang Trung, Go Vap', 'Site Warehouse', '0903030303', NOW() - INTERVAL '14 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 1
-    );
-
-    INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at)
-    SELECT v_shipment_id, 2, 'delivery', '250 Dien Bien Phu, Binh Thanh', 'Project Supervisor', '0904040404',
-           NOW() - INTERVAL '13 hours', NOW() - INTERVAL '12 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 2
-    );
-
-    INSERT INTO shipment_assignment_history
-        (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-         changed_by, change_reason, changed_at)
-    SELECT v_shipment_id, NULL, NULL, v_driver_id, v_vehicle_id, v_coordinator_id, 'initial_assign',
-           NOW() - INTERVAL '18 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM shipment_assignment_history WHERE shipment_id = v_shipment_id
-    );
-
-    INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
-    SELECT v_shipment_id, v_driver_id, 'https://res.cloudinary.com/demo/image/upload/receipt-approved-proof.jpg', TRUE, NOW() - INTERVAL '12 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM delivery_proofs WHERE shipment_id = v_shipment_id
-    );
-
-    SELECT id INTO v_request_id
-    FROM order_receipt_requests
-    WHERE order_id = v_order_id
-    LIMIT 1;
-
-    IF v_request_id IS NULL THEN
-        INSERT INTO order_receipt_requests (
-            requesting_shipment_id, order_id, driver_id, status, requested_at,
-            processed_by, processed_at, coordinator_notes
-        )
-        VALUES (
-            v_shipment_id, v_order_id, v_driver_id, 'approved', NOW() - INTERVAL '11 hours',
-            v_coordinator_id, NOW() - INTERVAL '10 hours',
-            'Published by coordinator after checking actual km against vehicle group pricing'
-        )
-        RETURNING id INTO v_request_id;
-    ELSE
-        UPDATE order_receipt_requests
-        SET driver_id = v_driver_id,
-            status = 'approved',
-            processed_by = v_coordinator_id,
-            processed_at = NOW() - INTERVAL '10 hours',
-            coordinator_notes = 'Published by coordinator after checking actual km against vehicle group pricing'
-        WHERE id = v_request_id;
-    END IF;
-
-    SELECT id INTO v_receipt_id
-    FROM shipment_receipts
-    WHERE order_receipt_request_id = v_request_id
-    LIMIT 1;
-
-    IF v_receipt_id IS NULL THEN
-        INSERT INTO shipment_receipts (
-            shipment_id, payment_type, amount, collected_by, collected_at,
-            notes, order_receipt_request_id, created_at, created_by
-        )
-        VALUES (
-            v_shipment_id, 'bank_transfer', v_actual_income, NULL, NOW() - INTERVAL '10 hours',
-            'Seeded approved receipt using actual km from driver request', v_request_id, NOW() - INTERVAL '10 hours', v_coordinator_id
-        )
-        RETURNING id INTO v_receipt_id;
-    ELSE
-        UPDATE shipment_receipts
-        SET shipment_id = v_shipment_id,
-            payment_type = 'bank_transfer',
-            amount = v_actual_income,
-            collected_by = NULL,
-            collected_at = NOW() - INTERVAL '10 hours',
-            notes = 'Seeded approved receipt using actual km from driver request',
-            created_by = v_coordinator_id
-        WHERE id = v_receipt_id;
-    END IF;
-
-    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'fuel', 180000,
-           'Seeded fuel expense for approved receipt demo', CURRENT_DATE
-    WHERE NOT EXISTS (
-        SELECT 1 FROM expenses
-        WHERE shipment_id = v_shipment_id AND description = 'Seeded fuel expense for approved receipt demo'
-    );
-
-    INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-    SELECT v_shipment_id, v_vehicle_id, v_coordinator_id, v_coordinator_id, 'toll', 65000,
-           'Seeded toll expense for approved receipt demo', CURRENT_DATE
-    WHERE NOT EXISTS (
-        SELECT 1 FROM expenses
-        WHERE shipment_id = v_shipment_id AND description = 'Seeded toll expense for approved receipt demo'
-    );
-
-    UPDATE orders
-    SET updated_at = NOW()
-    WHERE id = v_order_id;
-END $$;
-
-
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
-                    total_estimated_price, payment_type, derived_status, notes)
-SELECT c.id, p.id, 'Multi-Trip: Hàng điện tử 3 chuyến', 150.0, 2100000, 'bank_transfer',
-       'open', '3 chuyến giao cho 3 điểm khác nhau'
-FROM customers c, profiles p
-JOIN accounts a ON a.id = p.id
-WHERE c.phone = '0987654322'
-  AND a.email = 'coord@gmail.com'
-  AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến')
-LIMIT 1;
-
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Laptop Dell', 50.0, 700000, 'available'
-FROM orders o WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 1, 'pickup', 'Kho FPT - KCN Tân Thuận, Q.7', 'Ms. Lan', '0903333333'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 2, 'delivery', '100 Nguyễn Thị Minh Khai, Q.1', 'Mr. Bình', '0904444444'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 2, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Màn hình Samsung', 60.0, 700000, 'available'
-FROM orders o WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 2);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 1, 'pickup', 'Kho FPT - KCN Tân Thuận, Q.7', 'Ms. Lan', '0903333333'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment_index = 2
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 2, 'delivery', '200 Lý Tự Trọng, Q.1', 'Ms. Hương', '0905555555'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment_index = 2
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg, estimated_price, status)
-SELECT o.id, 3, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 'Server rack', 40.0, 700000, 'available'
-FROM orders o WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 3);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 1, 'pickup', 'Kho FPT - KCN Tân Thuận, Q.7', 'Ms. Lan', '0903333333'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment_index = 3
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-SELECT os.id, 2, 'delivery', '300 Đinh Tiên Hoàng, Bình Thạnh', 'Mr. Sơn', '0906666666'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Multi-Trip: Hàng điện tử 3 chuyến' AND os.shipment_index = 3
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
-                    total_estimated_price, payment_type, derived_status, notes)
-SELECT c.id, p.id, 'Arrived Test: Giao ngay hôm nay', 80.0, 650000, 'cash',
-       'open', 'Driver đã đến điểm giao, chờ xác nhận'
-FROM customers c, profiles p
-JOIN accounts a ON a.id = p.id
-WHERE c.phone = '0987654321'
-  AND a.email = 'coord@gmail.com'
-  AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Arrived Test: Giao ngay hôm nay')
-LIMIT 1;
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id,
-                              cargo_name, cargo_weight_kg, estimated_price,
-                              status, claimed_at, picking_at, transit_at, arrived_at)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
-       'Đồ gia dụng', 80.0, 650000,
-       'arrived',
-       NOW() - INTERVAL '4 hours',
-       NOW() - INTERVAL '3 hours',
-       NOW() - INTERVAL '2 hours',
-       NOW() - INTERVAL '10 minutes'
-FROM orders o
-WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at)
-SELECT os.id, 1, 'pickup', '789 Cách Mạng Tháng 8, Q.3', 'Chị Mai', '0907777777',
-       NOW() - INTERVAL '3 hours', NOW() - INTERVAL '2 hours'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at)
-SELECT os.id, 2, 'delivery', '50 Hoàng Diệu, Q.4', 'Anh Khoa', '0908888888',
-       NOW() - INTERVAL '10 minutes'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-INSERT INTO shipment_assignment_history
-    (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-     changed_by, change_reason, changed_at)
-SELECT os.id, NULL, NULL, drv.id, v.id, drv.id, 'self_claim', NOW() - INTERVAL '4 hours'
-FROM order_shipments os
-JOIN orders o ON o.id = os.order_id
-JOIN accounts a ON a.email = 'driver1@example.com'
-JOIN profiles drv ON drv.id = a.id
-JOIN vehicles v ON v.plate_number = '51-A12345'
-WHERE o.cargo_name = 'Arrived Test: Giao ngay hôm nay' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM shipment_assignment_history h WHERE h.shipment_id = os.id);
-
-
-INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg,
-                    total_estimated_price, payment_type, derived_status, notes)
-SELECT c.id, p.id, 'Failed Test: Khách từ chối nhận', 120.0, 500000, 'cash',
-       'open', 'Khách báo bận, không ra nhận hàng'
-FROM customers c, profiles p
-JOIN accounts a ON a.id = p.id
-WHERE c.phone = '0987654324'
-  AND a.email = 'coord@gmail.com'
-  AND NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Failed Test: Khách từ chối nhận')
-LIMIT 1;
-
-INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id,
-                              cargo_name, cargo_weight_kg, estimated_price,
-                              status, cancel_reason,
-                              claimed_at, picking_at, transit_at, arrived_at, failed_at)
-SELECT o.id, 1, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1),
-       'Thực phẩm đông lạnh', 120.0, 500000,
-       'failed', 'Khách từ chối nhận hàng, không liên lạc được',
-       NOW() - INTERVAL '6 hours',
-       NOW() - INTERVAL '5 hours',
-       NOW() - INTERVAL '4 hours',
-       NOW() - INTERVAL '1 hour',
-       NOW() - INTERVAL '30 minutes'
-FROM orders o
-WHERE o.cargo_name = 'Failed Test: Khách từ chối nhận'
-  AND NOT EXISTS (SELECT 1 FROM order_shipments os WHERE os.order_id = o.id AND os.shipment_index = 1);
-
-INSERT INTO shipment_assignment_history
-    (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-     changed_by, change_reason, changed_at)
-SELECT os.id, NULL, NULL, drv2.id, v2.id, drv2.id, 'self_claim', NOW() - INTERVAL '6 hours'
-FROM order_shipments os
-JOIN orders o ON o.id = os.order_id
-JOIN accounts a ON a.email = 'driver2@example.com'
-JOIN profiles drv2 ON drv2.id = a.id
-JOIN vehicles v2 ON v2.plate_number = '51-D22222'
-WHERE o.cargo_name = 'Failed Test: Khách từ chối nhận' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM shipment_assignment_history h WHERE h.shipment_id = os.id);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, arrived_at, completed_at)
-SELECT os.id, 1, 'pickup', 'Kho lạnh - 88 Bến Vân Đồn, Q.4',
-       NOW() - INTERVAL '5 hours', NOW() - INTERVAL '4 hours'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Failed Test: Khách từ chối nhận' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 1);
-
-INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, arrived_at)
-SELECT os.id, 2, 'delivery', '22 Nguyễn Văn Cừ, Q.5', NOW() - INTERVAL '1 hour'
-FROM order_shipments os JOIN orders o ON o.id = os.order_id
-WHERE o.cargo_name = 'Failed Test: Khách từ chối nhận' AND os.shipment_index = 1
-  AND NOT EXISTS (SELECT 1 FROM trip_stops ts WHERE ts.shipment_id = os.id AND ts.stop_index = 2);
-
-
-DO $$
-DECLARE
-    v_shipment_id INT;
-    v_driver_id   INT;
-    v_order_id    INT;
-    v_payment_id  INT;
-    v_vehicle_id  INT;
-    v_group_id    INT;
-    v_customer_id INT;
-    v_coord_id    INT;
-BEGIN
-    SELECT p.id INTO v_driver_id
-    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-
-    SELECT p.id INTO v_coord_id
-    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
-
-    SELECT id, vehicle_group_id INTO v_vehicle_id, v_group_id
-    FROM vehicles
-    WHERE plate_number = '51-A12345';
-
-    SELECT id INTO v_customer_id
-    FROM customers
-    WHERE phone = '0987654321';
-
-    IF NOT EXISTS (
-        SELECT 1 FROM orders WHERE cargo_name = 'Driver Debt Demo: Cash Collected Office Supplies'
-    ) THEN
-        INSERT INTO orders (
-            customer_id, created_by, cargo_name, cargo_weight_kg,
-            total_estimated_price, payment_type,
-            derived_status, notes
-        )
-        VALUES (
-            v_customer_id, v_coord_id, 'Driver Debt Demo: Cash Collected Office Supplies', 95.0,
-            1500000, 'cash', 'completed',
-            'Dedicated cash-collected demo for driver debt and remittance flow'
-        )
-        RETURNING id INTO v_order_id;
-    ELSE
-        SELECT id INTO v_order_id
-        FROM orders
-        WHERE cargo_name = 'Driver Debt Demo: Cash Collected Office Supplies'
-        LIMIT 1;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM order_shipments WHERE order_id = v_order_id AND shipment_index = 1
-    ) THEN
-        INSERT INTO order_shipments (
-            order_id, shipment_index, vehicle_group_id,
-            cargo_name, cargo_weight_kg, estimated_price, estimated_distance_km,
-            actual_distance_km, actual_price, status,
-            claimed_at, picking_at, transit_at, arrived_at, completed_at, notes
-        )
-        VALUES (
-            v_order_id, 1, v_group_id,
-            'Office Supplies', 95.0, 1500000, 150.0,
-            150.0, 1500000, 'completed',
-            NOW() - INTERVAL '3 days',
-            NOW() - INTERVAL '3 days' + INTERVAL '1 hour',
-            NOW() - INTERVAL '3 days' + INTERVAL '3 hours',
-            NOW() - INTERVAL '3 days' + INTERVAL '5 hours',
-            NOW() - INTERVAL '2 days',
-            'Dedicated shipment for cash collected and driver debt settlement testing'
-        )
-        RETURNING id INTO v_shipment_id;
-    ELSE
-        SELECT id INTO v_shipment_id
-        FROM order_shipments
-        WHERE order_id = v_order_id AND shipment_index = 1
-        LIMIT 1;
-    END IF;
-
-    IF v_shipment_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM shipment_assignment_history WHERE shipment_id = v_shipment_id
-    ) THEN
-        INSERT INTO shipment_assignment_history
-            (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-             changed_by, change_reason, changed_at)
-        VALUES (v_shipment_id, NULL, NULL, v_driver_id, v_vehicle_id, v_coord_id, 'initial_assign',
-                NOW() - INTERVAL '3 days');
-    END IF;
-
-    IF v_shipment_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM trip_stops WHERE shipment_id = v_shipment_id AND stop_index = 1
-    ) THEN
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_shipment_id, 1, 'pickup', '123 Lê Thánh Tôn, Q.1, TP.HCM', 'Ms. Ngọc', '0987654321', NOW() - INTERVAL '3 days' + INTERVAL '1 hour'),
-               (v_shipment_id, 2, 'delivery', '88 Nguyễn Thị Minh Khai, Q.3, TP.HCM', 'Mr. Tuấn', '0911100001', NOW() - INTERVAL '2 days');
-    END IF;
-
-    IF v_shipment_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM shipment_receipts WHERE shipment_id = v_shipment_id
-    ) THEN
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at)
-        VALUES (v_shipment_id, 'cash_collected', 1500000, v_driver_id,
-                'Khách thanh toán tiền mặt khi nhận hàng', NOW() - INTERVAL '1 day')
-        RETURNING id INTO v_payment_id;
-
-        INSERT INTO payment_receipts (payment_id, file_url, uploaded_at)
-        VALUES (v_payment_id, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', NOW() - INTERVAL '1 day');
-
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes)
-        VALUES ('driver', v_driver_id, v_shipment_id, v_order_id, 1500000,
-                'Khách thanh toán tiền mặt — driver đang cầm tiền');
-
-
-        INSERT INTO debt_payments (debt_id, amount, payment_method, status, receipt_url,
-                                   confirmed_at, created_by, notes, paid_at)
-        SELECT d.id, 500000, 'cash', 'confirmed',
-               'https://res.cloudinary.com/demo/image/upload/sample.jpg',
-               NOW() - INTERVAL '10 hours', v_driver_id, 'Nộp tiền mặt tại văn phòng', NOW() - INTERVAL '12 hours'
-        FROM debts d WHERE d.driver_id = v_driver_id AND d.total_amount = 1500000;
-
-
-        INSERT INTO debt_payments (debt_id, amount, payment_method, status, receipt_url,
-                                   created_by, notes, paid_at)
-        SELECT d.id, 700000, 'bank_transfer', 'pending',
-               'https://res.cloudinary.com/demo/image/upload/sample2.jpg',
-               v_driver_id, 'Chuyển khoản 700k còn lại', NOW() - INTERVAL '1 hour'
-        FROM debts d WHERE d.driver_id = v_driver_id AND d.total_amount = 1500000;
-
-
-        INSERT INTO debts (debt_type, driver_id, order_id, total_amount, notes)
-        VALUES ('driver', v_driver_id, v_order_id, 800000,
-                'Thu hộ chuyến thứ 2, chưa nộp về công ty');
-    END IF;
-END $$;
-
-
-INSERT INTO payrolls (
-    driver_id, payroll_month, payroll_year,
-    base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus,
-    kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction,
-    status
-)
-SELECT p.id, 5, 2026,
-       9000000, 40,
-       15000000, 15.00, 2250000,
-       500000, 0, 200000,
-       900000, 500000, 0, 0,
-       'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver1@example.com'
-  AND NOT EXISTS (
-      SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 5 AND pw.payroll_year = 2026
-  );
-
-
-INSERT INTO salary_advances (driver_id, amount, reason, request_month, request_year, status)
-SELECT p.id, 2000000, 'Cần tiền đóng học phí cho con', 6, 2026, 'pending'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver1@example.com'
-  AND NOT EXISTS (
-      SELECT 1 FROM salary_advances sa
-      WHERE sa.driver_id = p.id AND sa.request_month = 6 AND sa.request_year = 2026
-        AND sa.status IN ('pending', 'approved')
-  );
-
-
-DO $$
-DECLARE
-    v_driver1_id   INT;
-    v_driver2_id   INT;
-    v_group_small  INT;
-BEGIN
-    SELECT p.id INTO v_driver1_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-    SELECT p.id INTO v_driver2_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT id  INTO v_group_small  FROM vehicle_groups ORDER BY id ASC LIMIT 1;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,
-                              completed_shipments, total_revenue, incident_count)
-    VALUES (v_driver1_id, v_group_small, 6, 2026, 18, 12600000, 1)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments,
-        total_revenue       = EXCLUDED.total_revenue,
-        incident_count      = EXCLUDED.incident_count;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,
-                              completed_shipments, total_revenue, incident_count)
-    VALUES (v_driver1_id, v_group_small, 5, 2026, 22, 15400000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments,
-        total_revenue       = EXCLUDED.total_revenue,
-        incident_count      = EXCLUDED.incident_count;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,
-                              completed_shipments, total_revenue, incident_count)
-    VALUES (v_driver1_id, v_group_small, 4, 2026, 19, 13300000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments,
-        total_revenue       = EXCLUDED.total_revenue,
-        incident_count      = EXCLUDED.incident_count;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,
-                              completed_shipments, total_revenue, incident_count)
-    VALUES (v_driver2_id, v_group_small, 6, 2026, 25, 17500000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments,
-        total_revenue       = EXCLUDED.total_revenue,
-        incident_count      = EXCLUDED.incident_count;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year,
-                              completed_shipments, total_revenue, incident_count)
-    VALUES (v_driver2_id, v_group_small, 5, 2026, 20, 14000000, 1)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments,
-        total_revenue       = EXCLUDED.total_revenue,
-        incident_count      = EXCLUDED.incident_count;
-END $$;
-
-
-DO $$
-DECLARE
-    v_shipment_id INT;
-    v_driver2_id  INT;
-BEGIN
-    SELECT p.id INTO v_driver2_id
-    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-
-    SELECT os.id INTO v_shipment_id
-    FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Failed Test: Khách từ chối nhận' AND os.shipment_index = 1 LIMIT 1;
-
-    IF v_shipment_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM incidents WHERE shipment_id = v_shipment_id
-    ) THEN
-        INSERT INTO incidents (shipment_id, reported_by, incident_type, severity_level,
-                               description, location, status, occurred_at)
-        VALUES (v_shipment_id, v_driver2_id, 'customer_refusal', 'low',
-                'Khách hàng không ra nhận hàng sau nhiều lần gọi điện. Đã chờ 30 phút tại điểm giao.',
-                '22 Nguyễn Văn Cừ, Q.5, TP.HCM', 'open', NOW() - INTERVAL '30 minutes');
-    END IF;
-END $$;
-
-
-DO $$
-DECLARE
-    v_driver_id INT;
-BEGIN
-    SELECT p.id INTO v_driver_id
-    FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-
-    IF v_driver_id IS NOT NULL THEN
-        INSERT INTO leave_requests (driver_id, leave_date, leave_type, reason, status)
-        VALUES (v_driver_id, '2026-06-10', 'unpaid', 'Việc gia đình', 'approved')
-        ON CONFLICT (driver_id, leave_date) DO NOTHING;
-
-        INSERT INTO leave_requests (driver_id, leave_date, leave_type, reason, status)
-        VALUES (v_driver_id, '2026-04-18', 'paid', 'Giỗ Tổ Hùng Vương', 'approved')
-        ON CONFLICT (driver_id, leave_date) DO NOTHING;
-    END IF;
-END $$;
-
-
-UPDATE company_info
-SET company_name        = 'SEP490 Van Tai Logistics',
+-- ============================================================================
+-- SEED DATA — LogisCount TMS (dựng lại toàn bộ dữ liệu mẫu, 07/2026)
+-- Chạy SAU "DB script.sql" trên DB trống.
+--
+-- Tài khoản (mật khẩu):
+--   admin@gmail.com   / admin123   — Manager
+--   coord@gmail.com   / coord123   — Coordinator
+--   acct@gmail.com    / acct123    — Accountant
+--   driver1@gmail.com / driver123  — Phạm Văn Tùng  (Xe cắt nóc, 51C-123.45)
+--   driver2@gmail.com / driver123  — Hoàng Minh Quân (Xe 3 tấn,  51D-678.90)
+--   driver3@gmail.com / driver123  — Đỗ Hữu Phước   (Xe 5m2,    51E-246.80)
+--
+-- Dữ liệu nghiệp vụ nhất quán (tháng 6 + 7/2026):
+--   8 đơn hàng → 9 chuyến (6 hoàn thành, 1 đang chạy, 2 trong pool)
+--   Phiếu thu + sổ tài chính + công nợ + KPI khớp số với từng chuyến
+-- ============================================================================
+
+-- ─── 1. TÀI KHOẢN & HỒ SƠ ────────────────────────────────────────────────────
+
+INSERT INTO accounts (id, email, password_hash, role_id, is_active) VALUES
+    (100000, 'admin@gmail.com',   crypt('admin123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'manager'),     TRUE),
+    (100001, 'coord@gmail.com',   crypt('coord123',  gen_salt('bf')), (SELECT id FROM roles WHERE name = 'coordinator'), TRUE),
+    (100002, 'acct@gmail.com',    crypt('acct123',   gen_salt('bf')), (SELECT id FROM roles WHERE name = 'accountant'),  TRUE),
+    (100003, 'driver1@gmail.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100004, 'driver2@gmail.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE),
+    (100005, 'driver3@gmail.com', crypt('driver123', gen_salt('bf')), (SELECT id FROM roles WHERE name = 'driver'),      TRUE);
+
+INSERT INTO profiles (id, full_name, phone, role_id, dob, gender, national_id, address, city, country, emergency_contact_name, emergency_contact_phone, notes) VALUES
+    (100000, 'Nguyễn Quang Minh', '0901000001', (SELECT id FROM roles WHERE name = 'manager'),     '1985-04-12', 'male',   '079185000111', '12 Nguyễn Huệ, Quận 1',        'Hồ Chí Minh', 'VN', 'Nguyễn Thị Hoa',  '0908000001', 'Giám đốc điều hành'),
+    (100001, 'Trần Thu Hà',       '0901000002', (SELECT id FROM roles WHERE name = 'coordinator'), '1992-09-21', 'female', '079192000222', '88 Lê Lợi, Quận 3',            'Hồ Chí Minh', 'VN', 'Trần Văn Phúc',   '0908000002', 'Điều phối viên'),
+    (100002, 'Lê Minh Ngọc',      '0901000003', (SELECT id FROM roles WHERE name = 'accountant'),  '1991-03-14', 'female', '079191000333', '25 Võ Thị Sáu, Quận 3',        'Hồ Chí Minh', 'VN', 'Lê Minh Châu',    '0908000003', 'Kế toán tổng hợp'),
+    (100003, 'Phạm Văn Tùng',     '0901000004', (SELECT id FROM roles WHERE name = 'driver'),      '1993-07-08', 'male',   '079193000444', '101 Trần Hưng Đạo, Thủ Đức',   'Hồ Chí Minh', 'VN', 'Phạm Thị Lan',    '0908000004', 'Tài xế xe cắt nóc'),
+    (100004, 'Hoàng Minh Quân',   '0901000005', (SELECT id FROM roles WHERE name = 'driver'),      '1990-11-02', 'male',   '079190000555', '55 Hùng Vương, Quận 5',        'Hồ Chí Minh', 'VN', 'Hoàng Thị Hạnh',  '0908000005', 'Tài xế xe 3 tấn'),
+    (100005, 'Đỗ Hữu Phước',      '0901000006', (SELECT id FROM roles WHERE name = 'driver'),      '1996-01-18', 'male',   '079196000666', '7 Nguyễn Văn Cừ, Quận 5',      'Hồ Chí Minh', 'VN', 'Đỗ Quốc Minh',    '0908000006', 'Tài xế xe 5m2');
+
+-- ─── 2. NHÓM XE & XE (theo chính sách lương 04/2026) ─────────────────────────
+
+INSERT INTO vehicle_groups (id, name, description, max_load_weight_kg, price_per_km) VALUES
+    (100000, 'Xe cắt nóc',     'Xe tải nhẹ cắt nóc, chở hàng cồng kềnh nội thành', 2000,  10000),
+    (100001, 'Xe 3 tấn (4m3)', 'Xe tải 3 tấn thùng 4m3',                           3000,  15000),
+    (100002, 'Xe 5m2',         'Xe tải thùng dài 5m2',                             7000,  20000),
+    (100003, 'Xe 7m4',         'Xe tải thùng dài 7m4, tuyến liên tỉnh',            10000, 30000);
+
+INSERT INTO vehicles (id, plate_number, vehicle_group_id, brand, model, load_capacity_kg, manufacture_year, purchase_date, assigned_driver_id, status) VALUES
+    (100000, '51C-123.45', 100000, 'Suzuki',  'Carry Pro',  1900,  2022, DATE '2022-06-10', 100003, 'active'),
+    (100001, '51D-678.90', 100001, 'Isuzu',   'QKR 230',    3000,  2021, DATE '2021-09-15', 100004, 'active'),
+    (100002, '51E-246.80', 100002, 'Hino',    'XZU 342L',   6800,  2023, DATE '2023-02-20', 100005, 'active'),
+    (100003, '51F-135.79', 100003, 'Hyundai', 'Mighty EX8', 9500,  2022, DATE '2022-11-05', NULL,   'active');
+
+INSERT INTO drivers (profile_id, vehicle_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone) VALUES
+    (100003, 100000, 'DL-0123456', DATE '2028-12-31', DATE '2023-03-01', 15.00, 'Phạm Thị Lan',   '0908000004'),
+    (100004, 100001, 'DL-0234567', DATE '2029-06-30', DATE '2024-05-15', 15.00, 'Hoàng Thị Hạnh', '0908000005'),
+    (100005, 100002, 'DL-0345678', DATE '2029-11-15', DATE '2025-11-01', 15.00, 'Đỗ Quốc Minh',   '0908000006');
+
+-- ─── 3. QUY TẮC THƯỞNG (đúng chính sách: KPI 2tr theo ngưỡng nhóm xe, top 1tr) ─
+
+INSERT INTO bonus_rules (vehicle_group_id, title, bonus_type, reward_amount, conditions_json) VALUES
+    (100000, 'Thưởng vượt KPI — Xe cắt nóc',                'kpi',         2000000, '{"min_revenue": 50000000}'::jsonb),
+    (100001, 'Thưởng vượt KPI — Xe 3 tấn (4m3)',            'kpi',         2000000, '{"min_revenue": 65000000}'::jsonb),
+    (100002, 'Thưởng vượt KPI — Xe 5m2',                    'kpi',         2000000, '{"min_revenue": 70000000}'::jsonb),
+    (100003, 'Thưởng vượt KPI — Xe 7m4',                    'kpi',         2000000, '{"min_revenue": 100000000}'::jsonb),
+    (100000, 'Lái xe xuất sắc nhất tháng — Xe cắt nóc',     'top_revenue', 1000000, '{"rank": 1}'::jsonb),
+    (100001, 'Lái xe xuất sắc nhất tháng — Xe 3 tấn (4m3)', 'top_revenue', 1000000, '{"rank": 1}'::jsonb),
+    (100002, 'Lái xe xuất sắc nhất tháng — Xe 5m2',         'top_revenue', 1000000, '{"rank": 1}'::jsonb);
+
+-- ─── 4. KHÁCH HÀNG & ĐỐI TÁC ─────────────────────────────────────────────────
+
+INSERT INTO customers (id, customer_type, full_name, company_name, contact_person, phone, email, address, tax_code, notes) VALUES
+    (100000, 'individual', 'Nguyễn Hoàng An', NULL,                              'Nguyễn Hoàng An', '0987000001', 'hoangan@gmail.com',        '123 Nguyễn Huệ, Quận 1, TP.HCM',    NULL,         'Khách cá nhân, giao nội thành, trả tiền mặt'),
+    (100001, 'business',   NULL, 'Công ty TNHH Thực phẩm Sài Gòn',              'Ms. Lan',         '0987000002', 'lan@saigonfoods.vn',       '456 Lê Lợi, Quận 1, TP.HCM',        '0312345678', 'Hàng thực phẩm khô, thanh toán chuyển khoản'),
+    (100002, 'business',   NULL, 'Công ty CP Nội thất Mộc Việt',                'Mr. Hùng',        '0987000003', 'hung@mocviet.vn',          '321 Nguyễn Trãi, Quận 5, TP.HCM',   '0309876543', 'Nội thất cồng kềnh, công nợ 30 ngày'),
+    (100003, 'individual', 'Trần Thị Bích', NULL,                               'Trần Thị Bích',   '0987000004', 'bichtran@gmail.com',       '789 Trần Hưng Đạo, Quận 5, TP.HCM', NULL,         'Khách cá nhân, chuyển nhà trọn gói');
+
+INSERT INTO partners (id, company_name, short_name, contact_person, phone, email, address, tax_code, business_registration_number, payment_term_days, bank_name, bank_account_number, bank_account_name, notes) VALUES
+    (100000, 'Công ty TNHH Vận tải Tân Cảng', 'Tân Cảng Express', 'Mr. Tuấn', '0912000001', 'tuan@tancang.vn',    '100 Pasteur, Quận 1, TP.HCM',       '0314000001', '0314000001-001', 30, 'Vietcombank', '0011008899001', 'CTY TNHH VAN TAI TAN CANG', 'Đối tác thuê xe khi quá tải'),
+    (100001, 'Công ty CP Giao nhận Miền Nam', 'Southern Logistics', 'Ms. Hoa', '0912000002', 'hoa@southernlog.vn', '200 Nguyễn Văn Linh, Quận 7, TP.HCM','0314000002', '0314000002-002', 15, 'ACB',         '220055667788',  'CTY CP GIAO NHAN MIEN NAM', 'Đối tác giao nhận liên tỉnh');
+
+-- ─── 5. THÔNG TIN CÔNG TY ────────────────────────────────────────────────────
+
+UPDATE company_info SET
+    company_name        = 'Công ty TNHH Vận tải LogisCount',
     hotline             = '1900 1234',
     bank_name           = 'Vietcombank',
-    bank_account_number = '0011004433001',
-    bank_account_name   = 'CONG TY TNHH SEP490 VAN TAI LOGISTICS',
-    bank_qr_url         = 'https://printgo.vn/uploads/media/790919/tao-ma-qr-code-san-pham-1_1620927223.jpg',
-    updated_at          = NOW()
+    bank_account_number = '0011002233445',
+    bank_account_name   = 'CONG TY TNHH VAN TAI LOGISCOUNT',
+    updated_by          = 100000
 WHERE id = 1;
 
-
-DO $$
-DECLARE
-    v_coord_id  INT;
-    v_cust1     INT;
-    v_cust2     INT;
-    v_cust3     INT;
-    v_cust4     INT;
-    v_cust5     INT;
-    v_drv1      INT;
-    v_drv2      INT;
-    v_drv3      INT;
-    v_drv4      INT;
-    v_veh1      INT;
-    v_veh2      INT;
-    v_veh3      INT;
-    v_veh4      INT;
-    v_vg_small  INT;
-    v_vg_medium INT;
-    v_oid       INT;
-    v_sid       INT;
-    v_rid       INT;
-BEGIN
-    SELECT p.id INTO v_coord_id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
-    SELECT p.id INTO v_drv1     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-    SELECT p.id INTO v_drv2     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT p.id INTO v_drv3     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver3@example.com';
-    SELECT p.id INTO v_drv4     FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver4@example.com';
-    SELECT id INTO v_veh1 FROM vehicles WHERE plate_number = '51-A12345';
-    SELECT id INTO v_veh2 FROM vehicles WHERE plate_number = '51-D22222';
-    SELECT id INTO v_veh3 FROM vehicles WHERE plate_number = '51-B67890';
-    SELECT id INTO v_veh4 FROM vehicles WHERE plate_number = '51-F44444';
-    SELECT id INTO v_cust1 FROM customers WHERE phone = '0987654321';
-    SELECT id INTO v_cust2 FROM customers WHERE phone = '0987654322';
-    SELECT id INTO v_cust3 FROM customers WHERE phone = '0987654323';
-    SELECT id INTO v_cust4 FROM customers WHERE phone = '0987654324';
-    SELECT id INTO v_cust5 FROM customers WHERE phone = '0987654325';
-    SELECT id INTO v_vg_small  FROM vehicle_groups ORDER BY id ASC LIMIT 1;
-    SELECT id INTO v_vg_medium FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jan-01: Thiet bi van phong') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Jan-01: Thiet bi van phong', 80.0, 1200000,
-                'bank_transfer', 'completed', 'Historical order Jan 2026',
-                TIMESTAMPTZ '2026-01-08 08:00:00+07', TIMESTAMPTZ '2026-01-08 17:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at, notes)
-        VALUES (v_oid, 1, v_vg_small, 'Thiet bi van phong', 80.0, 1200000, 1200000, 40.0, 41.2, 'completed',
-                '2026-01-08 08:30:00+07', '2026-01-08 09:00:00+07', '2026-01-08 10:00:00+07',
-                '2026-01-08 12:00:00+07', '2026-01-08 13:00:00+07', 'Completed Jan 2026')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '456 Le Loi, District 1, HCMC', 'Ms. Lan Anh', '0987654322', '2026-01-08 09:30:00+07'),
-               (v_sid, 2, 'delivery', '200 Nguyen Thi Minh Khai, District 3, HCMC', 'Mr. Toan', '0911100001', '2026-01-08 13:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv1, 'approved', '2026-01-08 13:05:00+07', v_coord_id, '2026-01-08 14:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 1200000, NULL, 'Chuyển khoản tháng 1', '2026-01-08 14:00:00+07', v_rid, '2026-01-08 14:00:00+07', v_coord_id);
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jan-02: Do noi that') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust3, v_coord_id, 'Hist-Jan-02: Do noi that', 180.0, 2200000,
-                'cash', 'completed', 'Historical order Jan 2026',
-                TIMESTAMPTZ '2026-01-15 08:00:00+07', TIMESTAMPTZ '2026-01-15 18:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Do noi that', 180.0, 2200000, 2200000, 55.0, 56.5, 'completed',
-                '2026-01-15 08:30:00+07', '2026-01-15 09:00:00+07', '2026-01-15 11:00:00+07',
-                '2026-01-15 14:00:00+07', '2026-01-15 15:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '789 Tran Hung Dao, District 5, HCMC', 'Tran Van Binh', '0987654323', '2026-01-15 10:00:00+07'),
-               (v_sid, 2, 'delivery', '55 Nguyen Van Cu, District 5, HCMC', 'Tran Thi Hoa', '0911100002', '2026-01-15 15:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv2, 'approved', '2026-01-15 15:10:00+07', v_coord_id, '2026-01-15 16:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'cash_collected', 2200000, v_drv2, 'Thu tien mat tu khach', '2026-01-15 15:00:00+07', v_rid, '2026-01-15 16:00:00+07', v_coord_id);
-
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
-        VALUES ('driver', v_drv2, v_sid, v_oid, 2200000, 'Da nop toan bo ve cong ty', '2026-01-15 16:00:00+07');
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Feb-01: Hang xay dung') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust5, v_coord_id, 'Hist-Feb-01: Hang xay dung', 2500.0, 3500000,
-                'bank_transfer', 'completed', 'Historical order Feb 2026',
-                TIMESTAMPTZ '2026-02-05 08:00:00+07', TIMESTAMPTZ '2026-02-05 18:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_medium, 'Hang xay dung', 2500.0, 3500000, 3500000, 70.0, 72.0, 'completed',
-                '2026-02-05 08:30:00+07', '2026-02-05 09:30:00+07', '2026-02-05 11:30:00+07',
-                '2026-02-05 15:00:00+07', '2026-02-05 16:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '50 Nguyen Van Linh, District 7, HCMC', 'Mr. Tuan Kiet', '0987654325', '2026-02-05 10:30:00+07'),
-               (v_sid, 2, 'delivery', '100 Ly Thuong Kiet, District 10, HCMC', 'Mr. Quang', '0911100003', '2026-02-05 16:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv3, 'approved', '2026-02-05 16:10:00+07', v_coord_id, '2026-02-05 17:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 3500000, NULL, 'Chuyen khoan thang 2', '2026-02-05 17:00:00+07', v_rid, '2026-02-05 17:00:00+07', v_coord_id);
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Feb-02: Linh kien dien tu') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Feb-02: Linh kien dien tu', 45.0, 900000,
-                'bank_transfer', 'completed', 'Historical order Feb 2026',
-                TIMESTAMPTZ '2026-02-20 08:00:00+07', TIMESTAMPTZ '2026-02-20 14:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Linh kien dien tu', 45.0, 900000, 900000, 30.0, 31.5, 'completed',
-                '2026-02-20 08:30:00+07', '2026-02-20 09:00:00+07', '2026-02-20 10:00:00+07',
-                '2026-02-20 12:00:00+07', '2026-02-20 13:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '456 Le Loi, District 1, HCMC', 'Ms. Lan Anh', '0987654322', '2026-02-20 09:30:00+07'),
-               (v_sid, 2, 'delivery', '77 Hai Ba Trung, District 1, HCMC', 'Mr. Tai', '0911100004', '2026-02-20 13:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv1, 'approved', '2026-02-20 13:05:00+07', v_coord_id, '2026-02-20 14:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 900000, NULL, 'Thanh toan QR thang 2', '2026-02-20 14:00:00+07', v_rid, '2026-02-20 14:00:00+07', v_coord_id);
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Mar-01: May moc cong nghiep') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust4, v_coord_id, 'Hist-Mar-01: May moc cong nghiep', 1800.0, 4500000,
-                'cash', 'completed', 'Historical order Mar 2026',
-                TIMESTAMPTZ '2026-03-10 07:00:00+07', TIMESTAMPTZ '2026-03-10 18:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_medium, 'May moc cong nghiep', 1800.0, 4500000, 4500000, 90.0, 92.5, 'completed',
-                '2026-03-10 07:30:00+07', '2026-03-10 08:30:00+07', '2026-03-10 11:00:00+07',
-                '2026-03-10 15:00:00+07', '2026-03-10 16:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '321 Nguyen Trai, District 5, HCMC', 'Mr. Hung', '0987654324', '2026-03-10 09:00:00+07'),
-               (v_sid, 2, 'delivery', '88 Dien Bien Phu, Binh Thanh, HCMC', 'Mr. Minh', '0911100005', '2026-03-10 16:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv4, 'approved', '2026-03-10 16:10:00+07', v_coord_id, '2026-03-10 17:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'cash_collected', 4500000, v_drv4, 'Thu tien mat may moc', '2026-03-10 16:00:00+07', v_rid, '2026-03-10 17:00:00+07', v_coord_id);
-
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
-        VALUES ('driver', v_drv4, v_sid, v_oid, 4500000, 'Da nop toan bo ve cong ty', '2026-03-11 09:00:00+07');
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Mar-02: Hang tiet kiem') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Mar-02: Hang tiet kiem', 60.0, 750000,
-                'client_credit', 'completed', 'Ghi no khach hang thang 3',
-                TIMESTAMPTZ '2026-03-22 08:00:00+07', TIMESTAMPTZ '2026-03-22 16:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Hang tiet kiem', 60.0, 750000, 750000, 25.0, 25.5, 'completed',
-                '2026-03-22 08:30:00+07', '2026-03-22 09:00:00+07', '2026-03-22 10:00:00+07',
-                '2026-03-22 12:00:00+07', '2026-03-22 13:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '456 Le Loi, District 1, HCMC', 'Ms. Lan Anh', '0987654322', '2026-03-22 09:30:00+07'),
-               (v_sid, 2, 'delivery', '150 Nam Ky Khoi Nghia, District 3, HCMC', 'Ms. Hoa', '0911100006', '2026-03-22 13:00:00+07');
-
-        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, due_date, notes, created_at)
-        VALUES ('customer', v_cust2, v_sid, v_oid, 750000, DATE '2026-04-22', 'Ghi no ABC Logistics thang 3', '2026-03-22 16:00:00+07');
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Apr-01: Thuc pham dong lanh') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust1, v_coord_id, 'Hist-Apr-01: Thuc pham dong lanh', 120.0, 1800000,
-                'bank_transfer', 'completed', 'Historical order Apr 2026',
-                TIMESTAMPTZ '2026-04-03 07:00:00+07', TIMESTAMPTZ '2026-04-03 16:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Thuc pham dong lanh', 120.0, 1800000, 1800000, 45.0, 46.0, 'completed',
-                '2026-04-03 07:30:00+07', '2026-04-03 08:00:00+07', '2026-04-03 10:00:00+07',
-                '2026-04-03 13:00:00+07', '2026-04-03 14:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '123 Nguyen Hue, District 1, HCMC', 'Nguyen Hoang Anh', '0987654321', '2026-04-03 08:30:00+07'),
-               (v_sid, 2, 'delivery', '250 Hoang Dieu, District 4, HCMC', 'Mr. Kien', '0911100007', '2026-04-03 14:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv2, 'approved', '2026-04-03 14:05:00+07', v_coord_id, '2026-04-03 15:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 1800000, NULL, 'Chuyen khoan thang 4', '2026-04-03 15:00:00+07', v_rid, '2026-04-03 15:00:00+07', v_coord_id);
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Apr-02: Hang hoa xuat khau') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust4, v_coord_id, 'Hist-Apr-02: Hang hoa xuat khau', 500.0, 5500000,
-                'client_credit', 'completed', 'Ghi no khach hang thang 4',
-                TIMESTAMPTZ '2026-04-18 07:00:00+07', TIMESTAMPTZ '2026-04-18 18:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_medium, 'Hang hoa xuat khau', 500.0, 5500000, 5500000, 110.0, 112.0, 'completed',
-                '2026-04-18 07:30:00+07', '2026-04-18 08:30:00+07', '2026-04-18 11:00:00+07',
-                '2026-04-18 16:00:00+07', '2026-04-18 17:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '321 Nguyen Trai, District 5, HCMC', 'Mr. Hung', '0987654324', '2026-04-18 09:30:00+07'),
-               (v_sid, 2, 'delivery', 'Cang Cat Lai, District 2, HCMC', 'Mr. Phong', '0911100008', '2026-04-18 17:00:00+07');
-
-        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, due_date, notes, created_at)
-        VALUES ('customer', v_cust4, v_sid, v_oid, 5500000, DATE '2026-05-18', 'Ghi no XYZ Trading thang 4 - da tra 1 phan', '2026-04-18 18:00:00+07');
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-May-01: Phu tung o to') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust5, v_coord_id, 'Hist-May-01: Phu tung o to', 300.0, 3200000,
-                'bank_transfer', 'completed', 'Historical order May 2026',
-                TIMESTAMPTZ '2026-05-06 07:00:00+07', TIMESTAMPTZ '2026-05-06 17:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_medium, 'Phu tung o to', 300.0, 3200000, 3200000, 64.0, 65.0, 'completed',
-                '2026-05-06 07:30:00+07', '2026-05-06 08:30:00+07', '2026-05-06 10:30:00+07',
-                '2026-05-06 14:00:00+07', '2026-05-06 15:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '50 Nguyen Van Linh, District 7, HCMC', 'Mr. Tuan Kiet', '0987654325', '2026-05-06 09:30:00+07'),
-               (v_sid, 2, 'delivery', '120 Cong Hoa, Tan Binh, HCMC', 'Ms. Thu', '0911100009', '2026-05-06 15:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv1, 'approved', '2026-05-06 15:05:00+07', v_coord_id, '2026-05-06 16:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 3200000, NULL, 'Chuyen khoan thang 5', '2026-05-06 16:00:00+07', v_rid, '2026-05-06 16:00:00+07', v_coord_id);
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-May-02: San pham nhua') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust3, v_coord_id, 'Hist-May-02: San pham nhua', 90.0, 1100000,
-                'cash', 'completed', 'Historical order May 2026',
-                TIMESTAMPTZ '2026-05-20 08:00:00+07', TIMESTAMPTZ '2026-05-20 16:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'San pham nhua', 90.0, 1100000, 1100000, 36.0, 37.0, 'completed',
-                '2026-05-20 08:30:00+07', '2026-05-20 09:00:00+07', '2026-05-20 10:30:00+07',
-                '2026-05-20 13:00:00+07', '2026-05-20 14:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '789 Tran Hung Dao, District 5, HCMC', 'Tran Van Binh', '0987654323', '2026-05-20 09:30:00+07'),
-               (v_sid, 2, 'delivery', '300 Ly Thai To, District 10, HCMC', 'Mr. Lam', '0911100010', '2026-05-20 14:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv4, 'approved', '2026-05-20 14:05:00+07', v_coord_id, '2026-05-20 15:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'cash_collected', 1100000, v_drv4, 'Thu tien mat san pham nhua', '2026-05-20 14:00:00+07', v_rid, '2026-05-20 15:00:00+07', v_coord_id);
-
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
-        VALUES ('driver', v_drv4, v_sid, v_oid, 1100000, 'Da nop ve cong ty', '2026-05-21 09:00:00+07');
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jun-01: Thiet bi y te') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord_id, 'Hist-Jun-01: Thiet bi y te', 55.0, 1050000,
-                'bank_transfer', 'completed', 'Historical order Jun 2026',
-                TIMESTAMPTZ '2026-06-03 08:00:00+07', TIMESTAMPTZ '2026-06-03 16:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Thiet bi y te', 55.0, 1050000, 1050000, 35.0, 35.5, 'completed',
-                '2026-06-03 08:30:00+07', '2026-06-03 09:00:00+07', '2026-06-03 10:30:00+07',
-                '2026-06-03 13:00:00+07', '2026-06-03 14:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '456 Le Loi, District 1, HCMC', 'Ms. Lan Anh', '0987654322', '2026-06-03 09:30:00+07'),
-               (v_sid, 2, 'delivery', '88 Nguyen Thi Minh Khai, District 1, HCMC', 'Dr. Nam', '0911100011', '2026-06-03 14:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv2, 'approved', '2026-06-03 14:05:00+07', v_coord_id, '2026-06-03 15:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 1050000, NULL, 'Chuyen khoan thang 6', '2026-06-03 15:00:00+07', v_rid, '2026-06-03 15:00:00+07', v_coord_id);
-    END IF;
-
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jun-02: Nguyen lieu san xuat') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust5, v_coord_id, 'Hist-Jun-02: Nguyen lieu san xuat', 3000.0, 6000000,
-                'client_credit', 'completed', 'Ghi no Sunrise Manufacturing thang 6',
-                TIMESTAMPTZ '2026-06-15 07:00:00+07', TIMESTAMPTZ '2026-06-15 19:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km, status,
-                                     claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_medium, 'Nguyen lieu san xuat', 3000.0, 6000000, 6000000, 120.0, 122.5, 'completed',
-                '2026-06-15 07:30:00+07', '2026-06-15 08:30:00+07', '2026-06-15 11:00:00+07',
-                '2026-06-15 16:00:00+07', '2026-06-15 17:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '50 Nguyen Van Linh, District 7, HCMC', 'Mr. Tuan Kiet', '0987654325', '2026-06-15 09:30:00+07'),
-               (v_sid, 2, 'delivery', 'KCN Binh Duong, Thu Dau Mot, Binh Duong', 'Mr. Duc', '0911100012', '2026-06-15 17:00:00+07');
-
-        INSERT INTO debts (debt_type, customer_id, shipment_id, order_id, total_amount, due_date, notes, created_at)
-        VALUES ('customer', v_cust5, v_sid, v_oid, 6000000, DATE '2026-07-15', 'Ghi no Sunrise Manufacturing thang 6 - chua thanh toan', '2026-06-15 19:00:00+07');
-    END IF;
-
-
-    INSERT INTO shipment_assignment_history
-        (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id,
-         changed_by, change_reason, changed_at)
-    SELECT os.id, NULL, NULL, m.driver_id, m.vehicle_id, v_coord_id, 'initial_assign', o.created_at
-    FROM orders o
-    JOIN order_shipments os ON os.order_id = o.id AND os.shipment_index = 1
-    JOIN (VALUES
-        ('Hist-Jan-01: Thiet bi van phong', v_drv1, v_veh1),
-        ('Hist-Jan-02: Do noi that',        v_drv2, v_veh2),
-        ('Hist-Feb-01: Hang xay dung',      v_drv3, v_veh3),
-        ('Hist-Feb-02: Linh kien dien tu',  v_drv1, v_veh1),
-        ('Hist-Mar-01: May moc cong nghiep',v_drv4, v_veh4),
-        ('Hist-Mar-02: Hang tiet kiem',     v_drv1, v_veh1),
-        ('Hist-Apr-01: Thuc pham dong lanh',v_drv2, v_veh2),
-        ('Hist-Apr-02: Hang hoa xuat khau', v_drv3, v_veh3),
-        ('Hist-May-01: Phu tung o to',      v_drv1, v_veh1),
-        ('Hist-May-02: San pham nhua',      v_drv4, v_veh4),
-        ('Hist-Jun-01: Thiet bi y te',      v_drv2, v_veh2),
-        ('Hist-Jun-02: Nguyen lieu san xuat',v_drv3, v_veh3)
-    ) AS m(cargo_name, driver_id, vehicle_id) ON m.cargo_name = o.cargo_name
-    WHERE NOT EXISTS (
-        SELECT 1 FROM shipment_assignment_history h WHERE h.shipment_id = os.id
-    );
-
-END $$;
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 4, 2026, 9000000, 39,
-    13300000, 15.00, 1995000, 300000, 0, 0,
-    900000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver1@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 4 AND pw.payroll_year = 2026);
-
-
-UPDATE payrolls SET
-    total_revenue = 15000000, revenue_share_pct = 15.00, revenue_bonus = 2250000,
-    kpi_bonus = 500000, top_driver_bonus = 0, other_bonus = 200000,
-    insurance_employee = 900000, driver_debt_deduction = 500000, advance_deduction = 0, other_deduction = 0,
-    status = 'approved'
-WHERE driver_id = (SELECT p.id FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com')
-  AND payroll_month = 5 AND payroll_year = 2026;
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 4, 2026, 9000000, 33,
-    14000000, 15.00, 2100000, 300000, 0, 0,
-    900000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver2@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 4 AND pw.payroll_year = 2026);
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 5, 2026, 9000000, 34,
-    14000000, 15.00, 2100000, 300000, 1000000, 0,
-    900000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver2@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 5 AND pw.payroll_year = 2026);
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 4, 2026, 9000000, 26,
-    11500000, 15.00, 1725000, 0, 0, 0,
-    900000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver3@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 4 AND pw.payroll_year = 2026);
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 5, 2026, 9000000, 27,
-    13000000, 15.00, 1950000, 0, 0, 0,
-    900000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver3@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 5 AND pw.payroll_year = 2026);
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 4, 2026, 9500000, 44,
-    12000000, 16.50, 1980000, 0, 0, 300000,
-    950000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver4@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 4 AND pw.payroll_year = 2026);
-
-
-INSERT INTO payrolls (driver_id, payroll_month, payroll_year, base_salary, months_of_service,
-    total_revenue, revenue_share_pct, revenue_bonus, kpi_bonus, top_driver_bonus, other_bonus,
-    insurance_employee, driver_debt_deduction, advance_deduction, other_deduction, status)
-SELECT p.id, 5, 2026, 9500000, 45,
-    15500000, 16.50, 2557500, 500000, 0, 0,
-    950000, 0, 0, 0, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver4@example.com'
-  AND NOT EXISTS (SELECT 1 FROM payrolls pw WHERE pw.driver_id = p.id AND pw.payroll_month = 5 AND pw.payroll_year = 2026);
-
-
-INSERT INTO salary_advances (driver_id, amount, reason, request_month, request_year, status)
-SELECT p.id, 3000000, 'Sua nha sau mua bao', 6, 2026, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver2@example.com'
-  AND NOT EXISTS (
-      SELECT 1 FROM salary_advances sa
-      WHERE sa.driver_id = p.id AND sa.request_month = 6 AND sa.request_year = 2026
-        AND sa.status IN ('pending', 'approved')
-  );
-
-
-INSERT INTO salary_advances (driver_id, amount, reason, request_month, request_year, status)
-SELECT p.id, 2500000, 'Mua thiet bi y te gia dinh', 6, 2026, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver3@example.com'
-  AND NOT EXISTS (
-      SELECT 1 FROM salary_advances sa
-      WHERE sa.driver_id = p.id AND sa.request_month = 6 AND sa.request_year = 2026
-        AND sa.status IN ('pending', 'approved')
-  );
-
-
-INSERT INTO salary_advances (driver_id, amount, reason, request_month, request_year, status)
-SELECT p.id, 4000000, 'Dong hoc phi cho con vao dai hoc', 5, 2026, 'approved'
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver4@example.com'
-  AND NOT EXISTS (
-      SELECT 1 FROM salary_advances sa
-      WHERE sa.driver_id = p.id AND sa.request_month = 5 AND sa.request_year = 2026
-        AND sa.status IN ('pending', 'approved')
-  );
-
-
-DO $$
-DECLARE
-    v_drv3      INT;
-    v_drv4      INT;
-    v_vg_medium INT;
-BEGIN
-    SELECT p.id INTO v_drv3 FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver3@example.com';
-    SELECT p.id INTO v_drv4 FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver4@example.com';
-    SELECT id INTO v_vg_medium FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-    VALUES (v_drv3, v_vg_medium, 4, 2026, 14, 11500000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-    VALUES (v_drv3, v_vg_medium, 5, 2026, 16, 13000000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-    VALUES (v_drv3, v_vg_medium, 6, 2026, 10, 9500000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-    VALUES (v_drv4, v_vg_medium, 4, 2026, 12, 12000000, 1)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-    VALUES (v_drv4, v_vg_medium, 5, 2026, 18, 15500000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
-
-
-    INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-    VALUES (v_drv4, v_vg_medium, 6, 2026, 13, 12800000, 0)
-    ON CONFLICT (driver_id, month, year) DO UPDATE SET
-        completed_shipments = EXCLUDED.completed_shipments, total_revenue = EXCLUDED.total_revenue;
-END $$;
-
-UPDATE shipment_receipts
-SET payment_type = 'bank_transfer'
-WHERE payment_type = 'qr_transfer';
-
-
-ALTER TABLE shipment_receipts
-  DROP CONSTRAINT IF EXISTS shipment_receipts_payment_type_check;
-
-
-ALTER TABLE shipment_receipts
-  ADD CONSTRAINT shipment_receipts_payment_type_check
-    CHECK (payment_type IN ('cash_collected', 'bank_transfer', 'client_credit'));
-
-
-DO $$
-DECLARE
-    v_drv1 INT; v_drv2 INT; v_drv3 INT; v_drv4 INT;
-    v_mgr  INT; v_acct INT; v_coord INT;
-BEGIN
-    SELECT p.id INTO v_drv1  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-    SELECT p.id INTO v_drv2  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT p.id INTO v_drv3  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver3@example.com';
-    SELECT p.id INTO v_drv4  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver4@example.com';
-    SELECT p.id INTO v_mgr   FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'admin@example.com';
-    SELECT p.id INTO v_acct  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'accountant@example.com';
-    SELECT p.id INTO v_coord FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
-
-    INSERT INTO driver_bonuses (
-        driver_id, type, year, amount,
-        months_full_count, months_incomplete_count, seniority_bonus, attendance_bonus,
-        status, requested_by, approved_by, paid_by,
-        requested_at, approved_at, paid_at, created_at, updated_at
-    ) VALUES
-    (v_drv1, 'tet_annual', 2026, 14000000, 12, 0, 2000000, 12000000,
-        'paid', v_mgr, v_mgr, v_acct,
-        '2026-01-15 08:00:00+07', '2026-01-16 09:00:00+07', '2026-01-20 10:00:00+07',
-        '2026-01-15 08:00:00+07', '2026-01-20 10:00:00+07'),
-    (v_drv2, 'tet_annual', 2026, 8000000, 6, 0, 2000000, 6000000,
-        'approved', v_mgr, v_mgr, NULL,
-        '2026-01-15 08:00:00+07', '2026-01-16 09:00:00+07', NULL,
-        '2026-01-15 08:00:00+07', '2026-01-16 09:00:00+07'),
-    (v_drv3, 'tet_annual', 2026, 14000000, 12, 0, 2000000, 12000000,
-        'pending', v_mgr, NULL, NULL,
-        '2026-01-15 08:00:00+07', NULL, NULL,
-        '2026-01-15 08:00:00+07', '2026-01-15 08:00:00+07'),
-    (v_drv4, 'tet_annual', 2026, 14000000, 12, 0, 2000000, 12000000,
-        'paid', v_mgr, v_mgr, v_acct,
-        '2026-01-15 08:00:00+07', '2026-01-16 09:00:00+07', '2026-01-20 10:00:00+07',
-        '2026-01-15 08:00:00+07', '2026-01-20 10:00:00+07')
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO driver_bonuses (
-        driver_id, type, year, amount, status, notes,
-        requested_by, requested_at, created_at, updated_at
-    ) VALUES
-    (v_drv1, 'welfare_birthday', 2026, 200000, 'pending', 'Sinh nhat thang 7/2026',
-        v_coord, NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days', NOW() - INTERVAL '2 days'),
-    (v_drv1, 'holiday_overtime', 2026, 500000, 'pending', 'Lam them ngay le 30/4/2026',
-        v_coord, '2026-05-02 08:00:00+07', '2026-05-02 08:00:00+07', '2026-05-02 08:00:00+07')
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO driver_bonuses (
-        driver_id, type, year, amount, status, notes,
-        beneficiary_name, beneficiary_relation,
-        requested_by, approved_by, paid_by,
-        requested_at, approved_at, paid_at, created_at, updated_at
-    ) VALUES
-    (v_drv2, 'welfare_wedding', 2026, 1000000, 'paid', 'Phuc loi ket hon driver 2',
-        'Pham Thi Hanh', 'self',
-        v_coord, v_mgr, v_acct,
-        '2026-03-01 08:00:00+07', '2026-03-02 09:00:00+07', '2026-03-05 10:00:00+07',
-        '2026-03-01 08:00:00+07', '2026-03-05 10:00:00+07'),
-    (v_drv3, 'welfare_funeral', 2026, 500000, 'approved', 'Hieu su than nhan',
-        'Do Quoc Minh', 'parent',
-        v_coord, v_mgr, NULL,
-        '2026-04-10 08:00:00+07', '2026-04-11 09:00:00+07', NULL,
-        '2026-04-10 08:00:00+07', '2026-04-11 09:00:00+07')
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO driver_bonuses (
-        driver_id, type, year, amount, status, notes,
-        requested_by, approved_by, paid_by,
-        requested_at, approved_at, paid_at, created_at, updated_at
-    ) VALUES
-    (v_drv4, 'special', 2026, 2000000, 'paid', 'Lai xe xuat sac quy 1/2026',
-        v_mgr, v_mgr, v_acct,
-        '2026-04-01 08:00:00+07', '2026-04-02 09:00:00+07', '2026-04-03 10:00:00+07',
-        '2026-04-01 08:00:00+07', '2026-04-03 10:00:00+07')
-    ON CONFLICT DO NOTHING;
-END $$;
-
-
-DO $$
-DECLARE
-    v_coord INT; v_drv1 INT; v_drv2 INT; v_drv3 INT; v_drv4 INT;
-    v_cust1 INT; v_cust2 INT; v_cust4 INT; v_cust5 INT;
-    v_veh1  INT; v_veh2  INT; v_veh3  INT; v_veh4  INT;
-    v_vg_small INT; v_vg_medium INT;
-    v_oid INT; v_sid INT; v_rid INT;
-BEGIN
-    SELECT p.id INTO v_coord FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
-    SELECT p.id INTO v_drv1  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-    SELECT p.id INTO v_drv2  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT p.id INTO v_drv3  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver3@example.com';
-    SELECT p.id INTO v_drv4  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver4@example.com';
-    SELECT id INTO v_veh1 FROM vehicles WHERE plate_number = '51-A12345';
-    SELECT id INTO v_veh2 FROM vehicles WHERE plate_number = '51-D22222';
-    SELECT id INTO v_veh3 FROM vehicles WHERE plate_number = '51-B67890';
-    SELECT id INTO v_veh4 FROM vehicles WHERE plate_number = '51-F44444';
-    SELECT id INTO v_cust1 FROM customers WHERE phone = '0987654321';
-    SELECT id INTO v_cust2 FROM customers WHERE phone = '0987654322';
-    SELECT id INTO v_cust4 FROM customers WHERE phone = '0987654324';
-    SELECT id INTO v_cust5 FROM customers WHERE phone = '0987654325';
-    SELECT id INTO v_vg_small  FROM vehicle_groups ORDER BY id ASC LIMIT 1;
-    SELECT id INTO v_vg_medium FROM vehicle_groups ORDER BY id ASC OFFSET 1 LIMIT 1;
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jul-01: Do gia dung cao cap') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust2, v_coord, 'Hist-Jul-01: Do gia dung cao cap', 110.0, 1650000,
-                'bank_transfer', 'completed', 'Historical order Jul 2026',
-                TIMESTAMPTZ '2026-07-01 08:00:00+07', TIMESTAMPTZ '2026-07-01 17:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km,
-                                     status, claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Do gia dung cao cap', 110.0, 1650000, 1650000, 55.0, 56.0, 'completed',
-                '2026-07-01 08:30:00+07', '2026-07-01 09:00:00+07', '2026-07-01 11:00:00+07',
-                '2026-07-01 14:00:00+07', '2026-07-01 15:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '456 Le Loi, District 1, HCMC', 'Ms. Lan Anh', '0987654322', '2026-07-01 10:00:00+07'),
-               (v_sid, 2, 'delivery', '22 Nguyen Thi Minh Khai, Q.3', 'Mr. Toan', '0911200001', '2026-07-01 15:00:00+07');
-
-        INSERT INTO shipment_assignment_history (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id, changed_by, change_reason, changed_at)
-        VALUES (v_sid, NULL, NULL, v_drv1, v_veh1, v_coord, 'initial_assign', '2026-07-01 08:00:00+07');
-
-        INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
-        VALUES (v_sid, v_drv1, 'https://res.cloudinary.com/demo/image/upload/jul01-proof.jpg', TRUE, '2026-07-01 15:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv1, 'approved', '2026-07-01 15:10:00+07', v_coord, '2026-07-01 16:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'bank_transfer', 1650000, NULL, 'Chuyen khoan thang 7', '2026-07-01 16:00:00+07', v_rid, '2026-07-01 16:00:00+07', v_coord);
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Hist-Jul-02: Thiet bi IT van phong') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes, created_at, updated_at)
-        VALUES (v_cust4, v_coord, 'Hist-Jul-02: Thiet bi IT van phong', 75.0, 1200000,
-                'cash', 'completed', 'Historical order Jul 2026',
-                TIMESTAMPTZ '2026-07-02 08:00:00+07', TIMESTAMPTZ '2026-07-02 16:00:00+07')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, actual_price, estimated_distance_km, actual_distance_km,
-                                     status, claimed_at, picking_at, transit_at, arrived_at, completed_at)
-        VALUES (v_oid, 1, v_vg_small, 'Thiet bi IT van phong', 75.0, 1200000, 1200000, 40.0, 41.0, 'completed',
-                '2026-07-02 08:30:00+07', '2026-07-02 09:00:00+07', '2026-07-02 10:30:00+07',
-                '2026-07-02 13:00:00+07', '2026-07-02 14:00:00+07')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '321 Nguyen Trai, District 5, HCMC', 'Mr. Hung', '0987654324', '2026-07-02 09:30:00+07'),
-               (v_sid, 2, 'delivery', '55 Cong Hoa, Tan Binh, HCMC', 'Ms. Linh', '0911200002', '2026-07-02 14:00:00+07');
-
-        INSERT INTO shipment_assignment_history (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id, changed_by, change_reason, changed_at)
-        VALUES (v_sid, NULL, NULL, v_drv2, v_veh2, v_coord, 'initial_assign', '2026-07-02 08:00:00+07');
-
-        INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at)
-        VALUES (v_sid, v_drv2, 'https://res.cloudinary.com/demo/image/upload/jul02-proof.jpg', TRUE, '2026-07-02 14:00:00+07');
-
-        INSERT INTO order_receipt_requests (requesting_shipment_id, order_id, driver_id, status, requested_at, processed_by, processed_at)
-        VALUES (v_sid, v_oid, v_drv2, 'approved', '2026-07-02 14:10:00+07', v_coord, '2026-07-02 15:00:00+07');
-
-        SELECT id INTO v_rid FROM order_receipt_requests WHERE order_id = v_oid LIMIT 1;
-        INSERT INTO shipment_receipts (shipment_id, payment_type, amount, collected_by, notes, collected_at, order_receipt_request_id, created_at, created_by)
-        VALUES (v_sid, 'cash_collected', 1200000, v_drv2, 'Thu tien mat thiet bi IT', '2026-07-02 14:00:00+07', v_rid, '2026-07-02 15:00:00+07', v_coord);
-
-        INSERT INTO debts (debt_type, driver_id, shipment_id, order_id, total_amount, notes, created_at)
-        VALUES ('driver', v_drv2, v_sid, v_oid, 1200000, 'Driver 2 thu 1.2M thang 7 - dang cong no', '2026-07-02 15:00:00+07');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Active-Jul: Hang hoa dang van chuyen') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes)
-        VALUES (v_cust5, v_coord, 'Active-Jul: Hang hoa dang van chuyen', 200.0, 2800000,
-                'bank_transfer', 'open', 'Shipment dang transit - driver 3 dang tren duong')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, estimated_distance_km, status,
-                                     claimed_at, picking_at, transit_at)
-        VALUES (v_oid, 1, v_vg_medium, 'Hang hoa dang van chuyen', 200.0, 2800000, 70.0, 'transit',
-                NOW() - INTERVAL '3 hours', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, completed_at)
-        VALUES (v_sid, 1, 'pickup', '50 Nguyen Van Linh, District 7, HCMC', 'Mr. Tuan Kiet', '0987654325', NOW() - INTERVAL '1 hour 30 minutes');
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-        VALUES (v_sid, 2, 'delivery', 'KCN Binh Duong, Thu Dau Mot, Binh Duong', 'Ms. Ngoc', '0911200003');
-
-        INSERT INTO shipment_assignment_history (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id, changed_by, change_reason, changed_at)
-        VALUES (v_sid, NULL, NULL, v_drv3, v_veh3, v_coord, 'initial_assign', NOW() - INTERVAL '3 hours');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Pool-Jul-01: Phu tung may moc') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes)
-        VALUES (v_cust4, v_coord, 'Pool-Jul-01: Phu tung may moc', 400.0, 4200000,
-                'bank_transfer', 'open', 'Trip trong pool, chua co driver nhan')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, estimated_distance_km, status)
-        VALUES (v_oid, 1, v_vg_medium, 'Phu tung may moc', 400.0, 4200000, 84.0, 'available')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-        VALUES (v_sid, 1, 'pickup', '100 Pasteur, District 1, HCMC', 'Mr. Long', '0911200004'),
-               (v_sid, 2, 'delivery', 'KCN Long Binh, Bien Hoa, Dong Nai', 'Mr. Thanh', '0911200005');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM orders WHERE cargo_name = 'Pool-Jul-02: Hang tieu dung') THEN
-        INSERT INTO orders (customer_id, created_by, cargo_name, cargo_weight_kg, total_estimated_price,
-                            payment_type, derived_status, notes)
-        VALUES (v_cust1, v_coord, 'Pool-Jul-02: Hang tieu dung', 60.0, 900000,
-                'cash', 'open', 'Trip nho trong pool cho Small Van')
-        RETURNING id INTO v_oid;
-
-        INSERT INTO order_shipments (order_id, shipment_index, vehicle_group_id, cargo_name, cargo_weight_kg,
-                                     estimated_price, estimated_distance_km, status)
-        VALUES (v_oid, 1, v_vg_small, 'Hang tieu dung', 60.0, 900000, 30.0, 'available')
-        RETURNING id INTO v_sid;
-
-        INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone)
-        VALUES (v_sid, 1, 'pickup', '123 Nguyen Hue, District 1, HCMC', 'Nguyen Hoang Anh', '0987654321'),
-               (v_sid, 2, 'delivery', '88 Le Duan, District 1, HCMC', 'Mr. Phat', '0911200006');
-    END IF;
-END $$;
-
-
-DO $$
-DECLARE
-    v_drv1 INT; v_drv2 INT; v_drv3 INT; v_drv4 INT;
-    v_drv2_vehicle INT; v_drv3_vehicle INT; v_drv4_vehicle INT;
-    v_coord INT;
-    v_sid INT;
-BEGIN
-    SELECT p.id INTO v_drv1  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver1@example.com';
-    SELECT p.id INTO v_drv2  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver2@example.com';
-    SELECT p.id INTO v_drv3  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver3@example.com';
-    SELECT p.id INTO v_drv4  FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'driver4@example.com';
-    SELECT p.id INTO v_coord FROM profiles p JOIN accounts a ON a.id = p.id WHERE a.email = 'coord@gmail.com';
-
-    SELECT v.id INTO v_drv2_vehicle FROM vehicles v WHERE v.plate_number = '51-D22222';
-    SELECT v.id INTO v_drv3_vehicle FROM vehicles v WHERE v.plate_number = '51-B67890';
-    SELECT v.id INTO v_drv4_vehicle FROM vehicles v WHERE v.plate_number = '51-F44444';
-
-    SELECT os.id INTO v_sid FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Hist-Jul-02: Thiet bi IT van phong' AND os.shipment_index = 1 LIMIT 1;
-
-    IF v_sid IS NOT NULL AND NOT EXISTS (SELECT 1 FROM incidents WHERE shipment_id = v_sid) THEN
-        INSERT INTO incidents (shipment_id, reported_by, incident_type, severity_level,
-                               description, location, status, occurred_at)
-        VALUES (v_sid, v_drv2, 'traffic_jam', 'low',
-                'Ket xe tren duong Cong Hoa do tai nan giao thong, tre lich giao hang 1 tieng.',
-                'Duong Cong Hoa, Tan Binh, HCMC', 'resolved', '2026-07-02 12:00:00+07');
-    END IF;
-
-    INSERT INTO incidents (reported_by, incident_type, severity_level, description, location, status, occurred_at)
-    SELECT v_drv3, 'vehicle_breakdown', 'high',
-           'Xe bi hong lop giua duong, can doi xe thay the. Da bao cao coordinator.',
-           'Quoc lo 13, Thu Duc, HCMC', 'open', NOW() - INTERVAL '2 hours'
-    WHERE NOT EXISTS (
-        SELECT 1 FROM incidents WHERE reported_by = v_drv3 AND incident_type = 'vehicle_breakdown'
-    );
-
-    INSERT INTO leave_requests (driver_id, leave_date, leave_type, reason, status)
-    VALUES
-    (v_drv2, '2026-05-12', 'paid', 'Benh', 'approved'),
-    (v_drv2, '2026-06-20', 'unpaid', 'Viec ca nhan', 'approved'),
-    (v_drv3, '2026-04-30', 'paid', 'Nghi le 30/4', 'approved'),
-    (v_drv3, '2026-05-01', 'paid', 'Nghi le 1/5', 'approved'),
-    (v_drv4, '2026-06-28', 'unpaid', 'Con om', 'approved'),
-    (v_drv4, '2026-07-02', 'paid', 'Kham suc khoe dinh ky', 'approved')
-    ON CONFLICT (driver_id, leave_date) DO NOTHING;
-
-    SELECT os.id INTO v_sid FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Hist-Jun-01: Thiet bi y te' AND os.shipment_index = 1 LIMIT 1;
-
-    IF v_sid IS NOT NULL THEN
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv2_vehicle, v_drv2, v_drv2, 'fuel', 120000, 'Xang chay chuyen thiet bi y te thang 6', '2026-06-03'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'fuel');
-    END IF;
-
-    SELECT os.id INTO v_sid FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Hist-Jun-02: Nguyen lieu san xuat' AND os.shipment_index = 1 LIMIT 1;
-
-    IF v_sid IS NOT NULL THEN
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv3_vehicle, v_drv3, v_drv3, 'toll', 85000, 'Phi cao toc QL13 chuyen nguyen lieu thang 6', '2026-06-15'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'toll');
-
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv3_vehicle, v_drv3, v_drv3, 'parking', 30000, 'Phi gui xe tai KCN Binh Duong', '2026-06-15'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'parking');
-    END IF;
-
-    SELECT os.id INTO v_sid FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Hist-May-01: Phu tung o to' AND os.shipment_index = 1 LIMIT 1;
-
-    IF v_sid IS NOT NULL THEN
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv2_vehicle, v_drv1, v_drv1, 'fuel', 210000, 'Xang chuyen phu tung o to 64km', '2026-05-06'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'fuel');
-
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv2_vehicle, v_drv1, v_drv1, 'toll', 55000, 'Phi BOT tren quoc lo', '2026-05-06'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'toll');
-    END IF;
-
-    SELECT os.id INTO v_sid FROM order_shipments os JOIN orders o ON o.id = os.order_id
-    WHERE o.cargo_name = 'Hist-Mar-01: May moc cong nghiep' AND os.shipment_index = 1 LIMIT 1;
-
-    IF v_sid IS NOT NULL THEN
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv4_vehicle, v_drv4, v_drv4, 'fuel', 315000, 'Xang chuyen may moc 90km', '2026-03-10'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'fuel');
-
-        INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date)
-        SELECT v_sid, v_drv4_vehicle, v_drv4, v_drv4, 'repair', 150000, 'Bom lop giua duong', '2026-03-10'
-        WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE shipment_id = v_sid AND expense_type = 'repair');
-    END IF;
-END $$;
-
-
-INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-SELECT p.id, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 4, 2026, 16, 11200000, 0
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver2@example.com'
-ON CONFLICT (driver_id, month, year) DO NOTHING;
-
-INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-SELECT p.id, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 7, 2026, 3, 1650000, 0
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver1@example.com'
-ON CONFLICT (driver_id, month, year) DO NOTHING;
-
-INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count)
-SELECT p.id, (SELECT id FROM vehicle_groups ORDER BY id ASC LIMIT 1), 7, 2026, 2, 1200000, 1
-FROM profiles p JOIN accounts a ON a.id = p.id
-WHERE a.email = 'driver2@example.com'
-ON CONFLICT (driver_id, month, year) DO NOTHING;
-
-
-SELECT '✓ Accounts'          AS entity, COUNT(*) AS count FROM accounts
-UNION ALL SELECT '✓ Profiles',           COUNT(*) FROM profiles
-UNION ALL SELECT '✓ Customers',          COUNT(*) FROM customers
-UNION ALL SELECT '✓ Vehicle Groups',     COUNT(*) FROM vehicle_groups
-UNION ALL SELECT '✓ Vehicles',           COUNT(*) FROM vehicles
-UNION ALL SELECT '✓ Orders',             COUNT(*) FROM orders
-UNION ALL SELECT '✓ Shipments',          COUNT(*) FROM order_shipments
-UNION ALL SELECT '✓ Trip Stops',         COUNT(*) FROM trip_stops
-UNION ALL SELECT '✓ Drivers',            COUNT(*) FROM drivers
-UNION ALL SELECT '✓ KPI Records',        COUNT(*) FROM kpi_records
-UNION ALL SELECT '✓ Payrolls',           COUNT(*) FROM payrolls
-UNION ALL SELECT '✓ Salary Advances',    COUNT(*) FROM salary_advances
-UNION ALL SELECT '✓ Debts (driver)',     COUNT(*) FROM debts WHERE debt_type = 'driver'
-UNION ALL SELECT '✓ Debts (customer)',   COUNT(*) FROM debts WHERE debt_type = 'customer'
-UNION ALL SELECT '✓ Incidents',          COUNT(*) FROM incidents
-UNION ALL SELECT '✓ Leave Requests',     COUNT(*) FROM leave_requests
-UNION ALL SELECT '✓ Receipt Requests',   COUNT(*) FROM order_receipt_requests
-UNION ALL SELECT '✓ Shipment Receipts',  COUNT(*) FROM shipment_receipts
-UNION ALL SELECT '✓ Expenses',           COUNT(*) FROM expenses
-UNION ALL SELECT '✓ Delivery Proofs',    COUNT(*) FROM delivery_proofs
-UNION ALL SELECT '✓ Maintenance',        COUNT(*) FROM maintenance_records
-UNION ALL SELECT '✓ Driver Bonuses',     COUNT(*) FROM driver_bonuses;
+-- ─── 6. ĐƠN HÀNG & CHUYẾN ────────────────────────────────────────────────────
+-- Tháng 6/2026 — 4 đơn hoàn thành, đã chốt phiếu thu:
+--   Đơn 100000 (Saigon Foods, CK)      → chuyến 100000, driver1, 2.500.000
+--   Đơn 100001 (Hoàng An, tiền mặt)    → chuyến 100001, driver2, 3.200.000 → nợ tài xế (đã nộp 2tr, còn 1,2tr)
+--   Đơn 100002 (Mộc Việt, công nợ)     → chuyến 100002, driver3, 5.500.000 → nợ khách (đã trả 2tr, còn 3,5tr)
+--   Đơn 100003 (Bích, tiền mặt)        → chuyến 100003, driver1, 1.800.000 → nợ tài xế đã nộp đủ
+-- Tháng 7/2026:
+--   Đơn 100004 (Saigon Foods, CK)      → chuyến 100004, driver1, 2.000.000 (hoàn thành)
+--   Đơn 100005 (Hoàng An, tiền mặt)    → chuyến 100005, driver3, 4.000.000 (hoàn thành, nợ tài xế chưa nộp)
+--   Đơn 100006 (Mộc Việt, CK, mở)      → chuyến 100006 đang chạy (driver2) + chuyến 100007 trong pool
+--   Đơn 100007 (Bích, tiền mặt, mở)    → chuyến 100008 trong pool
+
+INSERT INTO orders (id, customer_id, created_by, cargo_name, cargo_weight_kg, payment_type, total_estimated_price, derived_status, notes, created_at, updated_at) VALUES
+    (100000, 100001, 100001, 'Thực phẩm khô đóng thùng',    800,  'bank_transfer', 2400000, 'completed', 'Giao kho Quận 7',                      '2026-06-05 06:30:00+07', '2026-06-06 09:00:00+07'),
+    (100001, 100000, 100001, 'Đồ gia dụng',                 1500, 'cash',          3000000, 'completed', 'Khách trả tiền mặt cho tài xế',         '2026-06-10 06:00:00+07', '2026-06-10 18:00:00+07'),
+    (100002, 100002, 100001, 'Bàn ghế gỗ xuất khẩu',        4500, 'client_credit', 5200000, 'completed', 'Công nợ 30 ngày theo hợp đồng',         '2026-06-18 06:00:00+07', '2026-06-18 17:00:00+07'),
+    (100003, 100003, 100001, 'Đồ đạc chuyển nhà',           900,  'cash',          1700000, 'completed', 'Chuyển nhà trọn gói Quận 5 → Thủ Đức',  '2026-06-22 07:00:00+07', '2026-06-22 16:00:00+07'),
+    (100004, 100001, 100001, 'Gia vị & nguyên liệu bếp',    700,  'bank_transfer', 1900000, 'completed', 'Giao siêu thị Gò Vấp',                  '2026-07-08 06:30:00+07', '2026-07-09 10:00:00+07'),
+    (100005, 100000, 100001, 'Máy móc gia công nhỏ',        3200, 'cash',          3800000, 'completed', 'Hàng nặng, cần xe 5m2',                 '2026-07-12 06:00:00+07', '2026-07-12 17:30:00+07'),
+    (100006, 100002, 100001, 'Nội thất văn phòng (2 đợt)',  5000, 'bank_transfer', 5800000, 'open',      'Chia 2 chuyến, đợt 2 chờ tài xế nhận',  '2026-07-16 07:00:00+07', '2026-07-16 09:15:00+07'),
+    (100007, 100003, 100001, 'Tủ lạnh + máy giặt',          400,  'cash',          1500000, 'open',      'Chờ tài xế nhận chuyến',                '2026-07-17 08:00:00+07', '2026-07-17 08:00:00+07');
+
+INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, estimated_price, estimated_distance_km, actual_distance_km, actual_price, cargo_name, cargo_weight_kg, status, claimed_at, picking_at, transit_at, arrived_at, completed_at, created_at, updated_at) VALUES
+    -- Tháng 6 — hoàn thành
+    (100000, 100000, 1, 100000, 2400000, 240, 250, 2500000, 'Thực phẩm khô đóng thùng', 800,  'completed', '2026-06-05 07:00:00+07', '2026-06-05 07:40:00+07', '2026-06-05 09:00:00+07', '2026-06-05 15:30:00+07', '2026-06-05 16:30:00+07', '2026-06-05 06:30:00+07', '2026-06-05 16:30:00+07'),
+    (100001, 100001, 1, 100001, 3000000, 200, 213, 3200000, 'Đồ gia dụng',              1500, 'completed', '2026-06-10 07:00:00+07', '2026-06-10 07:50:00+07', '2026-06-10 09:30:00+07', '2026-06-10 16:00:00+07', '2026-06-10 17:00:00+07', '2026-06-10 06:00:00+07', '2026-06-10 17:00:00+07'),
+    (100002, 100002, 1, 100002, 5200000, 260, 275, 5500000, 'Bàn ghế gỗ xuất khẩu',     4500, 'completed', '2026-06-18 06:30:00+07', '2026-06-18 07:20:00+07', '2026-06-18 08:45:00+07', '2026-06-18 15:00:00+07', '2026-06-18 16:00:00+07', '2026-06-18 06:00:00+07', '2026-06-18 16:00:00+07'),
+    (100003, 100003, 1, 100000, 1700000, 170, 180, 1800000, 'Đồ đạc chuyển nhà',        900,  'completed', '2026-06-22 07:30:00+07', '2026-06-22 08:15:00+07', '2026-06-22 09:30:00+07', '2026-06-22 14:30:00+07', '2026-06-22 15:30:00+07', '2026-06-22 07:00:00+07', '2026-06-22 15:30:00+07'),
+    -- Tháng 7 — hoàn thành
+    (100004, 100004, 1, 100000, 1900000, 190, 200, 2000000, 'Gia vị & nguyên liệu bếp', 700,  'completed', '2026-07-08 07:00:00+07', '2026-07-08 07:45:00+07', '2026-07-08 09:00:00+07', '2026-07-08 14:00:00+07', '2026-07-08 15:00:00+07', '2026-07-08 06:30:00+07', '2026-07-08 15:00:00+07'),
+    (100005, 100005, 1, 100002, 3800000, 190, 200, 4000000, 'Máy móc gia công nhỏ',     3200, 'completed', '2026-07-12 07:00:00+07', '2026-07-12 07:50:00+07', '2026-07-12 09:15:00+07', '2026-07-12 15:30:00+07', '2026-07-12 16:30:00+07', '2026-07-12 06:00:00+07', '2026-07-12 16:30:00+07'),
+    -- Tháng 7 — đang chạy (driver2 đang chở đợt 1 đơn 100006)
+    (100006, 100006, 1, 100001, 3000000, 150, NULL, NULL,   'Nội thất văn phòng đợt 1', 2600, 'transit',   '2026-07-16 08:00:00+07', '2026-07-16 08:30:00+07', '2026-07-16 09:15:00+07', NULL, NULL, '2026-07-16 07:00:00+07', '2026-07-16 09:15:00+07'),
+    -- Trip pool
+    (100007, 100006, 2, 100001, 2800000, 140, NULL, NULL,   'Nội thất văn phòng đợt 2', 2400, 'available', NULL, NULL, NULL, NULL, NULL, '2026-07-16 07:00:00+07', '2026-07-16 07:00:00+07'),
+    (100008, 100007, 1, 100000, 1500000, 150, NULL, NULL,   'Tủ lạnh + máy giặt',       400,  'available', NULL, NULL, NULL, NULL, NULL, '2026-07-17 08:00:00+07', '2026-07-17 08:00:00+07');
+
+-- Điểm dừng (lấy + giao cho từng chuyến)
+INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address, contact_name, contact_phone, arrived_at, completed_at) VALUES
+    (100000, 1, 'pickup',   'Kho Saigon Foods, 456 Lê Lợi, Quận 1, TP.HCM',        'Ms. Lan',         '0987000002', '2026-06-05 07:30:00+07', '2026-06-05 08:50:00+07'),
+    (100000, 2, 'delivery', 'Kho lạnh Quận 7, 15 Nguyễn Thị Thập, TP.HCM',          'Anh Bảo (thủ kho)','0912345001', '2026-06-05 15:30:00+07', '2026-06-05 16:25:00+07'),
+    (100001, 1, 'pickup',   '123 Nguyễn Huệ, Quận 1, TP.HCM',                      'Nguyễn Hoàng An', '0987000001', '2026-06-10 07:40:00+07', '2026-06-10 09:20:00+07'),
+    (100001, 2, 'delivery', '45 Quốc lộ 51, Long Thành, Đồng Nai',                 'Chị Thu',         '0912345002', '2026-06-10 16:00:00+07', '2026-06-10 16:55:00+07'),
+    (100002, 1, 'pickup',   'Xưởng Mộc Việt, 321 Nguyễn Trãi, Quận 5, TP.HCM',     'Mr. Hùng',        '0987000003', '2026-06-18 07:10:00+07', '2026-06-18 08:40:00+07'),
+    (100002, 2, 'delivery', 'Cảng Cát Lái, Thủ Đức, TP.HCM',                        'Kho xuất CL-3',   '0912345003', '2026-06-18 15:00:00+07', '2026-06-18 15:55:00+07'),
+    (100003, 1, 'pickup',   '789 Trần Hưng Đạo, Quận 5, TP.HCM',                   'Trần Thị Bích',   '0987000004', '2026-06-22 08:00:00+07', '2026-06-22 09:25:00+07'),
+    (100003, 2, 'delivery', 'Chung cư Vinhomes Grand Park, Thủ Đức, TP.HCM',        'Trần Thị Bích',   '0987000004', '2026-06-22 14:30:00+07', '2026-06-22 15:25:00+07'),
+    (100004, 1, 'pickup',   'Kho Saigon Foods, 456 Lê Lợi, Quận 1, TP.HCM',        'Ms. Lan',         '0987000002', '2026-07-08 07:30:00+07', '2026-07-08 08:55:00+07'),
+    (100004, 2, 'delivery', 'Siêu thị BigC Gò Vấp, TP.HCM',                         'Anh Nam (nhận hàng)','0912345004', '2026-07-08 14:00:00+07', '2026-07-08 14:55:00+07'),
+    (100005, 1, 'pickup',   '123 Nguyễn Huệ, Quận 1, TP.HCM',                      'Nguyễn Hoàng An', '0987000001', '2026-07-12 07:40:00+07', '2026-07-12 09:10:00+07'),
+    (100005, 2, 'delivery', 'KCN Sóng Thần, Dĩ An, Bình Dương',                     'Anh Đạt',         '0912345005', '2026-07-12 15:30:00+07', '2026-07-12 16:25:00+07'),
+    (100006, 1, 'pickup',   'Xưởng Mộc Việt, 321 Nguyễn Trãi, Quận 5, TP.HCM',     'Mr. Hùng',        '0987000003', '2026-07-16 08:20:00+07', '2026-07-16 09:10:00+07'),
+    (100006, 2, 'delivery', 'Tòa nhà Bitexco, 2 Hải Triều, Quận 1, TP.HCM',         'Lễ tân tầng 12',  '0912345006', NULL, NULL),
+    (100007, 1, 'pickup',   'Xưởng Mộc Việt, 321 Nguyễn Trãi, Quận 5, TP.HCM',     'Mr. Hùng',        '0987000003', NULL, NULL),
+    (100007, 2, 'delivery', 'Tòa nhà Bitexco, 2 Hải Triều, Quận 1, TP.HCM',         'Lễ tân tầng 12',  '0912345006', NULL, NULL),
+    (100008, 1, 'pickup',   'Điện máy Chợ Lớn, 190 Hồng Bàng, Quận 5, TP.HCM',     'Quầy giao nhận',  '0912345007', NULL, NULL),
+    (100008, 2, 'delivery', '789 Trần Hưng Đạo, Quận 5, TP.HCM',                   'Trần Thị Bích',   '0987000004', NULL, NULL);
+
+-- Lịch sử nhận chuyến (driver tự claim từ pool)
+INSERT INTO shipment_assignment_history (shipment_id, from_driver_id, from_vehicle_id, to_driver_id, to_vehicle_id, changed_by, change_reason, changed_at) VALUES
+    (100000, NULL, NULL, 100003, 100000, 100003, 'self_claim', '2026-06-05 07:00:00+07'),
+    (100001, NULL, NULL, 100004, 100001, 100004, 'self_claim', '2026-06-10 07:00:00+07'),
+    (100002, NULL, NULL, 100005, 100002, 100005, 'self_claim', '2026-06-18 06:30:00+07'),
+    (100003, NULL, NULL, 100003, 100000, 100003, 'self_claim', '2026-06-22 07:30:00+07'),
+    (100004, NULL, NULL, 100003, 100000, 100003, 'self_claim', '2026-07-08 07:00:00+07'),
+    (100005, NULL, NULL, 100005, 100002, 100005, 'self_claim', '2026-07-12 07:00:00+07'),
+    (100006, NULL, NULL, 100004, 100001, 100004, 'self_claim', '2026-07-16 08:00:00+07');
+
+-- Chia doanh thu mặc định (100% chủ chuyến) cho các chuyến hoàn thành
+INSERT INTO shipment_revenue_allocations (shipment_id, driver_id, share_percent, allocation_reason, created_by) VALUES
+    (100000, 100003, 100, 'default_owner', 100001),
+    (100001, 100004, 100, 'default_owner', 100001),
+    (100002, 100005, 100, 'default_owner', 100001),
+    (100003, 100003, 100, 'default_owner', 100001),
+    (100004, 100003, 100, 'default_owner', 100001),
+    (100005, 100005, 100, 'default_owner', 100001);
+
+-- Ảnh bằng chứng giao hàng (chuyến hoàn thành)
+INSERT INTO delivery_proofs (shipment_id, captured_by, file_url, is_realtime, captured_at) VALUES
+    (100000, 100003, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', TRUE, '2026-06-05 16:25:00+07'),
+    (100001, 100004, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', TRUE, '2026-06-10 16:55:00+07'),
+    (100002, 100005, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', TRUE, '2026-06-18 15:55:00+07'),
+    (100003, 100003, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', TRUE, '2026-06-22 15:25:00+07'),
+    (100004, 100003, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', TRUE, '2026-07-08 14:55:00+07'),
+    (100005, 100005, 'https://res.cloudinary.com/demo/image/upload/sample.jpg', TRUE, '2026-07-12 16:25:00+07');
+
+-- ─── 7. YÊU CẦU PHIẾU THU & PHIẾU THU ────────────────────────────────────────
+
+INSERT INTO order_receipt_requests (id, order_id, requesting_shipment_id, driver_id, driver_notes, status, requested_at, processed_by, processed_at, coordinator_notes) VALUES
+    (100000, 100000, 100000, 100003, 'Km thực tế 250', 'approved', '2026-06-05 16:35:00+07', 100001, '2026-06-05 17:00:00+07', 'Chốt 2.500.000đ theo km thực tế'),
+    (100001, 100001, 100001, 100004, 'Km thực tế 213', 'approved', '2026-06-10 17:05:00+07', 100001, '2026-06-10 17:30:00+07', 'Chốt 3.200.000đ'),
+    (100002, 100002, 100002, 100005, 'Km thực tế 275', 'approved', '2026-06-18 16:05:00+07', 100001, '2026-06-18 16:30:00+07', 'Chốt 5.500.000đ, khách nợ theo hợp đồng'),
+    (100003, 100003, 100003, 100003, 'Km thực tế 180', 'approved', '2026-06-22 15:35:00+07', 100001, '2026-06-22 16:00:00+07', 'Chốt 1.800.000đ'),
+    (100004, 100004, 100004, 100003, 'Km thực tế 200', 'approved', '2026-07-08 15:05:00+07', 100001, '2026-07-08 15:30:00+07', 'Chốt 2.000.000đ'),
+    (100005, 100005, 100005, 100005, 'Km thực tế 200', 'approved', '2026-07-12 16:35:00+07', 100001, '2026-07-12 17:00:00+07', 'Chốt 4.000.000đ');
+
+INSERT INTO shipment_receipts (id, shipment_id, payment_type, amount, collected_by, collected_at, notes, order_receipt_request_id, created_by) VALUES
+    (100000, 100000, 'bank_transfer',  2500000, NULL,   '2026-06-06 09:00:00+07', 'Khách CK về công ty, kế toán đã xác nhận', 100000, 100001),
+    (100001, 100001, 'cash_collected', 3200000, 100004, '2026-06-10 17:00:00+07', 'Tài xế thu tiền mặt của khách',            100001, 100001),
+    (100002, 100002, 'client_credit',  5500000, NULL,   '2026-06-18 16:30:00+07', 'Khách nợ, hạn thanh toán 18/07',           100002, 100001),
+    (100003, 100003, 'cash_collected', 1800000, 100003, '2026-06-22 15:30:00+07', 'Tài xế thu tiền mặt của khách',            100003, 100001),
+    (100004, 100004, 'bank_transfer',  2000000, NULL,   '2026-07-09 10:00:00+07', 'Khách CK về công ty, kế toán đã xác nhận', 100004, 100001),
+    (100005, 100005, 'cash_collected', 4000000, 100005, '2026-07-12 17:00:00+07', 'Tài xế thu tiền mặt của khách',            100005, 100001);
+
+-- ─── 8. CÔNG NỢ & THANH TOÁN NỢ ──────────────────────────────────────────────
+-- Nợ tài xế = tiền mặt thu hộ chưa nộp. Nợ khách = đơn client_credit.
+
+INSERT INTO debts (id, debt_type, customer_id, driver_id, order_id, shipment_id, total_amount, due_date, notes, created_at, updated_at) VALUES
+    (100000, 'driver',   NULL,   100004, 100001, 100001, 3200000, DATE '2026-06-25', 'Thu hộ tiền mặt chuyến #100001 — đã nộp 2.000.000, còn 1.200.000', '2026-06-10 17:00:00+07', '2026-06-20 10:00:00+07'),
+    (100001, 'customer', 100002, NULL,   100002, 100002, 5500000, DATE '2026-07-18', 'Công nợ đơn nội thất — đã trả 2.000.000, còn 3.500.000',           '2026-06-18 16:30:00+07', '2026-07-05 11:00:00+07'),
+    (100002, 'driver',   NULL,   100003, 100003, 100003, 1800000, DATE '2026-07-05', 'Thu hộ tiền mặt chuyến #100003 — đã nộp đủ',                       '2026-06-22 15:30:00+07', '2026-06-28 09:00:00+07'),
+    (100003, 'driver',   NULL,   100005, 100005, 100005, 4000000, DATE '2026-07-25', 'Thu hộ tiền mặt chuyến #100005 — chưa nộp',                        '2026-07-12 17:00:00+07', '2026-07-12 17:00:00+07');
+
+INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes) VALUES
+    (100000, 2000000, 'cash',          'confirmed', '2026-06-20 09:30:00+07', '2026-06-20 10:00:00+07', 100002, 100004, 'Tài xế nộp tiền mặt đợt 1'),
+    (100002, 1800000, 'cash',          'confirmed', '2026-06-28 08:30:00+07', '2026-06-28 09:00:00+07', 100002, 100003, 'Tài xế nộp đủ tiền thu hộ'),
+    (100001, 2000000, 'bank_transfer', 'confirmed', '2026-07-05 10:30:00+07', '2026-07-05 11:00:00+07', 100002, 100002, 'Mộc Việt chuyển khoản trả nợ đợt 1');
+
+-- ─── 9. CHI PHÍ TÀI XẾ ───────────────────────────────────────────────────────
+
+INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, created_at, updated_at) VALUES
+    (100000, 100000, 100000, 100003, 'toll',   120000, 'Phí cầu đường cao tốc Long Thành',      DATE '2026-06-05', 'approved', 100001, '2026-06-05 17:00:00+07', '2026-06-05 16:00:00+07', '2026-06-05 17:00:00+07'),
+    (100001, 100003, 100000, 100003, 'fuel',   500000, 'Đổ dầu chuyến chuyển nhà',              DATE '2026-06-22', 'approved', 100001, '2026-06-22 16:00:00+07', '2026-06-22 15:00:00+07', '2026-06-22 16:00:00+07'),
+    (100002, 100005, 100002, 100005, 'fuel',   450000, 'Đổ dầu chuyến Bình Dương',              DATE '2026-07-12', 'approved', 100001, '2026-07-12 17:00:00+07', '2026-07-12 16:00:00+07', '2026-07-12 17:00:00+07'),
+    (100003, NULL,   100001, 100004, 'repair', 800000, 'Thay má phanh trước — chờ duyệt',       DATE '2026-07-15', 'pending',  NULL,   NULL,                     '2026-07-15 09:00:00+07', '2026-07-15 09:00:00+07');
+
+-- ─── 10. PHIẾU CHI ───────────────────────────────────────────────────────────
+
+INSERT INTO payment_vouchers (id, voucher_type, amount, payee, reason, payment_method, status, created_by, approved_by, paid_by, approved_at, paid_at, created_at, updated_at) VALUES
+    (100000, 'office',    1200000, 'Nhà sách Phương Nam',  'Mua giấy in, văn phòng phẩm quý 2',        'cash',          'paid',    100002, 100000, 100002, '2026-06-15 09:00:00+07', '2026-06-15 14:00:00+07', '2026-06-14 15:00:00+07', '2026-06-15 14:00:00+07'),
+    (100001, 'utilities', 2500000, 'Điện lực TP.HCM',      'Tiền điện văn phòng + kho tháng 6/2026',   'bank_transfer', 'pending', 100002, NULL,   NULL,   NULL,                     NULL,                     '2026-07-15 10:00:00+07', '2026-07-15 10:00:00+07');
+
+-- ─── 11. KPI (khớp đúng chuyến hoàn thành từng tháng) ────────────────────────
+-- T6: driver1 = 2 chuyến 4.300.000 | driver2 = 1 chuyến 3.200.000 (1 sự cố) | driver3 = 1 chuyến 5.500.000
+-- T7: driver1 = 1 chuyến 2.000.000 | driver3 = 1 chuyến 4.000.000 (1 sự cố)
+
+INSERT INTO kpi_records (driver_id, vehicle_group_id, month, year, completed_shipments, total_revenue, incident_count, major_incident_count, critical_incident_count) VALUES
+    (100003, 100000, 6, 2026, 2, 4300000, 0, 0, 0),
+    (100004, 100001, 6, 2026, 1, 3200000, 1, 0, 0),
+    (100005, 100002, 6, 2026, 1, 5500000, 0, 0, 0),
+    (100003, 100000, 7, 2026, 1, 2000000, 0, 0, 0),
+    (100005, 100002, 7, 2026, 1, 4000000, 1, 0, 0);
+
+-- ─── 12. SỰ CỐ ───────────────────────────────────────────────────────────────
+
+INSERT INTO incidents (shipment_id, vehicle_id, reported_by, incident_type, severity_level, description, location, status, resolved_by, resolution_note, occurred_at, resolved_at) VALUES
+    (100001, 100001, 100004, 'traffic_jam',  'low',    'Kẹt xe kéo dài trên cao tốc Long Thành — Dầu Giây, dự kiến trễ 1 tiếng', 'Cao tốc Long Thành, Km 15', 'resolved', 100001, 'Đã báo khách, giao trễ trong biên độ cho phép', '2026-06-10 10:00:00+07', '2026-06-10 11:00:00+07'),
+    (100005, 100002, 100005, 'cargo_damage', 'medium', 'Một kiện máy bị trầy xước vỏ ngoài khi hạ hàng, khách yêu cầu ghi nhận', 'KCN Sóng Thần, Bình Dương', 'open',     NULL,   NULL,                                            '2026-07-12 16:00:00+07', NULL);
+
+-- ─── 13. NGHỈ PHÉP & ỨNG LƯƠNG ───────────────────────────────────────────────
+
+INSERT INTO leave_requests (driver_id, leave_date, leave_type, reason, status) VALUES
+    (100005, DATE '2026-06-15', 'unpaid', 'Việc gia đình',        'approved'),
+    (100005, DATE '2026-06-16', 'unpaid', 'Việc gia đình',        'approved'),
+    (100003, DATE '2026-07-06', 'paid',   'Nghỉ phép định kỳ',    'approved');
+
+INSERT INTO salary_advances (id, driver_id, amount, reason, request_month, request_year, status, approved_by, approved_at, paid_by, paid_at, reject_reason, created_at, updated_at) VALUES
+    (100000, 100004, 3000000, 'Ứng lương lo việc gia đình', 6, 2026, 'paid',     100000, '2026-06-25 09:00:00+07', 100002, '2026-06-25 14:00:00+07', NULL,                                  '2026-06-25 08:00:00+07', '2026-06-25 14:00:00+07'),
+    (100001, 100005, 5000000, 'Ứng lương sửa nhà',          6, 2026, 'rejected', 100000, '2026-06-25 10:00:00+07', NULL,   NULL,                     'Mới vào làm, chưa đủ điều kiện ứng',  '2026-06-25 08:30:00+07', '2026-06-25 10:00:00+07');
+
+-- ─── 14. THƯỞNG & PHÚC LỢI ───────────────────────────────────────────────────
+
+INSERT INTO driver_bonuses (driver_id, type, year, amount, notes, beneficiary_name, beneficiary_relation, status, requested_by, approved_by, paid_by, requested_at, approved_at, paid_at) VALUES
+    (100004, 'welfare_birthday', 2026, 200000, 'Sinh nhật tháng 6',                    NULL, NULL, 'paid',    100002, 100000, 100002, '2026-06-28 09:00:00+07', '2026-06-29 09:00:00+07', '2026-06-30 09:00:00+07'),
+    (100003, 'special',          2026, 500000, 'Thưởng hỗ trợ giao hàng gấp cho khách VIP', NULL, NULL, 'pending', 100002, NULL,   NULL,   '2026-07-10 09:00:00+07', NULL, NULL);
+
+-- ─── 15. SỔ NHẬT KÝ TÀI CHÍNH (khớp từng nghiệp vụ ở trên, theo thứ tự thời gian) ─
+-- Quy ước TK: 1111 tiền mặt | 1121 tiền gửi NH | 131 phải thu KH | 1388 phải thu tài xế
+--             141 tạm ứng | 511 doanh thu | 642 chi phí QLDN | 3388 thu hộ/chi hộ
+
+INSERT INTO financial_transactions (event_type, debit_account, credit_account, amount, description, ref_type, ref_id, actor_id, occurred_at) VALUES
+    -- 05-06/06: chuyến 100000 (Saigon Foods, CK)
+    ('shipment_revenue',    '131',  '511',  2500000, 'Doanh thu chuyến #100000 — đơn #100000',                          'shipment', 100000, 100001, '2026-06-05 17:00:00+07'),
+    ('pass_through_cost',   '3388', '1111', 120000,  'Chi hộ khách (toll) — chuyến #100000, duyệt chi phí tài xế khai', 'expense',  100000, 100001, '2026-06-05 17:00:00+07'),
+    ('bank_receipt',        '1121', '131',  2500000, 'Khách CK về công ty — phiếu thu #100000, đơn #100000',            'shipment', 100000, 100002, '2026-06-06 09:00:00+07'),
+    -- 10/06: chuyến 100001 (tiền mặt → nợ tài xế driver2)
+    ('shipment_revenue',    '131',  '511',  3200000, 'Doanh thu chuyến #100001 — đơn #100001',                          'shipment', 100001, 100001, '2026-06-10 17:30:00+07'),
+    ('driver_debt_created', '1388', '131',  3200000, 'Tài xế thu tiền mặt từ khách — phiếu thu #100001, đơn #100001',   'debt',     100000, 100004, '2026-06-10 17:30:00+07'),
+    -- 15/06: phiếu chi văn phòng phẩm
+    ('expense_recorded',    '642',  '1111', 1200000, 'Chi office — phiếu chi #100000, chi cho: Nhà sách Phương Nam',    'voucher',  100000, 100002, '2026-06-15 14:00:00+07'),
+    -- 18/06: chuyến 100002 (công nợ khách Mộc Việt)
+    ('shipment_revenue',    '131',  '511',  5500000, 'Doanh thu chuyến #100002 — đơn #100002',                          'shipment', 100002, 100001, '2026-06-18 16:30:00+07'),
+    -- 20/06: driver2 nộp 2tr tiền thu hộ
+    ('driver_debt_paid',    '1111', '1388', 2000000, 'Tài xế nộp tiền thu hộ đợt 1 — công nợ #100000',                  'debt',     100000, 100002, '2026-06-20 10:00:00+07'),
+    -- 22/06: chuyến 100003 (tiền mặt → nợ tài xế driver1) + chi phí dầu
+    ('shipment_revenue',    '131',  '511',  1800000, 'Doanh thu chuyến #100003 — đơn #100003',                          'shipment', 100003, 100001, '2026-06-22 16:00:00+07'),
+    ('driver_debt_created', '1388', '131',  1800000, 'Tài xế thu tiền mặt từ khách — phiếu thu #100003, đơn #100003',   'debt',     100002, 100003, '2026-06-22 16:00:00+07'),
+    ('expense_recorded',    '642',  '1111', 500000,  'Chi phí vận hành (fuel) — chuyến #100003, duyệt chi phí tài xế khai', 'expense', 100001, 100001, '2026-06-22 16:00:00+07'),
+    -- 25/06: giải ngân ứng lương driver2
+    ('advance_disbursed',   '141',  '1111', 3000000, 'Giải ngân ứng lương tháng 6/2026 — tài xế Hoàng Minh Quân',       'advance',  100000, 100002, '2026-06-25 14:00:00+07'),
+    -- 28/06: driver1 nộp đủ tiền thu hộ
+    ('driver_debt_paid',    '1111', '1388', 1800000, 'Tài xế nộp đủ tiền thu hộ — công nợ #100002',                     'debt',     100002, 100002, '2026-06-28 09:00:00+07'),
+    -- 30/06: chi thưởng sinh nhật driver2
+    ('bonus_paid',          '642',  '1111', 200000,  'Chi thưởng/phúc lợi ngoài kỳ lương (welfare_birthday) — tài xế Hoàng Minh Quân', NULL, NULL, 100002, '2026-06-30 09:00:00+07'),
+    -- 05/07: Mộc Việt trả nợ đợt 1
+    ('customer_payment',    '1121', '131',  2000000, 'Khách hàng thanh toán — công nợ #100001',                         'debt',     100001, 100002, '2026-07-05 11:00:00+07'),
+    -- 08-09/07: chuyến 100004 (Saigon Foods, CK)
+    ('shipment_revenue',    '131',  '511',  2000000, 'Doanh thu chuyến #100004 — đơn #100004',                          'shipment', 100004, 100001, '2026-07-08 15:30:00+07'),
+    ('bank_receipt',        '1121', '131',  2000000, 'Khách CK về công ty — phiếu thu #100004, đơn #100004',            'shipment', 100004, 100002, '2026-07-09 10:00:00+07'),
+    -- 12/07: chuyến 100005 (tiền mặt → nợ tài xế driver3) + chi phí dầu
+    ('shipment_revenue',    '131',  '511',  4000000, 'Doanh thu chuyến #100005 — đơn #100005',                          'shipment', 100005, 100001, '2026-07-12 17:00:00+07'),
+    ('driver_debt_created', '1388', '131',  4000000, 'Tài xế thu tiền mặt từ khách — phiếu thu #100005, đơn #100005',   'debt',     100003, 100005, '2026-07-12 17:00:00+07'),
+    ('expense_recorded',    '642',  '1111', 450000,  'Chi phí vận hành (fuel) — chuyến #100005, duyệt chi phí tài xế khai', 'expense', 100002, 100001, '2026-07-12 17:00:00+07');
+
+-- ─── 16. ĐỒNG BỘ SEQUENCE (bắt buộc sau khi insert ID tường minh) ────────────
+
+SELECT setval(pg_get_serial_sequence('accounts','id'),               (SELECT MAX(id) FROM accounts));
+SELECT setval(pg_get_serial_sequence('vehicle_groups','id'),         (SELECT MAX(id) FROM vehicle_groups));
+SELECT setval(pg_get_serial_sequence('vehicles','id'),               (SELECT MAX(id) FROM vehicles));
+SELECT setval(pg_get_serial_sequence('customers','id'),              (SELECT MAX(id) FROM customers));
+SELECT setval(pg_get_serial_sequence('partners','id'),               (SELECT MAX(id) FROM partners));
+SELECT setval(pg_get_serial_sequence('orders','id'),                 (SELECT MAX(id) FROM orders));
+SELECT setval(pg_get_serial_sequence('order_shipments','id'),        (SELECT MAX(id) FROM order_shipments));
+SELECT setval(pg_get_serial_sequence('order_receipt_requests','id'), (SELECT MAX(id) FROM order_receipt_requests));
+SELECT setval(pg_get_serial_sequence('shipment_receipts','id'),      (SELECT MAX(id) FROM shipment_receipts));
+SELECT setval(pg_get_serial_sequence('debts','id'),                  (SELECT MAX(id) FROM debts));
+SELECT setval(pg_get_serial_sequence('expenses','id'),               (SELECT MAX(id) FROM expenses));
+SELECT setval(pg_get_serial_sequence('payment_vouchers','id'),       (SELECT MAX(id) FROM payment_vouchers));
+SELECT setval(pg_get_serial_sequence('salary_advances','id'),        (SELECT MAX(id) FROM salary_advances));
