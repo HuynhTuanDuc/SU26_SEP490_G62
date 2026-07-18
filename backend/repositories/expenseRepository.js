@@ -149,12 +149,13 @@ const EXPENSE_SORTS = {
 };
 
 // Danh sách chi phí toàn hệ thống cho web Manager (duyệt) / Accountant (đối chiếu)
-const listAllExpenses = async ({ status, expenseType, month, year, search, sort, page, limit } = {}) => {
+const listAllExpenses = async ({ status, expenseType, reimbursementStatus, month, year, search, sort, page, limit } = {}) => {
     const conds  = [];
     const params = [];
     let   i      = 1;
 
     if (status)      { conds.push(`e.status = $${i++}`);       params.push(status); }
+    if (reimbursementStatus) { conds.push(`e.reimbursement_status = $${i++}`); params.push(reimbursementStatus); }
     if (expenseType) { conds.push(`e.expense_type = $${i++}`); params.push(expenseType); }
     if (month)       { conds.push(`EXTRACT(MONTH FROM e.expense_date) = $${i++}`); params.push(Number(month)); }
     if (year)        { conds.push(`EXTRACT(YEAR  FROM e.expense_date) = $${i++}`); params.push(Number(year)); }
@@ -223,7 +224,8 @@ const getExpenseStats = async ({ month, year } = {}) => {
              COUNT(*) FILTER (WHERE status = 'pending')::int                   AS pending_count,
              COUNT(*) FILTER (WHERE status = 'approved')::int                  AS approved_count,
              COUNT(*) FILTER (WHERE status = 'rejected')::int                  AS rejected_count,
-             COALESCE(SUM(amount) FILTER (WHERE status = 'approved'), 0)::text AS approved_total
+             COALESCE(SUM(amount) FILTER (WHERE status = 'approved'), 0)::text AS approved_total,
+             COALESCE(SUM(amount) FILTER (WHERE status = 'approved' AND reimbursement_status = 'pending'), 0)::text AS reimbursable_total
          FROM expenses ${where}`,
         params,
     );

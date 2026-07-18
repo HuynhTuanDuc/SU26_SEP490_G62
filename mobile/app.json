@@ -47,6 +47,13 @@
           "cameraPermission": "Ứng dụng cần truy cập camera để chụp ảnh đại diện."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Ứng dụng cần vị trí của bạn để ghi lại nơi xảy ra sự cố."
+        }
+      ],
+      "expo-notifications",
       "@react-native-community/datetimepicker"
     ],
     "extra": {

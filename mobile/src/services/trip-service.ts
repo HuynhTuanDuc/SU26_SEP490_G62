@@ -31,17 +31,27 @@ export const tripService = {
     updateStatus: (tripId: number, status: TripStatus, reason?: string) =>
         apiClient.patch<UpdateStatusResponse>(`/api/trips/${tripId}/status`, { status, reason }),
 
-    // ARRIVED → COMPLETED: upload ảnh xác nhận giao hàng (BR-015/016/017)
-    completeWithProof: (tripId: number, formData: FormData) =>
-        apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/complete`, formData),
+    // ARRIVED → COMPLETED: upload ảnh xác nhận giao hàng (BR-015/016/017).
+    // formData = null khi proof đã capture per-stop rồi (không cần ảnh nữa) — gửi JSON
+    // rỗng thay vì multipart rỗng, vì FormData không có field nào làm fetch() trên
+    // Android (OkHttp) throw "Network request failed" (iOS thì không sao).
+    completeWithProof: (tripId: number, formData: FormData | null) =>
+        formData
+            ? apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/complete`, formData)
+            : apiClient.post<CompleteTripResponse>(`/api/trips/${tripId}/complete`, {}),
 
-    // PICKING → TRANSIT: upload ảnh lấy hàng bắt buộc (BR-013/014)
-    submitLoadingProof: (tripId: number, formData: FormData) =>
-        apiClient.postForm<UpdateStatusResponse>(`/api/trips/${tripId}/start-transit`, formData),
+    // PICKING → TRANSIT: upload ảnh lấy hàng bắt buộc (BR-013/014), trừ khi đã có
+    // proof per-stop — xem ghi chú ở completeWithProof.
+    submitLoadingProof: (tripId: number, formData: FormData | null) =>
+        formData
+            ? apiClient.postForm<UpdateStatusResponse>(`/api/trips/${tripId}/start-transit`, formData)
+            : apiClient.post<UpdateStatusResponse>(`/api/trips/${tripId}/start-transit`, {}),
 
-    // RETURNING → COMPLETED: hoàn hàng với ảnh tuỳ chọn
-    returnComplete: (tripId: number, formData: FormData) =>
-        apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, formData),
+    // RETURNING → COMPLETED: hoàn hàng với ảnh tuỳ chọn — xem ghi chú ở completeWithProof.
+    returnComplete: (tripId: number, formData: FormData | null) =>
+        formData
+            ? apiClient.postForm<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, formData)
+            : apiClient.post<CompleteTripResponse>(`/api/trips/${tripId}/return-complete`, {}),
 
     releaseTrip: (tripId: number, reason?: string) =>
         apiClient.post<ReleaseTripResponse>(`/api/trips/${tripId}/release`, { reason }),
