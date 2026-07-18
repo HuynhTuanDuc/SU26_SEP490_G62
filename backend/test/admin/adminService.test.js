@@ -1,4 +1,4 @@
-const { describe, it, beforeEach, afterEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 
 const profileRepository = require('../../repositories/profileRepository');
@@ -161,7 +161,7 @@ describe('Admin Service', () => {
 
             await assert.rejects(
                 () => adminService.updateUser(1, 'Updated', '0987654321', 'manager'),
-                (err) => err instanceof AdminError && err.status === 409 && err.message === 'Số điện thoại đã tồn tại.',
+                (err) => err instanceof AdminError && err.status === 409 && err.message === 'Số điện thoại hoặc Email đã tồn tại.',
             );
         });
     });

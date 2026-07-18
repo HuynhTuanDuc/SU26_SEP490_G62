@@ -1,4 +1,4 @@
-const { describe, it, afterEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 
 const vehicleManagementRepository = require('../../repositories/vehicleManagementRepository');
@@ -26,6 +26,7 @@ describe('Vehicle Management Service', () => {
         }));
         mock.method(vehicleManagementRepository, 'updateVehicle', async () => ({}));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'insertVehicleAssignmentHistory', async () => {});
 
         const vehicle = await vehicleManagementService.setVehicleDriverAssignment(10, { assigned_driver_id: null });
 
@@ -239,6 +240,7 @@ describe('Vehicle Management Service', () => {
             status: 'active',
         }));
         mock.method(vehicleManagementRepository, 'listVehicleStatusHistory', async () => []);
+        mock.method(vehicleManagementRepository, 'insertVehicleAssignmentHistory', async () => {});
 
         const vehicle = await vehicleManagementService.createVehicle({
             plate_number: ' 51A-22222 ',

@@ -1,4 +1,4 @@
-const { describe, it, beforeEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 const expenseService = require('../../services/expenseService');
 const expenseRepository = require('../../repositories/expenseRepository');
@@ -47,6 +47,8 @@ describe('Expense Service Unit Tests (L1)', () => {
 
     it('L1-EXP-06: createExpense - should throw if wrong driver', async () => {
         mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 2 }));
+        // Tài không phải owner → service còn kiểm tra lịch sử điều chuyển trước khi chặn
+        mock.method(expenseRepository, 'wasDriverAssignedToShipment', async () => false);
         await assert.rejects(
             expenseService.createExpense(1, { shipmentId: 1, expenseType: 'fuel', amount: 100, receiptUrl: 'url' }),
             /Bạn không có quyền thêm chi phí cho chuyến này/
@@ -67,6 +69,13 @@ describe('Expense Service Unit Tests (L1)', () => {
         mock.method(expenseRepository, 'createExpense', async () => ({ id: 5 }));
         mock.method(expenseRepository, 'addExpenseAttachment', async () => {});
         mock.method(expenseRepository, 'getShipmentExpenses', async () => [{ id: 5 }]);
+        // Nhánh notify coordinator/manager sau khi tạo — chặn truy vấn DB thật
+        const profileRepository = require('../../repositories/profileRepository');
+        const roleRepository = require('../../repositories/roleRepository');
+        const notificationService = require('../../services/notificationService');
+        mock.method(profileRepository, 'getProfileById', async () => ({ id: 1, full_name: 'Tai Xe Test' }));
+        mock.method(roleRepository, 'getUserIdsByRole', async () => []);
+        mock.method(notificationService, 'createForUsers', async () => []);
 
         const res = await expenseService.createExpense(1, { shipmentId: 1, expenseType: 'fuel', amount: 100, receiptUrl: 'url' });
         assert.strictEqual(res.length, 1);
