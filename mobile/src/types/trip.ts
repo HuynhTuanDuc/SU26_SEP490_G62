@@ -354,6 +354,8 @@ export type OrderShipmentRow = {
     plate_number: string | null;
     pickup_address: string | null;
     delivery_address: string | null;
+    pickup_addresses: string[] | null;
+    delivery_addresses: string[] | null;
     expenses: ExpenseItem[];
 };
 
@@ -382,6 +384,9 @@ export type DriverReceiptDetail = DriverReceiptSummary & {
     bank_confirmed: boolean;
     pickup_address: string | null;
     delivery_address: string | null;
+    pickup_addresses: string[] | null;
+    delivery_addresses: string[] | null;
+    prepaid_amount: string | null;
     expenses: ExpenseItem[];
     order_shipments: OrderShipmentRow[];
 };

@@ -81,7 +81,7 @@ export function EditProfileScreen() {
 
     const [fullName, setFullName] = useState<string>(initial.full_name ?? '');
     const [phone, setPhone]       = useState<string>(initial.phone ?? '');
-    const [dob, setDob]           = useState<string>(initial.dob ?? '');
+    const [dob, setDob]           = useState<string>((initial.dob ?? '').slice(0, 10));
     const [gender, setGender]     = useState<Gender | null>(initial.gender ?? null);
     const [address, setAddress]   = useState<string>(initial.address ?? '');
     const [city, setCity]         = useState<string>(initial.city ?? '');

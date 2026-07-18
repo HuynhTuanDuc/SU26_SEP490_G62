@@ -87,7 +87,14 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
       headers,
       body,
     });
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[api-client] fetch failed', {
+      url: `${API_BASE_URL}${path}`,
+      method: options.method,
+      isFormData: body instanceof FormData,
+      error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    });
     throw new ApiError(ERROR_MESSAGES.network, 0);
   }
 
@@ -114,6 +121,12 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   if (!response.ok) {
+    if (payload === null) {
+      // eslint-disable-next-line no-console
+      console.error('[api-client] non-JSON error response', {
+        url: `${API_BASE_URL}${path}`, method: options.method, status: response.status,
+      });
+    }
     throw new ApiError(payload?.error ?? payload?.message ?? ERROR_MESSAGES.network, response.status);
   }
 

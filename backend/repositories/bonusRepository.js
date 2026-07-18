@@ -8,6 +8,8 @@ const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
 
 /**
  * Tính thưởng Tết cho 1 driver dựa trên hire_date và số ngày nghỉ không lương theo tháng.
+ * "Tháng đủ 28 công" dùng cùng định nghĩa với tính lương: vắng không vượt quá phần dư
+ * ngày lịch so với quota 28 thì vẫn tính là đủ công (xem accountantPayrollRepository).
  *
  * Công thức (PDF Điều II §6):
  *   months_incomplete < 3  → 1.000.000 × months_full   (max 12.000.000)
@@ -24,7 +26,14 @@ const _calcTet = (driverId, hireDate, year, unpaidByMonth) => {
 
     let monthsFull = 0;
     for (let m = fromMonth; m <= toMonth; m++) {
-        if (!unpaidByMonth[m + 1]) monthsFull++; // unpaidByMonth is 1-indexed
+        const monthNum     = m + 1; // unpaidByMonth is 1-indexed
+        // "đủ 28 công" khớp đúng định nghĩa dùng trong tính lương: tháng dài hơn 28 ngày
+        // lịch có phần dư được miễn trừ tự nhiên, chỉ vắng NHIỀU HƠN phần dư đó mới tính
+        // là thiếu công (accountantPayrollRepository._calcDriverPayroll dùng cùng công thức).
+        const daysInMonth  = new Date(year, monthNum, 0).getDate();
+        const allowedSlack = Math.max(0, daysInMonth - 28);
+        const unpaidDays   = unpaidByMonth[monthNum] || 0;
+        if (unpaidDays <= allowedSlack) monthsFull++;
     }
     const monthsIncomplete = monthsInRange - monthsFull;
 
