@@ -1019,15 +1019,12 @@ const verifyMaintenanceRecordAndSetStatus = async ({
         );
         const expenseId = expenseResult.rows[0].id;
 
-        // Ghi sổ nhật ký tài chính: chi phí bảo dưỡng đã xác minh
-        const financialLedgerRepository = require('./financialLedgerRepository');
-        await financialLedgerRepository.insertTransaction(client, {
-            eventType: 'expense_recorded',
-            debitAccount: '642', creditAccount: '1111',
-            amount: expenseAmount,
-            description: `Chi phí bảo dưỡng xe #${vehicleId} — ${expenseDescription}`,
-            refType: 'expense', refId: expenseId, actorId: managerId,
-        });
+        // Tài xế đã ứng tiền trả xưởng — không ghi sổ tại đây, chuyển 'pending'
+        // chờ hoàn (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
+        await client.query(
+            `UPDATE expenses SET reimbursement_status = 'pending', updated_at = NOW() WHERE id = $1`,
+            [expenseId],
+        );
 
         for (const fileUrl of billPics) {
             await client.query(

@@ -156,11 +156,12 @@ const insertShipmentWithStopsAndExpenses = async (client, {
 
     const expList = expenses || [];
     if (expList.length > 0) {
-        const { rows: insertedExpenses } = await client.query(
-            `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, created_at, updated_at)
-             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, NOW(), NOW()
-             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)
-             RETURNING id, expense_type, amount`,
+        // Không ghi sổ tại đây — khoản tài ứng vào trạng thái 'pending' chờ hoàn
+        // (cấn trừ nợ thu hộ hoặc hoàn qua kỳ lương)
+        await client.query(
+            `INSERT INTO expenses (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
+             SELECT $1, $2, $3, $3, typ, amt, dsc, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW()
+             FROM UNNEST($4::text[], $5::numeric[], $6::text[]) AS u(typ, amt, dsc)`,
             [
                 shipmentId, vehicleId, createdByUserId,
                 expList.map((e) => e.expense_type),
@@ -168,18 +169,6 @@ const insertShipmentWithStopsAndExpenses = async (client, {
                 expList.map((e) => e.description || null),
             ]
         );
-        for (const exp of insertedExpenses) {
-            const expPassThrough = PASS_THROUGH_EXPENSE_TYPES.has(exp.expense_type);
-            await financialLedgerRepository.insertTransaction(client, {
-                eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
-                debitAccount: expPassThrough ? '3388' : '642',
-                creditAccount: '1111',
-                amount: exp.amount,
-                description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — đơn ngoài, chuyến #${shipmentId}`,
-                refType: 'expense', refId: exp.id, actorId: createdByUserId,
-                occurredAt: completedAt,
-            });
-        }
     }
 
     return shipmentId;
