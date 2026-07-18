@@ -31,7 +31,7 @@ const createIncident = async (req, res) => {
         }
         const status = err.message.includes('không tồn tại') ? 404
             : err.message.includes('quyền') ? 403
-            : err.message.includes('không hợp lệ') || err.message.includes('bắt buộc') || err.message.includes('ít nhất') || err.message.includes('Tối đa') ? 400
+            : err.message.includes('không hợp lệ') || err.message.includes('bắt buộc') || err.message.includes('ít nhất') || err.message.includes('Tối đa') || err.message.includes('chỉ có thể báo cáo') ? 400
             : err.message.includes('đang hoạt động') ? 422
             : 500;
         res.status(status).json({ error: err.message });

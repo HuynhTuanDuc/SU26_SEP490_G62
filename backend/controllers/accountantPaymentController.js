@@ -113,10 +113,39 @@ const getPaymentHistory = async (req, res) => {
     }
 };
 
+// Lịch sử thanh toán công nợ toàn cục (mọi khách + tài xế) — có lọc/phân trang
+const getAllPaymentHistory = async (req, res) => {
+    try {
+        const { person_type, status, method, month, year, search, sort, page, limit } = req.query;
+
+        if (person_type && !PERSON_TYPES.includes(person_type))
+            throw err400('Loại đối tượng không hợp lệ.');
+        if (status && !['pending', 'confirmed', 'rejected', 'voided'].includes(status))
+            throw err400('Trạng thái không hợp lệ.');
+        if (method && !PAYMENT_METHODS.includes(method))
+            throw err400('Hình thức thanh toán không hợp lệ.');
+
+        const result = await accountantPaymentRepository.listAllDebtPayments({
+            personType: person_type || null,
+            status: status || null,
+            method: method || null,
+            month: month || null,
+            year: year || null,
+            search: search || '',
+            sort: sort || null,
+            page, limit,
+        });
+        res.json(result);
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 module.exports = {
     previewAllocation,
     allocatePayment,
     paymentByShipment,
     paymentByDebt,
     getPaymentHistory,
+    getAllPaymentHistory,
 };

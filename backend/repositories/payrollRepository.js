@@ -27,6 +27,7 @@ const getDriverPayrolls = async (driverId, { month = null, year = null } = {}) =
             advance_deduction::text,
             absence_penalty::text,
             other_deduction::text,
+            expense_reimbursement::text,
             gross_salary::text,
             net_salary::text,
             status,
@@ -228,8 +229,22 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const bonusWelfareTotal = Number(bonusRes.rows[0].total ?? 0);
 
+    // 7. Hoàn chi phí tài đã ứng (đã duyệt, chờ hoàn — chưa cấn trừ nợ) — không phải
+    // thu nhập, chỉ cộng vào tiền thực nhận
+    const reimbRes = await pool.query(
+        `SELECT COALESCE(SUM(e.amount), 0) AS total
+         FROM expenses e
+         LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
+         LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
+         WHERE e.status = 'approved'
+           AND e.reimbursement_status = 'pending'
+           AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1`,
+        [driverId],
+    );
+    const expenseReimbursement = Number(reimbRes.rows[0].total ?? 0);
+
     const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
-    const estimatedNet   = estimatedGross - BHXH_EMPLOYEE - advanceDeduction - driverDebtDeduction;
+    const estimatedNet   = estimatedGross + expenseReimbursement - BHXH_EMPLOYEE - advanceDeduction - driverDebtDeduction;
 
     return {
         month, year,
@@ -248,6 +263,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         holiday_bonus:          holidayBonus.toFixed(2),
         holiday_days_worked:    holidayDaysWorked,
         bonus_welfare_total:    bonusWelfareTotal.toFixed(2),
+        expense_reimbursement:  expenseReimbursement.toFixed(2),
         insurance_employee:     BHXH_EMPLOYEE.toFixed(2),
         insurance_salary_base:  INSURANCE_SALARY_BASE.toFixed(2),
         advance_deduction:      advanceDeduction.toFixed(2),

@@ -147,6 +147,21 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id, month, year]);
     const bonusWelfareTotal = Number(bonusRow.total ?? 0);
 
+    // Hoàn chi phí tài đã ứng (TH1): các expense đã duyệt còn 'pending' chưa được cấn trừ
+    // vào nợ thu hộ — quy chủ theo tài giữ chuyến (v_shipment_current), bảo dưỡng theo
+    // performed_by, còn lại theo người tạo. KHÔNG phải thu nhập — không vào gross/BHXH,
+    // chỉ cộng vào tiền thực chi trả (net).
+    const { rows: [reimbRow] } = await client.query(`
+        SELECT COALESCE(SUM(e.amount), 0)::numeric AS total
+        FROM expenses e
+        LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
+        LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
+        WHERE e.status = 'approved'
+          AND e.reimbursement_status = 'pending'
+          AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1
+    `, [driver.driver_id]);
+    const expenseReimbursement = Number(reimbRow.total ?? 0);
+
     const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
     // proRatedBase đã phản ánh ngày nghỉ; DB computed net_salary dùng full baseSalary rồi trừ absence_penalty
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
@@ -167,6 +182,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         holidayBonus,
         holidayDaysWorked,
         bonusWelfareTotal,
+        expenseReimbursement,
         phoneAllowance: PHONE_ALLOWANCE,
         advanceDeduction,
         driverDebtDeduction,
@@ -211,6 +227,7 @@ const getAllPayrolls = async ({ month, year, status = null, search = null, sort 
             p.advance_deduction::text,
             p.absence_penalty::text,
             p.other_deduction::text,
+            p.expense_reimbursement::text,
             p.gross_salary::text,
             p.net_salary::text,
             p.status,
@@ -279,6 +296,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     insurance_employee, insurance_company,
                     driver_debt_deduction, advance_deduction,
                     absence_penalty, other_deduction,
+                    expense_reimbursement,
                     status
                 ) VALUES (
                     $1, $2, $3,
@@ -289,6 +307,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     $13, $14,
                     $15, $16,
                     $17, 0,
+                    $19,
                     'pending'
                 )
                 ON CONFLICT (driver_id, payroll_month, payroll_year)
@@ -308,6 +327,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     driver_debt_deduction  = EXCLUDED.driver_debt_deduction,
                     advance_deduction      = EXCLUDED.advance_deduction,
                     absence_penalty        = EXCLUDED.absence_penalty,
+                    expense_reimbursement  = EXCLUDED.expense_reimbursement,
                     updated_at             = NOW()
                 WHERE payrolls.status = 'pending'
                 RETURNING (xmax = 0) AS is_insert
@@ -322,6 +342,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                 c.driverDebtDeduction, c.advanceDeduction,
                 c.absencePenalty,
                 c.holidayBonus,
+                c.expenseReimbursement,
             ]);
 
             if (!upserted) { skipped++; }
@@ -457,6 +478,65 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                 row.net_salary = adjusted.net_salary;
                 row.driver_debt_deduction = adjusted.driver_debt_deduction;
                 deductionAdjusted = true;
+            }
+        }
+
+        // 2b. HOÀN CHI PHÍ TÀI ĐÃ ỨNG qua lương (TH1) — tất toán các expense 'pending'
+        // của tài; đồng bộ lại snapshot (khoản có thể đã được cấn trừ nợ TH2 sau khi
+        // generate) rồi ghi bút toán chi phí/chi hộ với TK đối ứng 334 (trả qua lương).
+        {
+            const { rows: pendingExpenses } = await client.query(`
+                SELECT e.id, e.expense_type, e.amount
+                FROM expenses e
+                LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
+                LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
+                WHERE e.status = 'approved'
+                  AND e.reimbursement_status = 'pending'
+                  AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = $1
+                ORDER BY e.id
+                FOR UPDATE OF e
+            `, [row.driver_id]);
+
+            const actualReimb = pendingExpenses.reduce((s, e) => s + Number(e.amount), 0);
+            if (Math.abs(actualReimb - Number(row.expense_reimbursement ?? 0)) > 0.01) {
+                const { rows: [adj] } = await client.query(
+                    `UPDATE payrolls SET expense_reimbursement = $2, updated_at = NOW()
+                     WHERE id = $1 RETURNING net_salary, expense_reimbursement`,
+                    [payrollId, actualReimb],
+                );
+                row.net_salary = adj.net_salary;
+                row.expense_reimbursement = adj.expense_reimbursement;
+            }
+
+            if (pendingExpenses.length > 0) {
+                await client.query(
+                    `UPDATE expenses
+                     SET reimbursement_status = 'paid_via_payroll', reimbursed_at = NOW(), updated_at = NOW()
+                     WHERE id = ANY($1::int[])`,
+                    [pendingExpenses.map((e) => e.id)],
+                );
+                const passTypes = new Set(['toll', 'parking', 'etc']);
+                const passSum = pendingExpenses.filter((e) => passTypes.has(e.expense_type))
+                    .reduce((s, e) => s + Number(e.amount), 0);
+                const companySum = actualReimb - passSum;
+                if (passSum > 0) {
+                    await financialLedgerRepository.insertTransaction(client, {
+                        eventType: 'pass_through_cost',
+                        debitAccount: '3388', creditAccount: '334',
+                        amount: passSum,
+                        description: `Hoàn chi hộ khách tài đã ứng — qua lương ${row.payroll_month}/${row.payroll_year}, bảng lương #${payrollId}`,
+                        refType: 'payroll', refId: payrollId, actorId: accountantId,
+                    });
+                }
+                if (companySum > 0) {
+                    await financialLedgerRepository.insertTransaction(client, {
+                        eventType: 'expense_recorded',
+                        debitAccount: '642', creditAccount: '334',
+                        amount: companySum,
+                        description: `Hoàn chi phí công ty tài đã ứng — qua lương ${row.payroll_month}/${row.payroll_year}, bảng lương #${payrollId}`,
+                        refType: 'payroll', refId: payrollId, actorId: accountantId,
+                    });
+                }
             }
         }
 

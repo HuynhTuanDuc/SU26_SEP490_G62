@@ -121,7 +121,8 @@ const createWelfare = async (data, createdBy, createdByRole) => {
         return approve(bonus.id, createdBy, null);
     }
 
-    const managerIds = await _getUserIdsByRole('manager');
+    // Không notify chính người tạo phiếu
+    const managerIds = (await _getUserIdsByRole('manager')).filter((id) => id !== createdBy);
     notificationService.createForUsers(managerIds, {
         title:      'Yêu cầu phúc lợi mới',
         message:    `Có phiếu "${TYPE_LABEL[type] ?? type}" mới chờ duyệt.`,

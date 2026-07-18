@@ -250,8 +250,8 @@ const insertApprovedExpense = async (client, { shipmentId, vehicleId, coordinato
     const { rows: [expense] } = await client.query(
         `INSERT INTO expenses
             (shipment_id, vehicle_id, created_by, updated_by, expense_type, amount, description, expense_date,
-             status, reviewed_by, reviewed_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), NOW(), NOW())
+             status, reviewed_by, reviewed_at, reimbursement_status, created_at, updated_at)
+         VALUES ($1, $2, $3, $3, $4, $5, $6, CURRENT_DATE, 'approved', $3, NOW(), 'pending', NOW(), NOW())
          RETURNING id`,
         [shipmentId, vehicleId, coordinatorId, expenseType, amount, description],
     );
@@ -271,7 +271,8 @@ const updateShipmentActualPrice = async (client, shipmentId, actualIncome) => {
 const autoApproveOrderExpenses = async (client, coordinatorId, orderId) => {
     const { rows } = await client.query(
         `UPDATE expenses e
-         SET status = 'approved', reviewed_by = $1, reviewed_at = NOW(), updated_at = NOW()
+         SET status = 'approved', reviewed_by = $1, reviewed_at = NOW(),
+             reimbursement_status = 'pending', updated_at = NOW()
          FROM order_shipments os
          WHERE os.id = e.shipment_id
            AND os.order_id = $2

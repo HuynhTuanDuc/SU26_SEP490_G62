@@ -33,15 +33,13 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Override để trỏ vào service db nội bộ, không dùng localhost
+      NODE_ENV: development
       DB_HOST: db
       DB_PORT: "5432"
       DB_NAME: ${POSTGRES_DB:-SEP490}
       DB_USER: ${POSTGRES_USER:-postgres}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-root}
       DB_SSL: "false"
-      # Origin cho phép kết nối WebSocket (khớp origin thật của frontend đang chạy) —
-      # override qua biến môi trường CORS_ORIGINS trên host nếu deploy domain khác.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     volumes:
       - ./backend:/usr/src/app

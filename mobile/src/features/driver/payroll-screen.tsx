@@ -177,6 +177,15 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                     bold
                 />
 
+                {Number(e.expense_reimbursement) > 0 ? (
+                    <SalaryRow
+                        label="Hoàn chi phí đã ứng"
+                        value={`+ ${fmtMoney(e.expense_reimbursement)}`}
+                        sub="Tiền công ty trả lại khoản bạn đã ứng (không phải thưởng)"
+                        tone="positive"
+                    />
+                ) : null}
+
                 <View style={s.divider} />
 
                 <SalaryRow
@@ -322,6 +331,14 @@ function PayrollCard({ p }: { p: Payroll }) {
                         <SalaryRow label="Phụ cấp điện thoại" value={`+ ${fmtMoney(phoneAllowance)}`} tone="positive" />
                     ) : null}
                     <SalaryRow label="Tổng thu nhập" value={fmtMoney(p.gross_salary)} bold />
+                    {Number(p.expense_reimbursement) > 0 ? (
+                        <SalaryRow
+                            label="Hoàn chi phí đã ứng"
+                            value={`+ ${fmtMoney(p.expense_reimbursement)}`}
+                            sub="Tiền công ty trả lại khoản bạn đã ứng"
+                            tone="positive"
+                        />
+                    ) : null}
                     <SalaryRow label="BHXH người lao động" value={`- ${fmtMoney(p.insurance_employee)}`} tone="negative" />
                     {Number(p.driver_debt_deduction) > 0 ? (
                         <SalaryRow label="Khấu trừ công nợ" value={`- ${fmtMoney(p.driver_debt_deduction)}`} tone="negative" />

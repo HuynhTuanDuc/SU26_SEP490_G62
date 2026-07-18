@@ -1292,6 +1292,54 @@ const recordReceiptCollection = async (receiptId, driverId, { paymentType, proof
                 description: `Tài xế thu tiền mặt từ khách — phiếu thu #${rec.sr_id}, đơn #${rec.order_id}`,
                 refType: 'debt', refId: driverDebt.id, actorId: driverId,
             });
+
+            // TH2 — CẤN TRỪ CHI PHÍ TÀI ĐÃ ỨNG: tiền khách đưa gồm cả phần chi hộ/chi phí
+            // tài trả trước; tài giữ lại phần mình đã ứng là hợp lệ. Cấn tự động các expense
+            // đã duyệt (reimbursement 'pending') của CHÍNH tài này trong CHÍNH đơn này vào nợ,
+            // mỗi khoản 1 dòng debt_payments 'offset' confirmed + 1 bút toán, không cấn quá nợ.
+            const { rows: offsetables } = await client.query(
+                `SELECT e.id, e.expense_type, e.amount
+                 FROM expenses e
+                 JOIN order_shipments os ON os.id = e.shipment_id
+                 LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
+                 WHERE os.order_id = $1
+                   AND e.status = 'approved'
+                   AND e.reimbursement_status = 'pending'
+                   AND COALESCE(sc.owner_driver_id, e.created_by) = $2
+                 ORDER BY e.id
+                 FOR UPDATE OF e`,
+                [rec.order_id, driverId],
+            );
+            let remainingDebt = Number(totalCollected);
+            for (const exp of offsetables) {
+                const offsetAmount = Math.min(Number(exp.amount), remainingDebt);
+                if (offsetAmount <= 0) break;
+                await client.query(
+                    `INSERT INTO debt_payments
+                        (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
+                     VALUES ($1, $2, 'offset', 'confirmed', NOW(), NOW(), $3, $3,
+                             $4)`,
+                    [driverDebt.id, offsetAmount, driverId,
+                     `Cấn trừ chi phí tài đã ứng (${exp.expense_type}) — expense #${exp.id}`],
+                );
+                const expPassThrough = ['toll', 'parking', 'etc'].includes(exp.expense_type);
+                // Ghi nhận chi phí/chi hộ tại thời điểm hoàn (Có 1388 — hoàn bằng cấn trừ
+                // nợ thu hộ, không có tiền mặt ra khỏi công ty)
+                await financialLedgerRepository.insertTransaction(client, {
+                    eventType: expPassThrough ? 'pass_through_cost' : 'expense_recorded',
+                    debitAccount: expPassThrough ? '3388' : '642',
+                    creditAccount: '1388',
+                    amount: offsetAmount,
+                    description: `${expPassThrough ? 'Chi hộ khách' : 'Chi phí vận hành'} (${exp.expense_type}) — hoàn tài xế bằng cấn trừ nợ thu hộ, expense #${exp.id}`,
+                    refType: 'expense', refId: exp.id, actorId: driverId,
+                });
+                await client.query(
+                    `UPDATE expenses SET reimbursement_status = 'offset_debt', reimbursed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+                    [exp.id],
+                );
+                remainingDebt -= offsetAmount;
+            }
+
             if (proofUrl) {
                 await client.query(
                     `INSERT INTO payment_receipts (payment_id, file_url) VALUES ($1, $2)`,

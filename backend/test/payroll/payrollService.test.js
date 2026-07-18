@@ -1,4 +1,4 @@
-const { describe, it, beforeEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 const payrollService = require('../../services/payrollService');
 const payrollRepository = require('../../repositories/payrollRepository');
@@ -88,6 +88,13 @@ describe('Payroll Service Unit Tests (L1)', () => {
 
         try {
             mock.method(payrollRepository, 'createSalaryAdvance', async () => ({ id: 1 }));
+            // Nhánh notify manager sau khi tạo yêu cầu — chặn truy vấn DB thật
+            const profileRepository = require('../../repositories/profileRepository');
+            const roleRepository = require('../../repositories/roleRepository');
+            const notificationService = require('../../services/notificationService');
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1, full_name: 'Tai Xe Test' }));
+            mock.method(roleRepository, 'getUserIdsByRole', async () => []);
+            mock.method(notificationService, 'createForUsers', async () => []);
             const res = await payrollService.requestSalaryAdvance(1, { amount: 100000, requestMonth: 5, requestYear: 2025 });
             assert.strictEqual(res.id, 1);
         } finally {

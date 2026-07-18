@@ -688,6 +688,85 @@ const getPaymentHistoryByPerson = async (personType, personId) => {
     return unique;
 };
 
+// ─── Lịch sử thanh toán công nợ toàn cục (khách + tài xế) ─────────────────────
+// sort resolved via allowlist, never interpolated directly from user input
+const HISTORY_SORTS = {
+    oldest:        'dp.paid_at ASC, dp.id ASC',
+    'amount-desc': 'dp.amount DESC, dp.id DESC',
+    'amount-asc':  'dp.amount ASC, dp.id DESC',
+};
+
+const listAllDebtPayments = async ({ personType, status, method, month, year, search, sort, page, limit } = {}) => {
+    const conds  = [];
+    const params = [];
+    let   i      = 1;
+
+    if (personType) { conds.push(`d.debt_type = $${i++}`);        params.push(personType); }
+    if (status)     { conds.push(`dp.status = $${i++}`);          params.push(status); }
+    if (method)     { conds.push(`dp.payment_method = $${i++}`);  params.push(method); }
+    if (month)      { conds.push(`EXTRACT(MONTH FROM dp.paid_at) = $${i++}`); params.push(Number(month)); }
+    if (year)       { conds.push(`EXTRACT(YEAR  FROM dp.paid_at) = $${i++}`); params.push(Number(year)); }
+    if (search) {
+        conds.push(`(drv.full_name ILIKE $${i} OR c.full_name ILIKE $${i} OR c.company_name ILIKE $${i})`);
+        params.push(`%${search}%`);
+        i++;
+    }
+
+    const where       = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+    const orderClause = HISTORY_SORTS[sort] ?? 'dp.paid_at DESC, dp.id DESC';
+    const safeLimit   = Math.min(100, Math.max(1, Number(limit) || 20));
+    const safePage    = Math.max(1, Number(page) || 1);
+    const offset      = (safePage - 1) * safeLimit;
+
+    const baseFrom = `
+        FROM debt_payments dp
+        JOIN debts d           ON d.id = dp.debt_id
+        LEFT JOIN customers c  ON c.id = d.customer_id
+        LEFT JOIN profiles drv ON drv.id = d.driver_id
+        LEFT JOIN profiles cfb ON cfb.id = dp.confirmed_by
+        LEFT JOIN profiles crb ON crb.id = dp.created_by
+    `;
+
+    const [{ rows }, { rows: countRows }, { rows: [stats] }] = await Promise.all([
+        pool.query(
+            `SELECT
+                dp.id, dp.debt_id, dp.amount::text, dp.payment_method, dp.status,
+                dp.paid_at, dp.confirmed_at, dp.notes, dp.reject_reason, dp.receipt_url,
+                d.debt_type, d.order_id, d.shipment_id, d.total_amount::text AS debt_total,
+                CASE WHEN d.debt_type = 'driver'
+                     THEN drv.full_name
+                     ELSE COALESCE(c.company_name, c.full_name) END AS person_name,
+                CASE WHEN d.debt_type = 'driver' THEN drv.phone ELSE c.phone END AS person_phone,
+                cfb.full_name AS confirmed_by_name,
+                crb.full_name AS created_by_name
+             ${baseFrom} ${where}
+             ORDER BY ${orderClause}
+             LIMIT $${i} OFFSET $${i + 1}`,
+            [...params, safeLimit, offset],
+        ),
+        pool.query(`SELECT COUNT(*)::int AS total ${baseFrom} ${where}`, params),
+        pool.query(
+            `SELECT
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0)::text AS confirmed_total,
+                COUNT(*) FILTER (WHERE dp.status = 'confirmed')::int                     AS confirmed_count,
+                COUNT(*) FILTER (WHERE dp.status = 'pending')::int                       AS pending_count,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'customer'), 0)::text AS customer_confirmed_total,
+                COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed' AND d.debt_type = 'driver'),   0)::text AS driver_confirmed_total
+             ${baseFrom} ${where}`,
+            params,
+        ),
+    ]);
+
+    return {
+        rows,
+        stats,
+        total: countRows[0]?.total ?? 0,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.max(1, Math.ceil((countRows[0]?.total ?? 0) / safeLimit)),
+    };
+};
+
 module.exports = {
     getPaymentsByOrderId,
     recordPaymentWithOverflow,
@@ -698,5 +777,6 @@ module.exports = {
     recordPaymentByShipment,
     recordPaymentByDebt,
     getPaymentHistoryByPerson,
+    listAllDebtPayments,
 };
 

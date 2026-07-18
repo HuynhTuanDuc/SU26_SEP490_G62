@@ -1,4 +1,4 @@
-const { describe, it, afterEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 
 const incidentRepository = require('../../repositories/incidentRepository');
@@ -280,6 +280,8 @@ describe('Incident Service', () => {
             mock.method(pool, 'connect', async () => fakeClient);
             mock.method(tripRepository, 'getTripById', async () => ({ owner_driver_id: 1, pickup_completed_at: '2024-01-01' }));
             mock.method(tripRepository, 'reassignShipmentAfterIncident', async () => ({ pickup_completed_at: '2024-01-01' }));
+            // getDriverIdsForShipment chạm pool thật (ensureTable) — phải mock trong unit test
+            mock.method(revenueAllocationRepository, 'getDriverIdsForShipment', async () => []);
             mock.method(revenueAllocationRepository, 'replaceShipmentAllocations', async () => {});
             mock.method(incidentRepository, 'updateIncidentResolution', async () => ({ id: 1, status: 'resolved' }));
             mock.method(notificationService, 'createForUser', async () => {});
