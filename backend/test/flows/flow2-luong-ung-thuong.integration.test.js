@@ -14,6 +14,7 @@
  */
 const assert = require('node:assert');
 const { setupTestDb } = require('../helpers/testDb');
+const { stubDateTo, restoreDateTo, computeValidPayrollPayDate } = require('../helpers/payDateStub');
 
 let pool;
 let teardown;
@@ -204,7 +205,13 @@ describe('L2-FLOW-03 — Ứng lương → Giải ngân → Phúc lợi → Ch�
 
     it('B8 — Kế toán chi lương: paid + bút toán 334/1111 đúng số thực lĩnh + phúc lợi chuyển "paid" (chi qua lương)', async () => {
         const { rows: [p] } = await pool.query('SELECT id FROM payrolls WHERE driver_id = $1', [DRIVER_ID]);
+
+        // Điều III: chi lương chỉ được thực hiện đúng ngày 10 (hoặc ngày làm việc liền kề
+        // nếu trùng cuối tuần/lễ) — stub đồng hồ sang đúng ngày hợp lệ của tháng hiện tại
+        const payDate = await computeValidPayrollPayDate(pool, YEAR, MONTH);
+        stubDateTo(RealDate, payDate);
         const paid = await accountantPayrollRepository.markPayrollPaid(p.id, ACCT_ID);
+        restoreDateTo(RealDate);
         assert.strictEqual(paid.status, 'paid');
 
         const { rows: [ft] } = await pool.query(

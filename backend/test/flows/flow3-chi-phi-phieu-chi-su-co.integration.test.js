@@ -11,6 +11,9 @@
  */
 const assert = require('node:assert');
 const { setupTestDb } = require('../helpers/testDb');
+const { stubDateTo, restoreDateTo, computeValidPayrollPayDate } = require('../helpers/payDateStub');
+
+const RealDate = Date;
 
 let pool;
 let teardown;
@@ -162,7 +165,13 @@ describe('L2-FLOW-04 — Chi phí tài xế → Duyệt → Sổ kế toán + Ph
         assert.strictEqual(Number(p.expense_reimbursement), 620000, 'ô Hoàn chi phí = 500k dầu + 120k cầu đường');
 
         await accountantPayrollRepository.confirmPayroll(p.id, ACCT_ID);
+
+        // Điều III: chi lương chỉ được thực hiện đúng ngày 10 (hoặc ngày làm việc liền
+        // kề nếu trùng cuối tuần/lễ)
+        const payDate = await computeValidPayrollPayDate(pool, now.getFullYear(), now.getMonth() + 1);
+        stubDateTo(RealDate, payDate);
         await accountantPayrollRepository.markPayrollPaid(p.id, ACCT_ID);
+        restoreDateTo(RealDate);
 
         const { rows: exps } = await pool.query(`SELECT reimbursement_status FROM expenses WHERE reimbursement_status IS NOT NULL`);
         assert.ok(exps.every((e) => e.reimbursement_status === 'paid_via_payroll'), 'mọi khoản ứng tất toán qua lương');

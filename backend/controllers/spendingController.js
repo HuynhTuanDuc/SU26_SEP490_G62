@@ -25,10 +25,11 @@ const sendError = (res, err, defaultStatus = 500) => {
 
 const listExpenses = async (req, res) => {
     try {
-        const { status, expense_type, month, year, search, sort, page, limit } = req.query;
+        const { status, expense_type, reimbursement_status, month, year, search, sort, page, limit } = req.query;
         const [result, stats] = await Promise.all([
             spendingService.listExpenses({
                 status: status || null,
+                reimbursementStatus: reimbursement_status || null,
                 expenseType: expense_type || null,
                 month: month || null,
                 year: year || null,

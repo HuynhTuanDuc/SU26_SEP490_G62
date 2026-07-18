@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { apiRequest } from "../../../services/apiClient";
+import { apiRequest, refreshAuthSession } from "../../../services/apiClient";
 import { connectRealtime } from "../../../services/realtime";
 
 const RECONNECT_DELAY_MS = 3000;
@@ -60,7 +60,13 @@ export function useNotifications() {
         },
         onClose: () => {
           if (disposed) return;
-          reconnectTimer = window.setTimeout(connect, RECONNECT_DELAY_MS);
+          reconnectTimer = window.setTimeout(() => {
+            // Access-token cookie có thể đã hết hạn trong lúc socket mở/idle;
+            // refresh trước để lần reconnect không bị 401 lặp vô hạn.
+            refreshAuthSession()
+              .catch(() => {})
+              .finally(connect);
+          }, RECONNECT_DELAY_MS);
         },
       });
     };

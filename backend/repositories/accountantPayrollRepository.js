@@ -13,6 +13,46 @@ const WORKING_DAYS_PER_MONTH = 28;
 // tháng càng dài thì càng có nhiều ngày nghỉ được miễn trừ trước khi hụt công.
 const getDaysInMonth = (month, year) => new Date(Number(year), Number(month), 0).getDate();
 
+// Điều III — trả lương 1 lần vào ngày 10 hàng tháng; nếu ngày 10 trùng cuối tuần/ngày
+// lễ thì dời sang ngày làm việc liền kề (trước hoặc sau — công ty được chọn).
+const PAYROLL_PAY_DAY = 10;
+
+const _pad2 = (n) => String(n).padStart(2, '0');
+const _dateKey = (d) => `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`;
+
+const _isBusinessDay = (date, holidayKeys) => {
+    const dow = date.getDay(); // 0 = Chủ nhật, 6 = Thứ bảy
+    if (dow === 0 || dow === 6) return false;
+    return !holidayKeys.has(_dateKey(date));
+};
+
+// Trả về danh sách ngày hợp lệ để chi lương trong 1 tháng cụ thể: đúng ngày 10 nếu đó
+// là ngày làm việc, hoặc [ngày làm việc liền trước, ngày làm việc liền sau] nếu ngày 10
+// rơi vào cuối tuần/ngày lễ (kể cả cụm nghỉ nhiều ngày liên tiếp như Tết).
+const _getValidPayrollPayDates = async (client, year, month) => {
+    const { rows } = await client.query(`SELECT holiday_date::text AS d FROM company_holidays`);
+    const holidayKeys = new Set(rows.map((r) => r.d));
+
+    const nominal = new Date(Number(year), Number(month) - 1, PAYROLL_PAY_DAY);
+    if (_isBusinessDay(nominal, holidayKeys)) return [nominal];
+
+    const prev = new Date(nominal);
+    do { prev.setDate(prev.getDate() - 1); } while (!_isBusinessDay(prev, holidayKeys));
+    const next = new Date(nominal);
+    do { next.setDate(next.getDate() + 1); } while (!_isBusinessDay(next, holidayKeys));
+    return [prev, next];
+};
+
+const assertTodayIsValidPayrollPayDate = async (client) => {
+    const now = new Date();
+    const validDates = await _getValidPayrollPayDates(client, now.getFullYear(), now.getMonth() + 1);
+    const todayKey = _dateKey(now);
+    if (!validDates.some((d) => _dateKey(d) === todayKey)) {
+        const label = validDates.map((d) => `${_pad2(d.getDate())}/${_pad2(d.getMonth() + 1)}`).join(' hoặc ');
+        throw new Error(`Chi lương chỉ được thực hiện vào ngày ${label} (Điều III)`);
+    }
+};
+
 const getMonthsOfServiceAtPeriodEnd = (hireDateValue, month, year) => {
     const hireDate = new Date(hireDateValue);
     const periodEnd = new Date(Number(year), Number(month), 0);
@@ -383,7 +423,7 @@ const confirmPayroll = async (payrollId, accountantId) => {
         RETURNING *
     `, [payrollId, accountantId]);
 
-    if (!row) throw new Error('KhÃ´ng tÃ¬m tháº¥y phiáº¿u lÆ°Æ¡ng hoáº·c tráº¡ng thÃ¡i khÃ´ng há»£p lá»‡ (cáº§n pending/reviewed)');
+    if (!row) throw new Error('Không tìm thấy phiếu lương hoặc trạng thái không hợp lệ (cần pending/reviewed)');
     return row;
 };
 
@@ -391,6 +431,7 @@ const markPayrollPaid = async (payrollId, accountantId) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        await assertTodayIsValidPayrollPayDate(client);
 
         const { rows: [row] } = await client.query(`
             UPDATE payrolls

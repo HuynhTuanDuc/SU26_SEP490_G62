@@ -1,5 +1,5 @@
 
-const tokenRegistry = new Map();
+const pool = require('../config/database');
 
 let firebaseAdmin = null;
 let fbInitAttempted = false;
@@ -29,22 +29,32 @@ const getFirebaseAdmin = () => {
 };
 
 /**
- * Register a device FCM token for a user profile.
+ * Register a device FCM token for a user profile. Lưu ở DB (không phải Map trong RAM)
+ * vì Cloud Run có thể chạy nhiều instance / tự restart bất kỳ lúc nào — giữ ở bộ nhớ
+ * sẽ mất token ngay khi instance đó bị thu hồi. Một user có thể có nhiều thiết bị,
+ * nên upsert theo token (không theo user_id) và cho phép nhiều dòng cùng user_id.
  * @param {number|string} profileId
  * @param {string} token  FCM registration token
  * @param {string} [platform]  'android' | 'ios' | 'web'
  */
-const registerToken = (profileId, token, platform = 'android') => {
+const registerToken = async (profileId, token, platform = 'android') => {
     if (!profileId || !token) return;
-    tokenRegistry.set(String(profileId), { token, platform });
+    await pool.query(
+        `INSERT INTO device_tokens (user_id, token, platform)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (token) DO UPDATE
+             SET user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, updated_at = NOW()`,
+        [profileId, token, platform],
+    );
 };
 
 /**
- * Remove FCM token for a user (e.g. on logout).
+ * Remove all FCM tokens for a user (e.g. on logout).
  * @param {number|string} profileId
  */
-const removeToken = (profileId) => {
-    tokenRegistry.delete(String(profileId));
+const removeToken = async (profileId) => {
+    if (!profileId) return;
+    await pool.query('DELETE FROM device_tokens WHERE user_id = $1', [profileId]);
 };
 
 /**
@@ -54,29 +64,35 @@ const removeToken = (profileId) => {
  * @param {{ title: string, body: string, data?: object }} payload
  */
 const sendNotification = async (profileId, { title, body, data = {} }) => {
-    const entry = tokenRegistry.get(String(profileId));
-    if (!entry) return;
-
     const admin = getFirebaseAdmin();
     if (!admin) return;
 
-    try {
-        await admin.messaging().send({
-            token: entry.token,
-            notification: { title, body },
-            data: Object.fromEntries(
-                Object.entries(data).map(([k, v]) => [k, String(v)]),
-            ),
-            android:  { priority: 'high' },
-            apns:     { payload: { aps: { sound: 'default' } } },
-        });
-    } catch (err) {
-        // Token may be stale — clean up
-        if (err.code === 'messaging/registration-token-not-registered') {
-            tokenRegistry.delete(String(profileId));
+    const { rows: tokens } = await pool.query(
+        'SELECT token FROM device_tokens WHERE user_id = $1',
+        [profileId],
+    );
+    if (tokens.length === 0) return;
+
+    const fcmData = Object.fromEntries(
+        Object.entries(data).map(([k, v]) => [k, String(v)]),
+    );
+
+    await Promise.all(tokens.map(async ({ token }) => {
+        try {
+            await admin.messaging().send({
+                token,
+                notification: { title, body },
+                data: fcmData,
+                android: { priority: 'high' },
+                apns:    { payload: { aps: { sound: 'default' } } },
+            });
+        } catch (err) {
+            // Token stale/thu hồi → dọn khỏi DB, không throw (FCM lỗi không được làm sập luồng chính)
+            if (err.code === 'messaging/registration-token-not-registered') {
+                await pool.query('DELETE FROM device_tokens WHERE token = $1', [token]).catch(() => {});
+            }
         }
-        // Never throw — FCM failures must not crash the main flow
-    }
+    }));
 };
 
 /**

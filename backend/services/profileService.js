@@ -162,7 +162,7 @@ const registerDeviceToken = async (userId, { fcmToken, platform } = {}) => {
     const normalizedPlatform = platform && allowedPlatforms.includes(platform) ? platform : 'android';
 
     const fcmService = require('./fcmService');
-    fcmService.registerToken(userId, fcmToken.trim(), normalizedPlatform);
+    await fcmService.registerToken(userId, fcmToken.trim(), normalizedPlatform);
 
     return { message: 'Đăng ký thiết bị thành công', platform: normalizedPlatform };
 };

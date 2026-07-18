@@ -127,6 +127,43 @@ function Row({ label, value, bold, icon }: {
     );
 }
 
+// ─── Route stops (đánh số toàn bộ điểm lấy/trả, tránh mất điểm khi multi-stop) ─
+
+function RouteStops({ pickups, deliveries }: { pickups?: (string | null)[] | null; deliveries?: (string | null)[] | null }) {
+    const stops = [
+        ...(pickups ?? []).filter((a): a is string => !!a).map((address) => ({ address, kind: 'Lấy' as const })),
+        ...(deliveries ?? []).filter((a): a is string => !!a).map((address) => ({ address, kind: 'Trả' as const })),
+    ];
+    if (stops.length === 0) return null;
+
+    if (stops.length === 2 && stops[0].kind === 'Lấy' && stops[1].kind === 'Trả') {
+        return (
+            <>
+                <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
+                    label="Điểm lấy hàng" value={stops[0].address} />
+                <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
+                    label="Điểm giao hàng" value={stops[1].address} />
+            </>
+        );
+    }
+
+    return (
+        <YStack gap={5} paddingVertical={5}>
+            {stops.map((s, i) => (
+                <XStack key={i} alignItems="center" gap={6}>
+                    <View style={[styles.stopIndex, s.kind === 'Lấy' ? styles.stopIndexPickup : styles.stopIndexDelivery]}>
+                        <Text fontSize={9} fontWeight="900" color={s.kind === 'Lấy' ? '#16A34A' : '#C2410C'}>{i + 1}</Text>
+                    </View>
+                    <View style={[styles.stopTag, s.kind === 'Lấy' ? styles.stopTagPickup : styles.stopTagDelivery]}>
+                        <Text fontSize={9} fontWeight="700" color={s.kind === 'Lấy' ? '#16A34A' : '#C2410C'}>{s.kind}</Text>
+                    </View>
+                    <Text fontSize={12} color={appTheme.colors.text} flex={1} numberOfLines={2}>{s.address}</Text>
+                </XStack>
+            ))}
+        </YStack>
+    );
+}
+
 // ─── Shipment row (bên trong accordion tất cả chuyến) ────────────────────────
 
 const SHIPMENT_STATUS_LABEL: Record<string, string> = {
@@ -188,22 +225,34 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
                             </Text>
                         </XStack>
                     ) : null}
-                    {s.pickup_address ? (
-                        <XStack alignItems="flex-start" gap={5}>
-                            <MapPinLine size={11} color={appTheme.colors.textMuted} weight="fill" style={{ marginTop: 1 }} />
-                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
-                                {s.pickup_address}
-                            </Text>
-                        </XStack>
-                    ) : null}
-                    {s.delivery_address ? (
-                        <XStack alignItems="flex-start" gap={5}>
-                            <MapPin size={11} color={appTheme.colors.primary} weight="fill" style={{ marginTop: 1 }} />
-                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
-                                {s.delivery_address}
-                            </Text>
-                        </XStack>
-                    ) : null}
+                    {(() => {
+                        const pickups     = s.pickup_addresses?.length ? s.pickup_addresses : [s.pickup_address];
+                        const deliveries  = s.delivery_addresses?.length ? s.delivery_addresses : [s.delivery_address];
+                        const stops = [...pickups.filter(Boolean), ...deliveries.filter(Boolean)];
+                        if (stops.length <= 2) {
+                            return (
+                                <>
+                                    {s.pickup_address ? (
+                                        <XStack alignItems="flex-start" gap={5}>
+                                            <MapPinLine size={11} color={appTheme.colors.textMuted} weight="fill" style={{ marginTop: 1 }} />
+                                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                                {s.pickup_address}
+                                            </Text>
+                                        </XStack>
+                                    ) : null}
+                                    {s.delivery_address ? (
+                                        <XStack alignItems="flex-start" gap={5}>
+                                            <MapPin size={11} color={appTheme.colors.primary} weight="fill" style={{ marginTop: 1 }} />
+                                            <Text fontSize={11} color={appTheme.colors.textMuted} flex={1} numberOfLines={1}>
+                                                {s.delivery_address}
+                                            </Text>
+                                        </XStack>
+                                    ) : null}
+                                </>
+                            );
+                        }
+                        return <RouteStops pickups={pickups} deliveries={deliveries} />;
+                    })()}
                     {km ? (
                         <XStack alignItems="center" gap={5}>
                             <Ruler size={11} color={appTheme.colors.textMuted} weight="fill" />
@@ -750,7 +799,17 @@ export function ReceiptDetailScreen() {
                             Đã gồm cước vận chuyển và chi phí khách chịu (cầu đường, đỗ xe, ETC)
                         </Text>
 
-                       
+                        {Number(receipt.prepaid_amount) > 0 ? (
+                            <View style={styles.prepaidNote}>
+                                <XStack alignItems="center" gap={5}>
+                                    <CurrencyDollar size={12} color={appTheme.colors.textMuted} weight="fill" />
+                                    <Text fontSize={11} color={appTheme.colors.textMuted}>Khách đã trả trước</Text>
+                                </XStack>
+                                <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>
+                                    −{fmtMoney(receipt.prepaid_amount)}
+                                </Text>
+                            </View>
+                        ) : null}
 
                         <View style={[
                             styles.statusChip,
@@ -888,10 +947,10 @@ export function ReceiptDetailScreen() {
                                 ) : (
                                     /* Đơn 1 chuyến — layout cũ */
                                     <>
-                                        <Row icon={<MapPinLine size={13} color={appTheme.colors.primary} weight="fill" />}
-                                            label="Điểm lấy hàng" value={receipt.pickup_address} />
-                                        <Row icon={<MapPin size={13} color={appTheme.colors.primary} weight="fill" />}
-                                            label="Điểm giao hàng" value={receipt.delivery_address} />
+                                        <RouteStops
+                                            pickups={receipt.pickup_addresses?.length ? receipt.pickup_addresses : [receipt.pickup_address]}
+                                            deliveries={receipt.delivery_addresses?.length ? receipt.delivery_addresses : [receipt.delivery_address]}
+                                        />
                                         {kmDisplay ? (
                                             <Row icon={<Ruler size={13} color={appTheme.colors.primary} weight="fill" />}
                                                 label="Quãng đường" value={kmDisplay} />
@@ -1156,6 +1215,19 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: `${appTheme.colors.border}`,
     },
     statusChip:     { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, marginTop: 2 },
+    prepaidNote:    {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', paddingHorizontal: 4,
+    },
+    stopIndex:      {
+        width: 16, height: 16, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    },
+    stopIndexPickup:   { backgroundColor: '#DCFCE7' },
+    stopIndexDelivery: { backgroundColor: '#FFEDD5' },
+    stopTag:        { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexShrink: 0 },
+    stopTagPickup:     { backgroundColor: '#F0FDF4' },
+    stopTagDelivery:   { backgroundColor: '#FFF7ED' },
     divider:        { height: 1, backgroundColor: appTheme.colors.border, marginVertical: 2 },
     statusBanner:   { backgroundColor: '#fff', borderRadius: 14, borderWidth: 1.5, overflow: 'hidden' },
     // Accordion

@@ -21,6 +21,7 @@ const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const { setupTestDb } = require('../helpers/testDb');
+const { stubDateTo, restoreDateTo, computeValidPayrollPayDate } = require('../helpers/payDateStub');
 
 // Token hạn dài — stub đồng hồ sang ngày 25 sẽ làm token 1h "hết hạn" giữa luồng
 const signLongToken = ({ userId, role }) => jwt.sign(
@@ -186,8 +187,13 @@ describe('L3-FLOW-02 — API: Ứng lương → Duyệt → Giải ngân → Ch�
             .set('Authorization', `Bearer ${acctToken}`).send({});
         assert.strictEqual(confirm.status, 200);
 
+        // Điều III: chi lương chỉ được thực hiện đúng ngày 10 (hoặc ngày làm việc liền
+        // kề nếu trùng cuối tuần/lễ)
+        const payDate = await computeValidPayrollPayDate(pool, YEAR, MONTH);
+        stubDateTo(RealDate, payDate);
         const pay = await request(app).patch(`/accountant/payroll/${p.id}/pay`)
             .set('Authorization', `Bearer ${acctToken}`).send({});
+        restoreDateTo(RealDate);
         assert.strictEqual(pay.status, 200);
 
         const { rows: [after] } = await pool.query('SELECT status, advance_deduction FROM payrolls WHERE id = $1', [p.id]);
