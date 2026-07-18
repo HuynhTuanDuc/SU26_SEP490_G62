@@ -1,4 +1,4 @@
-const { describe, it, beforeEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 const companyService = require('../../services/companyService');
 const companyRepository = require('../../repositories/companyRepository');

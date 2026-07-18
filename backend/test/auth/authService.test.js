@@ -1,14 +1,12 @@
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'TEST_SECRET';
 process.env.GG_CLIENT_ID = process.env.GG_CLIENT_ID || 'TEST_GOOGLE_CLIENT_ID';
 
-const test = require('node:test');
 const assert = require('node:assert/strict');
-const Module = require('node:module');
 
-const originalLoad = Module._load;
-const originalFetch = global.fetch;
-
-const jwtStub = {
+// Dưới node:test cũ file này patch Module._load để tráo dependency trước khi require
+// authService. Jest có module registry riêng nên chuyển sang jest.mock — các stub đặt
+// tên tiền tố `mock` để babel-jest cho phép tham chiếu từ factory (hoisting rule).
+const mockJwt = {
     sign: () => {
         throw new Error('jwt.sign was not configured for this test');
     },
@@ -17,13 +15,13 @@ const jwtStub = {
     },
 };
 
-const bcryptStub = {
+const mockBcrypt = {
     compare: async () => {
         throw new Error('bcrypt.compare was not configured for this test');
     },
 };
 
-const profileRepositoryStub = {
+const mockProfileRepository = {
     getAccountByEmail: async () => {
         throw new Error('getAccountByEmail was not configured for this test');
     },
@@ -40,56 +38,50 @@ const profileRepositoryStub = {
 
 // authService.js verifies Google credentials via `new OAuth2Client(...).verifyIdToken(...)`
 // (google-auth-library SDK), not via raw fetch — stub the SDK instead of global.fetch.
-const googleClientStub = {
+const mockGoogleClient = {
     verifyIdToken: async () => {
         throw new Error('verifyIdToken was not configured for this test');
     },
 };
 
-class OAuth2ClientStub {
-    constructor() {}
-    verifyIdToken(...args) {
-        return googleClientStub.verifyIdToken(...args);
-    }
-}
-
-const googleAuthLibraryStub = { OAuth2Client: OAuth2ClientStub };
-
 // issueSession() persists a refresh token row via the real pool on success — stub it out
 // so successful-login tests don't need a live Postgres connection.
-const poolStub = {
+const mockPool = {
     query: async () => ({ rows: [] }),
 };
 
-Module._load = function patchedLoad(request, parent, isMain) {
-    if (request === 'jsonwebtoken') return jwtStub;
-    if (request === 'bcryptjs') return bcryptStub;
-    if (request === 'google-auth-library') return googleAuthLibraryStub;
-    if (request === '../repositories/profileRepository') return profileRepositoryStub;
-    if (request === '../config/database') return poolStub;
-    return originalLoad.call(this, request, parent, isMain);
-};
+jest.mock('jsonwebtoken', () => mockJwt);
+jest.mock('bcryptjs', () => mockBcrypt);
+jest.mock('google-auth-library', () => ({
+    OAuth2Client: class OAuth2ClientStub {
+        verifyIdToken(...args) {
+            return mockGoogleClient.verifyIdToken(...args);
+        }
+    },
+}));
+jest.mock('../../repositories/profileRepository', () => mockProfileRepository);
+jest.mock('../../config/database', () => mockPool);
 
 const authService = require('../../services/authService');
 
-Module._load = originalLoad;
+const originalFetch = global.fetch;
 
 const original = {
-    getAccountByEmail: profileRepositoryStub.getAccountByEmail,
-    getProfileByAccountId: profileRepositoryStub.getProfileByAccountId,
-    updateLastLogin: profileRepositoryStub.updateLastLogin,
-    compare: bcryptStub.compare,
-    sign: jwtStub.sign,
-    verifyIdToken: googleClientStub.verifyIdToken,
+    getAccountByEmail: mockProfileRepository.getAccountByEmail,
+    getProfileByAccountId: mockProfileRepository.getProfileByAccountId,
+    updateLastLogin: mockProfileRepository.updateLastLogin,
+    compare: mockBcrypt.compare,
+    sign: mockJwt.sign,
+    verifyIdToken: mockGoogleClient.verifyIdToken,
 };
 
 const restoreMocks = () => {
-    profileRepositoryStub.getAccountByEmail = original.getAccountByEmail;
-    profileRepositoryStub.getProfileByAccountId = original.getProfileByAccountId;
-    profileRepositoryStub.updateLastLogin = original.updateLastLogin;
-    bcryptStub.compare = original.compare;
-    jwtStub.sign = original.sign;
-    googleClientStub.verifyIdToken = original.verifyIdToken;
+    mockProfileRepository.getAccountByEmail = original.getAccountByEmail;
+    mockProfileRepository.getProfileByAccountId = original.getProfileByAccountId;
+    mockProfileRepository.updateLastLogin = original.updateLastLogin;
+    mockBcrypt.compare = original.compare;
+    mockJwt.sign = original.sign;
+    mockGoogleClient.verifyIdToken = original.verifyIdToken;
     global.fetch = originalFetch;
 };
 
@@ -112,7 +104,7 @@ const baseProfile = (overrides = {}) => ({
     ...overrides,
 });
 
-test.afterEach(() => {
+afterEach(() => {
     restoreMocks();
 });
 
@@ -139,7 +131,7 @@ test('throws 400 when both inputs are missing', async () => {
 
 test('normalizes email before account lookup', async () => {
     const calls = [];
-    profileRepositoryStub.getAccountByEmail = async (email) => {
+    mockProfileRepository.getAccountByEmail = async (email) => {
         calls.push(email);
         return null;
     };
@@ -150,8 +142,8 @@ test('normalizes email before account lookup', async () => {
 
 test('throws 404 when account does not exist', async () => {
     let compareCalled = false;
-    profileRepositoryStub.getAccountByEmail = async () => null;
-    bcryptStub.compare = async () => {
+    mockProfileRepository.getAccountByEmail = async () => null;
+    mockBcrypt.compare = async () => {
         compareCalled = true;
         return false;
     };
@@ -165,13 +157,13 @@ test('throws 404 when account does not exist', async () => {
 
 test('throws 401 when password is invalid', async () => {
     let updateCalled = false;
-    profileRepositoryStub.getAccountByEmail = async () => baseAccount();
-    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
-    profileRepositoryStub.updateLastLogin = async () => {
+    mockProfileRepository.getAccountByEmail = async () => baseAccount();
+    mockProfileRepository.getProfileByAccountId = async () => baseProfile();
+    mockProfileRepository.updateLastLogin = async () => {
         updateCalled = true;
         return { id: 42 };
     };
-    bcryptStub.compare = async () => false;
+    mockBcrypt.compare = async () => false;
 
     await assert.rejects(
         () => authService.login('user@example.com', 'wrong-password'),
@@ -182,13 +174,13 @@ test('throws 401 when password is invalid', async () => {
 
 test('throws 403 when account is inactive', async () => {
     let updateCalled = false;
-    profileRepositoryStub.getAccountByEmail = async () => baseAccount({ is_active: false });
-    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
-    profileRepositoryStub.updateLastLogin = async () => {
+    mockProfileRepository.getAccountByEmail = async () => baseAccount({ is_active: false });
+    mockProfileRepository.getProfileByAccountId = async () => baseProfile();
+    mockProfileRepository.updateLastLogin = async () => {
         updateCalled = true;
         return { id: 42 };
     };
-    bcryptStub.compare = async () => true;
+    mockBcrypt.compare = async () => true;
 
     await assert.rejects(
         () => authService.login('user@example.com', 'secret'),
@@ -199,7 +191,7 @@ test('throws 403 when account is inactive', async () => {
 
 test('rejects email input with invalid symbols as not found', async () => {
     const calls = [];
-    profileRepositoryStub.getAccountByEmail = async (email) => {
+    mockProfileRepository.getAccountByEmail = async (email) => {
         calls.push(email);
         return null;
     };
@@ -213,7 +205,7 @@ test('rejects email input with invalid symbols as not found', async () => {
 
 test('rejects email input containing SQL injection text as plain text', async () => {
     const calls = [];
-    profileRepositoryStub.getAccountByEmail = async (email) => {
+    mockProfileRepository.getAccountByEmail = async (email) => {
         calls.push(email);
         return null;
     };
@@ -227,13 +219,13 @@ test('rejects email input containing SQL injection text as plain text', async ()
 
 test('rejects password input containing SQL injection text', async () => {
     let updateCalled = false;
-    profileRepositoryStub.getAccountByEmail = async () => baseAccount();
-    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
-    profileRepositoryStub.updateLastLogin = async () => {
+    mockProfileRepository.getAccountByEmail = async () => baseAccount();
+    mockProfileRepository.getProfileByAccountId = async () => baseProfile();
+    mockProfileRepository.updateLastLogin = async () => {
         updateCalled = true;
         return { id: 42 };
     };
-    bcryptStub.compare = async () => false;
+    mockBcrypt.compare = async () => false;
 
     await assert.rejects(
         () => authService.login('user@example.com', "' OR '1'='1"),
@@ -244,8 +236,8 @@ test('rejects password input containing SQL injection text', async () => {
 
 test('rejects malformed credentials with unicode and symbols', async () => {
     let updateCalled = false;
-    profileRepositoryStub.getAccountByEmail = async () => null;
-    profileRepositoryStub.updateLastLogin = async () => {
+    mockProfileRepository.getAccountByEmail = async () => null;
+    mockProfileRepository.updateLastLogin = async () => {
         updateCalled = true;
         return { id: 42 };
     };
@@ -265,7 +257,7 @@ test('loginWithGoogle rejects missing credential', async () => {
 });
 
 test('loginWithGoogle rejects non-matching Google audience', async () => {
-    googleClientStub.verifyIdToken = async () => ({
+    mockGoogleClient.verifyIdToken = async () => ({
         getPayload: () => ({
             aud: 'unexpected-client-id',
             email: 'user@example.com',
@@ -280,7 +272,7 @@ test('loginWithGoogle rejects non-matching Google audience', async () => {
 });
 
 test('loginWithGoogle rejects unverified Google email', async () => {
-    googleClientStub.verifyIdToken = async () => ({
+    mockGoogleClient.verifyIdToken = async () => ({
         getPayload: () => ({
             aud: process.env.GG_CLIENT_ID,
             email: 'user@example.com',
@@ -295,14 +287,14 @@ test('loginWithGoogle rejects unverified Google email', async () => {
 });
 
 test('loginWithGoogle rejects Google accounts that are not provisioned internally', async () => {
-    googleClientStub.verifyIdToken = async () => ({
+    mockGoogleClient.verifyIdToken = async () => ({
         getPayload: () => ({
             aud: process.env.GG_CLIENT_ID,
             email: 'new-user@example.com',
             email_verified: 'true',
         }),
     });
-    profileRepositoryStub.getAccountByEmail = async () => null;
+    mockProfileRepository.getAccountByEmail = async () => null;
 
     await assert.rejects(
         () => authService.loginWithGoogle('credential'),
@@ -312,20 +304,20 @@ test('loginWithGoogle rejects Google accounts that are not provisioned internall
 
 test('loginWithGoogle signs in an existing internal user', async () => {
     const calls = [];
-    googleClientStub.verifyIdToken = async () => ({
+    mockGoogleClient.verifyIdToken = async () => ({
         getPayload: () => ({
             aud: process.env.GG_CLIENT_ID,
             email: 'User@Example.com',
             email_verified: 'true',
         }),
     });
-    profileRepositoryStub.getAccountByEmail = async (email) => {
+    mockProfileRepository.getAccountByEmail = async (email) => {
         calls.push(email);
         return baseAccount();
     };
-    profileRepositoryStub.getProfileByAccountId = async () => baseProfile();
-    profileRepositoryStub.updateLastLogin = async () => ({ id: 42 });
-    jwtStub.sign = () => 'jwt-token';
+    mockProfileRepository.getProfileByAccountId = async () => baseProfile();
+    mockProfileRepository.updateLastLogin = async () => ({ id: 42 });
+    mockJwt.sign = () => 'jwt-token';
 
     const result = await authService.loginWithGoogle('credential');
 
@@ -333,4 +325,3 @@ test('loginWithGoogle signs in an existing internal user', async () => {
     assert.equal(result.token, 'jwt-token');
     assert.equal(result.user.email, 'User@Example.com');
 });
-

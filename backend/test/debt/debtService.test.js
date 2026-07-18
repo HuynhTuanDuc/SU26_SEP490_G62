@@ -1,4 +1,4 @@
-const { describe, it, afterEach, mock } = require('node:test');
+const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 
 const debtRepository = require('../../repositories/debtRepository');
@@ -70,6 +70,14 @@ describe('Debt Service', () => {
                 assert.strictEqual(opts.paymentMethod, 'bank_transfer');
                 return { id: 1, status: 'pending' };
             });
+            // submitRepayment còn notify manager/accountant kèm tên tài xế — chặn mọi
+            // truy vấn DB thật trong unit test
+            const profileRepository = require('../../repositories/profileRepository');
+            const roleRepository = require('../../repositories/roleRepository');
+            const notificationService = require('../../services/notificationService');
+            mock.method(profileRepository, 'getProfileById', async () => ({ id: 1, full_name: 'Tai Xe Test' }));
+            mock.method(roleRepository, 'getUserIdsByRole', async () => []);
+            mock.method(notificationService, 'createForUsers', async () => []);
 
             const result = await debtService.submitRepayment(1, 10, { amount: 300000, paymentMethod: 'bank_transfer' }, 'url');
 

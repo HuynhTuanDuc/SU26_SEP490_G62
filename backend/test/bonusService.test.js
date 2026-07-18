@@ -1,4 +1,4 @@
-const { describe, it, afterEach, mock } = require('node:test');
+const { mock } = require('./helpers/nodeTestMock');
 const assert = require('node:assert');
 
 const pool = require('../config/database');
@@ -90,7 +90,7 @@ describe('Bonus Service', () => {
 
         await assert.rejects(
             () => bonusService.createWelfare({ driver_id: 999, type: 'welfare_birthday' }, 2),
-            { message: 'Tài xế #999 không tồn tại' },
+            { message: 'Nhân viên #999 không tồn tại hoặc đã bị khóa' },
         );
     });
 

@@ -154,6 +154,10 @@ export const accountantService = {
       body: { reason },
     }),
 
+  // Lịch sử thanh toán công nợ toàn cục (khách + tài xế), có lọc/phân trang
+  getDebtPaymentHistory: (params = {}) =>
+    apiRequest(`${BASE}/debts/payment/history?${new URLSearchParams(params)}`),
+
   // ─── Quản lý chi (chi phí tài xế + phiếu chi + tổng hợp) ────────────────────
   getSpendingExpenses: (params = {}) =>
     apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),
