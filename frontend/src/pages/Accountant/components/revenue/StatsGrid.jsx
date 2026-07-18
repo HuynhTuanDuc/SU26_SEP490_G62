@@ -1,5 +1,5 @@
 import { Skeleton } from "@heroui/react";
-import { RiLineChartLine, RiCheckboxCircleLine, RiAlertLine, RiTimeLine } from "react-icons/ri";
+import { RiLineChartLine, RiCheckboxCircleLine, RiAlertLine, RiTimeLine, RiHandCoinLine } from "react-icons/ri";
 import { MoneyText } from "../shared/MoneyText";
 
 const CARDS = [
@@ -46,11 +46,23 @@ const CARDS = [
     isMoney: false,
     suffix: " đơn",
   },
+  {
+    // Tiền tài xế đã ứng túi (chi hộ khách/chi phí công ty) đã duyệt nhưng
+    // công ty CHƯA hoàn lại — chưa cấn trừ nợ (TH2), chưa hoàn qua lương (TH1)
+    key: "total_reimbursable",
+    label: "Cần hoàn trả tài xế",
+    icon: RiHandCoinLine,
+    gradient: "from-teal-500 to-teal-600",
+    lightBg: "bg-teal-50",
+    text: "text-teal-600",
+    border: "border-teal-100",
+    isMoney: true,
+  },
 ];
 
 export function StatsGrid({ stats, loading }) {
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-5 gap-4">
       {CARDS.map(({ key, label, icon: Icon, gradient, lightBg, text, border, isMoney, suffix }) => (
         <div
           key={key}
