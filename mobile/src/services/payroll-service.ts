@@ -53,6 +53,7 @@ export type PayrollEstimate = {
     advance_deduction: string;
     driver_debt_deduction: string;
     max_advance_amount: string;
+    expense_reimbursement: string;
     estimated_gross: string;
     estimated_net: string;
 };
