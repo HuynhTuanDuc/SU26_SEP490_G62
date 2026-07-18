@@ -13,6 +13,43 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+// Decode base64 thuần JS — không phụ thuộc global atob()/Buffer (không đảm bảo có sẵn
+// trên mọi engine Hermes/thiết bị), trả về chuỗi UTF-8 đã decode.
+function base64Decode(input: string): string {
+  const clean = input.replace(/=+$/, '');
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bits = 0;
+  for (const ch of clean) {
+    const value = BASE64_ALPHABET.indexOf(ch);
+    if (value === -1) continue;
+    buffer = (buffer << 6) | value;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
+    }
+  }
+  return decodeURIComponent(bytes.map((b) => `%${b.toString(16).padStart(2, '0')}`).join(''));
+}
+
+// true nếu token đã hết hạn hoặc sắp hết hạn trong <= skewSeconds (JWT không cần verify
+// chữ ký ở client, chỉ đọc phần payload để biết exp — server vẫn là nơi verify thật).
+function isTokenExpiringSoon(token: string, skewSeconds = 10): boolean {
+  try {
+    const payloadB64 = token.split('.')[1];
+    if (!payloadB64) return true;
+    const json = base64Decode(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
+    const { exp } = JSON.parse(json) as { exp?: number };
+    if (!exp) return true;
+    return Date.now() >= (exp - skewSeconds) * 1000;
+  } catch {
+    return true;
+  }
+}
+
 // Chống gọi refresh nhiều lần cùng lúc khi có nhiều request 401 song song
 let _refreshPromise: Promise<string | null> | null = null;
 
@@ -131,6 +168,16 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   }
 
   return payload as T;
+}
+
+// Trả về access token còn hạn dùng — refresh trước nếu đã hết/sắp hết hạn. Dùng cho
+// những kết nối không tự retry-on-401 được như WebSocket (handshake bị từ chối thẳng,
+// không có cơ hội refresh-rồi-thử-lại như fetch()).
+export async function getValidAccessToken(): Promise<string | null> {
+  const token = await tokenStorage.getToken();
+  if (!token) return null;
+  if (!isTokenExpiringSoon(token)) return token;
+  return attemptTokenRefresh();
 }
 
 export const apiClient = {

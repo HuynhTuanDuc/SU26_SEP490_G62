@@ -5,8 +5,8 @@ import { API_BASE_URL } from '@/constants/api';
 import { ERROR_MESSAGES } from '@/constants/error-messages';
 import { appEvents } from '@/lib/app-events';
 import { ApiError } from '@/lib/api-error';
+import { getValidAccessToken } from '@/lib/api-client';
 import { notificationService } from '@/services/notification-service';
-import { tokenStorage } from '@/services/token-storage';
 import type { AppNotification, NotificationEvent } from '@/types/notification';
 import { useAuthSession } from '@/providers/auth-provider';
 import { useAppAlert, useToast } from '@/providers/ui-provider';
@@ -174,7 +174,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         if (status !== 'authenticated') return;
         if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return;
 
-        const token = await tokenStorage.getToken();
+        // Refresh trước nếu access token đã/sắp hết hạn — WS handshake bị từ chối thẳng
+        // 401 không có cơ hội "thử lại sau khi refresh" như request() của apiClient.
+        const token = await getValidAccessToken();
         if (!token) return;
 
         shouldConnectRef.current = true;
