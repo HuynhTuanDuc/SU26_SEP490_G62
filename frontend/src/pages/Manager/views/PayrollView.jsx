@@ -139,6 +139,7 @@ export default function PayrollView() {
             <TableColumn>KỲ LƯƠNG</TableColumn>
             <TableColumn>LƯƠNG CƠ BẢN</TableColumn>
             <TableColumn>THƯỞNG</TableColumn>
+            <TableColumn>HOÀN CHI PHÍ</TableColumn>
             <TableColumn>KHẤU TRỪ</TableColumn>
             <TableColumn>THỰC LĨNH</TableColumn>
             <TableColumn>TRẠNG THÁI</TableColumn>
@@ -161,6 +162,12 @@ export default function PayrollView() {
                 <TableCell>{`T${r.payroll_month}/${r.payroll_year}`}</TableCell>
                 <TableCell>{fmt(r.base_salary)}</TableCell>
                 <TableCell>{fmt(sumBonus(r))}</TableCell>
+                <TableCell>
+                  {/* Tiền công ty hoàn lại khoản tài đã ứng (chi hộ + chi phí) — không phải thưởng */}
+                  <span className={Number(r.expense_reimbursement || 0) > 0 ? "font-semibold text-teal-600" : "text-gray-400"}>
+                    {fmt(r.expense_reimbursement)}
+                  </span>
+                </TableCell>
                 <TableCell>{fmt(sumDeduction(r))}</TableCell>
                 <TableCell><span className="font-bold text-blue-600">{fmt(net(r))}</span></TableCell>
                 <TableCell><StatusBadge status={r.status}>{PAYROLL_STATUS_LABELS[r.status] || r.status}</StatusBadge></TableCell>

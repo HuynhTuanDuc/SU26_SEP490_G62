@@ -73,6 +73,8 @@ function PayrollRow({ row, onConfirm, onPay, confirming }) {
     { label: "Thưởng xuất sắc",     value: row.top_driver_bonus },
     { label: "Thưởng & Phúc lợi",  value: row.overtime_bonus },
     { label: "Lương gộp",           value: row.gross_salary,  bold: true },
+    // Tiền hoàn khoản tài đã ứng (chi hộ khách + chi phí công ty) — không phải thu nhập
+    { label: "Hoàn chi phí đã ứng", value: row.expense_reimbursement },
     { label: "BHXH (10.5%)",    value: `-${VND(row.insurance_employee)}`, raw: true, neg: true },
     { label: "Nghỉ không lương",value: `-${VND(row.absence_penalty)}`,    raw: true, neg: true },
     { label: "Trừ ứng lương",   value: `-${VND(row.advance_deduction)}`,  raw: true, neg: true },

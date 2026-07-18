@@ -36,6 +36,14 @@ const EVENT_LABEL = {
 
 const STATUS_COLOR = { pending: "warning", approved: "primary", rejected: "danger", paid: "success" };
 const EXPENSE_STATUS_LABEL = { pending: "Chờ duyệt", approved: "Đã duyệt", rejected: "Từ chối" };
+
+// Trạng thái hoàn tiền cho tài (khoản tài đã ứng túi)
+const REIMB_CHIP = {
+  pending:          { label: "Chờ hoàn tài",     color: "warning" },
+  offset_debt:      { label: "Đã cấn trừ nợ",    color: "success" },
+  paid_via_payroll: { label: "Đã hoàn qua lương", color: "success" },
+  settled:          { label: "Đã tất toán",       color: "default" },
+};
 const VOUCHER_STATUS_LABEL = { pending: "Chờ duyệt", approved: "Đã duyệt — chờ chi", rejected: "Từ chối", paid: "Đã chi" };
 
 const EMPTY_VOUCHER_FORM = { voucher_type: "", amount: "", payee: "", reason: "", payment_method: "cash" };
@@ -286,6 +294,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                 <TableColumn>CHỨNG TỪ</TableColumn>
                 <TableColumn>MÔ TẢ</TableColumn>
                 <TableColumn>TRẠNG THÁI</TableColumn>
+                <TableColumn>HOÀN TÀI XẾ</TableColumn>
                 <TableColumn> </TableColumn>
               </TableHeader>
               <TableBody items={expenses} isLoading={expenseLoading} loadingContent={<Spinner color="primary" />} emptyContent="Không có chi phí nào.">
@@ -318,6 +327,13 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
                       </div>
                     </TableCell>
                     <TableCell><Chip size="sm" variant="flat" color={STATUS_COLOR[r.status] || "default"}>{EXPENSE_STATUS_LABEL[r.status] || r.status}</Chip></TableCell>
+                    <TableCell>
+                      {r.reimbursement_status ? (
+                        <Chip size="sm" variant="flat" color={REIMB_CHIP[r.reimbursement_status]?.color || "default"} className="text-[10px]">
+                          {REIMB_CHIP[r.reimbursement_status]?.label || r.reimbursement_status}
+                        </Chip>
+                      ) : <span className="text-xs text-gray-400">—</span>}
+                    </TableCell>
                     <TableCell>
                       {canModerateExpense && r.status === "pending" && (
                         <div className="flex gap-1 justify-end">
