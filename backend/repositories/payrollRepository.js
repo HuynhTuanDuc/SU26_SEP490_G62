@@ -118,18 +118,33 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const monthsOfService = getMonthsOfServiceAtPeriodEnd(hire_date, month, year);
     const baseSalary = monthsOfService >= 12 ? 9_000_000 : 8_000_000;
 
-    // 2. Số ngày nghỉ không lương tháng này
+    // 2. Số ngày nghỉ không lương / vắng không phép tháng này (khớp logic với
+    // accountantPayrollRepository — gồm cả chấm công 'absent_unexcused', ghi đè
+    // 'present' được ưu tiên) để màn ước tính khớp số với bảng lương chính thức
     const leaveRes = await pool.query(
-        `SELECT
-            COUNT(*) FILTER (WHERE leave_type = 'unpaid' AND status = 'approved') AS unpaid_days
-         FROM leave_requests
-         WHERE driver_id = $1
-           AND EXTRACT(MONTH FROM leave_date) = $2
-           AND EXTRACT(YEAR  FROM leave_date) = $3`,
+        `SELECT COUNT(*)::int AS unpaid_days
+         FROM leave_requests lr
+         LEFT JOIN attendance_overrides ao
+                ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
+         WHERE lr.driver_id = $1
+           AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
+           AND EXTRACT(MONTH FROM lr.leave_date) = $2
+           AND EXTRACT(YEAR  FROM lr.leave_date) = $3
+           AND COALESCE(ao.status, 'leave_unpaid') != 'present'`,
         [driverId, month, year],
     );
-    const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0);
-    const actualWorkingDays = Math.max(0, 28 - unpaidDays);
+    const attRes = await pool.query(
+        `SELECT COUNT(*)::int AS unexcused_days
+         FROM attendance_overrides
+         WHERE driver_id = $1 AND status = 'absent_unexcused'
+           AND EXTRACT(MONTH FROM work_date) = $2 AND EXTRACT(YEAR FROM work_date) = $3`,
+        [driverId, month, year],
+    );
+    const unpaidDays = Number(leaveRes.rows[0].unpaid_days ?? 0) + Number(attRes.rows[0].unexcused_days ?? 0);
+    // "28 công" là quota — tháng dài hơn 28 ngày lịch có phần dư được miễn trừ tự
+    // nhiên; chỉ khi số ngày thực đi làm tụt dưới 28 mới bị trừ đúng phần hụt đó.
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+    const actualWorkingDays = Math.max(0, Math.min(28, daysInMonth - unpaidDays));
     const proRatedBase = (baseSalary / 28) * actualWorkingDays;
     const absencePenalty = baseSalary - proRatedBase;
 

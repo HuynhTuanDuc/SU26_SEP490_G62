@@ -84,7 +84,18 @@ const getFinanceStats = async () => {
             )::int AS pending_payments_count
         FROM order_stats
     `;
-    const result = await pool.query(query);
+    // Tiền tài xế đã ứng túi (chi hộ khách/chi phí công ty) chờ công ty hoàn lại —
+    // đã duyệt nhưng chưa cấn trừ nợ (TH2) và chưa hoàn qua lương (TH1)
+    const reimbursableQuery = `
+        SELECT COALESCE(SUM(amount), 0)::numeric AS total_reimbursable
+        FROM expenses
+        WHERE status = 'approved' AND reimbursement_status = 'pending'
+    `;
+
+    const [result, reimbResult] = await Promise.all([
+        pool.query(query),
+        pool.query(reimbursableQuery),
+    ]);
     const row = result.rows[0];
     return {
         total_gross_revenue:    Number(row.total_gross_revenue)    || 0,
@@ -92,6 +103,7 @@ const getFinanceStats = async () => {
         total_collected:        Number(row.total_collected)        || 0,
         total_receivables:      Number(row.total_receivables)      || 0,
         pending_payments_count: Number(row.pending_payments_count) || 0,
+        total_reimbursable:     Number(reimbResult.rows[0].total_reimbursable) || 0,
     };
 };
 

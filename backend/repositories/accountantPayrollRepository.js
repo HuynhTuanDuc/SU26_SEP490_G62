@@ -9,6 +9,10 @@ const BASE_SALARY_JUNIOR     = 8_000_000;
 const BASE_SALARY_SENIOR     = 9_000_000;
 const WORKING_DAYS_PER_MONTH = 28;
 
+// Số ngày lịch của tháng (28-31) — dùng làm mốc "ngày dư" so với quota 28 công:
+// tháng càng dài thì càng có nhiều ngày nghỉ được miễn trừ trước khi hụt công.
+const getDaysInMonth = (month, year) => new Date(Number(year), Number(month), 0).getDate();
+
 const getMonthsOfServiceAtPeriodEnd = (hireDateValue, month, year) => {
     const hireDate = new Date(hireDateValue);
     const periodEnd = new Date(Number(year), Number(month), 0);
@@ -47,7 +51,12 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
           AND EXTRACT(YEAR  FROM work_date) = $3
     `, [driver.driver_id, month, year]);
     const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0);
-    const actualWorkDays = Math.max(0, WORKING_DAYS_PER_MONTH - unpaidDays);
+    // "28 công" là quota — tháng có nhiều hơn 28 ngày lịch thì phần dư (29,30,31 - 28)
+    // là ngày nghỉ được miễn trừ tự nhiên. Chỉ khi số ngày thực đi làm (ngày lịch - vắng)
+    // TỤT XUỐNG DƯỚI 28 mới bị trừ lương, và chỉ trừ đúng phần hụt đó — không trừ thẳng
+    // theo số ngày vắng. Tháng đúng 28 ngày (tháng 2) thì không có phần dư nào để miễn.
+    const daysInMonth    = getDaysInMonth(month, year);
+    const actualWorkDays = Math.max(0, Math.min(WORKING_DAYS_PER_MONTH, daysInMonth - unpaidDays));
     const proRatedBase   = Math.round((baseSalary / WORKING_DAYS_PER_MONTH) * actualWorkDays);
     const absencePenalty = baseSalary - proRatedBase;
 
