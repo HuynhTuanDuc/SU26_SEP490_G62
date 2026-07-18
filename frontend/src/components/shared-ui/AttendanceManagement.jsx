@@ -21,9 +21,24 @@ const STATUS_STYLE = {
 const WEEKDAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
 // Sắp ngày trong tháng thành lưới tuần (Thứ 2 → Chủ nhật), ô trống ở đầu/cuối = null
+// Parse date string "YYYY-MM-DD" thành Date object theo giờ local của trình duyệt
+const parseLocalDate = (dateStr) => {
+  const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+// Định dạng hiển thị ngày/tháng/năm theo giờ local
+const formatLocalDateString = (dateObj) => {
+  if (!dateObj) return "";
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const y = dateObj.getFullYear();
+  return `${d}/${m}/${y}`;
+};
+
 const buildWeekGrid = (days) => {
   if (!days.length) return [];
-  const firstDow = (new Date(days[0].work_date).getDay() + 6) % 7; // 0=T2
+  const firstDow = (parseLocalDate(days[0].work_date).getDay() + 6) % 7; // Sử dụng getDay thường
   const cells = [...Array(firstDow).fill(null), ...days];
   while (cells.length % 7 !== 0) cells.push(null);
   const weeks = [];
@@ -68,7 +83,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
                     {week.map((day, di) => {
                       if (!day) return <div key={di} className="h-16 bg-gray-50/40" />;
                       const style = STATUS_STYLE[day.status];
-                      const dayNum = new Date(day.work_date).getDate();
+                      const dayNum = parseLocalDate(day.work_date).getDate(); // Sử dụng getDate
                       return (
                         <button
                           key={di}
@@ -102,7 +117,7 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
       <Modal isOpen={!!dayModal} onOpenChange={(open) => !open && setDayModal(null)} size="sm">
         <ModalContent>
           <ModalHeader>
-            Ngày {dayModal ? new Date(dayModal.work_date).toLocaleDateString("vi-VN") : ""}
+            Ngày {dayModal ? formatLocalDateString(parseLocalDate(dayModal.work_date)) : ""}
           </ModalHeader>
           <ModalBody className="gap-2">
             <p className="text-sm text-gray-600">
@@ -167,10 +182,13 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
       const params = { month: String(month), year: String(year) };
       if (vehicleGroupId) params.vehicle_group_id = vehicleGroupId;
       const data = await getGrid(params);
-      setDrivers(data.drivers || []);
+      const freshDrivers = data.drivers || [];
+      setDrivers(freshDrivers);
       setStatusLabels(data.status_labels || {});
+      return freshDrivers; // Trả về danh sách drivers mới
     } catch (error) {
       alert(error.message || "Không thể tải dữ liệu chấm công.");
+      return [];
     } finally {
       setLoading(false);
     }
@@ -191,14 +209,24 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
     return filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   }, [filtered, page, totalPages]);
 
+  // Định dạng Date sang chuỗi "YYYY-MM-DD" chuẩn UTC để gửi lên server
+  const toYmdString = (dateInput) => {
+    const dateObj = new Date(dateInput);
+    const y = dateObj.getUTCFullYear();
+    const m = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(dateObj.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const handleMark = async (driverId, workDate, status) => {
     setMarking(true);
     try {
-      await markAttendance({ driver_id: driverId, work_date: workDate, status });
-      await load();
+      const formattedDate = toYmdString(workDate);
+      await markAttendance({ driver_id: driverId, work_date: formattedDate, status });
+      const freshDrivers = await load();
       setSelectedDriver((prev) => {
         if (!prev || prev.driver_id !== driverId) return prev;
-        const fresh = drivers.find((d) => d.driver_id === driverId);
+        const fresh = freshDrivers.find((d) => d.driver_id === driverId);
         return fresh || prev;
       });
     } catch (error) {
@@ -211,8 +239,14 @@ export function AttendanceManagement({ getGrid, markAttendance, clearAttendance,
   const handleClear = async (driverId, workDate) => {
     setMarking(true);
     try {
-      await clearAttendance(driverId, workDate);
-      await load();
+      const formattedDate = toYmdString(workDate);
+      await clearAttendance(driverId, formattedDate);
+      const freshDrivers = await load();
+      setSelectedDriver((prev) => {
+        if (!prev || prev.driver_id !== driverId) return prev;
+        const fresh = freshDrivers.find((d) => d.driver_id === driverId);
+        return fresh || prev;
+      });
     } catch (error) {
       alert(error.message || "Không thể xoá đánh dấu.");
     } finally {

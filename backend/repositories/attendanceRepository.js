@@ -28,7 +28,7 @@ const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = n
         )
         SELECT
             drv.driver_id, drv.full_name, drv.plate_number, drv.vehicle_group_name,
-            dd.work_date,
+            TO_CHAR(dd.work_date, 'YYYY-MM-DD') AS work_date,
             ao.id     AS override_id,
             ao.status AS override_status,
             ao.notes  AS override_notes,
