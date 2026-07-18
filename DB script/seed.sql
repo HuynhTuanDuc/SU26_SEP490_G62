@@ -206,11 +206,12 @@ INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, con
 
 -- ─── 9. CHI PHÍ TÀI XẾ ───────────────────────────────────────────────────────
 
-INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, created_at, updated_at) VALUES
-    (100000, 100000, 100000, 100003, 'toll',   120000, 'Phí cầu đường cao tốc Long Thành',      DATE '2026-06-05', 'approved', 100001, '2026-06-05 17:00:00+07', '2026-06-05 16:00:00+07', '2026-06-05 17:00:00+07'),
-    (100001, 100003, 100000, 100003, 'fuel',   500000, 'Đổ dầu chuyến chuyển nhà',              DATE '2026-06-22', 'approved', 100001, '2026-06-22 16:00:00+07', '2026-06-22 15:00:00+07', '2026-06-22 16:00:00+07'),
-    (100002, 100005, 100002, 100005, 'fuel',   450000, 'Đổ dầu chuyến Bình Dương',              DATE '2026-07-12', 'approved', 100001, '2026-07-12 17:00:00+07', '2026-07-12 16:00:00+07', '2026-07-12 17:00:00+07'),
-    (100003, NULL,   100001, 100004, 'repair', 800000, 'Thay má phanh trước — chờ duyệt',       DATE '2026-07-15', 'pending',  NULL,   NULL,                     '2026-07-15 09:00:00+07', '2026-07-15 09:00:00+07');
+-- reimbursement_status = 'settled': các khoản này đã tất toán theo sổ (bút toán chi đã ghi ở mục 15)
+INSERT INTO expenses (id, shipment_id, vehicle_id, created_by, expense_type, amount, description, expense_date, status, reviewed_by, reviewed_at, reimbursement_status, reimbursed_at, created_at, updated_at) VALUES
+    (100000, 100000, 100000, 100003, 'toll',   120000, 'Phí cầu đường cao tốc Long Thành',      DATE '2026-06-05', 'approved', 100001, '2026-06-05 17:00:00+07', 'settled', '2026-06-05 17:00:00+07', '2026-06-05 16:00:00+07', '2026-06-05 17:00:00+07'),
+    (100001, 100003, 100000, 100003, 'fuel',   500000, 'Đổ dầu chuyến chuyển nhà',              DATE '2026-06-22', 'approved', 100001, '2026-06-22 16:00:00+07', 'settled', '2026-06-22 16:00:00+07', '2026-06-22 15:00:00+07', '2026-06-22 16:00:00+07'),
+    (100002, 100005, 100002, 100005, 'fuel',   450000, 'Đổ dầu chuyến Bình Dương',              DATE '2026-07-12', 'approved', 100001, '2026-07-12 17:00:00+07', 'settled', '2026-07-12 17:00:00+07', '2026-07-12 16:00:00+07', '2026-07-12 17:00:00+07'),
+    (100003, NULL,   100001, 100004, 'repair', 800000, 'Thay má phanh trước — chờ duyệt',       DATE '2026-07-15', 'pending',  NULL,   NULL,                     NULL,      NULL,                     '2026-07-15 09:00:00+07', '2026-07-15 09:00:00+07');
 
 -- ─── 10. PHIẾU CHI ───────────────────────────────────────────────────────────
 

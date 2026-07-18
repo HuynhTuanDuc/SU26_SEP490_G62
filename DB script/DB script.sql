@@ -308,6 +308,14 @@ CREATE TABLE expenses (
     reviewed_by     INT REFERENCES profiles(id),
     reviewed_at     TIMESTAMPTZ,
     reject_reason   TEXT,
+    -- Hoàn ứng cho tài xế (tài ứng tiền túi khi chạy chuyến):
+    --   pending          = đã duyệt, công ty còn nợ tài — chờ hoàn
+    --   offset_debt      = đã cấn trừ vào nợ thu hộ (khách trả tiền mặt cho tài)
+    --   paid_via_payroll = đã hoàn qua kỳ lương
+    --   settled          = đã tất toán (dữ liệu trước khi có cơ chế hoàn ứng)
+    reimbursement_status TEXT
+                        CHECK (reimbursement_status IN ('pending','offset_debt','paid_via_payroll','settled')),
+    reimbursed_at   TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -526,6 +534,10 @@ CREATE TABLE payrolls (
     absence_penalty         NUMERIC(12,2) NOT NULL DEFAULT 0,
     other_deduction         NUMERIC(12,2) NOT NULL DEFAULT 0,
 
+    -- Hoàn chi phí tài đã ứng (chi hộ khách + chi phí công ty tài trả trước) —
+    -- KHÔNG phải thu nhập: không vào gross, không BHXH, chỉ cộng vào tiền thực chi trả
+    expense_reimbursement   NUMERIC(12,2) NOT NULL DEFAULT 0,
+
     gross_salary            NUMERIC(12,2) GENERATED ALWAYS AS (
                                 base_salary + revenue_bonus
                                 + kpi_bonus + top_driver_bonus
@@ -536,6 +548,7 @@ CREATE TABLE payrolls (
                                 base_salary + revenue_bonus
                                 + kpi_bonus + top_driver_bonus
                                 + overtime_bonus + holiday_bonus + other_bonus
+                                + expense_reimbursement
                                 - insurance_employee
                                 - driver_debt_deduction
                                 - advance_deduction
