@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { PlusCircle } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -79,7 +80,7 @@ export function ExpenseSection({ expenses, canAdd, onAdd }: Props) {
                                                 key={i}
                                                 source={{ uri: url }}
                                                 style={s.receiptThumb}
-                                                resizeMode="cover"
+                                                contentFit="cover"
                                             />
                                         ))}
                                     </XStack>

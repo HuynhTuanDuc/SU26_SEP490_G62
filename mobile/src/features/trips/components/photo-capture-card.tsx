@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Camera, Trash2 } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -24,7 +25,7 @@ export function PhotoCaptureCard({ label, sublabel, uri, required, onCapture, on
                 overflow="hidden"
                 alignItems="center"
             >
-                <Image source={{ uri }} style={s.thumb} resizeMode="cover" />
+                <Image source={{ uri }} style={s.thumb} contentFit="cover" />
                 <YStack flex={1} paddingHorizontal={12} paddingVertical={10} gap={3}>
                     <XStack alignItems="center" gap={6}>
                         <View style={s.doneDot} />

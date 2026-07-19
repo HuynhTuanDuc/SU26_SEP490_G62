@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
-    Alert, Image, KeyboardAvoidingView, Modal, Platform,
+    Alert, KeyboardAvoidingView, Modal, Platform,
     ScrollView, StyleSheet, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { useLocalSearchParams } from 'expo-router';
 import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import {
     Bank, Buildings, Camera, Car, CaretDown, CaretRight, CheckCircle,
     CurrencyDollar, MapPin, MapPinLine, Money, Package,
-    PencilSimple, Phone, Receipt, Ruler, Scales,
+    PencilSimple, Phone, Receipt, Ruler, Scales, Trash,
     Truck, User, UserCircle, Warning, X, ListNumbers,
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -303,7 +304,9 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
 
 // ─── Expense row (inside order accordion) ────────────────────────────────────
 
-function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit: () => void; canEdit: boolean }) {
+function ExpenseRow({ expense, onEdit, onDelete, canEdit, isDeleting }: {
+    expense: ExpenseItem; onEdit: () => void; onDelete: () => void; canEdit: boolean; isDeleting: boolean;
+}) {
     const [showPhotos, setShowPhotos] = useState(false);
     return (
         <View style={styles.expenseRow}>
@@ -330,8 +333,11 @@ function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit
                             </Text>
                         </TouchableOpacity>
                     ) : null}
-                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip}>
+                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip} disabled={isDeleting}>
                         <PencilSimple size={12} color={appTheme.colors.primary} weight="fill" />
+                    </TouchableOpacity> : null}
+                    {canEdit ? <TouchableOpacity onPress={onDelete} style={styles.deleteChip} disabled={isDeleting}>
+                        <Trash size={12} color="#E53E3E" weight="fill" />
                     </TouchableOpacity> : null}
                 </XStack>
             </XStack>
@@ -340,7 +346,7 @@ function ExpenseRow({ expense, onEdit, canEdit }: { expense: ExpenseItem; onEdit
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
                     <XStack gap={8}>
                         {expense.receipt_urls.map((url, i) => (
-                            <Image key={i} source={{ uri: url }} style={styles.expenseThumb} resizeMode="cover" />
+                            <Image key={i} source={{ uri: url }} style={styles.expenseThumb} contentFit="cover" />
                         ))}
                     </XStack>
                 </ScrollView>
@@ -432,7 +438,7 @@ function ExpenseEditModal({
                                 Ảnh chứng từ {photoUri ? '(mới)' : '(giữ nguyên nếu không chụp)'}
                             </Text>
                             {photoUri
-                                ? <Image source={{ uri: photoUri }} style={styles.modalPreview} resizeMode="cover" />
+                                ? <Image source={{ uri: photoUri }} style={styles.modalPreview} contentFit="cover" />
                                 : null}
                             <TouchableOpacity style={styles.camBtn} onPress={takePhoto}>
                                 <Camera size={15} color={appTheme.colors.primary} weight="fill" />
@@ -548,6 +554,7 @@ export function ReceiptDetailScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [editExpense,  setEditExpense]  = useState<ExpenseItem | null>(null);
+    const [deletingExpenseId, setDeletingExpenseId] = useState<number | null>(null);
     const [resubmitting, setResubmitting] = useState(false);
     const [driverNote,   setDriverNote]   = useState('');
 
@@ -663,6 +670,30 @@ export function ReceiptDetailScreen() {
         } finally {
             setResubmitting(false);
         }
+    };
+
+    // Xoá chi phí phát sinh — chỉ khi yêu cầu phiếu thu đang bị từ chối (BE kiểm tra lại)
+    const handleDeleteExpense = (expense: ExpenseItem) => {
+        Alert.alert(
+            'Xoá chi phí?',
+            `Xoá khoản "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${fmtMoney(expense.amount)}? Ảnh chứng từ đính kèm sẽ mất theo.`,
+            [
+                { text: 'Huỷ', style: 'cancel' },
+                {
+                    text: 'Xoá', style: 'destructive', onPress: async () => {
+                        setDeletingExpenseId(expense.id);
+                        try {
+                            await tripService.deleteExpense(expense.id);
+                            load();
+                        } catch (err: any) {
+                            Alert.alert('Lỗi', err?.message ?? 'Không thể xoá chi phí.');
+                        } finally {
+                            setDeletingExpenseId(null);
+                        }
+                    },
+                },
+            ],
+        );
     };
 
     // ── Render loading / error ────────────────────────────────────────────────
@@ -986,7 +1017,9 @@ export function ReceiptDetailScreen() {
                                                             key={exp.id}
                                                             expense={exp}
                                                             canEdit={isRejected}
+                                                            isDeleting={deletingExpenseId === exp.id}
                                                             onEdit={() => setEditExpense(exp)}
+                                                            onDelete={() => handleDeleteExpense(exp)}
                                                         />
                                                     ))}
                                                 </YStack>
@@ -1035,7 +1068,7 @@ export function ReceiptDetailScreen() {
                                 title="QR chuyển khoản công ty"
                             >
                                 <YStack gap={8} alignItems="center">
-                                    <Image source={{ uri: companyInfo.bank_qr_url }} style={styles.qrImage} resizeMode="contain" />
+                                    <Image source={{ uri: companyInfo.bank_qr_url }} style={styles.qrImage} contentFit="contain" />
                                     {companyInfo.bank_account_name ? (
                                         <Row label="Tên TK" value={companyInfo.bank_account_name} />
                                     ) : null}
@@ -1143,7 +1176,7 @@ export function ReceiptDetailScreen() {
                                 <Text fontSize={12} fontWeight="700" color={appTheme.colors.text}>Ảnh xác minh *</Text>
                                 {proofUri ? (
                                     <View style={styles.proofWrap}>
-                                        <Image source={{ uri: proofUri }} style={styles.proofImg} resizeMode="cover" />
+                                        <Image source={{ uri: proofUri }} style={styles.proofImg} contentFit="cover" />
                                         <TouchableOpacity style={styles.retakeBtn} onPress={takeProofPhoto}>
                                             <Camera size={13} color="#fff" weight="fill" />
                                             <Text fontSize={11} color="#fff" marginLeft={4}>Chụp lại</Text>
@@ -1257,6 +1290,11 @@ const styles = StyleSheet.create({
         width: 28, height: 28, borderRadius: 8,
         alignItems: 'center', justifyContent: 'center',
         backgroundColor: `${appTheme.colors.primary}15`,
+    },
+    deleteChip:     {
+        width: 28, height: 28, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: '#FEE2E2',
     },
     // QR
     qrImage:        { width: 200, height: 200, borderRadius: 10, backgroundColor: '#f9f9f9' },

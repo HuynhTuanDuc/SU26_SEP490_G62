@@ -1,4 +1,5 @@
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Camera, Car, ChevronRight, LogOut, Settings, Shield, User } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';

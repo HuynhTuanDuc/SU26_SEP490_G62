@@ -1,4 +1,5 @@
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import {
     AlertTriangle, CheckCircle, ChevronRight, Clock, FileText,
@@ -140,7 +141,7 @@ function IncidentCard({ item }: { item: Incident }) {
                                     key={i}
                                     source={{ uri: url }}
                                     style={s.previewImg}
-                                    resizeMode="cover"
+                                    contentFit="cover"
                                 />
                             ))}
                         </XStack>
@@ -211,15 +212,24 @@ export function IncidentHistoryScreen() {
         <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
             <ScreenHeader title="Lịch sử sự cố" showBack />
 
-            <ScrollView
+            <FlatList
                 style={{ flex: 1 }}
                 contentContainerStyle={{
                     paddingHorizontal: appTheme.spacing.screenX,
                     paddingTop: 16,
                     paddingBottom: appTheme.spacing.screenBottom,
-                    gap: 12,
                     flexGrow: 1,
                 }}
+                data={isLoading && incidents.length === 0 ? [] : incidents}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={({ item }) => <IncidentCard item={item} />}
+                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+                // Ảnh preview không nằm trong khung nhìn được unmount hẳn (không giữ trong RAM
+                // như ScrollView cũ), chỉ giữ vài màn hình phía trên/dưới điểm đang xem.
+                windowSize={7}
+                maxToRenderPerBatch={8}
+                initialNumToRender={8}
+                removeClippedSubviews
                 refreshControl={
                     <RefreshControl
                         refreshing={isLoading}
@@ -228,49 +238,49 @@ export function IncidentHistoryScreen() {
                     />
                 }
                 showsVerticalScrollIndicator={false}
-            >
-                {!isLoading && incidents.length > 0 ? (
-                    <Text fontSize={12} color={appTheme.colors.textMuted} fontWeight="700">
-                        {incidents.length} sự cố đã báo cáo
-                    </Text>
-                ) : null}
+                ListHeaderComponent={
+                    <YStack gap={12} marginBottom={incidents.length > 0 ? 12 : 0}>
+                        {!isLoading && incidents.length > 0 ? (
+                            <Text fontSize={12} color={appTheme.colors.textMuted} fontWeight="700">
+                                {incidents.length} sự cố đã báo cáo
+                            </Text>
+                        ) : null}
 
-                {error ? (
-                    <XStack
-                        padding={14} borderRadius={appTheme.radius.md}
-                        backgroundColor={appTheme.colors.dangerSoft}
-                        borderWidth={1} borderColor={appTheme.colors.dangerBorder}
-                        gap={8} alignItems="center"
-                    >
-                        <AlertTriangle size={16} color={appTheme.colors.danger} />
-                        <AppText variant="caption" tone="danger">{error}</AppText>
-                    </XStack>
-                ) : null}
+                        {error ? (
+                            <XStack
+                                padding={14} borderRadius={appTheme.radius.md}
+                                backgroundColor={appTheme.colors.dangerSoft}
+                                borderWidth={1} borderColor={appTheme.colors.dangerBorder}
+                                gap={8} alignItems="center"
+                            >
+                                <AlertTriangle size={16} color={appTheme.colors.danger} />
+                                <AppText variant="caption" tone="danger">{error}</AppText>
+                            </XStack>
+                        ) : null}
 
-                {isLoading && incidents.length === 0 ? (
-                    <YStack gap={12}>
-                        {[0, 1, 2].map((i) => <IncidentCardSkeleton key={i} />)}
+                        {isLoading && incidents.length === 0 ? (
+                            <YStack gap={12}>
+                                {[0, 1, 2].map((i) => <IncidentCardSkeleton key={i} />)}
+                            </YStack>
+                        ) : null}
                     </YStack>
-                ) : null}
-
-                {!isLoading && incidents.length === 0 && !error ? (
-                    <YStack flex={1} alignItems="center" justifyContent="center" paddingVertical={80} gap={12}>
-                        <XStack
-                            width={64} height={64} borderRadius={24}
-                            backgroundColor={appTheme.colors.surfaceSoft}
-                            alignItems="center" justifyContent="center"
-                        >
-                            <CheckCircle size={30} color={appTheme.colors.success} />
-                        </XStack>
-                        <AppText variant="bodyStrong" tone="muted">Chưa có sự cố nào</AppText>
-                        <AppText variant="caption" tone="muted">Hành trình thuận lợi!</AppText>
-                    </YStack>
-                ) : null}
-
-                {incidents.map((item) => (
-                    <IncidentCard key={item.id} item={item} />
-                ))}
-            </ScrollView>
+                }
+                ListEmptyComponent={
+                    !isLoading && !error ? (
+                        <YStack flex={1} alignItems="center" justifyContent="center" paddingVertical={80} gap={12}>
+                            <XStack
+                                width={64} height={64} borderRadius={24}
+                                backgroundColor={appTheme.colors.surfaceSoft}
+                                alignItems="center" justifyContent="center"
+                            >
+                                <CheckCircle size={30} color={appTheme.colors.success} />
+                            </XStack>
+                            <AppText variant="bodyStrong" tone="muted">Chưa có sự cố nào</AppText>
+                            <AppText variant="caption" tone="muted">Hành trình thuận lợi!</AppText>
+                        </YStack>
+                    ) : null
+                }
+            />
         </View>
     );
 }

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
-    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal,
+    ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
     Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useConfirm } from '@/providers/ui-provider';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { StatusBar } from 'expo-status-bar';

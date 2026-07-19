@@ -106,7 +106,11 @@ const updateExpense = async (driverId, expenseId, { expenseType, amount, descrip
     return expenseRepository.updateExpense(expenseId, driverId, { expenseType, amount, description, fileUrl });
 };
 
+const deleteExpense = async (driverId, expenseId) => {
+    return expenseRepository.deleteExpense(expenseId, driverId);
+};
+
 module.exports = {
-    createExpense, getShipmentExpenses, getExpensesByShipment, updateExpense,
+    createExpense, getShipmentExpenses, getExpensesByShipment, updateExpense, deleteExpense,
     approveExpense, rejectExpense,
 };

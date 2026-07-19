@@ -73,4 +73,17 @@ const updateExpense = async (req, res) => {
     }
 };
 
-module.exports = { createExpense, getShipmentExpenses, updateExpense };
+// DELETE /api/expenses/:id
+const deleteExpense = async (req, res) => {
+    try {
+        const expenseId = Number(req.params.id);
+        if (!expenseId) return res.status(400).json({ error: 'ID chi phí không hợp lệ' });
+        await expenseService.deleteExpense(req.user.userId, expenseId);
+        res.json({ message: 'Đã xoá chi phí' });
+    } catch (err) {
+        const status = err.message.includes('từ chối') ? 403 : 500;
+        res.status(status).json({ error: err.message });
+    }
+};
+
+module.exports = { createExpense, getShipmentExpenses, updateExpense, deleteExpense };
