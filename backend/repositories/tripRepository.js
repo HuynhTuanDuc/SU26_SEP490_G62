@@ -1072,6 +1072,7 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             sr.payment_type              AS payment_type,
             o.payment_type               AS order_payment_type,
             o.customer_id                AS customer_id,
+            o.prepaid_amount             AS prepaid_amount,
             COALESCE(sr.amount,
                 (SELECT GREATEST(
                     COALESCE(SUM(os2.actual_price), 0) - COALESCE(o.prepaid_amount, 0),
@@ -1113,7 +1114,13 @@ const getDriverReceiptDetail = async (receiptId, driverId) => {
             (SELECT ts.address FROM trip_stops ts
              WHERE ts.shipment_id = orr.requesting_shipment_id
                AND ts.stop_type = 'delivery'
-             ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address`;
+             ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address,
+            (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts
+             WHERE ts.shipment_id = orr.requesting_shipment_id
+               AND ts.stop_type = 'pickup')  AS pickup_addresses,
+            (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts
+             WHERE ts.shipment_id = orr.requesting_shipment_id
+               AND ts.stop_type = 'delivery') AS delivery_addresses`;
 
     const JOINS = `
          JOIN orders o                   ON o.id    = orr.order_id
@@ -1168,7 +1175,11 @@ const getOrderShipmentsWithExpenses = async (orderId) => {
                  ORDER BY ts.stop_index ASC  LIMIT 1) AS pickup_address,
                 (SELECT ts.address FROM trip_stops ts
                  WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery'
-                 ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address
+                 ORDER BY ts.stop_index DESC LIMIT 1) AS delivery_address,
+                (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts
+                 WHERE ts.shipment_id = os.id AND ts.stop_type = 'pickup')  AS pickup_addresses,
+                (SELECT json_agg(ts.address ORDER BY ts.stop_index ASC) FROM trip_stops ts
+                 WHERE ts.shipment_id = os.id AND ts.stop_type = 'delivery') AS delivery_addresses
              FROM order_shipments os
              LEFT JOIN v_shipment_current sc ON sc.shipment_id = os.id
              LEFT JOIN profiles p ON p.id = sc.owner_driver_id

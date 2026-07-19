@@ -1036,4 +1036,19 @@ CREATE INDEX idx_shipments_vehicle_group  ON order_shipments(vehicle_group_id);
 CREATE INDEX idx_debts_due_date           ON debts(due_date);
 CREATE INDEX idx_invoices_due_date        ON invoices(due_date);
 CREATE INDEX idx_invoices_invoice_date    ON invoices(invoice_date);
+
+-- Push notification device tokens (FCM/APNs) — lưu DB thay vì Map trong RAM vì
+-- Cloud Run có thể chạy nhiều instance / tự restart, mất hết token nếu chỉ giữ ở bộ nhớ.
+-- Mỗi user có thể đăng nhập nhiều thiết bị → không unique theo user_id, chỉ theo token.
+CREATE TABLE device_tokens (
+    id          SERIAL PRIMARY KEY,
+    user_id     INT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    token       TEXT NOT NULL,
+    platform    VARCHAR(10) NOT NULL DEFAULT 'android' CHECK (platform IN ('android', 'ios', 'web')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (token)
+);
+
+CREATE INDEX idx_device_tokens_user ON device_tokens(user_id);
 CREATE INDEX idx_debt_payments_paid_at    ON debt_payments(paid_at);

@@ -184,6 +184,8 @@ export function buildTripFromOrder(order) {
   const firstTrip = trips[0] || {};
   const pickupAddress = firstStop(firstTrip, "pickup_addresses", "pickup_address") || order.pickup_address || "";
   const deliveryAddress = firstStop(firstTrip, "delivery_addresses", "delivery_address") || order.delivery_address || "";
+  const pickupAddresses = firstTrip.pickup_addresses?.length ? firstTrip.pickup_addresses : [pickupAddress];
+  const deliveryAddresses = firstTrip.delivery_addresses?.length ? firstTrip.delivery_addresses : [deliveryAddress];
   const arrivedAt = firstTrip.arrived_at || order.arrived_at;
   const date = (arrivedAt ? new Date(arrivedAt).toLocaleDateString('vi-VN') : "");
 
@@ -212,6 +214,9 @@ export function buildTripFromOrder(order) {
     prepaidAmount: order.prepaid_amount || "",
     pickupAddress,
     deliveryAddress,
+    pickupAddresses,
+    deliveryAddresses,
+    isMultiShipment,
     route: isMultiShipment
       ? `${trips.length} chuyến - mở chi tiết để xem từng chuyến`
       : (pickupAddress && deliveryAddress ? `${pickupAddress} - ${deliveryAddress}` : order.cargo_name || ""),

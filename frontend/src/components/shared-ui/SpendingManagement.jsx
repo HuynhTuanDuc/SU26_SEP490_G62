@@ -67,6 +67,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
   const [expenseStats, setExpenseStats] = useState(null);
   const [expenseLoading, setExpenseLoading] = useState(false);
   const [expenseStatus, setExpenseStatus] = useState("");
+  const [expenseReimbStatus, setExpenseReimbStatus] = useState("");
   const [expenseType, setExpenseType] = useState("");
   const [expenseSearch, setExpenseSearch] = useState("");
   const [expensePage, setExpensePage] = useState(1);
@@ -104,6 +105,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
       const res = await api.listExpenses({
         month, year, page: expensePage, limit: expensePageSize,
         ...(expenseStatus ? { status: expenseStatus } : {}),
+        ...(expenseReimbStatus ? { reimbursement_status: expenseReimbStatus } : {}),
         ...(expenseType ? { expense_type: expenseType } : {}),
         ...(expenseSearch ? { search: expenseSearch } : {}),
       });
@@ -115,7 +117,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
     } finally {
       setExpenseLoading(false);
     }
-  }, [api, month, year, expenseStatus, expenseType, expenseSearch, expensePage, expensePageSize]);
+  }, [api, month, year, expenseStatus, expenseReimbStatus, expenseType, expenseSearch, expensePage, expensePageSize]);
 
   const loadVouchers = useCallback(async () => {
     setVoucherLoading(true);
@@ -151,7 +153,7 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
   useEffect(() => { if (tab === "expenses") loadExpenses(); }, [tab, loadExpenses]);
   useEffect(() => { if (tab === "vouchers") loadVouchers(); }, [tab, loadVouchers]);
   useEffect(() => { if (tab === "summary") loadSummary(); }, [tab, loadSummary]);
-  useEffect(() => { setExpensePage(1); }, [month, year, expenseStatus, expenseType, expenseSearch]);
+  useEffect(() => { setExpensePage(1); }, [month, year, expenseStatus, expenseReimbStatus, expenseType, expenseSearch]);
   useEffect(() => { setVoucherPage(1); }, [month, year, voucherStatus, voucherType, voucherSearch]);
 
   // ── Actions: chi phí tài xế ──
@@ -269,12 +271,32 @@ export function SpendingManagement({ api, canModerateExpense, canModerateVoucher
               <StatCard label="Tổng đã duyệt" value={fmt(expenseStats?.approved_total || 0)} border="border-emerald-100" lightBg="bg-emerald-50" text="text-emerald-600" gradient="from-emerald-500 to-emerald-600" />
             </div>
 
+            {Number(expenseStats?.reimbursable_total || 0) > 0 && (
+              <div
+                className="mb-4 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 cursor-pointer hover:bg-amber-100 transition-colors"
+                onClick={() => setExpenseReimbStatus("pending")}
+              >
+                <div className="flex items-center gap-2 text-amber-700 text-sm">
+                  <RiWalletLine size={16} />
+                  <span>Công ty đang nợ tài xế (chi phí đã duyệt, chưa hoàn):</span>
+                </div>
+                <span className="font-bold text-amber-700">{fmt(expenseStats?.reimbursable_total || 0)}</span>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-3 mb-4">
               <Select selectedKeys={new Set([expenseStatus])} onSelectionChange={(k) => setExpenseStatus([...k][0] ?? "")} variant="bordered" size="sm" className="w-44" aria-label="Trạng thái">
                 <SelectItem key="" textValue="Tất cả trạng thái">Tất cả trạng thái</SelectItem>
                 <SelectItem key="pending">Chờ duyệt</SelectItem>
                 <SelectItem key="approved">Đã duyệt</SelectItem>
                 <SelectItem key="rejected">Từ chối</SelectItem>
+              </Select>
+              <Select selectedKeys={new Set([expenseReimbStatus])} onSelectionChange={(k) => setExpenseReimbStatus([...k][0] ?? "")} variant="bordered" size="sm" className="w-48" aria-label="Hoàn tài xế">
+                <SelectItem key="" textValue="Tất cả — hoàn tài xế">Tất cả — hoàn tài xế</SelectItem>
+                <SelectItem key="pending">Chờ hoàn tài</SelectItem>
+                <SelectItem key="offset_debt">Đã cấn trừ nợ</SelectItem>
+                <SelectItem key="paid_via_payroll">Đã hoàn qua lương</SelectItem>
+                <SelectItem key="settled">Đã tất toán</SelectItem>
               </Select>
               <Select selectedKeys={new Set([expenseType])} onSelectionChange={(k) => setExpenseType([...k][0] ?? "")} variant="bordered" size="sm" className="w-52" aria-label="Loại chi phí">
                 <SelectItem key="" textValue="Tất cả loại">Tất cả loại</SelectItem>

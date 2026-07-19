@@ -15,7 +15,7 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
 
     if (numericAmount > remaining + 0.01) {
         throw new Error(
-            `Sá»‘ tiá»n thanh toÃ¡n (${numericAmount.toLocaleString('vi-VN')}Ä‘) vÆ°á»£t quÃ¡ sá»‘ dÆ° (${remaining.toLocaleString('vi-VN')}Ä‘)`
+            `Số tiền thanh toán (${numericAmount.toLocaleString('vi-VN')}đ) vượt quá số dư (${remaining.toLocaleString('vi-VN')}đ)`
         );
     }
 
@@ -64,14 +64,14 @@ const _ensureCustomerDebt = async (client, orderId, createdBy) => {
          GROUP BY o.customer_id`,
         [orderId]
     );
-    if (!order) throw new Error(`KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng #${orderId}`);
+    if (!order) throw new Error(`Không tìm thấy đơn hàng #${orderId}`);
 
     const totalAmount = Number(order.order_total) || 0;
     const { rows: [created] } = await client.query(
         `INSERT INTO debts (debt_type, customer_id, order_id, total_amount, due_date, notes, updated_by, created_at, updated_at)
          VALUES ('customer', $1, $2, $3, CURRENT_DATE + INTERVAL '30 days', $4, $5, NOW(), NOW())
          RETURNING id`,
-        [order.customer_id, orderId, totalAmount, `Tá»± Ä‘á»™ng táº¡o cÃ´ng ná»£ cho Ä‘Æ¡n #${orderId}`, createdBy]
+        [order.customer_id, orderId, totalAmount, `Tự động tạo công nợ cho đơn #${orderId}`, createdBy]
     );
     return created.id;
 };
@@ -357,7 +357,7 @@ const recordPaymentByDebt = async (debtId, paymentData) => {
              GROUP BY d.id, d.total_amount, d.customer_id`,
             [debtId]
         );
-        if (!debt) throw new Error('KhÃ´ng tÃ¬m tháº¥y khoáº£n cÃ´ng ná»£');
+        if (!debt) throw new Error('Không tìm thấy khoản công nợ');
 
         const result = await _applyPaymentToDebt(client, {
             debt,
@@ -471,7 +471,7 @@ const allocatePayment = async (personType, personId, paymentData) => {
         }
         if (requestedAmount > totalRemaining + 0.01) {
             throw new Error(
-                `Sá»‘ tiá»n thanh toÃ¡n (${requestedAmount.toLocaleString('vi-VN')}Ä‘) vÆ°á»£t quÃ¡ sá»‘ dÆ° cÃ´ng ná»£ (${totalRemaining.toLocaleString('vi-VN')}Ä‘)`
+                `Số tiền thanh toán (${requestedAmount.toLocaleString('vi-VN')}đ) vượt quá số dư công nợ (${totalRemaining.toLocaleString('vi-VN')}đ)`
             );
         }
 
@@ -566,7 +566,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
                  WHERE os.id = $1`,
                 [shipmentId]
             );
-            if (!s) throw new Error('KhÃ´ng tÃ¬m tháº¥y chuyáº¿n xe');
+            if (!s) throw new Error('Không tìm thấy chuyến xe');
 
             // Nợ tài xế = số tiền tài xế đang cầm = cước + chi hộ khách
             const shipmentPrice = (Number(s.actual_price || s.estimated_price) || 0) + Number(s.pass_through_total || 0);
@@ -607,7 +607,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
 
             await client.query(
                 `INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
-                 SELECT d.id, $1, $2, 'confirmed', NOW(), NOW(), $3, $3, 'Káº¿ toÃ¡n xÃ¡c nháº­n thu tiá»n tÃ i xáº¿'
+                 SELECT d.id, $1, $2, 'confirmed', NOW(), NOW(), $3, $3, 'Kế toán xác nhận thu tiền tài xế'
                  FROM debts d WHERE d.shipment_id = $4 AND d.debt_type = 'driver'
                  RETURNING debt_id`,
                 [amount, paymentMethod || 'cash', confirmedBy, shipmentId]

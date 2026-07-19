@@ -76,18 +76,20 @@ const normalizeGender = (value, { errorFactory, includeHint = false } = {}) => {
     return normalizedGender;
 };
 
+// Nới lỏng định dạng: chấp nhận "YYYY-MM-DD" lẫn "YYYY-MM-DDTHH:mm:ss..." (cột DATE
+// Postgres trả nguyên về client rồi client gửi ngược lại không sửa — không nên coi là
+// lỗi form). Vẫn chặn ngày sinh trong tương lai.
 const normalizeDob = (value, { errorFactory } = {}) => {
     if (value === undefined || value === null || value === '') return null;
     if (typeof value !== 'string') {
         fail('Ngày sinh không hợp lệ.', 400, errorFactory);
     }
 
-    const normalizedDob = value.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDob)) {
-        fail('Ngày sinh không hợp lệ.', 400, errorFactory);
-    }
+    const trimmed = value.trim();
+    if (!trimmed) return null;
 
-    const parsedDate = new Date(`${normalizedDob}T00:00:00.000Z`);
+    const datePart = /^\d{4}-\d{2}-\d{2}/.test(trimmed) ? trimmed.slice(0, 10) : trimmed;
+    const parsedDate = new Date(datePart);
     if (Number.isNaN(parsedDate.getTime())) {
         fail('Ngày sinh không hợp lệ.', 400, errorFactory);
     }
@@ -98,7 +100,7 @@ const normalizeDob = (value, { errorFactory } = {}) => {
         fail('Ngày sinh không thể trong tương lai.', 400, errorFactory);
     }
 
-    return normalizedDob;
+    return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : parsedDate.toISOString().slice(0, 10);
 };
 
 const normalizeRole = (value, { errorFactory } = {}) => {

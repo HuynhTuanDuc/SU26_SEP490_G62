@@ -21,9 +21,10 @@ export function useReturnComplete(onSuccess?: (trip: ActiveTrip) => void) {
     const completeReturn = async (tripId: number, photoUri?: string | null) => {
         setState({ isUploading: true, error: null });
         try {
-            const formData = new FormData();
+            let formData: FormData | null = null;
             if (photoUri) {
                 const compressed = await compress(photoUri);
+                formData = new FormData();
                 formData.append('proof', { uri: compressed, type: 'image/jpeg', name: 'return.jpg' } as unknown as Blob);
             }
             const { trip } = await tripService.returnComplete(tripId, formData);
