@@ -10,7 +10,7 @@ export const emptyForm = () => ({
   note: "",
   is_partner: false,
   partner_name: "",
-  trips: [{ vehicle_group_id: "", plate: "", distance: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }],
+  trips: [{ vehicle_group_id: "", plate: "", distance: "", price: "", pickup_address: "", delivery_address: "", pickup_addresses: [""], delivery_addresses: [""] }],
 });
 
 export const requiredFields = [
@@ -74,6 +74,7 @@ export const newReceiptExpense = () => ({
 export const emptyReceiptForm = () => ({
   notes: "",
   expenses: [],
+  priceOverride: "",
 });
 
 export const STATUS_QUERY = {

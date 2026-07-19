@@ -59,8 +59,8 @@ beforeAll(async () => {
         (1, '51E-111.11', 1, 4, 'active'), (2, '51E-222.22', 1, 5, 'active')
     `);
     await pool.query(`
-        INSERT INTO drivers (profile_id, vehicle_id, license_number, hire_date) VALUES
-        (4, 1, 'DL-A', CURRENT_DATE), (5, 2, 'DL-B', CURRENT_DATE)
+        INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, hire_date) VALUES
+        (4, 1, 1, 'DL-A', CURRENT_DATE), (5, 2, 1, 'DL-B', CURRENT_DATE)
     `);
     await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone) VALUES (1, 'individual', 'Khach A', '0912345678')`);
 });
@@ -274,5 +274,130 @@ describe('L2-FLOW-05 — Sự cố hỏng xe → Điều chuyển tài → Tài 
             [DRIVER_A, now.getMonth() + 1, now.getFullYear()],
         );
         assert.strictEqual(Number(kpiA.completed_shipments), 1, 'Driver A không được cộng chuyến đã điều chuyển');
+    });
+});
+
+describe('L2-FLOW-04/05 — Negative paths (BR violations, invalid input, duplicate actions)', () => {
+    it('N1 — createExpense rejects when the proof photo is missing', async () => {
+        await assert.rejects(
+            () => expenseService.createExpense(DRIVER_A, {
+                shipmentId: 1, expenseType: 'fuel', amount: 100000, receiptUrl: null,
+            }),
+            /Ảnh bằng chứng là bắt buộc/,
+        );
+    });
+
+    it('N2 — createExpense rejects an invalid expense type', async () => {
+        await assert.rejects(
+            () => expenseService.createExpense(DRIVER_A, {
+                shipmentId: 1, expenseType: 'not_a_real_type', amount: 100000, receiptUrl: 'https://r.test/x.jpg',
+            }),
+            /Loại chi phí không hợp lệ/,
+        );
+    });
+
+    it('N3 — createExpense rejects a non-positive amount', async () => {
+        await assert.rejects(
+            () => expenseService.createExpense(DRIVER_A, {
+                shipmentId: 1, expenseType: 'fuel', amount: 0, receiptUrl: 'https://r.test/x.jpg',
+            }),
+            /Số tiền phải lớn hơn 0/,
+        );
+    });
+
+    it('N4 — createExpense rejects a driver who was never assigned to the shipment', async () => {
+        const UNRELATED_DRIVER_ID = 999;
+        await assert.rejects(
+            () => expenseService.createExpense(UNRELATED_DRIVER_ID, {
+                shipmentId: 1, expenseType: 'fuel', amount: 100000, receiptUrl: 'https://r.test/x.jpg',
+            }),
+            /không có quyền/,
+        );
+    });
+
+    it('N5 — createExpense rejects adding a cost to an already-completed shipment', async () => {
+        // Shipment 1 (Driver A) đã completed từ FLOW-05/B... ở phần trên của file này
+        const { rows: [s] } = await pool.query('SELECT status FROM order_shipments WHERE id = 1');
+        assert.strictEqual(s.status, 'completed');
+        await assert.rejects(
+            () => expenseService.createExpense(DRIVER_A, {
+                shipmentId: 1, expenseType: 'fuel', amount: 100000, receiptUrl: 'https://r.test/x.jpg',
+            }),
+            /đã kết thúc/,
+        );
+    });
+
+    it('N6 — approving the same expense twice is rejected the second time', async () => {
+        // Cả shipment 1 và 2 đã completed ở phần trên của file — dựng 1 chuyến đang chạy
+        // riêng cho Driver A để khai được chi phí mới
+        await pool.query(`INSERT INTO orders (id, customer_id, created_by, payment_type) VALUES (90, 1, 2, 'bank_transfer')`);
+        await pool.query(`
+            INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, status, claimed_at, picking_at, transit_at)
+            VALUES (90, 90, 1, 1, 'transit', NOW(), NOW(), NOW())
+        `);
+        await pool.query(`
+            INSERT INTO shipment_assignment_history (shipment_id, to_driver_id, to_vehicle_id, changed_by, change_reason)
+            VALUES (90, $1, 1, $1, 'self_claim')
+        `, [DRIVER_A]);
+
+        const created = await expenseService.createExpense(DRIVER_A, {
+            shipmentId: 90, expenseType: 'toll', amount: 20000, receiptUrl: 'https://r.test/toll2.jpg',
+        });
+        const expenseId = Array.isArray(created) ? created[created.length - 1].id : created.id;
+        await expenseService.approveExpense(expenseId, COORD_ID);
+        await assert.rejects(
+            () => expenseService.approveExpense(expenseId, COORD_ID),
+            /đã được xử lý/,
+        );
+    });
+
+    it('N7 — creating a payment voucher with an invalid voucher_type is rejected', async () => {
+        await assert.rejects(
+            () => spendingService.createVoucher({
+                voucher_type: 'not_a_real_type', amount: 100000, payee: 'X', reason: 'Y', payment_method: 'cash',
+            }, ACCT_ID),
+            /Loại phiếu chi không hợp lệ/,
+        );
+    });
+
+    it('N8 — rejecting a voucher without a reason is rejected', async () => {
+        const voucher = await spendingService.createVoucher({
+            voucher_type: 'office', amount: 50000, payee: 'Van phong pham', reason: 'Mua giay', payment_method: 'cash',
+        }, ACCT_ID);
+        await assert.rejects(
+            async () => spendingService.rejectVoucher(voucher.id, MGR_ID, ''),
+            /Cần ghi rõ lý do/,
+        );
+    });
+
+    it('N9 — paying a voucher that has not been manager-approved yet is rejected', async () => {
+        const voucher = await spendingService.createVoucher({
+            voucher_type: 'office', amount: 60000, payee: 'Van phong pham 2', reason: 'Mua but', payment_method: 'cash',
+        }, ACCT_ID);
+        await assert.rejects(
+            () => spendingService.payVoucher(voucher.id, ACCT_ID),
+            /chưa được duyệt/,
+        );
+    });
+
+    it('N10 — reporting an incident with a description shorter than 10 characters is rejected', async () => {
+        await assert.rejects(
+            () => incidentService.createIncident(DRIVER_B, {
+                shipmentId: 2, incidentType: 'cargo_damage', severityLevel: 'low', description: 'too short',
+            }, []),
+            /ít nhất 10 ký tự/,
+        );
+    });
+
+    it('N11 — assigning a replacement driver identical to the current shipment owner is rejected', async () => {
+        // Chuyến 2 hiện thuộc Driver B (sau khi điều chuyển ở FLOW-05/B2) và đã completed —
+        // dùng lại chính logic replacement-driver check (chạy trước khi đụng tới status chuyến)
+        const { rows: [inc] } = await pool.query(`SELECT id FROM incidents WHERE shipment_id = 2 ORDER BY id DESC LIMIT 1`);
+        await assert.rejects(
+            () => incidentService.updateIncidentStatus(inc.id, COORD_ID, {
+                status: 'resolved', resolution: 'x', replacementDriverId: DRIVER_B,
+            }),
+            /phải khác tài xế đang giữ chuyến/,
+        );
     });
 });

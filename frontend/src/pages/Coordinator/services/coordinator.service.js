@@ -55,6 +55,8 @@ export const coordinatorService = {
   getAllDriversKPI: (params) => apiRequest(`/api/kpi/all?${new URLSearchParams(params)}`),
   getLeaderboardByGroup: (vehicleGroupId, params) =>
     apiRequest(`/api/kpi/leaderboard/group/${vehicleGroupId}?${new URLSearchParams(params)}`),
+  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
 };
 
 export default coordinatorService;

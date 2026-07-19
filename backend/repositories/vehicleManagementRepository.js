@@ -439,11 +439,14 @@ const createVehicle = async ({
 
         const vehicleId = result.rows[0]?.id;
         if (assigned_driver_id) {
+            // default_vehicle_group_id chỉ set nếu đang trống (gán xe lần đầu) — không
+            // ghi đè nhóm KPI cố định của tài nếu đã có từ trước (BR KPI: gắn chết 1 nhóm).
             await client.query(
                 `UPDATE drivers
-                 SET vehicle_id = $1
+                 SET vehicle_id = $1,
+                     default_vehicle_group_id = COALESCE(default_vehicle_group_id, $3)
                  WHERE profile_id = $2`,
-                [vehicleId, assigned_driver_id],
+                [vehicleId, assigned_driver_id, vehicle_group_id],
             );
         }
 
@@ -506,9 +509,10 @@ const updateVehicle = async (
         if (assigned_driver_id) {
             await client.query(
                 `UPDATE drivers
-                 SET vehicle_id = $1
+                 SET vehicle_id = $1,
+                     default_vehicle_group_id = COALESCE(default_vehicle_group_id, $3)
                  WHERE profile_id = $2`,
-                [vehicleId, assigned_driver_id],
+                [vehicleId, assigned_driver_id, vehicle_group_id],
             );
         }
 

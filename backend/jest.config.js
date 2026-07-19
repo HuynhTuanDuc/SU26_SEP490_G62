@@ -18,4 +18,17 @@ module.exports = {
     },
     // Testcontainers giữ connection mở tới Docker daemon — không bắt lỗi open handles
     forceExit: true,
+    // Bằng chứng chạy test (evidence) — tự sinh report HTML liệt kê đầy đủ pass/fail theo
+    // từng describe/it (Test ID), thay cho chụp màn hình thủ công. Đính kèm file này vào
+    // cột Notes/Evidence của báo cáo Excel 5.2/5.3 thay vì ảnh rời rạc từng case.
+    reporters: [
+        'default',
+        ['jest-html-reporters', {
+            publicPath: './test-reports',
+            filename: 'report.html',
+            pageTitle: 'Backend Flow Test Evidence Report',
+            includeConsoleLog: false,
+            expand: true,
+        }],
+    ],
 };

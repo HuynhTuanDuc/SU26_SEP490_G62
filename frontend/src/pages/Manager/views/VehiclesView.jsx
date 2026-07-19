@@ -481,7 +481,7 @@ export default function VehiclesView({ user }) {
         onSubmit={handleVehicleSubmit}
       />
 
-      <VehicleDetailModal open={!!detailVehicle} vehicle={detailVehicle} assignmentHistory={assignmentHistory} onClose={() => setDetailVehicle(null)} />
+      <VehicleDetailModal open={!!detailVehicle} vehicle={detailVehicle} assignmentHistory={assignmentHistory} vehicleGroups={vehicleGroups} onClose={() => setDetailVehicle(null)} />
 
       <Modal isOpen={!!unassignTarget} onOpenChange={(open) => !open && setUnassignTarget(null)} size="sm">
         <ModalContent>

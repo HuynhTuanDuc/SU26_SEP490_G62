@@ -71,7 +71,7 @@ const getReceiptRequestDetail = async (req, res) => {
 };
 
 // POST /api/coordinator/receipt-requests/:id/approve
-// Body: { notes?, expenses?[] }
+// Body: { notes?, expenses?[], priceOverride? } — priceOverride chốt giá cước khác gợi ý km×đơn giá
 const approveReceiptRequest = async (req, res) => {
     try {
         const requestId = Number(req.params.id);

@@ -20,7 +20,7 @@ const assert = require('node:assert');
 const express = require('express');
 const request = require('supertest');
 const { setupTestDb } = require('../helpers/testDb');
-const { signAccessToken } = require('../helpers/authToken');
+const { TEST_PASSWORD_HASH, loginAs } = require('../helpers/httpAuth');
 
 let pool;
 let teardown;
@@ -52,16 +52,16 @@ beforeAll(async () => {
     await pool.query(`INSERT INTO roles (id, name) VALUES (1,'manager'),(2,'coordinator'),(3,'accountant'),(4,'driver')`);
     await pool.query(`
         INSERT INTO accounts (id, email, password_hash, role_id) VALUES
-        (1,'manager@test.com','hash',1),(2,'coord@test.com','hash',2),
-        (3,'acct@test.com','hash',3),(4,'driver1@test.com','hash',4)
-    `);
+        (1,'manager@test.com',$1,1),(2,'coord@test.com',$1,2),
+        (3,'acct@test.com',$1,3),(4,'driver1@test.com',$1,4)
+    `, [TEST_PASSWORD_HASH]);
     await pool.query(`
         INSERT INTO profiles (id, full_name, role_id) VALUES
         (1,'Manager',1),(2,'Coordinator',2),(3,'Accountant',3),(4,'Driver A',4)
     `);
     await pool.query(`INSERT INTO vehicle_groups (id, name, price_per_km) VALUES (1, 'Xe 5m2', ${PRICE_PER_KM})`);
     await pool.query(`INSERT INTO vehicles (id, plate_number, vehicle_group_id, assigned_driver_id, status) VALUES (1, '51E-246.80', 1, 4, 'active')`);
-    await pool.query(`INSERT INTO drivers (profile_id, vehicle_id, license_number, hire_date) VALUES (4, 1, 'DL-1', CURRENT_DATE)`);
+    await pool.query(`INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, hire_date) VALUES (4, 1, 1, 'DL-1', CURRENT_DATE)`);
     await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone) VALUES (1, 'individual', 'Nguyen Van A', '0912345678')`);
     await pool.query(`
         INSERT INTO orders (id, customer_id, created_by, cargo_name, payment_type, total_estimated_price)
@@ -76,9 +76,6 @@ beforeAll(async () => {
         (1, 1, 'pickup', '123 Nguyen Hue, Q1'), (1, 2, 'delivery', '45 QL51, Long Thanh')
     `);
 
-    driverToken = signAccessToken({ userId: 4, role: 'driver' });
-    coordToken = signAccessToken({ userId: 2, role: 'coordinator' });
-    acctToken = signAccessToken({ userId: 3, role: 'accountant' });
 });
 
 afterAll(async () => {
@@ -86,7 +83,13 @@ afterAll(async () => {
 });
 
 describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver → coordinator → driver → accountant)', () => {
-    it('B1 [driver] — GET /api/trips/pool thấy chuyến; không token thì 403', async () => {
+    it('B1 — Mỗi vai trò đăng nhập THẬT qua HTTP (POST /auth/login) để lấy token trước khi làm bất cứ điều gì (luồng chức năng "Đăng nhập" là bước đầu của mọi luồng nghiệp vụ)', async () => {
+        driverToken = await loginAs(app, 'driver1@test.com');
+        coordToken = await loginAs(app, 'coord@test.com');
+        acctToken = await loginAs(app, 'acct@test.com');
+    });
+
+    it('B2 [driver] — GET /api/trips/pool thấy chuyến; không token thì 403', async () => {
         const noAuth = await request(app).get('/api/trips/pool');
         assert.strictEqual(noAuth.status, 403);
 
@@ -96,7 +99,7 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
         assert.ok(JSON.stringify(pool1).includes('"order_id":1') || (Array.isArray(pool1) && pool1.length >= 1));
     });
 
-    it('B2 [driver] — POST claim → 200; vòng đời picking → transit (ảnh) → arrived qua HTTP', async () => {
+    it('B3 [driver] — POST claim → 200; vòng đời picking → transit (ảnh) → arrived qua HTTP', async () => {
         const claim = await request(app).post('/api/trips/1/claim').set('Authorization', `Bearer ${driverToken}`);
         assert.strictEqual(claim.status, 200);
 
@@ -119,7 +122,7 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
         assert.strictEqual(arrived.status, 200);
     });
 
-    it('B3 [driver] — POST complete (ảnh giao hàng) → completed; gửi yêu cầu phiếu thu kèm km → 201', async () => {
+    it('B4 [driver] — POST complete (ảnh giao hàng) → completed; gửi yêu cầu phiếu thu kèm km → 201', async () => {
         const complete = await request(app).post('/api/trips/1/complete')
             .set('Authorization', `Bearer ${driverToken}`)
             .attach('proof', img(), 'delivery.jpg');
@@ -132,7 +135,7 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
         assert.strictEqual(rr.body.receipt_request_created, true);
     });
 
-    it('B4 [coordinator] — thấy yêu cầu pending và duyệt → phiếu thu 1.5tr; driver không gọi được API coordinator', async () => {
+    it('B5 [coordinator] — thấy yêu cầu pending và duyệt → phiếu thu 1.5tr; driver không gọi được API coordinator', async () => {
         const forbidden = await request(app).get('/api/coordinator/receipt-requests')
             .set('Authorization', `Bearer ${driverToken}`);
         assert.strictEqual(forbidden.status, 403, 'phân quyền: driver không được vào API coordinator');
@@ -153,7 +156,19 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
         assert.strictEqual(receipt.payment_type, null);
     });
 
-    it('B5 [driver] — TH2: tài đã ứng 50k đỗ xe; thu TIỀN MẶT → nợ ghi đủ 1.5tr nhưng TỰ CẤN 50k → còn phải nộp 1.45tr', async () => {
+    it('B6 [manager] — cập nhật QR ngân hàng công ty qua HTTP; driver mở Receipt Detail phải thấy đúng QR đó trước khi chọn cách khách trả', async () => {
+        const mgrToken = await loginAs(app, 'manager@test.com');
+        const update = await request(app).put('/api/company/info').set('Authorization', `Bearer ${mgrToken}`)
+            .send({ bank_name: 'Vietcombank', bank_account_number: '0011002233', bank_account_name: 'CONG TY LOGISCOUNT' });
+        assert.strictEqual(update.status, 200);
+
+        // Driver xem thông tin công ty (QR ngân hàng) trước khi chọn nút thanh toán trên Receipt Detail
+        const info = await request(app).get('/api/company/info').set('Authorization', `Bearer ${driverToken}`);
+        assert.strictEqual(info.status, 200);
+        assert.strictEqual(info.body.info?.bank_name, 'Vietcombank');
+    });
+
+    it('B7 [driver] — TH2: tài đã ứng 50k đỗ xe; thu TIỀN MẶT → nợ ghi đủ 1.5tr nhưng TỰ CẤN 50k → còn phải nộp 1.45tr', async () => {
         // Khoản tài ứng túi đã được duyệt trước đó (chờ hoàn)
         await pool.query(`
             INSERT INTO expenses (shipment_id, vehicle_id, created_by, expense_type, amount, description,
@@ -189,7 +204,7 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
             'tài giữ 50k hợp lệ — chỉ còn phải nộp 1.45tr');
     });
 
-    it('B6 [driver→accountant] — driver nộp đủ tiền (ảnh chứng từ) → kế toán thấy pending và xác nhận → nợ về 0', async () => {
+    it('B8 [driver→accountant] — driver nộp đủ tiền (ảnh chứng từ) → kế toán thấy pending và xác nhận → nợ về 0', async () => {
         const { rows: [debt] } = await pool.query(`SELECT id FROM debts WHERE debt_type = 'driver' AND driver_id = 4`);
 
         const submit = await request(app).post(`/api/debts/${debt.id}/repayments`)
@@ -223,5 +238,87 @@ describe('L3-FLOW-01 — API: Vận chuyển tiền mặt đa vai trò (driver �
         assert.strictEqual(Number(led.paid), EXPECTED_PRICE - 50000);
         assert.strictEqual(Number(led.offset_reimb), 50000);
         assert.strictEqual(Number(led.paid) + Number(led.offset_reimb), Number(led.created), 'sổ cân tuyệt đối');
+    });
+});
+
+describe('L3-FLOW-01 — Negative paths over HTTP (4xx/409, role checks, invalid input)', () => {
+    beforeAll(async () => {
+        await pool.query(`
+            INSERT INTO orders (id, customer_id, created_by, cargo_name, payment_type, total_estimated_price) VALUES
+            (90, 1, 2, 'Negative test 1', 'cash', 500000), (91, 1, 2, 'Negative test 2', 'cash', 500000)
+        `);
+        await pool.query(`
+            INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, estimated_price, estimated_distance_km, status)
+            VALUES (90, 90, 1, 1, 500000, 30, 'available'), (91, 91, 1, 1, 500000, 30, 'available')
+        `);
+        await pool.query(`
+            INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address) VALUES
+            (90, 1, 'pickup', 'A'), (90, 2, 'delivery', 'B'),
+            (91, 1, 'pickup', 'C'), (91, 2, 'delivery', 'D')
+        `);
+    });
+
+    it('N1 — BR-005: claiming a second trip while one is already active is rejected (not 200)', async () => {
+        const claim1 = await request(app).post('/api/trips/90/claim').set('Authorization', `Bearer ${driverToken}`);
+        assert.strictEqual(claim1.status, 200);
+
+        const claim2 = await request(app).post('/api/trips/91/claim').set('Authorization', `Bearer ${driverToken}`);
+        assert.ok(claim2.status >= 400, `expected an error status, got ${claim2.status}`);
+        assert.match(claim2.body.error, /đang có chuyến đang hoạt động/);
+    });
+
+    it('N2 — PATCH status with a value outside the allowed transition set is rejected', async () => {
+        const res = await request(app).patch('/api/trips/90/status')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ status: 'arrived' }); // claimed → arrived bỏ qua picking/transit
+        assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
+    });
+
+    it('N3 — coordinator-only approve endpoint rejects a driver token with 403', async () => {
+        const res = await request(app).post('/api/coordinator/receipt-requests/999999/approve')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ notes: '', expenses: [] });
+        assert.strictEqual(res.status, 403);
+    });
+
+    it('N4 — record-collection with an invalid payment_type is rejected with 400', async () => {
+        const res = await request(app).post('/api/trips/receipts/999999/record-collection')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('payment_type', 'not_a_real_type');
+        assert.strictEqual(res.status, 400);
+    });
+
+    it('N5 — submitting a debt repayment with a zero amount is rejected', async () => {
+        const { rows: [debt] } = await pool.query(`SELECT id FROM debts WHERE debt_type = 'driver' AND driver_id = 4 LIMIT 1`);
+        const res = await request(app).post(`/api/debts/${debt.id}/repayments`)
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('amount', '0')
+            .field('payment_method', 'cash')
+            .attach('receipt', img(), 'zero.jpg');
+        assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
+    });
+
+    it('N6 — confirming the same debt repayment twice over HTTP is rejected the second time with 409', async () => {
+        const { rows: [payment] } = await pool.query(`SELECT id FROM debt_payments WHERE status = 'confirmed' LIMIT 1`);
+        const res = await request(app).patch(`/api/debts/repayments/${payment.id}/confirm`)
+            .set('Authorization', `Bearer ${acctToken}`);
+        assert.strictEqual(res.status, 409);
+    });
+
+    it('N7 — Đăng nhập sai mật khẩu qua HTTP bị từ chối với 401 (luồng chức năng "Đăng nhập" áp dụng cho mọi vai trò)', async () => {
+        const res = await request(app).post('/auth/login').send({ email: 'driver1@test.com', password: 'sai-mat-khau' });
+        assert.strictEqual(res.status, 401);
+    });
+
+    it('N8 — Đăng nhập vào tài khoản đã bị khóa (is_active=false) qua HTTP bị từ chối với 403', async () => {
+        await pool.query(`UPDATE accounts SET is_active = FALSE WHERE id = 3`);
+        const res = await request(app).post('/auth/login').send({ email: 'acct@test.com', password: 'Test@12345' });
+        assert.strictEqual(res.status, 403);
+        await pool.query(`UPDATE accounts SET is_active = TRUE WHERE id = 3`);
+    });
+
+    it('N9 — an unauthenticated request (no token) is rejected with 403', async () => {
+        const res = await request(app).get('/api/trips/active');
+        assert.strictEqual(res.status, 403);
     });
 });

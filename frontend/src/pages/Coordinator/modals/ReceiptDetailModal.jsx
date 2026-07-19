@@ -42,13 +42,19 @@ export default function ReceiptDetailModal({
 
   const shipments = detail?.shipments || (detail?.shipment ? [detail.shipment] : []);
   const primaryShipment = detail?.shipment || shipments[0] || null;
-  const actualRevenue = shipments.reduce((sum, s) => sum + Number(s.actual_revenue || s.actual_price || 0), 0);
+  const status = normalizeStatus(detail?.request?.status);
+  const readonly = ["approved", "rejected"].includes(status);
+  const priceOverrideNum = Number(form?.priceOverride);
+  const hasPriceOverride = !readonly && Number.isFinite(priceOverrideNum) && priceOverrideNum > 0;
+  const actualRevenue = shipments.reduce((sum, s) => {
+    const base = Number(s.actual_revenue || s.actual_price || 0);
+    if (hasPriceOverride && primaryShipment && s.id === primaryShipment.id) return sum + priceOverrideNum;
+    return sum + base;
+  }, 0);
   const passThroughExpenses = [...(detail?.expenses || []), ...(form?.expenses || [])]
     .filter((expense) => expense.status !== "rejected" && ["parking", "toll", "etc"].includes(String(expense.expense_type || "").trim()))
     .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const finalPrice = actualRevenue + passThroughExpenses;
-  const status = normalizeStatus(detail?.request?.status);
-  const readonly = ["approved", "rejected"].includes(status);
 
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="5xl" scrollBehavior="inside">
@@ -99,7 +105,23 @@ export default function ReceiptDetailModal({
                       <div><span className="text-xs text-gray-400 block">Nhóm xe</span><strong>{shipment.vehicle_group_name || "-"}</strong></div>
                       <div><span className="text-xs text-gray-400 block">Đơn giá/km</span><strong>{formatCurrency(shipment.price_per_km)}</strong></div>
                       <div><span className="text-xs text-gray-400 block">KM thực tế</span><strong>{shipment.actual_km ? `${shipment.actual_km} km` : "-"}</strong></div>
-                      <div><span className="text-xs text-gray-400 block">Doanh thu</span><strong>{formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
+                      {!readonly && primaryShipment && shipment.id === primaryShipment.id ? (
+                        <div>
+                          <span className="text-xs text-gray-400 block">Doanh thu (có thể sửa)</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1000"
+                            size="sm"
+                            variant="bordered"
+                            placeholder={`Gợi ý: ${formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}`}
+                            value={form?.priceOverride ?? ""}
+                            onValueChange={(v) => updateField("priceOverride", v)}
+                          />
+                        </div>
+                      ) : (
+                        <div><span className="text-xs text-gray-400 block">Doanh thu</span><strong>{formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
+                      )}
                       <div className="col-span-2"><span className="text-xs text-gray-400 block">Lộ trình</span><strong>{formatRouteLabel(shipment)}</strong></div>
                       <div><span className="text-xs text-gray-400 block">Chi phí chuyến</span><strong>{formatCurrency(shipment.total_expenses)}</strong></div>
                     </div>

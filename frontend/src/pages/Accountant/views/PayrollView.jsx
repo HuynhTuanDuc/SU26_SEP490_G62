@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Spinner, Button, Chip, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Input, Select, SelectItem,
@@ -6,12 +6,13 @@ import {
 import {
   RiGroupLine, RiMoneyDollarCircleLine, RiCheckboxCircleLine, RiTimeLine,
   RiRefreshLine, RiArrowDownSLine, RiArrowUpSLine,
-  RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine,
+  RiLineChartLine, RiAlertLine, RiHandCoinLine, RiWalletLine, RiPencilLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
 import { usePayroll, useSalaryAdvances } from "../hooks/usePayroll";
 import { accountantService } from "../services/accountant.service";
+import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
 
 const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -60,7 +61,7 @@ function StatCard({ label, value, icon: Icon, bg, text, border }) {
   );
 }
 
-function PayrollRow({ row, onConfirm, onPay, confirming }) {
+function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup }) {
   const [expanded, setExpanded] = useState(false);
   const chip = STATUS_CHIP[row.status] ?? { color: "default", label: row.status };
 
@@ -102,8 +103,16 @@ function PayrollRow({ row, onConfirm, onPay, confirming }) {
             )}
           </div>
         </td>
-        <td className="py-3.5 pr-4 hidden sm:table-cell">
-          <span className="text-xs text-gray-500">{row.vehicle_group || "—"}</span>
+        <td className="py-3.5 pr-4 hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500">{row.vehicle_group || "—"}</span>
+            <Button
+              isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
+              onPress={() => onEditGroup(row)}
+            >
+              <RiPencilLine size={12} className="text-gray-400" />
+            </Button>
+          </div>
         </td>
         <td className="py-3.5 pr-4">
           <MoneyText amount={row.gross_salary} className="text-sm font-semibold text-gray-700" />
@@ -292,6 +301,14 @@ export function PayrollView({ defaultTab = "payroll" }) {
 
   const [tab, setTab] = useState(defaultTab);
   const [confirming, setConfirming] = useState(null);
+  const [vehicleGroups, setVehicleGroups] = useState([]);
+  const [editingDriver, setEditingDriver] = useState(null);
+
+  useEffect(() => {
+    accountantService.getVehicleGroupsForKpi()
+      .then((data) => setVehicleGroups(data.vehicleGroups || []))
+      .catch(() => {});
+  }, []);
   const [generating, setGenerating] = useState(false);
   const [generateErr, setGenerateErr] = useState(null);
   const [disburseTarget, setDisburseTarget] = useState(null);
@@ -570,6 +587,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
                       onConfirm={handleConfirm}
                       onPay={handlePay}
                       confirming={confirming}
+                      onEditGroup={setEditingDriver}
                     />
                   ))}
                 </tbody>
@@ -690,6 +708,17 @@ export function PayrollView({ defaultTab = "payroll" }) {
           onDone={refetchAdvances}
         />
       )}
+
+      <DriverVehicleGroupModal
+        open={!!editingDriver}
+        driver={editingDriver}
+        vehicleGroups={vehicleGroups}
+        onSave={async (driverId, vehicleGroupId) => {
+          await accountantService.updateDriverVehicleGroup(driverId, vehicleGroupId);
+          refetch();
+        }}
+        onClose={() => setEditingDriver(null)}
+      />
     </div>
   );
 }
