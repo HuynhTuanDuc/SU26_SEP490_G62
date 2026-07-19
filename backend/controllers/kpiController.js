@@ -65,4 +65,24 @@ const getLeaderboardByGroup = async (req, res) => {
     }
 };
 
-module.exports = { getMyKPI, getLeaderboard, getAllDriversKPI, getDriverKPIById, getLeaderboardByGroup };
+// ─── Coordinator/Manager/Accountant: PATCH /api/kpi/driver/:driverId/vehicle-group ─
+// Sửa tay nhóm xe KPI cố định của tài xế (BR: gắn chết 1 nhóm, không tự đổi theo xe hiện tại)
+
+const setDriverDefaultVehicleGroup = async (req, res) => {
+    try {
+        const driverId = Number(req.params.driverId);
+        if (!driverId) return res.status(400).json({ error: 'Driver ID không hợp lệ' });
+        const vehicleGroupId = Number(req.body.vehicleGroupId);
+        if (!vehicleGroupId) return res.status(400).json({ error: 'Nhóm xe không hợp lệ' });
+        const result = await kpiService.setDriverDefaultVehicleGroup(driverId, vehicleGroupId);
+        res.json({ message: 'Đã cập nhật nhóm xe KPI cố định', driver: result });
+    } catch (err) {
+        const code = err.message.includes('Không tìm thấy') ? 404 : 400;
+        res.status(code).json({ error: err.message });
+    }
+};
+
+module.exports = {
+    getMyKPI, getLeaderboard, getAllDriversKPI, getDriverKPIById, getLeaderboardByGroup,
+    setDriverDefaultVehicleGroup,
+};

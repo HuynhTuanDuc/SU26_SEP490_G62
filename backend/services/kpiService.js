@@ -83,6 +83,14 @@ const getLeaderboardByGroup = async (vehicleGroupId, { month, year } = {}) => {
     };
 };
 
+// Manager/Coordinator/Accountant sửa tay nhóm xe KPI cố định của tài xế (VD tài
+// chuyển hẳn sang lái nhóm xe khác lâu dài) — không tự đổi theo xe hiện tại.
+const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId) => {
+    if (!driverId) throw new Error('Driver ID là bắt buộc');
+    if (!vehicleGroupId) throw new Error('Nhóm xe là bắt buộc');
+    return kpiRepository.setDriverDefaultVehicleGroup(driverId, vehicleGroupId);
+};
+
 // Trigger tự động sau khi trip hoàn thành — gọi fire-and-forget (không await)
 const recalculateAfterCompletion = (driverIds, completedAt = new Date()) => {
     const month = completedAt.getMonth() + 1;
@@ -101,5 +109,6 @@ module.exports = {
     getAllDriversKPI,
     getDriverKPIById,
     getLeaderboardByGroup,
+    setDriverDefaultVehicleGroup,
     recalculateAfterCompletion,
 };

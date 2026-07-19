@@ -591,7 +591,8 @@ const findOrCreateDriverWithVehicle = async (client, { driverName, plateNumber, 
     if (vehicle?.id) {
         await client.query(
             `UPDATE drivers
-             SET vehicle_id = $2
+             SET vehicle_id = $2,
+                 default_vehicle_group_id = COALESCE(default_vehicle_group_id, (SELECT vehicle_group_id FROM vehicles WHERE id = $2))
              WHERE profile_id = $1 AND (vehicle_id IS NULL OR vehicle_id = $2)`,
             [driverId, vehicle.id],
         );

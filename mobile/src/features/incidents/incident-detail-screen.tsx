@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import {
-    ActivityIndicator, Image, Pressable, RefreshControl,
+    ActivityIndicator, Pressable, RefreshControl,
     ScrollView, StyleSheet, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
     AlertTriangle, CheckCircle, Clock, Edit3, FileText,
@@ -270,7 +271,7 @@ export function IncidentDetailScreen() {
                                             key={i}
                                             source={{ uri: url }}
                                             style={s.fullImg}
-                                            resizeMode="cover"
+                                            contentFit="cover"
                                         />
                                     ))}
                                 </XStack>

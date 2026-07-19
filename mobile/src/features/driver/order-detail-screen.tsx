@@ -1,4 +1,5 @@
-import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import {
     Camera, CheckCircle, ChevronRight, Clock, MapPin,
@@ -32,7 +33,7 @@ function PhotoViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
                 <Pressable style={pv.closeBtn} onPress={onClose} hitSlop={12}>
                     <X size={22} color="#fff" />
                 </Pressable>
-                <Image source={{ uri }} style={pv.image} resizeMode="contain" />
+                <Image source={{ uri }} style={pv.image} contentFit="contain" />
             </View>
         </Modal>
     );
@@ -190,7 +191,7 @@ function ShipmentCard({
                         <XStack gap={8} flexWrap="wrap">
                             {shipment.receipt_urls.map((url, i) => (
                                 <Pressable key={i} onPress={() => onPhotoPress(url)}>
-                                    <Image source={{ uri: url }} style={styles.thumb} resizeMode="cover" />
+                                    <Image source={{ uri: url }} style={styles.thumb} contentFit="cover" />
                                     <View style={styles.thumbBadge}>
                                         <ChevronRight size={10} color="#fff" />
                                     </View>
@@ -210,7 +211,7 @@ function ShipmentCard({
                             </Text>
                         </XStack>
                         <Pressable onPress={() => onPhotoPress(shipment.proof_url!)}>
-                            <Image source={{ uri: shipment.proof_url }} style={styles.proofThumb} resizeMode="cover" />
+                            <Image source={{ uri: shipment.proof_url }} style={styles.proofThumb} contentFit="cover" />
                             <View style={styles.proofOverlay}>
                                 <Text fontSize={11} fontWeight="700" color="#fff">Xem ảnh xác nhận</Text>
                             </View>

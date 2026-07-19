@@ -7,6 +7,7 @@ export default function KpiView() {
       getVehicleGroups={coordinatorService.getVehicleGroups}
       getAllDriversKPI={coordinatorService.getAllDriversKPI}
       getLeaderboardByGroup={coordinatorService.getLeaderboardByGroup}
+      onUpdateDriverGroup={coordinatorService.updateDriverVehicleGroup}
     />
   );
 }

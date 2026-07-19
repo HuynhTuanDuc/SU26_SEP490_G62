@@ -639,7 +639,7 @@ const getReceiptRequestDetail = async (requestId) => {
 };
 
 // POST approve — chốt actual income/expenses + cập nhật request status
-const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses = [] } = {}) => {
+const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses = [], priceOverride } = {}) => {
     const normalizedExpenses = normalizeExpenses(expenses);
 
     const req = await coordinatorRepository.getReceiptRequestForApproval(requestId);
@@ -666,6 +666,23 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             }
         }
         const computed = computeReceiptAmount(pricingSnapshot);
+
+        // Đơn giá/km × actual_km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho
+        // đúng chuyến đang duyệt (không đụng các chuyến khác trong đơn multi-driver).
+        const normalizedOverride = Number(priceOverride);
+        if (Number.isFinite(normalizedOverride) && normalizedOverride > 0) {
+            const targetBreakdown = computed.shipment_breakdown.find(
+                (item) => Number(item.shipment_id) === Number(targetShipment.id),
+            );
+            if (targetBreakdown) {
+                const diff = normalizedOverride - targetBreakdown.actual_income;
+                targetBreakdown.actual_income = normalizedOverride;
+                computed.actual_income += diff;
+                computed.gross_amount += diff;
+                computed.remaining_amount = Math.max(computed.actual_income - computed.prepaid_amount, 0);
+            }
+        }
+
         const validShipmentIds = new Set((pricingSnapshot?.shipments || []).map((shipment) => Number(shipment.id)));
 
         for (const expense of normalizedExpenses) {

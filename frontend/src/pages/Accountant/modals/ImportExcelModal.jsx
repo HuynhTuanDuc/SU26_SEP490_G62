@@ -164,6 +164,7 @@ const downloadTemplate = async () => {
   addNote("• Số tiền nhập SỐ THUẦN (vd 1000000, không chấm/phẩy). Ngày dạng dd/mm/yyyy — định dạng ô để General hoặc Date đều được.");
   addNote("• Nhiều điểm lấy/điểm trả trong 1 chuyến: gõ nhiều dòng trong CÙNG 1 ô (Alt+Enter) hoặc phân cách bằng dấu \"|\", vd: Kho A|Kho B.");
   addNote("• KHÔNG nhập chấm công / ngày nghỉ / ứng lương / bảo dưỡng vào file này — dùng chức năng riêng.");
+  addNote("• Biển số xe và Tên tài xế PHẢI khớp đúng với xe/tài khoản đã có sẵn trong hệ thống — hệ thống KHÔNG tự tạo xe hoặc tài khoản tài xế mới nữa. Nếu chưa có, nhờ Manager thêm xe/tạo tài khoản tài xế trước khi import (dòng không khớp sẽ báo lỗi và không được import).");
 
   wsGuide.addRow([]);
   const sectionRow = wsGuide.addRow(["Cột \"Thanh toán\" — chọn từ dropdown (đã cấu hình sẵn trong sheet DON_HANG):"]);
@@ -529,20 +530,6 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                   {result.errors.map((e, i) => <li key={i}>{e.error}</li>)}
                 </ul>
               )}
-            </div>
-          )}
-
-          {result?.new_drivers?.length > 0 && (
-            <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3">
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-blue-700 mb-1">
-                <RiErrorWarningLine size={15} />
-                Đã tự động tạo {result.new_drivers.length} tài xế mới — nhờ Manager bổ sung SĐT/email/nhóm xe đầy đủ
-              </div>
-              <ul className="text-xs text-blue-600 list-disc pl-5 max-h-32 overflow-y-auto">
-                {result.new_drivers.map((d, i) => (
-                  <li key={i}>Dòng {d.row_index}: {d.driver_name} (ID #{d.driver_id})</li>
-                ))}
-              </ul>
             </div>
           )}
 

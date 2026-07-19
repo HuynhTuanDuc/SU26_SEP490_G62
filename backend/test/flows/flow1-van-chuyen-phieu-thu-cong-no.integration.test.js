@@ -22,6 +22,7 @@ let teardown;
 let tripService;
 let coordinatorService;
 let debtService;
+let companyService;
 
 const DRIVER_ID = 4;
 const COORD_ID = 2;
@@ -36,6 +37,7 @@ beforeAll(async () => {
     tripService = require('../../services/tripService');
     coordinatorService = require('../../services/coordinatorService');
     debtService = require('../../services/debtService');
+    companyService = require('../../services/companyService');
 
     // DB script.sql tự seed roles — dọn sạch rồi seed lại với id cố định cho dễ đọc
     await pool.query(`
@@ -57,7 +59,7 @@ beforeAll(async () => {
         `);
         await pool.query(`INSERT INTO vehicle_groups (id, name, price_per_km) VALUES (1, 'Xe 5m2', ${PRICE_PER_KM})`);
         await pool.query(`INSERT INTO vehicles (id, plate_number, vehicle_group_id, assigned_driver_id, status) VALUES (1, '51E-246.80', 1, 4, 'active')`);
-        await pool.query(`INSERT INTO drivers (profile_id, vehicle_id, license_number, hire_date) VALUES (4, 1, 'DL-1', CURRENT_DATE)`);
+        await pool.query(`INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, hire_date) VALUES (4, 1, 1, 'DL-1', CURRENT_DATE)`);
         await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone) VALUES (1, 'individual', 'Nguyen Van A', '0912345678')`);
         await pool.query(`
             INSERT INTO orders (id, customer_id, created_by, cargo_name, payment_type, total_estimated_price)
@@ -146,6 +148,12 @@ describe('L2-FLOW-01 — Vận chuyển tiền mặt → Phiếu thu → Công n
         await assert.rejects(
             () => tripService.requestOrderReceipt(1, DRIVER_ID, { shipmentId: 1, actualKm: ACTUAL_KM }),
         );
+    });
+
+    it('B4c — Manager cập nhật QR ngân hàng công ty (dùng để hiện trên Receipt Detail khi driver chọn cách khách trả)', async () => {
+        await companyService.updateCompanyInfo({ bankName: 'Vietcombank', bankAccountNumber: '0011002233', bankAccountName: 'CONG TY LOGISCOUNT' }, COORD_ID);
+        const info = await companyService.getCompanyInfo();
+        assert.strictEqual(info.bank_name, 'Vietcombank');
     });
 
     it('B5 — Coordinator duyệt yêu cầu → phiếu thu tạo với giá = km × đơn giá, chốt actual_price + bút toán doanh thu 131/511', async () => {
@@ -330,5 +338,111 @@ describe('L2-FLOW-02 — Đơn cash nhưng khách xin nợ (TH3 client_credit) �
             `SELECT COALESCE(SUM(amount),0) AS total FROM financial_transactions WHERE event_type = 'customer_payment'`,
         );
         assert.strictEqual(Number(sum.total), CREDIT_PRICE);
+    });
+});
+
+describe('L2-FLOW-01/02 — Negative paths (BR violations, invalid input, duplicate actions)', () => {
+    beforeAll(async () => {
+        // Đơn/chuyến riêng cho các case negative — không đụng state của 2 luồng chính ở trên.
+        // Order 90 (1 chuyến duy nhất → shipment 90 tự động là final shipment) dùng cho
+        // N2-N9 (chạy tuần tự trên cùng chuyến). Order 91 (1 chuyến riêng, shipment 91) chỉ
+        // dùng cho N1 (thử nhận 2 chuyến cùng lúc) rồi bỏ đó, không progress tiếp.
+        await pool.query(`
+            INSERT INTO orders (id, customer_id, created_by, cargo_name, payment_type, total_estimated_price) VALUES
+            (90, 1, 2, 'Hang test negative 1', 'cash', 500000),
+            (91, 1, 2, 'Hang test negative 2', 'cash', 500000)
+        `);
+        await pool.query(`
+            INSERT INTO order_shipments (id, order_id, shipment_index, vehicle_group_id, estimated_price, estimated_distance_km, status)
+            VALUES (90, 90, 1, 1, 500000, 30, 'available'), (91, 91, 1, 1, 500000, 30, 'available')
+        `);
+        await pool.query(`
+            INSERT INTO trip_stops (shipment_id, stop_index, stop_type, address) VALUES
+            (90, 1, 'pickup', 'A'), (90, 2, 'delivery', 'B'),
+            (91, 1, 'pickup', 'C'), (91, 2, 'delivery', 'D')
+        `);
+    });
+
+    it('N1 — BR-005: driver with an active trip cannot claim a second one', async () => {
+        await tripService.claimTrip(90, DRIVER_ID);
+        await assert.rejects(
+            () => tripService.claimTrip(91, DRIVER_ID),
+            /đang có chuyến đang hoạt động/,
+        );
+    });
+
+    it('N2 — BR-009: skipping a lifecycle status (claimed → arrived, bypassing picking/transit) is rejected', async () => {
+        await assert.rejects(
+            () => tripService.updateStatus(90, DRIVER_ID, 'arrived'),
+            /Không thể chuyển trạng thái/,
+        );
+    });
+
+    it('N3 — BR-013: confirming "picking → transit" without a loading proof photo is rejected', async () => {
+        await tripService.updateStatus(90, DRIVER_ID, 'picking');
+        await assert.rejects(
+            () => tripService.startTransit(90, DRIVER_ID, null),
+            /Ảnh xác nhận lấy hàng là bắt buộc/,
+        );
+    });
+
+    it('N4 — BR-015: completing a trip without a delivery proof photo is rejected', async () => {
+        await tripService.startTransit(90, DRIVER_ID, 'https://proof-loading.test/90.jpg');
+        await tripService.updateStatus(90, DRIVER_ID, 'arrived');
+        await assert.rejects(
+            () => tripService.completeTrip(90, DRIVER_ID, null),
+            /Ảnh xác nhận giao hàng là bắt buộc/,
+        );
+    });
+
+    it('N5 — a driver cannot act on a trip that is not their own', async () => {
+        const OTHER_DRIVER_ID = 999;
+        await assert.rejects(
+            () => tripService.updateStatus(90, OTHER_DRIVER_ID, 'picking'),
+            /không có quyền/,
+        );
+    });
+
+    it('N6 — submitRepayment rejects a non-positive amount', async () => {
+        await tripService.completeTrip(90, DRIVER_ID, 'https://proof-delivery.test/90.jpg');
+        // Không có nợ thật cho case này — chỉ cần assert validate input chạy trước khi đụng DB
+        await assert.rejects(
+            () => debtService.submitRepayment(DRIVER_ID, 999999, { amount: 0, paymentMethod: 'cash' }, 'https://r.test/x.jpg'),
+            /Số tiền phải lớn hơn 0/,
+        );
+    });
+
+    it('N7 — submitRepayment rejects when the proof photo is missing', async () => {
+        await assert.rejects(
+            () => debtService.submitRepayment(DRIVER_ID, 999999, { amount: 100000, paymentMethod: 'cash' }, null),
+            /Ảnh chứng từ là bắt buộc/,
+        );
+    });
+
+    it('N8 — approving the same receipt request twice is rejected the second time', async () => {
+        const result = await tripService.requestOrderReceipt(90, DRIVER_ID, { shipmentId: 90, actualKm: 30 });
+        assert.strictEqual(result.receipt_request_created, true);
+        const { rows: [orr] } = await pool.query('SELECT id FROM order_receipt_requests WHERE order_id = 90');
+
+        await coordinatorService.approveReceiptRequest(orr.id, COORD_ID, { notes: 'ok', expenses: [] });
+        await assert.rejects(
+            () => coordinatorService.approveReceiptRequest(orr.id, COORD_ID, { notes: 'again', expenses: [] }),
+            /đã được duyệt rồi/,
+        );
+    });
+
+    it('N9 — confirming the same debt repayment twice is rejected the second time', async () => {
+        const { rows: [receipt] } = await pool.query('SELECT id FROM shipment_receipts WHERE shipment_id = 90');
+        await tripService.recordReceiptCollection(receipt.id, DRIVER_ID, {
+            paymentType: 'cash_collected', proofUrl: 'https://proof-cash.test/90.jpg',
+        });
+        const { rows: [debt] } = await pool.query(`SELECT id, total_amount FROM debts WHERE debt_type = 'driver' AND driver_id = $1 AND shipment_id = 90`, [DRIVER_ID]);
+        const payment = await debtService.submitRepayment(DRIVER_ID, debt.id, { amount: Number(debt.total_amount), paymentMethod: 'cash' }, 'https://r.test/repay90.jpg');
+
+        await debtService.confirmRepayment(payment.id, ACCT_ID);
+        await assert.rejects(
+            () => debtService.confirmRepayment(payment.id, ACCT_ID),
+            /đã được xử lý/,
+        );
     });
 });

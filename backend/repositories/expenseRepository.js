@@ -101,6 +101,24 @@ const updateExpense = async (expenseId, driverId, { expenseType, amount, descrip
     }
 };
 
+// Chỉ cho xoá khi cùng điều kiện với sửa: yêu cầu phiếu thu liên quan đang 'rejected'
+// và chi phí chưa được duyệt. expense_attachments tự xoá theo (ON DELETE CASCADE).
+const deleteExpense = async (expenseId, driverId) => {
+    const result = await pool.query(
+        `DELETE FROM expenses e
+         USING order_receipt_requests orr
+         WHERE e.id = $1
+           AND e.created_by = $2
+           AND orr.requesting_shipment_id = e.shipment_id
+           AND orr.driver_id = $2
+           AND orr.status = 'rejected'
+           AND e.status != 'approved'
+         RETURNING e.id`,
+        [expenseId, driverId],
+    );
+    if (!result.rows[0]) throw new Error('Chỉ được xoá chi phí khi yêu cầu phiếu thu bị từ chối và chi phí chưa được duyệt');
+};
+
 const wasDriverAssignedToShipment = async (shipmentId, driverId) => {
     const { rows: [row] } = await pool.query(
         `SELECT 1 FROM shipment_assignment_history
@@ -233,7 +251,7 @@ const getExpenseStats = async ({ month, year } = {}) => {
 };
 
 module.exports = {
-    createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense,
+    createExpense, addExpenseAttachment, getShipmentExpenses, updateExpense, deleteExpense,
     wasDriverAssignedToShipment, approveExpense, rejectExpense,
     listAllExpenses, getExpenseStats,
 };

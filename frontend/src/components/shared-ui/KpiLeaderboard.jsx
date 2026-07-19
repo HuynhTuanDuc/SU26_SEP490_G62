@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Select, SelectItem, Spinner, Tabs, Tab } from "@heroui/react";
-import { RiTrophyLine } from "react-icons/ri";
+import { Select, SelectItem, Spinner, Tabs, Tab, Button } from "@heroui/react";
+import { RiTrophyLine, RiPencilLine } from "react-icons/ri";
 import { Section } from "./Section";
 import { PaginationBar } from "./PaginationBar";
+import { DriverVehicleGroupModal } from "./DriverVehicleGroupModal";
 
 const now = new Date();
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -33,12 +34,13 @@ const sortLeaderboard = (rows, sortBy) => {
   return sorted;
 };
 
-export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderboardByGroup }) {
+export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderboardByGroup, onUpdateDriverGroup }) {
   const [tab, setTab] = useState("kpi");
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [vehicleGroups, setVehicleGroups] = useState([]);
   const [vehicleGroupId, setVehicleGroupId] = useState(null);
+  const [editingDriver, setEditingDriver] = useState(null);
 
   const [kpiRows, setKpiRows] = useState([]);
   const [kpiLoading, setKpiLoading] = useState(false);
@@ -48,6 +50,7 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
   const [kpiPage, setKpiPage] = useState(1);
   const [leaderboardPage, setLeaderboardPage] = useState(1);
   const [leaderboardSortBy, setLeaderboardSortBy] = useState("revenue");
+  const [reloadToken, setReloadToken] = useState(0);
 
   const sortedKpiRows = useMemo(() => sortKpiRows(kpiRows, kpiSortBy), [kpiRows, kpiSortBy]);
   const sortedLeaderboard = useMemo(() => sortLeaderboard(leaderboard, leaderboardSortBy), [leaderboard, leaderboardSortBy]);
@@ -78,7 +81,7 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
         .finally(() => setLeaderboardLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, month, year, vehicleGroupId]);
+  }, [tab, month, year, vehicleGroupId, reloadToken]);
 
   useEffect(() => { setKpiPage(1); }, [kpiRows]);
   useEffect(() => { setLeaderboardPage(1); }, [leaderboard]);
@@ -156,7 +159,17 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
                     <div key={row.driver_id} className="flex items-center justify-between py-3 gap-4">
                       <div className="flex flex-col min-w-0">
                         <span className="text-sm font-semibold text-gray-800">{row.driver_name}</span>
-                        <span className="text-xs text-gray-400">{row.vehicle_group_name}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-gray-400">{row.vehicle_group_name}</span>
+                          {onUpdateDriverGroup && (
+                            <Button
+                              isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
+                              onPress={() => setEditingDriver(row)}
+                            >
+                              <RiPencilLine size={12} className="text-gray-400" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-6 text-right flex-shrink-0">
                         <div>
@@ -249,6 +262,19 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
           </Tab>
         </Tabs>
       </Section>
+
+      {onUpdateDriverGroup && (
+        <DriverVehicleGroupModal
+          open={!!editingDriver}
+          driver={editingDriver}
+          vehicleGroups={vehicleGroups}
+          onSave={async (driverId, vehicleGroupId) => {
+            await onUpdateDriverGroup(driverId, vehicleGroupId);
+            setReloadToken((t) => t + 1);
+          }}
+          onClose={() => setEditingDriver(null)}
+        />
+      )}
     </div>
   );
 }

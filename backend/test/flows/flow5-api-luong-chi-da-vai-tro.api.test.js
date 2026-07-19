@@ -22,6 +22,7 @@ const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const { setupTestDb } = require('../helpers/testDb');
 const { stubDateTo, restoreDateTo, computeValidPayrollPayDate } = require('../helpers/payDateStub');
+const { TEST_PASSWORD_HASH, loginAs } = require('../helpers/httpAuth');
 
 // Token hạn dài — stub đồng hồ sang ngày 25 sẽ làm token 1h "hết hạn" giữa luồng
 const signLongToken = ({ userId, role }) => jwt.sign(
@@ -73,9 +74,9 @@ beforeAll(async () => {
     await pool.query(`INSERT INTO roles (id, name) VALUES (1,'manager'),(2,'coordinator'),(3,'accountant'),(4,'driver')`);
     await pool.query(`
         INSERT INTO accounts (id, email, password_hash, role_id) VALUES
-        (1,'manager@test.com','hash',1),(2,'coord@test.com','hash',2),
-        (3,'acct@test.com','hash',3),(4,'driver1@test.com','hash',4)
-    `);
+        (1,'manager@test.com',$1,1),(2,'coord@test.com',$1,2),
+        (3,'acct@test.com',$1,3),(4,'driver1@test.com',$1,4)
+    `, [TEST_PASSWORD_HASH]);
     await pool.query(`
         INSERT INTO profiles (id, full_name, role_id) VALUES
         (1,'Manager',1),(2,'Coordinator',2),(3,'Accountant',3),(4,'Driver A',4)
@@ -83,8 +84,8 @@ beforeAll(async () => {
     await pool.query(`INSERT INTO vehicle_groups (id, name, price_per_km) VALUES (1, 'Xe 5m2', 15000)`);
     await pool.query(`INSERT INTO vehicles (id, plate_number, vehicle_group_id, assigned_driver_id, status) VALUES (1, '51E-246.80', 1, 4, 'active')`);
     await pool.query(`
-        INSERT INTO drivers (profile_id, vehicle_id, license_number, hire_date, revenue_share_percent)
-        VALUES (4, 1, 'DL-1', CURRENT_DATE - INTERVAL '14 months', 15)
+        INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, hire_date, revenue_share_percent)
+        VALUES (4, 1, 1, 'DL-1', CURRENT_DATE - INTERVAL '14 months', 15)
     `);
     await pool.query(`INSERT INTO customers (id, customer_type, full_name, phone) VALUES (1, 'individual', 'Khach A', '0912345678')`);
     // Doanh thu tháng này để bảng lương có thưởng doanh thu
@@ -116,9 +117,6 @@ beforeAll(async () => {
         VALUES (2, 4, 1, 4, 'self_claim')
     `);
 
-    driverToken = signLongToken({ userId: 4, role: 'driver' });
-    mgrToken = signLongToken({ userId: 1, role: 'manager' });
-    acctToken = signLongToken({ userId: 3, role: 'accountant' });
 });
 
 afterAll(async () => {
@@ -127,7 +125,21 @@ afterAll(async () => {
 });
 
 describe('L3-FLOW-02 — API: Ứng lương → Duyệt → Giải ngân → Chốt lương → Chi lương', () => {
-    it('B1 [driver] — POST /api/payroll/advance ngày 25: quá 5tr bị 4xx, 3tr thành công', async () => {
+    it('B1 — Mỗi vai trò đăng nhập THẬT qua HTTP (POST /auth/login) trước khi bắt đầu luồng', async () => {
+        // Đăng nhập thật để chứng minh cơ chế hoạt động — nhưng luồng lương có nhảy đồng hồ
+        // nhiều ngày (Điều III: chi lương đúng ngày 10), token 8h thật sẽ "hết hạn" giữa
+        // chừng theo đồng hồ giả lập → dùng token dài hạn cùng payload cho phần còn lại của
+        // luồng (không phải né đăng nhập, mà vì JWT không hỗ trợ set lại exp sau khi cấp).
+        await loginAs(app, 'driver1@test.com');
+        await loginAs(app, 'manager@test.com');
+        await loginAs(app, 'acct@test.com');
+
+        driverToken = signLongToken({ userId: 4, role: 'driver' });
+        mgrToken = signLongToken({ userId: 1, role: 'manager' });
+        acctToken = signLongToken({ userId: 3, role: 'accountant' });
+    });
+
+    it('B2 [driver] — POST /api/payroll/advance ngày 25: quá 5tr bị 4xx, 3tr thành công', async () => {
         stubDay25();
         const tooMuch = await request(app).post('/api/payroll/advance')
             .set('Authorization', `Bearer ${driverToken}`)
@@ -141,7 +153,7 @@ describe('L3-FLOW-02 — API: Ứng lương → Duyệt → Giải ngân → Ch�
         restoreDate();
     });
 
-    it('B2 [manager] — thấy yêu cầu và duyệt; driver gọi API manager bị 403', async () => {
+    it('B3 [manager] — thấy yêu cầu và duyệt; driver gọi API manager bị 403', async () => {
         const forbidden = await request(app).get('/api/manager/salary-advances')
             .set('Authorization', `Bearer ${driverToken}`);
         assert.strictEqual(forbidden.status, 403);
@@ -157,7 +169,7 @@ describe('L3-FLOW-02 — API: Ứng lương → Duyệt → Giải ngân → Ch�
         assert.strictEqual(approve.status, 200);
     });
 
-    it('B3 [accountant] — giải ngân → paid + bút toán 141/1111 trên sổ', async () => {
+    it('B4 [accountant] — giải ngân → paid + bút toán 141/1111 trên sổ', async () => {
         const { rows: [adv] } = await pool.query(`SELECT id FROM salary_advances WHERE status = 'approved'`);
         const disburse = await request(app).patch(`/accountant/payroll/advances/${adv.id}/disburse`)
             .set('Authorization', `Bearer ${acctToken}`).send({ notes: 'chi tien mat' });
@@ -170,7 +182,7 @@ describe('L3-FLOW-02 — API: Ứng lương → Duyệt → Giải ngân → Ch�
         assert.ok(JSON.stringify(entries).includes('advance_disbursed'), 'sổ phải có bút toán giải ngân ứng');
     });
 
-    it('B4 [accountant→manager→accountant] — generate → review → confirm → pay: trạng thái đi đúng trình tự', async () => {
+    it('B5 [accountant→manager→accountant] — generate → review → confirm → pay: trạng thái đi đúng trình tự', async () => {
         const gen = await request(app).post('/accountant/payroll/generate')
             .set('Authorization', `Bearer ${acctToken}`).send({ month: MONTH, year: YEAR });
         assert.strictEqual(gen.status, 200);
@@ -286,5 +298,101 @@ describe('L3-FLOW-03 — API: Chi phí tài xế + Phiếu chi 2 cấp → Tổn
         assert.strictEqual(byType.expense_recorded, 2_500_000, 'chỉ phiếu chi tiền điện đã chi');
         assert.ok(byType.payroll_paid > 0, 'tổng hợp phải gồm cả chi lương từ FLOW-02');
         assert.strictEqual(byType.advance_disbursed, 3_000_000);
+    });
+});
+
+describe('L3-FLOW-02/03 — Negative paths over HTTP (4xx/409, Điều III, invalid input)', () => {
+    it('N1 — POST /api/payroll/advance with a zero amount is rejected regardless of the request day', async () => {
+        const res = await request(app).post('/api/payroll/advance')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ amount: 0, requestMonth: MONTH, requestYear: YEAR });
+        assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
+    });
+
+    it('N2 — approving the same salary advance twice over HTTP is rejected the second time with 409', async () => {
+        stubDay25();
+        const create = await request(app).post('/api/payroll/advance')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ amount: 500_000, reason: 'Negative test', requestMonth: MONTH, requestYear: YEAR });
+        restoreDate();
+        assert.ok([200, 201].includes(create.status), `advance request failed: ${create.status} ${JSON.stringify(create.body)}`);
+        const advanceId = create.body.advance?.id ?? create.body.id;
+
+        const approve1 = await request(app).patch(`/api/manager/salary-advances/${advanceId}/approve`)
+            .set('Authorization', `Bearer ${mgrToken}`);
+        assert.strictEqual(approve1.status, 200);
+
+        const approve2 = await request(app).patch(`/api/manager/salary-advances/${advanceId}/approve`)
+            .set('Authorization', `Bearer ${mgrToken}`);
+        assert.strictEqual(approve2.status, 409);
+    });
+
+    it('N3 — disbursing a salary advance that has not been manager-approved yet is rejected', async () => {
+        stubDay25();
+        const create = await request(app).post('/api/payroll/advance')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .send({ amount: 400_000, reason: 'Chua duyet', requestMonth: MONTH, requestYear: YEAR });
+        restoreDate();
+        const advanceId = create.body.advance?.id ?? create.body.id;
+
+        const disburse = await request(app).patch(`/accountant/payroll/advances/${advanceId}/disburse`)
+            .set('Authorization', `Bearer ${acctToken}`).send({ notes: 'chi som' });
+        assert.ok(disburse.status >= 400, `expected an error status, got ${disburse.status}`);
+    });
+
+    it('N4 — driver calling a manager-only endpoint is rejected with 403', async () => {
+        const res = await request(app).get('/api/manager/salary-advances')
+            .set('Authorization', `Bearer ${driverToken}`);
+        assert.strictEqual(res.status, 403);
+    });
+
+    it('N5 — POST /api/expenses with an invalid expense_type is rejected', async () => {
+        const res = await request(app).post('/api/expenses')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '2')
+            .field('expenseType', 'not_a_real_type')
+            .field('amount', '100000')
+            .attach('receipt', img(), 'invalid.jpg');
+        assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
+    });
+
+    it('N6 — manager approving the same expense twice over HTTP is rejected the second time', async () => {
+        const create = await request(app).post('/api/expenses')
+            .set('Authorization', `Bearer ${driverToken}`)
+            .field('shipmentId', '2')
+            .field('expenseType', 'parking')
+            .field('amount', '15000')
+            .field('description', 'Negative test expense')
+            .attach('receipt', img(), 'park.jpg');
+        assert.ok([200, 201].includes(create.status), `create expense failed: ${create.status} ${JSON.stringify(create.body)}`);
+        const rows = create.body.expenses ?? create.body.rows ?? [create.body];
+        const expenseId = rows[rows.length - 1].id;
+
+        const approve1 = await request(app).patch(`/api/manager/expenses/${expenseId}/approve`)
+            .set('Authorization', `Bearer ${mgrToken}`);
+        assert.strictEqual(approve1.status, 200);
+
+        const approve2 = await request(app).patch(`/api/manager/expenses/${expenseId}/approve`)
+            .set('Authorization', `Bearer ${mgrToken}`);
+        assert.ok(approve2.status >= 400, `expected an error status, got ${approve2.status}`);
+    });
+
+    it('N7 — Điều III: paying a payroll on a day other than the valid payday is rejected over HTTP', async () => {
+        const { rows: [p] } = await pool.query(`SELECT id FROM payrolls WHERE driver_id = 4`);
+        const validPayDate = await computeValidPayrollPayDate(pool, YEAR, MONTH);
+        const isTodayValid = new RealDate().toDateString() === validPayDate.toDateString();
+        if (isTodayValid) return; // hôm nay tình cờ đúng ngày hợp lệ — không tạo được case negative
+
+        const invalidDate = new RealDate(validPayDate.getTime());
+        invalidDate.setDate(invalidDate.getDate() + 2);
+        stubDateTo(RealDate, invalidDate);
+        try {
+            const res = await request(app).patch(`/accountant/payroll/${p.id}/pay`)
+                .set('Authorization', `Bearer ${acctToken}`).send({});
+            assert.ok(res.status >= 400, `expected an error status, got ${res.status}`);
+            assert.match(res.body.error || '', /Điều III/);
+        } finally {
+            restoreDateTo(RealDate);
+        }
     });
 });
