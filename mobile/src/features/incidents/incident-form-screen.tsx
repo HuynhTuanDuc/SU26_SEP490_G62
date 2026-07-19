@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import {
-    Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+    Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
     Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -150,7 +151,7 @@ function ImageGrid({
             <XStack flexWrap="wrap" gap={8}>
                 {uris.map((uri, i) => (
                     <View key={i} style={s.thumb}>
-                        <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
                         <Pressable onPress={() => onRemove(i)} style={s.thumbDelete} hitSlop={4}>
                             <X size={12} color="#fff" />
                         </Pressable>

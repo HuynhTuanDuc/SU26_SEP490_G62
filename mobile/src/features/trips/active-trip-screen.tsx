@@ -8,7 +8,7 @@ import {
     FileText, MapPin, Package,
     PlusCircle, RotateCcw, X, XCircle,
 } from 'lucide-react-native';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }              from '@/components/app-text';
@@ -189,7 +189,7 @@ function ExpenseInlineList({ expenses, canAdd, onAdd }: {
                                     key={i}
                                     source={{ uri: url }}
                                     style={s.receiptThumb}
-                                    resizeMode="cover"
+                                    contentFit="cover"
                                 />
                             ))}
                         </XStack>

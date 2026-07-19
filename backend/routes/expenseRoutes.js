@@ -18,6 +18,7 @@ function handleUpload(middleware) {
 
 router.post('/',                       driverOnly, handleUpload(uploadExpense.single('receipt')), expenseController.createExpense);
 router.patch('/:id',                   driverOnly, handleUpload(uploadExpense.single('receipt')), expenseController.updateExpense);
+router.delete('/:id',                  driverOnly, expenseController.deleteExpense);
 router.get('/shipment/:shipmentId',    driverOnly, expenseController.getShipmentExpenses);
 
 module.exports = router;

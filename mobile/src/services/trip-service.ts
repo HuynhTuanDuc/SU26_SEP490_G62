@@ -130,6 +130,9 @@ export const tripService = {
             formData,
         ),
 
+    deleteExpense: (expenseId: number) =>
+        apiClient.delete<{ message: string }>(`/api/expenses/${expenseId}`),
+
     getCompanyInfo: () =>
         apiClient.get<{ info: import('@/types/trip').CompanyInfo }>('/api/company/info'),
 };
