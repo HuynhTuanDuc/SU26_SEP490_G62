@@ -78,7 +78,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
     try {
       const data = await coordinatorService.getReceiptRequestDetail(requestId);
       setDetail(data);
-      setForm({ notes: data?.request?.coordinator_notes || "", expenses: [] });
+      setForm({ notes: data?.request?.coordinator_notes || "", expenses: [], priceOverride: "" });
     } catch (error) {
       alert(error.message || "Không thể tải chi tiết yêu cầu phiếu thu.");
       closeModal();
@@ -106,6 +106,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
     if (!detail?.request?.id) return;
     setPublishing(true);
     try {
+      const priceOverride = String(form.priceOverride || "").trim();
       const payload = {
         notes: form.notes,
         expenses: form.expenses
@@ -116,6 +117,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
             description: expense.description,
             shipment_id: expense.shipment_id || null,
           })),
+        ...(priceOverride ? { priceOverride: Number(priceOverride) } : {}),
       };
       await coordinatorService.approveReceiptRequest(detail.request.id, payload);
       closeModal();

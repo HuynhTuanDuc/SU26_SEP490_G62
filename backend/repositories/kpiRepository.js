@@ -83,14 +83,23 @@ const getDriverKPI = async (driverId, { month = null, year = null } = {}) => {
 
 const getDriverVehicleGroupId = async (driverId) => {
     const result = await pool.query(
-        `SELECT v.vehicle_group_id, vg.name AS vehicle_group_name
+        `SELECT d.default_vehicle_group_id AS vehicle_group_id, vg.name AS vehicle_group_name
          FROM drivers d
-         JOIN vehicles v  ON v.id  = d.vehicle_id
-         JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+         JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
          WHERE d.profile_id = $1`,
         [driverId],
     );
     return result.rows[0] ?? null;
+};
+
+// Manager/Coordinator/Accountant sửa tay nhóm xe KPI cố định của tài xế
+const setDriverDefaultVehicleGroup = async (driverId, vehicleGroupId) => {
+    const result = await pool.query(
+        `UPDATE drivers SET default_vehicle_group_id = $2 WHERE profile_id = $1 RETURNING profile_id, default_vehicle_group_id`,
+        [driverId, vehicleGroupId],
+    );
+    if (!result.rows[0]) throw new Error('Không tìm thấy tài xế');
+    return result.rows[0];
 };
 
 // ─── Driver: Leaderboard trong nhóm xe của mình (BR-028) ─────────────────────
@@ -159,6 +168,7 @@ const getAllDriversKPI = async ({ month, year, vehicleGroupId = null }) => {
         `SELECT
             k.driver_id,
             p.full_name AS driver_name,
+            k.vehicle_group_id,
             k.month, k.year,
             k.completed_shipments,
             k.total_revenue::text,
@@ -213,10 +223,7 @@ const recalculateDriverKPI = async (driverId, month, year) => {
     await revenueAllocationRepository.ensureRevenueAllocationTable();
 
     const vgRes = await pool.query(
-        `SELECT v.vehicle_group_id
-         FROM drivers d
-         JOIN vehicles v ON v.id = d.vehicle_id
-         WHERE d.profile_id = $1`,
+        `SELECT default_vehicle_group_id AS vehicle_group_id FROM drivers WHERE profile_id = $1`,
         [driverId],
     );
     const vehicleGroupId = vgRes.rows[0]?.vehicle_group_id;
@@ -307,6 +314,7 @@ const recalculateDriverKPI = async (driverId, month, year) => {
 module.exports = {
     getDriverKPI,
     getDriverVehicleGroupId,
+    setDriverDefaultVehicleGroup,
     getLeaderboard,
     getAllDriversKPI,
     getDriverKPIById,

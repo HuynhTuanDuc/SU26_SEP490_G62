@@ -47,10 +47,10 @@ INSERT INTO vehicles (id, plate_number, vehicle_group_id, brand, model, load_cap
     (100002, '51E-246.80', 100002, 'Hino',    'XZU 342L',   6800,  2023, DATE '2023-02-20', 100005, 'active'),
     (100003, '51F-135.79', 100003, 'Hyundai', 'Mighty EX8', 9500,  2022, DATE '2022-11-05', NULL,   'active');
 
-INSERT INTO drivers (profile_id, vehicle_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone) VALUES
-    (100003, 100000, 'DL-0123456', DATE '2028-12-31', DATE '2023-03-01', 15.00, 'Phạm Thị Lan',   '0908000004'),
-    (100004, 100001, 'DL-0234567', DATE '2029-06-30', DATE '2024-05-15', 15.00, 'Hoàng Thị Hạnh', '0908000005'),
-    (100005, 100002, 'DL-0345678', DATE '2029-11-15', DATE '2025-11-01', 15.00, 'Đỗ Quốc Minh',   '0908000006');
+INSERT INTO drivers (profile_id, vehicle_id, default_vehicle_group_id, license_number, license_expiry_date, hire_date, revenue_share_percent, emergency_contact_name, emergency_contact_phone) VALUES
+    (100003, 100000, 100000, 'DL-0123456', DATE '2028-12-31', DATE '2023-03-01', 15.00, 'Phạm Thị Lan',   '0908000004'),
+    (100004, 100001, 100001, 'DL-0234567', DATE '2029-06-30', DATE '2024-05-15', 15.00, 'Hoàng Thị Hạnh', '0908000005'),
+    (100005, 100002, 100002, 'DL-0345678', DATE '2029-11-15', DATE '2025-11-01', 15.00, 'Đỗ Quốc Minh',   '0908000006');
 
 -- ─── 3. QUY TẮC THƯỞNG (đúng chính sách: KPI 2tr theo ngưỡng nhóm xe, top 1tr) ─
 

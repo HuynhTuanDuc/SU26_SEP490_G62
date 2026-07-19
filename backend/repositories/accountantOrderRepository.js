@@ -2,7 +2,6 @@
 const { insertAssignmentHistory } = require('./tripRepository');
 const { PASS_THROUGH_EXPENSE_TYPES } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('./financialLedgerRepository');
-const orderRepository = require('./orderRepository');
 
 const trimToNull = (value) => {
     const text = String(value || '').trim();
@@ -335,55 +334,52 @@ const createOrderWithShipments = async (orderData) => {
         const autoResolvedDrivers = [];
         for (let i = 0; i < (orderData.shipments || []).length; i += 1) {
             const s = orderData.shipments[i];
-            let vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
+            const rowLabel = `Chuyến ${i + 1}`;
 
-            // Biển số chưa từng có trong hệ thống — tự tạo xe mới ngay (nhóm xe mặc định).
-            // Áp dụng cho MỌI trường hợp (không chỉ khi tài xế cũng mới), vì trước đây xe
-            // chỉ được tạo trong nhánh "tài xế mới" khiến tài xế đã có sẵn nhưng chạy biển
-            // số mới sẽ không có vehicleId → không gán được "xe nhà" → KPI không tính được.
+            // KHÔNG tự tạo xe/tài xế nữa — Excel ghi biển số/tên không khớp hệ thống là
+            // dấu hiệu sai sót (gõ nhầm, xe/tài chưa được thêm) chứ không nên âm thầm
+            // tạo bản ghi thiếu thông tin (không nhóm xe, không hồ sơ đầy đủ) rồi để
+            // KPI/lương/thưởng tính sai hoặc bỏ sót sau này. Bắt buộc xe và tài khoản
+            // tài xế phải có sẵn trong hệ thống trước khi import.
+            let vehicleId = await findVehicleById(client, s.vehicle_id) || await findVehicleByPlate(client, s.vehicle_plate);
             if (!vehicleId && trimToNull(s.vehicle_plate)) {
-                const defaultVehicleGroupId = await orderRepository.getDefaultVehicleGroupId(client);
-                const vehicleInsert = await client.query(
-                    `INSERT INTO vehicles (plate_number, vehicle_group_id, status)
-                     VALUES ($1, $2, 'active')
-                     ON CONFLICT (plate_number) DO UPDATE SET updated_at = NOW()
-                     RETURNING id`,
-                    [s.vehicle_plate.trim().toUpperCase(), defaultVehicleGroupId],
-                );
-                vehicleId = vehicleInsert.rows[0]?.id || null;
+                throw new Error(`${rowLabel}: Xe biển số "${s.vehicle_plate.trim()}" chưa có trong hệ thống — vui lòng thêm xe trước khi import.`);
             }
 
             let driverId = await findDriverById(client, s.driver_id) || await findDriverByName(client, s.driver_name);
-
-            // Tài xế nhập tên tự do (import Excel) mà chưa tồn tại trong hệ thống —
-            // tự tạo tài khoản driver + gán xe theo biển số ngay, để chuyến này được
-            // tính KPI/lương/thưởng từ đầu thay vì bị bỏ sót âm thầm (driver_id=NULL).
-            if (!driverId && !s.driver_id && trimToNull(s.driver_name)) {
-                const vehicleGroupId = await orderRepository.getDefaultVehicleGroupId(client);
-                const resolved = await orderRepository.findOrCreateDriverWithVehicle(client, {
-                    driverName: s.driver_name,
-                    plateNumber: s.vehicle_plate,
-                    vehicleGroupId,
-                });
-                if (resolved) {
-                    driverId = resolved.id;
-                    vehicleId = vehicleId || resolved.vehicle_id || null;
-                    autoResolvedDrivers.push({ shipmentIndex: i + 1, driverName: s.driver_name, driverId: resolved.id });
-                }
+            if (!driverId && trimToNull(s.driver_name)) {
+                throw new Error(`${rowLabel}: Tài xế "${s.driver_name.trim()}" chưa có tài khoản trong hệ thống — vui lòng tạo tài khoản cho tài xế này trước khi import.`);
+            }
+            if (!driverId && s.driver_id) {
+                throw new Error(`${rowLabel}: Không tìm thấy tài xế với ID đã chọn.`);
             }
 
             // Tài xế đã tồn tại nhưng chưa có "xe nhà" (drivers.vehicle_id) — vd tài
-            // xế được Manager tạo qua form thường, chưa từng gán xe. Tính KPI cần
-            // vehicle_group_id truy từ drivers.vehicle_id nên phải gán ngay lần đầu
-            // có đủ thông tin xe, tránh KPI/lương/thưởng bị bỏ sót âm thầm.
+            // xế được Manager tạo qua form thường, chưa từng gán xe. KPI dùng
+            // default_vehicle_group_id (nhóm cố định, không đổi theo xe hiện tại) nên
+            // phải gán ngay lần đầu có đủ thông tin xe, tránh KPI/lương/thưởng bị bỏ sót.
             if (driverId && vehicleId) {
                 await client.query(
-                    `UPDATE drivers SET vehicle_id = $2 WHERE profile_id = $1 AND vehicle_id IS NULL`,
+                    `UPDATE drivers
+                     SET vehicle_id = $2,
+                         default_vehicle_group_id = COALESCE(default_vehicle_group_id, (SELECT vehicle_group_id FROM vehicles WHERE id = $2))
+                     WHERE profile_id = $1 AND vehicle_id IS NULL`,
                     [driverId, vehicleId],
                 );
                 await client.query(
                     `UPDATE vehicles SET assigned_driver_id = $2, updated_at = NOW() WHERE id = $1 AND assigned_driver_id IS NULL`,
                     [vehicleId, driverId],
+                );
+            }
+
+            // Tài xế có xe nhưng chưa từng có nhóm KPI cố định (VD tạo từ trước khi có
+            // cột này) — gán ngay lúc import để chuyến này không bị bỏ sót khỏi KPI.
+            if (driverId) {
+                await client.query(
+                    `UPDATE drivers
+                     SET default_vehicle_group_id = COALESCE(default_vehicle_group_id, (SELECT vehicle_group_id FROM vehicles WHERE id = drivers.vehicle_id))
+                     WHERE profile_id = $1 AND default_vehicle_group_id IS NULL AND vehicle_id IS NOT NULL`,
+                    [driverId],
                 );
             }
 

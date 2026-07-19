@@ -87,6 +87,10 @@ CREATE TABLE vehicles (
 CREATE TABLE drivers (
     profile_id              INT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
     vehicle_id              INT UNIQUE REFERENCES vehicles(id),
+    -- Nhóm xe KPI cố định của tài xế — set 1 lần khi gán xe đầu tiên, KHÔNG tự đổi
+    -- theo vehicle_id hiện tại (VD tài bị điều chuyển tạm sang xe nhóm khác do sự cố).
+    -- KPI/doanh thu luôn tính về nhóm này trừ khi Manager/Coordinator/Accountant sửa tay.
+    default_vehicle_group_id INT REFERENCES vehicle_groups(id),
     license_number          TEXT NOT NULL,
     license_expiry_date     DATE,
     hire_date               DATE NOT NULL,

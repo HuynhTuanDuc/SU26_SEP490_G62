@@ -115,6 +115,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
           vehicle_group_id: shipment.vehicle_group_id || trip.vehicleGroupId || "",
           plate: shipment.plate || "",
           distance: shipment.distance ?? "",
+          price: shipment.fare || "",
           pickup_address: pickupAddresses[0] || shipment.pickup_address || "",
           delivery_address: deliveryAddresses[0] || shipment.delivery_address || "",
           pickup_addresses: pickupAddresses,
@@ -125,6 +126,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         vehicle_group_id: trip.vehicleGroupId || "",
         plate: trip.plate || "",
         distance: trip.distance ?? "",
+        price: trip.fare || "",
         pickup_address: trip.pickupAddress || "",
         delivery_address: trip.deliveryAddress || "",
         pickup_addresses: [trip.pickupAddress || ""],
@@ -193,10 +195,13 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
       const deliveryAddresses = (Array.isArray(trip.delivery_addresses) ? trip.delivery_addresses : [trip.delivery_address])
         .map((value) => String(value || "").trim()).filter(Boolean);
 
+      const manualPrice = normalizeNumericText(trip.price);
+
       return {
         vehicle_group_id: Number(trip.vehicle_group_id),
         plate: String(trip.plate || "").trim(),
         distance: Number(normalizeDistanceText(trip.distance)),
+        price: manualPrice ? Number(manualPrice) : null,
         pickup_address: pickupAddresses[0] || "",
         delivery_address: deliveryAddresses[0] || "",
         pickup_addresses: pickupAddresses,
@@ -292,11 +297,18 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     return Array.isArray(group?.vehicles) ? group.vehicles : [];
   }
 
-  function getTripFare(trip) {
+  // Giá gợi ý = quãng đường × đơn giá nhóm xe — coordinator có thể ghi đè bằng trip.price
+  function getSuggestedFare(trip) {
     const group = vehicleGroups.find((item) => String(item.id) === String(trip?.vehicle_group_id));
     const distance = Number(normalizeDistanceText(trip?.distance));
     if (!group || !Number.isFinite(distance) || distance <= 0) return 0;
     return distance * Number(group.price_per_km || 0);
+  }
+
+  function getTripFare(trip) {
+    const manual = Number(trip?.price);
+    if (Number.isFinite(manual) && manual > 0) return manual;
+    return getSuggestedFare(trip);
   }
 
   const totalFare = useMemo(
@@ -389,7 +401,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
     setForm((current) => ({
       ...current,
       trips: [...current.trips, {
-        vehicle_group_id: "", plate: "", distance: "",
+        vehicle_group_id: "", plate: "", distance: "", price: "",
         pickup_address: "", delivery_address: "",
         pickup_addresses: [""], delivery_addresses: [""],
       }],
@@ -471,6 +483,7 @@ const OrdersView = forwardRef(function OrdersView({ search, refreshKey }, ref) {
         removeTrip={removeTrip}
         getAvailablePlates={getAvailablePlates}
         getTripFare={getTripFare}
+        getSuggestedFare={getSuggestedFare}
       />
 
       <Modal isOpen={!!reassignTarget} onOpenChange={(isOpen) => !isOpen && closeReassignModal()} size="sm">

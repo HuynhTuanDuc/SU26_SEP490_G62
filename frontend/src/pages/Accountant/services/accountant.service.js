@@ -7,6 +7,12 @@ export const accountantService = {
   getFinanceStats: () =>
     apiRequest(`${BASE}/finance/stats`),
 
+  getVehicleGroupsForKpi: () =>
+    apiRequest(`${BASE}/vehicle-groups`),
+
+  updateDriverVehicleGroup: (driverId, vehicleGroupId) =>
+    apiRequest(`/api/kpi/driver/${driverId}/vehicle-group`, { method: "PATCH", body: { vehicleGroupId } }),
+
   getOrders: (params) =>
     apiRequest(`${BASE}/orders?${new URLSearchParams(params)}`),
 

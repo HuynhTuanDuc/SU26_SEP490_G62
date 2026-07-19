@@ -15,6 +15,12 @@ router.use(verifyToken, requireRole('accountant'));
 
 router.get('/finance/stats',      accountantFinanceController.getFinanceStats);
 router.get('/reports/overview',  accountantReportController.getOverview);
+
+// Danh sách nhóm xe (dùng cho dropdown sửa nhóm KPI cố định của tài xế ở màn Bảng lương)
+router.get('/vehicle-groups', (req, res) => {
+    const coordinatorController = require('../controllers/coordinatorController');
+    return coordinatorController.listVehicleGroups(req, res);
+});
 router.use('/orders', accountantOrderRoutes);
 router.use('/payroll', accountantPayrollRoutes);
 router.get('/debts', accountantDebtController.getDebts);
