@@ -11,6 +11,7 @@ import {
   RiCheckboxCircleLine, RiTimeLine,
   RiFileList3Line, RiListCheck2,
   RiHistoryLine, RiRefreshLine,
+  RiArrowLeftRightLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { PaginationBar } from "../components/shared/PaginationBar";
@@ -545,7 +546,108 @@ function PayDebtModal({ person, onClose, onDone }) {
   );
 }
 
-function DebtDetailRow({ d }) {
+// ─── Chuyển công nợ khách hàng sang công nợ tài xế (tái phân loại khoản phải thu,
+// không phải giao dịch tiền thật — Nợ 1388 / Có 131) ───────────────────────────
+function TransferDebtModal({ debt, onClose, onDone }) {
+  const [drivers, setDrivers]   = useState([]);
+  const [driverId, setDriverId] = useState(new Set([]));
+  const [notes, setNotes]       = useState("");
+  const [loadingDrivers, setLoadingDrivers] = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState(null);
+
+  useEffect(() => {
+    accountantService.getLookup()
+      .then((data) => setDrivers(data.drivers ?? []))
+      .catch(() => setDrivers([]))
+      .finally(() => setLoadingDrivers(false));
+  }, []);
+
+  const handleSubmit = async () => {
+    const selectedId = [...driverId][0];
+    if (!selectedId) { setError("Vui lòng chọn tài xế nhận công nợ."); return; }
+    setSaving(true); setError(null);
+    try {
+      await accountantService.transferDebtToDriver(debt.id, Number(selectedId), notes.trim());
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err.message ?? "Chuyển công nợ thất bại.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} size="sm">
+      <ModalContent>
+        <ModalHeader className="flex items-center gap-2 pb-2">
+          <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+            <RiArrowLeftRightLine size={16} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="text-base font-bold">Chuyển công nợ sang tài xế</p>
+            <p className="text-xs font-normal text-gray-400">Nợ #{debt?.id}</p>
+          </div>
+        </ModalHeader>
+
+        <ModalBody className="gap-3">
+          <div className="flex flex-col gap-0.5 bg-orange-50 rounded-xl p-3">
+            <span className="text-[10px] text-orange-400 font-semibold uppercase tracking-wide">
+              Toàn bộ số dư còn lại sẽ được chuyển
+            </span>
+            <MoneyText amount={debt?.remaining} className="text-lg font-bold text-orange-600" />
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Đây là bút toán tái phân loại khoản phải thu (Nợ 1388 / Có 131), <strong>không phải</strong> khách
+            hoặc tài xế đã trả tiền thật. Khoản nợ khách hàng này sẽ tất toán, thay bằng 1 khoản nợ tài xế mới
+            cùng số tiền — tài xế sau đó nộp tiền theo đúng luồng công nợ tài xế thông thường.
+          </p>
+
+          {error && (
+            <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 p-3 rounded-lg">
+              <RiAlertLine size={13} />
+              {error}
+            </div>
+          )}
+
+          <Select
+            label="Tài xế nhận công nợ"
+            placeholder="Chọn tài xế..."
+            isLoading={loadingDrivers}
+            selectedKeys={driverId}
+            onSelectionChange={setDriverId}
+          >
+            {drivers.map((d) => (
+              <SelectItem key={String(d.id)} textValue={d.full_name}>
+                {d.full_name}{d.plate_number ? ` · ${d.plate_number}` : ""}
+              </SelectItem>
+            ))}
+          </Select>
+
+          <Input
+            label="Ghi chú (tuỳ chọn)"
+            placeholder="Lý do chuyển công nợ..."
+            value={notes}
+            onValueChange={setNotes}
+            classNames={{ inputWrapper: "bg-white" }}
+          />
+        </ModalBody>
+
+        <ModalFooter>
+          <Button variant="light" onPress={onClose} isDisabled={saving}>Huỷ</Button>
+          <Button color="warning" onPress={handleSubmit} isLoading={saving}
+            startContent={!saving && <RiArrowLeftRightLine size={15} />}>
+            Chuyển công nợ
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
+}
+
+function DebtDetailRow({ d, onTransfer }) {
   const overdue = isOverdue(d.due_date);
   const status  = d.computed_status;
 
@@ -603,12 +705,23 @@ function DebtDetailRow({ d }) {
       </td>
 
       {}
-      <td className="py-2.5" />
+      <td className="py-2.5 pr-4" onClick={(e) => e.stopPropagation()}>
+        {status !== "paid" && onTransfer && (
+          <Button
+            size="sm" color="warning" variant="flat" isIconOnly
+            title="Chuyển sang công nợ tài xế"
+            className="h-7 w-7 min-w-7"
+            onPress={() => onTransfer(d)}
+          >
+            <RiArrowLeftRightLine size={13} />
+          </Button>
+        )}
+      </td>
     </tr>
   );
 }
 
-function PersonRow({ person, onPay }) {
+function PersonRow({ person, onPay, onTransfer, refreshKey }) {
   const [expanded, setExpanded] = useState(false);
   const [debts, setDebts]       = useState(null);
   const [loading, setLoading]   = useState(false);
@@ -616,21 +729,32 @@ function PersonRow({ person, onPay }) {
   const { name, phone, person_id } = getPersonInfo(person);
   const chipProps = STATUS_CHIP[person.computed_status];
 
-  const toggle = useCallback(async () => {
+  const loadDebts = useCallback(async () => {
+    if (!person_id) return;
+    setLoading(true);
+    try {
+      const data = await accountantService.getDebtsByPerson(person.debt_type, person_id);
+      setDebts(Array.isArray(data?.debts) ? data.debts : []);
+    } catch {
+      setDebts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [person, person_id]);
+
+  const toggle = useCallback(() => {
     const next = !expanded;
     setExpanded(next);
-    if (next && debts === null && person_id) {
-      setLoading(true);
-      try {
-        const data = await accountantService.getDebtsByPerson(person.debt_type, person_id);
-        setDebts(Array.isArray(data?.debts) ? data.debts : []);
-      } catch {
-        setDebts([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-  }, [expanded, debts, person, person_id]);
+    if (next && debts === null) loadDebts();
+  }, [expanded, debts, loadDebts]);
+
+  // Sau khi chuyển công nợ (hoặc ghi nhận thanh toán) thành công, danh sách khoản nợ chi
+  // tiết đã mở của dòng này cần nạp lại — chỉ đổi identity của `person` (từ refetch() ở
+  // component cha) không tự làm mất state debts cục bộ đang cache ở đây.
+  useEffect(() => {
+    if (expanded && refreshKey !== undefined) loadDebts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   return (
     <>
@@ -713,7 +837,11 @@ function PersonRow({ person, onPay }) {
             </td>
           </tr>
         ) : (debts ?? []).map((d) => (
-          <DebtDetailRow key={d.id} d={d} />
+          <DebtDetailRow
+            key={d.id}
+            d={d}
+            onTransfer={person.debt_type === "customer" ? onTransfer : undefined}
+          />
         ))
       )}
     </>
@@ -729,7 +857,9 @@ export function DebtView({ search = "" }) {
     refetch,
   } = useDebts();
 
-  const [payPerson, setPayPerson]       = useState(null);
+  const [payPerson, setPayPerson]           = useState(null);
+  const [transferTarget, setTransferTarget] = useState(null);
+  const [debtsRefreshKey, setDebtsRefreshKey] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy]             = useState("remaining_desc");
   const [tab, setTab] = useState("debts");
@@ -965,6 +1095,8 @@ export function DebtView({ search = "" }) {
                   key={`${p.debt_type}-${p.driver_id ?? p.customer_ids?.[0]}-${i}`}
                   person={p}
                   onPay={setPayPerson}
+                  onTransfer={setTransferTarget}
+                  refreshKey={debtsRefreshKey}
                 />
               ))}
             </tbody>
@@ -992,6 +1124,14 @@ export function DebtView({ search = "" }) {
           person={payPerson}
           onClose={() => setPayPerson(null)}
           onDone={refetch}
+        />
+      )}
+
+      {transferTarget && (
+        <TransferDebtModal
+          debt={transferTarget}
+          onClose={() => setTransferTarget(null)}
+          onDone={() => { refetch(); setDebtsRefreshKey((k) => k + 1); }}
         />
       )}
     </div>

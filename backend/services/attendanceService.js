@@ -13,6 +13,7 @@ const STATUS_LABEL = {
     leave_paid:        'Nghỉ phép (hưởng lương)',
     leave_unpaid:      'Nghỉ không lương',
     absent_unexcused:  'Vắng không phép',
+    half_day:          'Nửa công (nghỉ nửa buổi)',
 };
 
 // Gộp override + leave_request thành 1 danh sách theo tài xế, mỗi tài xế có mảng ngày
@@ -38,7 +39,7 @@ const getMonthlyGrid = async ({ month, year, driverId, vehicleGroupId }) => {
                 plate_number: r.plate_number,
                 vehicle_group_name: r.vehicle_group_name,
                 days: [],
-                summary: { present: 0, leave_paid: 0, leave_unpaid: 0, absent_unexcused: 0 },
+                summary: { present: 0, leave_paid: 0, leave_unpaid: 0, absent_unexcused: 0, half_day: 0 },
             });
         }
         const driver = driversMap.get(r.driver_id);
@@ -66,17 +67,17 @@ const getMonthlyGrid = async ({ month, year, driverId, vehicleGroupId }) => {
 const markAttendance = async ({ driverId, workDate, status, notes }, markedBy) => {
     if (!driverId) throw new AttendanceError('driver_id là bắt buộc');
     if (!workDate) throw new AttendanceError('work_date là bắt buộc');
-    if (!['present', 'absent_unexcused'].includes(status)) {
-        throw new AttendanceError('Trạng thái không hợp lệ (chỉ đánh dấu được: present, absent_unexcused)');
+    if (!['present', 'absent_unexcused', 'half_day'].includes(status)) {
+        throw new AttendanceError('Trạng thái không hợp lệ (chỉ đánh dấu được: present, absent_unexcused, half_day)');
     }
     if (new Date(workDate) > new Date()) {
         throw new AttendanceError('Không thể chấm công cho ngày trong tương lai');
     }
 
-    if (status === 'absent_unexcused') {
+    if (status === 'absent_unexcused' || status === 'half_day') {
         const leave = await attendanceRepository.findApprovedLeave(Number(driverId), workDate);
         if (leave) {
-            throw new AttendanceError('Ngày này tài xế đã có đơn nghỉ được duyệt — không thể đánh dấu vắng không phép. Nếu cần điều chỉnh, đánh dấu "Có mặt" để ghi đè.');
+            throw new AttendanceError('Ngày này tài xế đã có đơn nghỉ được duyệt — không thể đánh dấu vắng không phép/nửa công. Nếu cần điều chỉnh, đánh dấu "Có mặt" để ghi đè.');
         }
     }
 

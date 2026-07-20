@@ -49,6 +49,13 @@ export const accountantService = {
       { method: "POST", body: data }
     ),
 
+  // Chuyển toàn bộ số dư còn lại của 1 công nợ khách hàng sang công nợ tài xế mới
+  transferDebtToDriver: (debtId, driverId, notes) =>
+    apiRequest(`${BASE}/debts/${debtId}/transfer-to-driver`, {
+      method: "POST",
+      body: { driverId, notes: notes || undefined },
+    }),
+
   getDebts: (params) =>
     apiRequest(`${BASE}/debts?${new URLSearchParams(params)}`),
 

@@ -16,6 +16,7 @@ const STATUS_STYLE = {
   leave_paid:       { bg: "bg-blue-100",   text: "text-blue-700",   dot: "bg-blue-500" },
   leave_unpaid:     { bg: "bg-amber-100",  text: "text-amber-700",  dot: "bg-amber-500" },
   absent_unexcused: { bg: "bg-rose-100",   text: "text-rose-700",   dot: "bg-rose-500" },
+  half_day:         { bg: "bg-orange-100", text: "text-orange-700", dot: "bg-orange-500" },
 };
 
 const WEEKDAY_LABELS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -127,6 +128,13 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
               onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "present"); setDayModal(null); }}
             >
               Đánh dấu Có mặt
+            </Button>
+            <Button
+              variant="flat" className="bg-orange-100 text-orange-700" size="sm" isLoading={marking}
+              isDisabled={dayModal?.status === "half_day" || !!dayModal?.leave_request_id}
+              onPress={async () => { await onMark(driver.driver_id, dayModal.work_date, "half_day"); setDayModal(null); }}
+            >
+              Nửa công (nghỉ nửa buổi)
             </Button>
             <Button
               variant="flat" color="danger" size="sm" isLoading={marking}

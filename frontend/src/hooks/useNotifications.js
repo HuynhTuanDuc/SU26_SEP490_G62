@@ -3,6 +3,7 @@ import { apiRequest, refreshAuthSession } from "../services/apiClient";
 import { connectRealtime } from "../services/realtime";
 
 const RECONNECT_DELAY_MS = 3000;
+const MAX_RECONNECT_DELAY_MS = 60000;
 
 export function useNotifications() {
   const [notifications, setNotifications] = useState([]);
@@ -44,10 +45,19 @@ export function useNotifications() {
     let socket = null;
     let reconnectTimer = null;
     let disposed = false;
+    let reconnectDelay = RECONNECT_DELAY_MS;
+    let hadOpened = false;
 
     const connect = () => {
       if (disposed) return;
+      hadOpened = false;
       socket = connectRealtime({
+        onOpen: () => {
+          // Kết nối thành công — chứng tỏ access token lúc bắt tay vẫn hợp lệ, không cần
+          // refresh. Reset backoff để lần rớt mạng tiếp theo vẫn thử lại nhanh.
+          hadOpened = true;
+          reconnectDelay = RECONNECT_DELAY_MS;
+        },
         onMessage: (payload) => {
           if (!payload?.type) return;
           if (payload.type === "notification.created") {
@@ -61,12 +71,20 @@ export function useNotifications() {
         onClose: () => {
           if (disposed) return;
           reconnectTimer = window.setTimeout(() => {
-            // Access-token cookie có thể đã hết hạn trong lúc socket mở/idle;
-            // refresh trước để lần reconnect không bị 401 lặp vô hạn.
+            // Chỉ refresh khi socket vừa rồi CHƯA BAO GIỜ open được (bắt tay thất bại do
+            // access token cookie đã hết hạn) — nếu đã từng open thành công thì việc đóng
+            // là bình thường (mạng chập chờn, server restart...), không cần refresh mù quáng
+            // mỗi lần reconnect vì sẽ spam /auth/refresh dù phiên vẫn còn hợp lệ.
+            if (hadOpened) {
+              connect();
+              return;
+            }
             refreshAuthSession()
-              .catch(() => {})
+              .catch(() => {
+                reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+              })
               .finally(connect);
-          }, RECONNECT_DELAY_MS);
+          }, reconnectDelay);
         },
       });
     };

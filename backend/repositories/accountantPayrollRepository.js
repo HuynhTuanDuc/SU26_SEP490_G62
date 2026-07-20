@@ -90,7 +90,17 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
           AND EXTRACT(MONTH FROM work_date) = $2
           AND EXTRACT(YEAR  FROM work_date) = $3
     `, [driver.driver_id, month, year]);
-    const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0);
+    // Nửa công (sáng đi làm, chiều nghỉ) — chỉ trừ 0.5 công thay vì trừ nguyên ngày
+    const { rows: [halfRow] } = await client.query(`
+        SELECT COUNT(*)::int AS half_days
+        FROM attendance_overrides
+        WHERE driver_id = $1
+          AND status = 'half_day'
+          AND EXTRACT(MONTH FROM work_date) = $2
+          AND EXTRACT(YEAR  FROM work_date) = $3
+    `, [driver.driver_id, month, year]);
+    const unpaidDays     = Number(dayRow.unpaid_days ?? 0) + Number(attRow.unexcused_days ?? 0)
+                          + Number(halfRow.half_days ?? 0) * 0.5;
     // "28 công" là quota — tháng có nhiều hơn 28 ngày lịch thì phần dư (29,30,31 - 28)
     // là ngày nghỉ được miễn trừ tự nhiên. Chỉ khi số ngày thực đi làm (ngày lịch - vắng)
     // TỤT XUỐNG DƯỚI 28 mới bị trừ lương, và chỉ trừ đúng phần hụt đó — không trừ thẳng
