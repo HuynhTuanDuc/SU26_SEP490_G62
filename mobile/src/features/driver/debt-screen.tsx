@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import {
-    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable,
+    ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable,
     RefreshControl, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useConfirm } from '@/providers/ui-provider';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { StatusBar } from 'expo-status-bar';
@@ -227,7 +228,7 @@ function RepayOverlay({ debt, receiptUri, onRequestCamera, onDeleteReceipt, onCl
                         <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>Ảnh chứng từ *</Text>
                         {receiptUri ? (
                             <View style={s.photoPreviewWrap}>
-                                <Image source={{ uri: receiptUri }} style={s.photoPreview} resizeMode="cover" />
+                                <Image source={{ uri: receiptUri }} style={s.photoPreview} contentFit="cover" />
                                 <Pressable style={s.retakeBtn} onPress={onRequestCamera}>
                                     <Camera size={14} color="#fff" />
                                     <Text fontSize={12} color="#fff" fontWeight="700">Chụp lại</Text>

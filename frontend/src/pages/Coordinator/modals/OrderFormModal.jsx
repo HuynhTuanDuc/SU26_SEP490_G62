@@ -26,6 +26,7 @@ export default function OrderFormModal({
   removeTrip,
   getAvailablePlates,
   getTripFare,
+  getSuggestedFare,
 }) {
   return (
     <Modal isOpen={open} onOpenChange={(isOpen) => !isOpen && onClose()} size="4xl" scrollBehavior="inside">
@@ -265,8 +266,23 @@ export default function OrderFormModal({
                     </div>
                   </div>
 
-                  <div className="text-sm font-bold text-blue-900">
-                    Cước xe: {Number(getTripFare(trip) || 0).toLocaleString("vi-VN")} đ
+                  <div className="flex items-end gap-3">
+                    <Input
+                      label="Cước xe"
+                      type="number"
+                      min="0"
+                      step="1000"
+                      placeholder={`Gợi ý: ${Number(getSuggestedFare(trip) || 0).toLocaleString("vi-VN")} đ`}
+                      value={trip.price}
+                      onValueChange={(v) => updateTripField(index, "price", v)}
+                      variant="bordered"
+                      className="max-w-xs"
+                      description={
+                        trip.price
+                          ? `Đơn giá gợi ý theo km × đơn giá nhóm xe: ${Number(getSuggestedFare(trip) || 0).toLocaleString("vi-VN")} đ`
+                          : "Để trống sẽ tự tính theo quãng đường × đơn giá nhóm xe"
+                      }
+                    />
                   </div>
                 </div>
               ))}

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    Alert, Animated, Image, Modal, Platform,
+    Alert, Animated, Modal, Platform,
     Pressable, ScrollView, StyleSheet, TextInput, View,
 } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native';
+import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Camera, CheckCircle, ChevronDown, Trash2, X } from 'lucide-react-native';
@@ -312,7 +313,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                                     borderRadius={10} borderWidth={1} borderColor={appTheme.colors.border}
                                     overflow="hidden" alignItems="center" backgroundColor={appTheme.colors.surface}
                                 >
-                                    <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+                                    <Image source={{ uri: receiptUri }} style={{ width: 80, height: 80 }} contentFit="cover" />
                                     <YStack flex={1} paddingHorizontal={12} gap={4}>
                                         <XStack alignItems="center" gap={6}>
                                             <View style={f.doneDot} />

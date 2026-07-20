@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button } from "@heroui/react";
+import { RiPencilLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
+import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVehicleGroupModal";
+import { managerService } from "../services/manager.service";
 
 const formatDateTime = (value) => {
   if (!value) return "Chưa có";
@@ -57,7 +61,9 @@ function AssignmentTimeline({ items }) {
   );
 }
 
-export default function VehicleDetailModal({ open, vehicle, assignmentHistory, onClose }) {
+export default function VehicleDetailModal({ open, vehicle, assignmentHistory, vehicleGroups, onClose }) {
+  const [editingDriverGroup, setEditingDriverGroup] = useState(false);
+
   if (!vehicle) return null;
 
   const maintenanceHistory = (vehicle.status_history || []).filter((i) => MAINTENANCE_ACTIONS.has(i.action_type));
@@ -75,7 +81,24 @@ export default function VehicleDetailModal({ open, vehicle, assignmentHistory, o
             <div><span className="text-xs text-gray-400 block">Hãng / Dòng xe</span><strong>{[vehicle.brand, vehicle.model].filter(Boolean).join(" ") || "Chưa cập nhật"}</strong></div>
             <div><span className="text-xs text-gray-400 block">Tải trọng</span><strong>{vehicle.load_capacity_kg ? `${vehicle.load_capacity_kg} kg` : "Chưa cập nhật"}</strong></div>
             <div><span className="text-xs text-gray-400 block">Năm sản xuất</span><strong>{vehicle.manufacture_year || "Chưa cập nhật"}</strong></div>
-            <div><span className="text-xs text-gray-400 block">Tài xế được gán</span><strong>{vehicle.assigned_driver_name ? `${vehicle.assigned_driver_name} (${vehicle.assigned_driver_email})` : "Chưa gán"}</strong></div>
+            <div>
+              <span className="text-xs text-gray-400 block">Tài xế được gán</span>
+              <strong>{vehicle.assigned_driver_name ? `${vehicle.assigned_driver_name} (${vehicle.assigned_driver_email})` : "Chưa gán"}</strong>
+            </div>
+            {vehicle.assigned_driver_id && (
+              <div>
+                <span className="text-xs text-gray-400 block">Nhóm xe KPI cố định của tài</span>
+                <div className="flex items-center gap-1">
+                  <strong>{vehicle.vehicle_group_name}</strong>
+                  <Button
+                    isIconOnly size="sm" variant="light" className="w-5 h-5 min-w-5"
+                    onPress={() => setEditingDriverGroup(true)}
+                  >
+                    <RiPencilLine size={12} className="text-gray-400" />
+                  </Button>
+                </div>
+              </div>
+            )}
             <div><span className="text-xs text-gray-400 block">Bảo dưỡng đang mở</span><strong>{vehicle.active_maintenance_id ? `#${vehicle.active_maintenance_id} · ${vehicle.active_maintenance_type}` : "Không có"}</strong></div>
             <div><span className="text-xs text-gray-400 block">Sự cố hỏng đang mở</span><strong>{vehicle.active_failure_id ? `#${vehicle.active_failure_id} · ${vehicle.active_failure_type}` : "Không có"}</strong></div>
             <div><span className="text-xs text-gray-400 block">Cập nhật lần cuối</span><strong>{formatDateTime(vehicle.updated_at)}</strong></div>
@@ -98,6 +121,18 @@ export default function VehicleDetailModal({ open, vehicle, assignmentHistory, o
           <Button variant="flat" onPress={onClose}>Đóng</Button>
         </ModalFooter>
       </ModalContent>
+
+      <DriverVehicleGroupModal
+        open={editingDriverGroup}
+        driver={vehicle.assigned_driver_id ? {
+          driver_id: vehicle.assigned_driver_id,
+          driver_name: vehicle.assigned_driver_name,
+          vehicle_group_id: vehicle.vehicle_group_id,
+        } : null}
+        vehicleGroups={vehicleGroups}
+        onSave={(driverId, vehicleGroupId) => managerService.updateDriverVehicleGroup(driverId, vehicleGroupId)}
+        onClose={() => setEditingDriverGroup(false)}
+      />
     </Modal>
   );
 }

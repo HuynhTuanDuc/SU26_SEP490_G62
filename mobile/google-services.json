@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "488681364159",
+    "project_id": "logiscout-66356",
+    "storage_bucket": "logiscout-66356.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:488681364159:android:5601702a48463051d0040a",
+        "android_client_info": {
+          "package_name": "com.g62.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWdH5Yz3FHSX1ZB8qpoIlImrzpsJVD5KU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

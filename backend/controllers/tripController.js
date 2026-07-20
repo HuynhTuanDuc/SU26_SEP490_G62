@@ -385,6 +385,7 @@ const recordReceiptCollection = async (req, res) => {
         const code = err.message.includes('không có quyền') ? 403
             : err.message.includes('Ảnh') ? 422
             : err.message.includes('đã được ghi nhận') ? 409
+            : err.message.includes('không hợp lệ') ? 400
             : 500;
         res.status(code).json({ error: err.message });
     }

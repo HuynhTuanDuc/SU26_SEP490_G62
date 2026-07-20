@@ -284,13 +284,14 @@ const getAllPayrolls = async ({ month, year, status = null, search = null, sort 
             p.created_at, p.updated_at,
             pr.full_name  AS driver_name,
             pr.phone      AS driver_phone,
+            d.default_vehicle_group_id AS vehicle_group_id,
             COALESCE(vg.name, '')       AS vehicle_group,
             COALESCE(v.plate_number, '') AS plate_number
         FROM payrolls p
         JOIN  profiles pr ON pr.id = p.driver_id
         LEFT JOIN drivers d ON d.profile_id = p.driver_id
         LEFT JOIN vehicles v ON v.id = d.vehicle_id
-        LEFT JOIN vehicle_groups vg ON vg.id = v.vehicle_group_id
+        LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
         WHERE ${conditions.join(' AND ')}
         ORDER BY ${PAYROLL_SORTS[sort] ?? 'pr.full_name'}
     `, params);
