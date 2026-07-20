@@ -1,4 +1,5 @@
 ﻿const pool = require('../config/database');
+const financialLedgerRepository = require('./financialLedgerRepository');
 
 const buildDebtStatus = (paidAmount, totalAmount) => {
     if (!totalAmount || totalAmount === 0) return 'paid';
@@ -381,5 +382,75 @@ const getDebtsByCustomerIds = async (customerIds) => {
     }));
 };
 
-module.exports = { getAllDebts, getDebtStats, getDebtsGroupedByPerson, getDebtsByPerson, getDebtsByCustomerIds };
+// Chuyển công nợ khách hàng sang công nợ tài xế — tái phân loại khoản phải thu, KHÔNG
+// phải một khoản thanh toán thật (không có tiền mặt/chuyển khoản nào di chuyển). Đóng
+// khoản nợ khách bằng 1 debt_payments 'offset' (giống cơ chế cấn trừ tài đã ứng), mở
+// khoản nợ tài xế mới cùng số tiền, và ghi 1 bút toán duy nhất Nợ 1388 / Có 131.
+const transferToDriver = async (debtId, { toDriverId, notes }, actorId) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const { rows: [debt] } = await client.query(
+            `SELECT
+                d.id, d.debt_type, d.customer_id, d.order_id, d.shipment_id, d.total_amount,
+                COALESCE(paid.paid, 0) AS paid_amount,
+                GREATEST(0, d.total_amount - COALESCE(paid.paid, 0)) AS remaining
+             FROM debts d
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(SUM(dp.amount) FILTER (WHERE dp.status = 'confirmed'), 0) AS paid
+                 FROM debt_payments dp WHERE dp.debt_id = d.id
+             ) paid ON TRUE
+             WHERE d.id = $1
+             FOR UPDATE OF d`,
+            [debtId],
+        );
+        if (!debt) throw Object.assign(new Error('Không tìm thấy công nợ.'), { status: 404 });
+        if (debt.debt_type !== 'customer') {
+            throw Object.assign(new Error('Chỉ chuyển được công nợ khách hàng sang công nợ tài xế.'), { status: 400 });
+        }
+        const remaining = Number(debt.remaining);
+        if (remaining <= 0.01) {
+            throw Object.assign(new Error('Công nợ này đã tất toán, không còn số dư để chuyển.'), { status: 409 });
+        }
+
+        const { rows: [driver] } = await client.query(
+            `SELECT profile_id FROM drivers WHERE profile_id = $1`, [toDriverId],
+        );
+        if (!driver) throw Object.assign(new Error('Tài xế không tồn tại.'), { status: 400 });
+
+        // Đóng nợ khách bằng bút toán cấn trừ nội bộ (không phải khách trả tiền thật)
+        await client.query(
+            `INSERT INTO debt_payments (debt_id, amount, payment_method, status, paid_at, confirmed_at, confirmed_by, created_by, notes)
+             VALUES ($1, $2, 'offset', 'confirmed', NOW(), NOW(), $3, $3, $4)`,
+            [debt.id, remaining, actorId, notes || `Chuyển sang công nợ tài xế #${toDriverId}`],
+        );
+
+        const { rows: [newDebt] } = await client.query(
+            `INSERT INTO debts (debt_type, driver_id, order_id, shipment_id, total_amount, notes, updated_by, created_at, updated_at)
+             VALUES ('driver', $1, $2, $3, $4, $5, $6, NOW(), NOW())
+             RETURNING id`,
+            [toDriverId, debt.order_id, debt.shipment_id, remaining, notes || `Chuyển từ công nợ khách hàng #${debt.id}`, actorId],
+        );
+
+        await financialLedgerRepository.insertTransaction(client, {
+            eventType: 'debt_transferred',
+            debitAccount: '1388',
+            creditAccount: '131',
+            amount: remaining,
+            description: `Chuyển công nợ #${debt.id} (khách hàng) sang công nợ #${newDebt.id} (tài xế #${toDriverId})`,
+            refType: 'debt', refId: newDebt.id, actorId,
+        });
+
+        await client.query('COMMIT');
+        return { closedDebtId: debt.id, newDebtId: newDebt.id, amount: remaining };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+module.exports = { getAllDebts, getDebtStats, getDebtsGroupedByPerson, getDebtsByPerson, getDebtsByCustomerIds, transferToDriver };
 

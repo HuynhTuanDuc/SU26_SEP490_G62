@@ -4,6 +4,7 @@ import { refreshAuthSession } from "../services/apiClient";
 
 const ENABLED_ROLES = new Set(["manager", "coordinator"]);
 const RECONNECT_DELAY_MS = 3000;
+const MAX_RECONNECT_DELAY_MS = 60000;
 
 export function useRoleRealtime(user, handlers = {}) {
   const handlersRef = useRef(handlers);
@@ -20,11 +21,20 @@ export function useRoleRealtime(user, handlers = {}) {
     let socket = null;
     let reconnectTimer = null;
     let disposed = false;
+    let reconnectDelay = RECONNECT_DELAY_MS;
+    let hadOpened = false;
 
     const connect = () => {
       if (disposed) return;
+      hadOpened = false;
 
       socket = connectRealtime({
+        onOpen: () => {
+          // A successful open proves the access token was valid at handshake time —
+          // no need to refresh. Reset backoff for the next transient drop.
+          hadOpened = true;
+          reconnectDelay = RECONNECT_DELAY_MS;
+        },
         onMessage: (payload) => {
           handlersRef.current.onMessage?.(payload);
         },
@@ -32,12 +42,20 @@ export function useRoleRealtime(user, handlers = {}) {
           handlersRef.current.onClose?.();
           if (disposed) return;
           reconnectTimer = window.setTimeout(() => {
-            // Access-token cookie may have expired while the socket was open/idle;
-            // refresh it first so the reconnect handshake doesn't 401 in a loop.
+            // Only refresh if THIS attempt never opened (handshake auth failure). If it
+            // had opened before closing, the close is benign (network blip, server
+            // restart...) — refreshing blindly on every reconnect just spams /auth/refresh
+            // even while the session is still perfectly valid.
+            if (hadOpened) {
+              connect();
+              return;
+            }
             refreshAuthSession()
-              .catch(() => {})
+              .catch(() => {
+                reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+              })
               .finally(connect);
-          }, RECONNECT_DELAY_MS);
+          }, reconnectDelay);
         },
         onError: (event) => {
           handlersRef.current.onError?.(event);

@@ -27,6 +27,7 @@ router.get('/debts', accountantDebtController.getDebts);
 router.get('/debts/stats', accountantDebtController.getDebtStats);
 router.get('/debts/grouped', accountantDebtController.getDebtsGrouped);
 router.get('/debts/person/:personType/:personId', accountantDebtController.getDebtsByPerson);
+router.post('/debts/:id/transfer-to-driver', accountantDebtController.transferToDriver);
 
 router.get ('/debts/payment/history', accountantPaymentController.getAllPaymentHistory);
 router.get ('/debts/payment/history/:personType/:personId', accountantPaymentController.getPaymentHistory);

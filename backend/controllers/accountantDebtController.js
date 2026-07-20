@@ -79,4 +79,19 @@ const getDebtsByPerson = async (req, res) => {
     }
 };
 
-module.exports = { getDebts, getDebtStats, getDebtsGrouped, getDebtsByPerson };
+// POST /accountant/debts/:id/transfer-to-driver — Body: { driverId, notes? }
+// Chuyển toàn bộ số dư còn lại của 1 công nợ khách hàng sang công nợ tài xế mới.
+const transferToDriver = async (req, res) => {
+    try {
+        const debtId = posInt(req.params.id, 'Mã công nợ');
+        const driverId = posInt(req.body.driverId, 'Tài xế');
+        const result = await accountantDebtRepository.transferToDriver(
+            debtId, { toDriverId: driverId, notes: req.body.notes?.trim() || null }, req.user.userId,
+        );
+        res.json({ message: 'Đã chuyển công nợ sang tài xế.', ...result });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
+module.exports = { getDebts, getDebtStats, getDebtsGrouped, getDebtsByPerson, transferToDriver };

@@ -46,7 +46,13 @@ function ExportModal({ onClose, onExported }) {
     setError(null);
     try {
       const csv = await accountantService.exportLedgerPeriod(from, to);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      // apiRequest() đọc response bằng response.text() — theo spec Fetch, bước decode UTF-8
+      // này TỰ ĐỘNG XÓA BOM ở đầu chuỗi (dù backend đã cố tình chèn BOM cho Excel/MISA nhận
+      // đúng UTF-8). Thiếu BOM khiến Excel mở file bằng bảng mã ANSI mặc định của Windows,
+      // làm tiếng Việt bị lỗi phông (mojibake) — phải chèn lại BOM thủ công ở đây trước khi
+      // tạo Blob để tải xuống.
+      const csvWithBom = csv.charCodeAt(0) === 0xfeff ? csv : `﻿${csv}`;
+      const blob = new Blob([csvWithBom], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

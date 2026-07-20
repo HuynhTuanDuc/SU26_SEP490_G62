@@ -33,6 +33,17 @@ const clearSessionCookies = (res) => {
     });
 };
 
+// Chỉ xóa cookie refresh_token — access token (auth_token) có thể vẫn còn hạn dùng tốt,
+// việc refresh_token hỏng/hết hạn không có nghĩa access token hiện tại đã vô hiệu. Xóa oan
+// auth_token ở đây từng khiến các luồng "refresh trước khi WebSocket reconnect" tự phá một
+// phiên đăng nhập còn hợp lệ, dẫn tới vòng lặp gọi lại /auth/refresh vô hạn.
+const clearRefreshCookieOnly = (res) => {
+    res.clearCookie(authService.REFRESH_COOKIE_NAME, {
+        ...getCookieOptions(REFRESH_COOKIE_MAX_AGE_MS),
+        maxAge: undefined,
+    });
+};
+
 const readCookieValue = (cookieHeader, cookieName) => {
     if (!cookieHeader) return null;
 
@@ -154,7 +165,7 @@ const refresh = async (req, res) => {
             user: result.user,
         });
     } catch (err) {
-        clearSessionCookies(res);
+        clearRefreshCookieOnly(res);
         const status = Number.isInteger(err.status) ? err.status : 401;
         res.status(status).json({ error: err.message || 'Unable to refresh session' });
     }
