@@ -281,6 +281,9 @@ const settleDriverReimbursement = async (client, { voucher, creditAccount, paidB
 //  - Phiếu chi thường: Nợ 642 (chi phí QLDN), event 'expense_recorded'.
 //  - Phiếu hoàn tiền ứng trước (prepaid_refund): Nợ 131 (phải thu KH — đảo bút toán
 //    prepaid_received), event 'prepaid_refunded', gắn ref về đơn.
+//  - Phiếu trả tiền thu hộ (collect_on_behalf_return): Nợ 3388 (đóng khoản phải trả người
+//    bán mà bút toán collect_on_behalf_held đã mở), event 'collect_on_behalf_returned',
+//    gắn ref về đơn để getCollectOnBehalfOutstanding trừ đúng đơn đó.
 // Cho phép đính chứng từ (proofUrl) + chọn lại hình thức chi (paymentMethod) khi chi.
 const markPaid = async (id, paidBy, { proofUrl = null, paymentMethod = null } = {}) => {
     const client = await pool.connect();
@@ -301,6 +304,20 @@ const markPaid = async (id, paidBy, { proofUrl = null, paymentMethod = null } = 
 
         if (row.voucher_type === 'driver_reimbursement') {
             await settleDriverReimbursement(client, { voucher: row, creditAccount, paidBy });
+        } else if (row.voucher_type === 'collect_on_behalf_return') {
+            // KHÔNG phải chi phí của công ty: đây là trả lại tiền vốn không thuộc về mình.
+            // Nợ 3388 đóng đúng khoản mà collect_on_behalf_held đã mở, nên không được rơi
+            // vào nhánh 642 bên dưới — vào đó là báo cáo chi phí đội lên bằng cả số COD.
+            await financialLedgerRepository.insertTransaction(client, {
+                eventType: financialLedgerRepository.COLLECT_ON_BEHALF_RETURN_EVENT,
+                debitAccount: '3388',
+                creditAccount,
+                amount: Number(row.amount),
+                description: `Trả tiền thu hộ cho người bán — đơn #${row.order_id}, `
+                    + `phiếu #${row.id}, trả cho: ${row.payee}`,
+                refType: 'order', refId: row.order_id,
+                actorId: paidBy,
+            });
         } else {
             const isRefund = row.voucher_type === 'prepaid_refund';
             await financialLedgerRepository.insertTransaction(client, {

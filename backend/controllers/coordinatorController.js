@@ -2,6 +2,7 @@ const coordinatorService = require('../services/coordinatorService');
 const expenseRepository  = require('../repositories/expenseRepository');
 const receiptValidationService = require('../services/receiptValidationService');
 const { validDate, sendError } = require('../utils/accountantValidate');
+const { money } = require('../utils/formatNumber');
 
 const listVehicleGroups = async (_req, res) => {
   try {
@@ -83,10 +84,14 @@ const approveReceiptRequest = async (req, res) => {
         // Khách ứng dư thì việc duyệt này vừa sinh ra một khoản PHẢI CHI — nói thẳng ra,
         // đừng để coordinator chỉ thấy "đã tạo phiếu thu" rồi tưởng đơn đã khép lại.
         const message = receipt.refund
-            ? `Đã tạo phiếu thu. Khách ứng dư ${Number(receipt.refund.amount).toLocaleString('vi-VN')}đ — đã tạo phiếu hoàn #${receipt.refund.voucherId} để kế toán chi trả lại toàn bộ.`
+            ? `Đã tạo phiếu thu. Khách ứng dư ${money(Number(receipt.refund.amount))} — đã tạo phiếu hoàn #${receipt.refund.voucherId} để kế toán chi trả lại toàn bộ.`
             : 'Đã tạo phiếu thu thành công';
         res.status(201).json({ message, receipt });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('đã được duyệt') || err.message.includes('đã bị từ chối') ? 409
             : err.message.includes('không hợp lệ') || err.message.includes('lớn hơn 0')

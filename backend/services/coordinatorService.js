@@ -14,6 +14,8 @@ const {
 } = require('../constants/expenseConstants');
 const financialLedgerRepository = require('../repositories/financialLedgerRepository');
 const { normalizeVietnamPhone } = require('../utils/phone');
+const { money } = require('../utils/formatNumber');
+const { optionalMoney } = require('../utils/money');
 
 const COLUMN_ALIASES = {
   date: [
@@ -854,8 +856,13 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
 
         // Đơn giá/km × actual_km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho
         // đúng chuyến đang duyệt (không đụng các chuyến khác trong đơn multi-driver).
-        const normalizedOverride = Number(priceOverride);
-        if (Number.isFinite(normalizedOverride) && normalizedOverride > 0) {
+        //
+        // optionalMoney thay cho `Number()`: bỏ trống vẫn là "dùng giá tự tính", nhưng đã
+        // gõ vào mà gõ sai thì BÁO LỖI thay vì im lặng bỏ qua. Phép cũ nuốt luôn giá trị
+        // hỏng — điều phối gõ giá chốt, không thấy báo gì, và biên nhận phát ra theo một
+        // con số khác hẳn con số họ vừa nhập.
+        const normalizedOverride = optionalMoney(priceOverride, { field: 'Giá cước chốt', allowZero: true }) ?? 0;
+        if (normalizedOverride > 0) {
             const targetBreakdown = computed.shipment_breakdown.find(
                 (item) => Number(item.shipment_id) === Number(targetShipment.id),
             );
@@ -961,7 +968,7 @@ const approveReceiptRequest = async (requestId, coordinatorId, { notes, expenses
             notificationService.getUserIdsByRole('accountant').then((ids) =>
                 notificationService.createForUsers(ids, {
                     title: 'Cần hoàn tiền ứng trước cho khách',
-                    message: `Đơn #${req.order_id} chốt phiếu thu xong còn dư ${refund.amount.toLocaleString('vi-VN')}đ tiền khách ứng trước. Phiếu hoàn #${refund.voucherId} đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
+                    message: `Đơn #${req.order_id} chốt phiếu thu xong còn dư ${money(refund.amount)} tiền khách ứng trước. Phiếu hoàn #${refund.voucherId} đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
                     type: 'PREPAID_REFUND_REQUIRED',
                     entityType: 'payment_voucher',
                     entityId: refund.voucherId,

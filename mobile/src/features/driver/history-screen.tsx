@@ -12,6 +12,7 @@ import { TripStatusBadge } from '@/components/trip-status-badge';
 import { appTheme } from '@/theme/app-theme';
 import { useTripHistory } from '@/hooks/use-trip-history';
 import type { OrderHistoryItem } from '@/types/trip';
+import { money } from '@/lib/format-number';
 
 const fmtDate = (iso: string | null) => {
     if (!iso) return null;
@@ -19,8 +20,6 @@ const fmtDate = (iso: string | null) => {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
 
-const fmtCurrency = (v: string | null) =>
-    v ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v)) : null;
 
 type Filter = 'all' | 'active' | 'completed' | 'cancelled';
 
@@ -118,7 +117,7 @@ function OrderCard({ item }: { item: OrderHistoryItem }) {
                         {(item.total_actual_price || item.total_estimated_price) ? (
                             <YStack alignItems="flex-end">
                                 <Text fontSize={12} fontWeight="800" color={appTheme.colors.text}>
-                                    {fmtCurrency(item.total_actual_price || item.total_estimated_price)}
+                                    {money(item.total_actual_price || item.total_estimated_price)}
                                 </Text>
                                 {item.has_return_shipment ? (
                                     <Text fontSize={9} fontWeight="700" color={appTheme.colors.warningText}>

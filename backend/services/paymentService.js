@@ -3,13 +3,14 @@ const tripRepository    = require('../repositories/tripRepository');
 
 const PAYMENT_ALLOWED_STATUSES = ['arrived', 'transit', 'completed'];
 
-const fmtVND = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 
 // TH2: Khách thanh toán tiền mặt cho Driver → ghi nhận shipment_receipts + tạo driver debt ngay (§15, BR-018)
 const recordDriverCashPayment = async (driverId, shipmentId, { amount, notes }, receiptUrl) => {
     if (!receiptUrl) throw new Error('Ảnh biên lai thanh toán là bắt buộc (BR-018)');
 
-    const amt = Number(amount);
+    const amt = requireMoney(amount, { field: 'Số tiền' });
     if (!amt || amt <= 0) throw new Error('Số tiền phải lớn hơn 0');
 
     const shipment = await tripRepository.getTripById(shipmentId);

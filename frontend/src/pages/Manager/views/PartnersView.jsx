@@ -8,6 +8,7 @@ import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import PartnerFormModal from "../modals/PartnerFormModal";
 import PartnerDebtModal from "../modals/PartnerDebtModal";
 import { managerService } from "../services/manager.service";
+import { money } from "../../../utils/formatNumber";
 
 const EMPTY_FORM = {
   company_name: "", short_name: "", contact_person: "", phone: "", email: "",
@@ -15,7 +16,7 @@ const EMPTY_FORM = {
   bank_name: "", bank_account_number: "", bank_account_name: "", notes: "",
 };
 
-const fmt = (v) => Number(v || 0).toLocaleString("vi-VN") + " đ";
+const fmt = (v) => Number(v || money(0));
 
 export default function PartnersView({ user }) {
   const [partners, setPartners] = useState([]);

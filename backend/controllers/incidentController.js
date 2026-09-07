@@ -1,4 +1,5 @@
 const incidentService = require('../services/incidentService');
+const { money } = require('../utils/formatNumber');
 
 // ─── POST /api/incidents ──────────────────────────────────────────────────────
 
@@ -133,6 +134,10 @@ const updateIncidentStatus = async (req, res) => {
         });
         res.json({ incident });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         const code = err.message.includes('không tồn tại') ? 404
             : err.message.includes('không hợp lệ') || err.message.includes('Cần ghi rõ') ? 400
             : 500;
@@ -155,7 +160,7 @@ const cancelDamagedShipment = async (req, res) => {
         // Nói rõ ra khi việc hủy này sinh phiếu hoàn tiền ứng trước — coordinator cần biết
         // đơn vừa phát sinh một khoản phải chi, không chỉ là "đã hủy xong".
         const message = result.refund
-            ? `Đã hủy chuyến do hàng hóa hư hại. Đơn còn ${Number(result.refund.amount).toLocaleString('vi-VN')}đ tiền khách ứng trước — đã tạo phiếu hoàn #${result.refund.voucherId} cho kế toán chi.`
+            ? `Đã hủy chuyến do hàng hóa hư hại. Đơn còn ${money(Number(result.refund.amount))} tiền khách ứng trước — đã tạo phiếu hoàn #${result.refund.voucherId} cho kế toán chi.`
             : 'Đã hủy chuyến do hàng hóa hư hại';
         res.json({ message, ...result });
     } catch (err) {

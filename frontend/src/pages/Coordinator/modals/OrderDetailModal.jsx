@@ -10,6 +10,7 @@ import {
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { formatCurrency } from "../utils";
+import { money } from "../../../utils/formatNumber";
 
 const infoIcon = (Icon) => <Icon size={15} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -63,7 +64,7 @@ function ShipmentCard({ shipment }) {
         <InfoTile
           icon={infoIcon(RiMoneyDollarCircleLine)}
           label="Cước"
-          value={formatCurrency(shipment.fare)}
+          value={money(shipment.fare)}
           extra={shipment.returning_at ? (
             <div className="mt-1 text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</div>
           ) : null}
@@ -317,7 +318,7 @@ export default function OrderDetailModal({ open, order, onClose, drivers, vehicl
             <InfoTile
               icon={infoIcon(RiMoneyDollarCircleLine)}
               label="Tổng cước"
-              value={formatCurrency(order.fare)}
+              value={money(order.fare)}
               extra={(order.trips || []).some((t) => t.returning_at) ? (
                 <div className="mt-1 text-[10px] font-semibold text-orange-600 dark:text-orange-300">Có chuyến hoàn hàng · ×2 cước</div>
               ) : null}
@@ -330,7 +331,7 @@ export default function OrderDetailModal({ open, order, onClose, drivers, vehicl
             <InfoTile
               icon={infoIcon(RiMoneyDollarCircleLine)}
               label="Ứng trước"
-              value={formatCurrency(order.prepaidAmount)}
+              value={money(order.prepaidAmount)}
               extra={PREPAID_STATUS_LABEL[order.prepaidStatus] && (
                 <Chip size="sm" variant="flat" color={PREPAID_STATUS_LABEL[order.prepaidStatus].color} className="mt-1.5 text-[10px] h-5">
                   {PREPAID_STATUS_LABEL[order.prepaidStatus].label}

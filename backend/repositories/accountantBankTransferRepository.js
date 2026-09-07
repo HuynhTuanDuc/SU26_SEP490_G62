@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { money } = require('../utils/formatNumber');
 
 // GET /api/accountant/receipts/bank-transfer — danh sách phiếu thu bank_transfer chưa xác nhận
 const getPendingBankTransfers = async ({ limit, offset, like }) => {
@@ -151,7 +152,7 @@ const confirmBankTransfer = async (receiptId, accountantId, { notes, actualRecei
                     $5, $6, NOW(), NOW())`,
                 [
                     rec.customer_id, rec.order_id, rec.shipment_id, shortfall,
-                    `Khách chuyển khoản thiếu ${shortfall.toLocaleString('vi-VN')}₫ so với phiếu thu #${rec.sr_id}`,
+                    `Khách chuyển khoản thiếu ${money(shortfall)} so với phiếu thu #${rec.sr_id}`,
                     accountantId,
                 ],
             );

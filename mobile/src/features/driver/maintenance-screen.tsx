@@ -19,6 +19,7 @@ import { useMaintenance } from '@/hooks/use-maintenance';
 import { maintenanceService } from '@/services/maintenance-service';
 import type { MaintenanceRecord, MaintenanceStatus, MaintenanceType } from '@/types/maintenance';
 import { MAINTENANCE_TYPE_LABEL, MAINTENANCE_STATUS_LABEL } from '@/types/maintenance';
+import { moneyShort } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,12 +28,6 @@ const fmtDate = (iso: string) => {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-const fmtMoney = (val: string | number | null) => {
-    if (val === null || val === undefined || val === '') return '—';
-    const n = Number(val);
-    if (!Number.isFinite(n)) return '—';
-    return n.toLocaleString('vi-VN') + '₫';
-};
 
 const STATUS_STYLE: Record<MaintenanceStatus, { bg: string; text: string; border: string }> = {
     requested:            { bg: appTheme.colors.surfaceSoft,   text: appTheme.colors.textMuted,    border: appTheme.colors.border         },
@@ -230,7 +225,7 @@ function MaintenanceCard({
                                 />
                             ) : (
                                 <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    {fmtMoney(record.cost)}
+                                    {moneyShort(record.cost)}
                                 </Text>
                             )}
                         </YStack>

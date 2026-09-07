@@ -1,3 +1,4 @@
+import { money } from "./formatNumber";
 // Xuất phiếu lương PDF cho từng tài xế.
 //
 // Cách tiếp cận: dựng một trang HTML tối ưu cho in ấn rồi nạp vào iframe ẩn và gọi
@@ -8,7 +9,9 @@
 // Dữ liệu lấy trực tiếp từ row bảng lương (đã có sẵn mọi trường) — không gọi thêm API,
 // và các con số Lương gộp / Thực nhận dùng đúng giá trị DB đã chốt, không tự cộng lại.
 
-const VND = (n) => `${Number(n || 0).toLocaleString("vi-VN")} đ`;
+// Trên phiếu lương, dòng nào không có số liệu nghĩa là bằng 0 (không phụ cấp,
+// không thưởng) — nên ở ĐÂY "0đ" mới đúng, khác với các màn hình tra cứu.
+const VND = (n) => money(Number(n || 0));
 
 const esc = (v) =>
   String(v ?? "")
@@ -24,7 +27,8 @@ const STATUS_LABEL = {
   paid: "Đã trả lương",
 };
 
-const num = (v) => Number(v || 0);
+// Ép kiểu số, KHÔNG phải định dạng — đổi tên để không đụng toNum() của formatNumber.
+const toNum = (v) => Number(v || 0);
 
 export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
   const m = row.payroll_month ?? month;
@@ -42,37 +46,37 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
   // Đi làm ngày lễ = 200% lương (Điều V.1): lương cứng đã trả 100% cho ngày lễ,
   // holiday_bonus là 100% cộng thêm. Suy ngược số ngày từ số tiền vì backend tính
   // đúng holidayBonus = round(lương cứng / 28) × số ngày.
-  const holidayBonus = num(row.holiday_bonus);
-  const dailyWage    = Math.round(num(row.base_salary) / 28);
+  const holidayBonus = toNum(row.holiday_bonus);
+  const dailyWage    = Math.round(toNum(row.base_salary) / 28);
   const holidayDays  = dailyWage > 0 ? Math.round(holidayBonus / dailyWage) : 0;
 
   // Thu nhập — bám sát đúng các dòng hiển thị trên màn hình bảng lương
   const incomeRows = [
-    ["Lương cứng", num(row.base_salary)],
-    ["Thưởng doanh thu", num(row.revenue_bonus)],
+    ["Lương cứng", toNum(row.base_salary)],
+    ["Thưởng doanh thu", toNum(row.revenue_bonus)],
     ["Phụ cấp điện thoại", 200000],
-    ["Thưởng KPI", num(row.kpi_bonus)],
-    ["Thưởng xuất sắc", num(row.top_driver_bonus)],
+    ["Thưởng KPI", toNum(row.kpi_bonus)],
+    ["Thưởng xuất sắc", toNum(row.top_driver_bonus)],
     ...(holidayBonus > 0 ? [[`Đi làm ngày lễ ×2 (${holidayDays} ngày)`, holidayBonus]] : []),
-    ["Thưởng & Phúc lợi", num(row.overtime_bonus)],
+    ["Thưởng & Phúc lợi", toNum(row.overtime_bonus)],
   ];
-  if (num(row.other_bonus) > 0) incomeRows.push(["Thưởng khác", num(row.other_bonus)]);
-  if (num(row.manual_bonus) > 0) incomeRows.push(["Điều chỉnh (+)", num(row.manual_bonus)]);
+  if (toNum(row.other_bonus) > 0) incomeRows.push(["Thưởng khác", toNum(row.other_bonus)]);
+  if (toNum(row.manual_bonus) > 0) incomeRows.push(["Điều chỉnh (+)", toNum(row.manual_bonus)]);
 
   // Điều chỉnh & khấu trừ (dấu để hiển thị, không tự tính lại tổng)
   const adjustRows = [
-    ["Hoàn chi phí đã ứng", num(row.expense_reimbursement), "plus"],
-    ["BHXH (10.5%)", num(row.insurance_employee), "minus"],
+    ["Hoàn chi phí đã ứng", toNum(row.expense_reimbursement), "plus"],
+    ["BHXH (10.5%)", toNum(row.insurance_employee), "minus"],
     // absence_penalty âm = đi làm dư ngày công (>28, tháng 29-31 ngày đi đủ) → được trả
     // thêm, không phải bị trừ.
-    num(row.absence_penalty) >= 0
-      ? ["Nghỉ không lương", num(row.absence_penalty), "minus"]
-      : ["Đi làm dư ngày công (>28)", -num(row.absence_penalty), "plus"],
-    ["Trừ ứng lương", num(row.advance_deduction), "minus"],
-    ["Trừ công nợ", num(row.driver_debt_deduction), "minus"],
+    toNum(row.absence_penalty) >= 0
+      ? ["Nghỉ không lương", toNum(row.absence_penalty), "minus"]
+      : ["Đi làm dư ngày công (>28)", -toNum(row.absence_penalty), "plus"],
+    ["Trừ ứng lương", toNum(row.advance_deduction), "minus"],
+    ["Trừ công nợ", toNum(row.driver_debt_deduction), "minus"],
   ];
-  if (num(row.other_deduction) > 0) adjustRows.push(["Khấu trừ khác", num(row.other_deduction), "minus"]);
-  if (num(row.manual_deduction) > 0) adjustRows.push(["Điều chỉnh (−)", num(row.manual_deduction), "minus"]);
+  if (toNum(row.other_deduction) > 0) adjustRows.push(["Khấu trừ khác", toNum(row.other_deduction), "minus"]);
+  if (toNum(row.manual_deduction) > 0) adjustRows.push(["Điều chỉnh (−)", toNum(row.manual_deduction), "minus"]);
 
   const infoPairs = [
     ["Tài xế", esc(row.driver_name || "—")],
@@ -80,7 +84,7 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
     ["Nhóm xe", esc(row.vehicle_group || "—")],
     ["Biển số xe", esc(row.plate_number || "—")],
     ["Kỳ lương", `Tháng ${m}/${y}`],
-    ["Thâm niên", `${num(row.months_of_service)} tháng`],
+    ["Thâm niên", `${toNum(row.months_of_service)} tháng`],
     ["Doanh thu tháng", VND(row.total_revenue)],
     ["Trạng thái", STATUS_LABEL[row.status] || esc(row.status || "—")],
   ];

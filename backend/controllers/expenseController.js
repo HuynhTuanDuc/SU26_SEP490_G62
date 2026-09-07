@@ -45,6 +45,11 @@ const getShipmentExpenses = async (req, res) => {
         const expenses = await expenseService.getShipmentExpenses(shipmentId, req.user.userId);
         res.json({ expenses });
     } catch (err) {
+        // Lỗi đã mang sẵn statusCode từ tầng dưới (vd requireMoney kiểm số tiền) thì
+        // dùng thẳng. Suy mã HTTP từ nội dung câu tiếng Việt chỉ đúng với những câu
+        // đã biết trước — thêm một câu mới là nó lặng lẽ rơi vào nhánh 500, và người
+        // gõ thừa một số 0 sẽ tưởng hệ thống hỏng thay vì sửa lại con số.
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
         const status = err.message.includes('không tồn tại') ? 404
             : err.message.includes('quyền') ? 403
             : 500;
@@ -61,12 +66,21 @@ const updateExpense = async (req, res) => {
         const fileUrl = req.file?.path ?? null;
         await expenseService.updateExpense(req.user.userId, expenseId, {
             expenseType: expense_type ?? null,
-            amount: amount ? Number(amount) : undefined,
+            // KHÔNG Number() ở đây: service đã có requireMoney, mà `Number("500.000")`
+            // ra 500 thì requireMoney nhận 500 và thấy hoàn toàn hợp lệ. Chuyển đổi
+            // sớm ở controller làm vô hiệu chính lớp kiểm đặt ở dưới — đưa nguyên
+            // chuỗi người dùng gõ xuống, chỉ dịch "không gửi trường này" thành undefined.
+            amount: (amount === undefined || amount === null || amount === '') ? undefined : amount,
             description: description ?? null,
             fileUrl,
         });
         res.json({ message: 'Đã cập nhật chi phí' });
     } catch (err) {
+        // Lỗi đã mang sẵn statusCode từ tầng dưới (vd requireMoney kiểm số tiền) thì
+        // dùng thẳng. Suy mã HTTP từ nội dung câu tiếng Việt chỉ đúng với những câu
+        // đã biết trước — thêm một câu mới là nó lặng lẽ rơi vào nhánh 500, và người
+        // gõ thừa một số 0 sẽ tưởng hệ thống hỏng thay vì sửa lại con số.
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
         // 409: trạng thái chi phí/phiếu thu không cho sửa (không phải thiếu quyền)
         const status = err.message.includes('Không sửa/xoá được') ? 409
             : err.message.includes('quyền') ? 403
@@ -84,6 +98,11 @@ const deleteExpense = async (req, res) => {
         await expenseService.deleteExpense(req.user.userId, expenseId);
         res.json({ message: 'Đã xoá chi phí' });
     } catch (err) {
+        // Lỗi đã mang sẵn statusCode từ tầng dưới (vd requireMoney kiểm số tiền) thì
+        // dùng thẳng. Suy mã HTTP từ nội dung câu tiếng Việt chỉ đúng với những câu
+        // đã biết trước — thêm một câu mới là nó lặng lẽ rơi vào nhánh 500, và người
+        // gõ thừa một số 0 sẽ tưởng hệ thống hỏng thay vì sửa lại con số.
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
         const status = err.message.includes('Không sửa/xoá được') ? 409 : 500;
         res.status(status).json({ error: err.message });
     }

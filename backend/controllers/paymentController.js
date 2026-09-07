@@ -38,6 +38,11 @@ const getShipmentPayments = async (req, res) => {
         const payments = await paymentService.getShipmentPayments(shipmentId, req.user.userId);
         res.json({ payments });
     } catch (err) {
+        // Lỗi đã mang sẵn statusCode từ tầng dưới (vd requireMoney kiểm số tiền) thì
+        // dùng thẳng. Suy mã HTTP từ nội dung câu tiếng Việt chỉ đúng với những câu
+        // đã biết trước — thêm một câu mới là nó lặng lẽ rơi vào nhánh 500, và người
+        // gõ thừa một số 0 sẽ tưởng hệ thống hỏng thay vì sửa lại con số.
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
         const code = err.message.includes('không có quyền') ? 403 : 500;
         res.status(code).json({ error: err.message });
     }
@@ -52,6 +57,11 @@ const getPaymentSummary = async (req, res) => {
         if (!data) return res.status(404).json({ error: 'Chuyến không tồn tại' });
         res.json(data);
     } catch (err) {
+        // Lỗi đã mang sẵn statusCode từ tầng dưới (vd requireMoney kiểm số tiền) thì
+        // dùng thẳng. Suy mã HTTP từ nội dung câu tiếng Việt chỉ đúng với những câu
+        // đã biết trước — thêm một câu mới là nó lặng lẽ rơi vào nhánh 500, và người
+        // gõ thừa một số 0 sẽ tưởng hệ thống hỏng thay vì sửa lại con số.
+        if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
         const code = err.message.includes('quyền') ? 403 : 500;
         res.status(code).json({ error: err.message });
     }

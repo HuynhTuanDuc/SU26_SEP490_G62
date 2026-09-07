@@ -24,6 +24,7 @@ import { usePendingReceipt }  from '@/hooks/use-pending-receipt';
 import { useProfile }         from '@/hooks/use-profile';
 import { useTripStats }       from '@/hooks/use-trip-stats';
 import type { PendingReceiptOrder, TripStatus } from '@/types/trip';
+import { money } from '@/lib/format-number';
 
 // ─── Pending receipt banner ───────────────────────────────────────────────────
 
@@ -417,7 +418,7 @@ export function DriverHomeScreen() {
                                     Còn công nợ chưa nộp
                                 </Text>
                                 <Text fontSize={12} color={appTheme.colors.dangerText}>
-                                    {debt_remaining.toLocaleString('vi-VN')}₫ — Nhấn để xử lý
+                                    {money(debt_remaining)} — Nhấn để xử lý
                                 </Text>
                             </YStack>
                         </XStack>

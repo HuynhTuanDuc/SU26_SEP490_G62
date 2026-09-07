@@ -163,10 +163,10 @@ const disburseAdvance = async (req, res) => {
         );
 
         if (row.driver_id) {
-            const fmtVND = (n) => Number(n || 0).toLocaleString('vi-VN') + 'đ';
+            const { money } = require('../utils/formatNumber');
             notificationService.createForUser(row.driver_id, {
                 title: 'Ứng lương đã được giải ngân',
-                message: `Kế toán đã giải ngân ${fmtVND(row.amount)} ứng lương tháng ${row.request_month}/${row.request_year}.`,
+                message: `Kế toán đã giải ngân ${money(row.amount)} ứng lương tháng ${row.request_month}/${row.request_year}.`,
                 type: 'SALARY_ADVANCE_DISBURSED',
                 entityType: 'salary_advance',
                 entityId: row.id,

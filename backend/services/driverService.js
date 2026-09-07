@@ -6,6 +6,7 @@ const { notifyRolesSafe } = require('./roleNotificationService');
 // Gọi qua object (không destructure) để test thay được hàm kiểm tra — helper mock
 // của repo swap property trên module object.
 const receiptValidationService = require('./receiptValidationService');
+const { requireMoney } = require('../utils/money');
 
 const createError = (message, statusCode) => {
     const error = new Error(message);
@@ -13,13 +14,10 @@ const createError = (message, statusCode) => {
     return error;
 };
 
-const parsePositiveAmount = (value, fieldName) => {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        throw createError(`${fieldName} must be greater than 0`, 400);
-    }
-    return parsed;
-};
+// Chi phi bao duong tai xe khai. Trước đây dùng `Number()` trần nên "500.000" thành 500:
+// tài xế khai đúng số trên hoá đơn mà hệ thống ghi năm trăm đồng, rồi chốt đối chiếu
+// ảnh-với-số tiền lại chặn họ bằng một câu không liên quan tới lỗi thật.
+const parsePositiveAmount = (value, fieldName) => requireMoney(value, { field: fieldName });
 
 // Chốt kiểm tra hóa đơn ở bước hoàn tất bảo dưỡng.
 //
@@ -242,10 +240,8 @@ const updateMaintenanceCost = async (driverId, vehicleId, cost) => {
     if (!Number.isInteger(parsedVehicleId) || parsedVehicleId <= 0) {
         throw createError('vehicle_id must be a positive integer', 400);
     }
-    const parsedCost = Number(cost);
-    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
-        throw createError('cost must be a non-negative number', 400);
-    }
+    // allowZero: bảo dưỡng trong bảo hành thì chi phí bằng 0 là hợp lệ.
+    const parsedCost = requireMoney(cost, { field: 'Chi phí bảo dưỡng', allowZero: true });
 
     const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
     if (!record) {
@@ -262,7 +258,7 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
         throw createError('vehicle_id must be a positive integer', 400);
     }
 
-    const cost = parsePositiveAmount(payload?.cost, 'cost');
+    const cost = parsePositiveAmount(payload?.cost, 'Chi phí bảo dưỡng');
 
     const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
     if (!record) {

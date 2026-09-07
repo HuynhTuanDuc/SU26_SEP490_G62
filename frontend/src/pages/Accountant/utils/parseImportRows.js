@@ -1,3 +1,4 @@
+import { money } from "../../../utils/formatNumber";
 /**
  * Đọc file Excel đơn ngoài thành payload gửi lên API.
  *
@@ -305,10 +306,10 @@ export function parseWorkbook(wb, XLSX) {
     if (holding != null && effectiveFee > 0 && runs != null && holding > holdingCeiling) {
       const goc = settledFee != null ? "giá chốt" : "cước";
       rowErr.push(
-        `Tiền tài đang giữ (${holding.toLocaleString("vi-VN")}đ) lớn hơn số tiền tài có thể cầm `
-        + `(${holdingCeiling.toLocaleString("vi-VN")}đ = ${goc} ${effectiveFee.toLocaleString("vi-VN")}đ × ${runCount} lượt`
-        + `${passThrough > 0 ? ` + chi hộ ${passThrough.toLocaleString("vi-VN")}đ` : ""}`
-        + `${collectOnBehalf > 0 ? ` + thu hộ ${collectOnBehalf.toLocaleString("vi-VN")}đ` : ""})`,
+        `Tiền tài đang giữ (${money(holding)}) lớn hơn số tiền tài có thể cầm `
+        + `(${money(holdingCeiling)} = ${goc} ${money(effectiveFee)} × ${runCount} lượt`
+        + `${passThrough > 0 ? ` + chi hộ ${money(passThrough)}` : ""}`
+        + `${collectOnBehalf > 0 ? ` + thu hộ ${money(collectOnBehalf)}` : ""})`,
       );
     }
 

@@ -345,6 +345,9 @@ const insertDebtForShipment = async (client, {
     driverPaymentState, paymentType,
     createdByUserId,
     occurredAt = null,
+    // Phần tiền THU HỘ (COD) nằm trong `actualPrice` — tức trong số tiền tài xế đang cầm.
+    // Không phải tiền khách nợ, nên phải tách ra khỏi vế Có 131. Xem insertCustomerCashIn.
+    collectOnBehalfHeld = 0,
 }) => {
     const normalizedPaymentType = normalizeCustomerDebtPaymentType(paymentType);
     if (Number(actualPrice || 0) <= 0) return;
@@ -379,6 +382,7 @@ const insertDebtForShipment = async (client, {
             description: `Công nợ tài xế — đơn ngoài, chuyến #${shipmentId}`,
             refType: 'shipment', refId: shipmentId, actorId: createdByUserId,
             occurredAt,
+            collectOnBehalf: collectOnBehalfHeld,
         });
 
         if (driverPaymentState === 'driver_paid') {
@@ -569,6 +573,23 @@ const createOrderWithShipments = async (orderData) => {
                 ? Number(s.driver_holding_amount)
                 : actualPrice + passThrough;
 
+            // Tài xế thu hộ (COD) thì đang cầm cả tiền hàng của khách, nên số "tài đang
+            // giữ" được phép lớn hơn nghĩa vụ của khách — parseImportRows lấy trần đúng
+            // bằng cước + chi hộ + thu hộ. Phần dôi ra so với nghĩa vụ chính là tiền thu
+            // hộ, và nó KHÔNG phải tiền khách nợ.
+            //
+            // Suy bằng phép trừ chứ không lấy thẳng cột thu hộ: cột đó nói công ty đã thu
+            // hộ bao nhiêu, còn ở đây cần biết bao nhiêu trong số đó ĐANG NẰM TRONG TAY
+            // TÀI XẾ. Hai số bằng nhau khi tài cầm trọn, nhưng khi tài chỉ cầm phần cước
+            // thì phần thu hộ đã về công ty bằng đường khác — không có dòng tiền nào ở
+            // đây để mà ghi.
+            const nghiaVuKhach = actualPrice + passThrough;
+            const codKhaiTrenChuyen = normalizeNonNegativeMoney(s.collect_on_behalf);
+            const collectOnBehalfHeld = Math.min(
+                Math.max(0, debtAmount - nghiaVuKhach),
+                codKhaiTrenChuyen,
+            );
+
             const shipmentOccurredAt = s.completed_at || orderData.completed_at || null;
 
             await insertDebtForShipment(client, {
@@ -582,6 +603,7 @@ const createOrderWithShipments = async (orderData) => {
                 paymentType: s.payment_type || null,
                 createdByUserId: orderData.created_by,
                 occurredAt: shipmentOccurredAt,
+                collectOnBehalfHeld,
             });
 
             // Ghi sổ doanh thu chuyến (đơn ngoài đã hoàn thành, giá là thực tế)

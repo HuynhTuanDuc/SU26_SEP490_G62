@@ -1,5 +1,6 @@
 import { Button, Input, Select, SelectItem, Autocomplete, AutocompleteItem, Divider } from "@heroui/react";
 import { RiAddLine, RiDeleteBinLine, RiTruckLine, RiMapPin2Line, RiMoneyDollarCircleLine, RiReceiptLine } from "react-icons/ri";
+import { money } from "../../../../utils/formatNumber";
 
 const PAYMENT_TYPES = [
   { key: "cash",          label: "Tiền mặt (khách trả driver)" },
@@ -258,7 +259,7 @@ export function ShipmentForm({ index, shipment, errors = {}, onChange, onRemove,
           <SectionLabel icon={RiReceiptLine}>Chi phí phát sinh</SectionLabel>
           {totalExpenses > 0 && (
             <span className="text-[11px] font-bold text-orange-600 dark:text-orange-300 mb-2">
-              Tổng: {Number(totalExpenses).toLocaleString("vi-VN")}đ
+              Tổng: {money(Number(totalExpenses))}
             </span>
           )}
         </div>

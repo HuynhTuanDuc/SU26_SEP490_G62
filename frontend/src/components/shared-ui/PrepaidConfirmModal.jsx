@@ -3,8 +3,9 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Selec
 import { RiMoneyDollarCircleLine, RiCloseCircleLine } from "react-icons/ri";
 import { notify } from "./Toast";
 import { confirmDialog } from "./confirm";
+import { money } from "../../utils/formatNumber";
 
-const fmt = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
+const fmt = (n) => Number(n || money(0));
 
 /**
  * Modal xác nhận / từ chối tiền khách trả trước — dùng chung cho Điều phối và Kế toán.

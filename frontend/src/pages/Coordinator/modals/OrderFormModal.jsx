@@ -11,6 +11,7 @@ import {
 } from "react-icons/ri";
 import { coordinatorService } from "../services/coordinator.service";
 import { useCustomerPhoneSuggest } from "../../../hooks/useCustomerPhoneSuggest";
+import { money } from "../../../utils/formatNumber";
 
 const getTodayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -349,7 +350,7 @@ export default function OrderFormModal({
                       type="number"
                       min="0"
                       step="1000"
-                      placeholder={`Gợi ý: ${Number(getSuggestedFare(trip) || 0).toLocaleString("vi-VN")} đ`}
+                      placeholder={`Gợi ý: ${money(Number(getSuggestedFare(trip) || 0))}`}
                       value={trip.price}
                       onValueChange={(v) => updateTripField(index, "price", v)}
                       variant="bordered"
@@ -357,7 +358,7 @@ export default function OrderFormModal({
                       startContent={ic(RiMoneyDollarCircleLine)}
                       description={
                         trip.price
-                          ? `Đơn giá gợi ý theo km × đơn giá nhóm xe: ${Number(getSuggestedFare(trip) || 0).toLocaleString("vi-VN")} đ`
+                          ? `Đơn giá gợi ý theo km × đơn giá nhóm xe: ${money(Number(getSuggestedFare(trip) || 0))}`
                           : "Để trống sẽ tự tính theo quãng đường × đơn giá nhóm xe"
                       }
                     />
@@ -371,7 +372,7 @@ export default function OrderFormModal({
                 </Button>
                 {totalFare > 0 && (
                   <span className="text-sm font-bold text-blue-900 dark:text-blue-200">
-                    Tổng cước: {totalFare.toLocaleString("vi-VN")} đ
+                    Tổng cước: {money(totalFare)}
                   </span>
                 )}
               </div>

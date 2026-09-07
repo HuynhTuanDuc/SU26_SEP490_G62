@@ -4,6 +4,7 @@ import {
   RiCheckLine, RiErrorWarningFill, RiAlertLine, RiInformationLine,
   RiRobot2Line, RiPriceTag3Line,
 } from "react-icons/ri";
+import { money } from "../../utils/formatNumber";
 
 /**
  * Kết quả máy đọc hóa đơn, bày ra cho người duyệt: ảnh bên trái, bảng dòng hàng bên
@@ -24,7 +25,7 @@ const VERDICT = {
   error: { label: "Không đọc được", color: "default", Icon: RiInformationLine },
 };
 
-const vnd = (n) => (Number.isFinite(Number(n)) ? `${Number(n).toLocaleString("vi-VN")}đ` : "—");
+const vnd = (n) => (Number.isFinite(Number(n)) ? `${money(Number(n))}` : "—");
 
 /** Một dòng hàng trên hóa đơn, kèm ô sửa phân loại khi người duyệt bấm vào. */
 function LineItemRow({ item, onTeach, teachable, categories, profileLabel }) {

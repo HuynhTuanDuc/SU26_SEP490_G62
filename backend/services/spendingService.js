@@ -5,6 +5,8 @@ const financialLedgerRepository = require('../repositories/financialLedgerReposi
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 
 // ─── Phiếu chi thủ công ───────────────────────────────────────────────────────
 // Quy trình 2 cấp: Accountant tạo → Manager duyệt → Accountant xác nhận đã chi
@@ -17,9 +19,9 @@ const createVoucher = async (data, createdBy, client = null) => {
     if (!paymentVoucherRepository.VOUCHER_TYPES.includes(voucher_type)) {
         throw new Error('Loại phiếu chi không hợp lệ');
     }
-    if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-        throw new Error('Số tiền phải lớn hơn 0');
-    }
+    // requireMoney thay cho `Number(amount)`: phép cũ nhận "500.000" thành 500 —
+    // kế toán lập phiếu chi năm trăm nghìn, quỹ ghi ra năm trăm đồng, không ai thấy sai.
+    const soTien = requireMoney(amount, { field: 'Số tiền' });
     if (!payee || !String(payee).trim()) throw new Error('Cần ghi rõ người/đơn vị nhận tiền');
     if (!reason || !String(reason).trim()) throw new Error('Cần ghi rõ lý do chi');
     if (payment_method && !paymentVoucherRepository.PAYMENT_METHODS.includes(payment_method)) {
@@ -28,7 +30,7 @@ const createVoucher = async (data, createdBy, client = null) => {
 
     const voucher = await paymentVoucherRepository.create({
         voucher_type,
-        amount: Number(amount),
+        amount: soTien,
         payee: String(payee).trim(),
         reason: String(reason).trim(),
         payment_method: payment_method || 'cash',
@@ -38,7 +40,7 @@ const createVoucher = async (data, createdBy, client = null) => {
 
     notifyRolesSafe(['manager'], {
         title: 'Có phiếu chi cần duyệt',
-        message: `Phiếu chi #${voucher.id} trị giá ${Number(voucher.amount).toLocaleString('vi-VN')}đ cho "${voucher.payee}" đang chờ duyệt.`,
+        message: `Phiếu chi #${voucher.id} trị giá ${money(Number(voucher.amount))} cho "${voucher.payee}" đang chờ duyệt.`,
         type: 'VOUCHER_CREATED',
         entityType: voucher.incident_id ? 'incidents' : 'payment_vouchers',
         entityId: voucher.incident_id ?? voucher.id,
@@ -113,7 +115,7 @@ const createReimbursementVoucher = async ({ expense_id, payment_method, notes },
 
     notifyRolesSafe(['manager'], {
         title: 'Có phiếu hoàn ứng tài xế cần duyệt',
-        message: `Phiếu chi #${voucher.id} hoàn ${Number(voucher.amount).toLocaleString('vi-VN')}đ `
+        message: `Phiếu chi #${voucher.id} hoàn ${money(Number(voucher.amount))} `
             + `cho ${voucher.payee} (${label}) đang chờ duyệt.`,
         type: 'VOUCHER_CREATED',
         entityType: 'payment_vouchers',
@@ -134,7 +136,7 @@ const approveVoucher = async (id, approvedBy) => {
     if (!voucher.incident_id) {
         notificationService.createForUser(voucher.created_by, {
             title: `Phiếu chi #${voucher.id} đã được duyệt`,
-            message: `Số tiền ${Number(voucher.amount).toLocaleString('vi-VN')}đ chi cho "${voucher.payee}" đã được duyệt, chờ Kế toán chi tiền.`,
+            message: `Số tiền ${money(Number(voucher.amount))} chi cho "${voucher.payee}" đã được duyệt, chờ Kế toán chi tiền.`,
             type: 'VOUCHER_APPROVED',
             entityType: 'payment_vouchers',
             entityId: voucher.id,
@@ -146,7 +148,7 @@ const approveVoucher = async (id, approvedBy) => {
     if (voucher.incident_id) {
         notificationService.createForUser(voucher.created_by, {
             title: `Khoản đền bù sự cố #${voucher.incident_id} đã được duyệt`,
-            message: `Số tiền ${Number(voucher.amount).toLocaleString('vi-VN')}đ chi cho "${voucher.payee}" đã được duyệt. Sự cố chuyển sang trạng thái đã giải quyết, chờ Kế toán chi tiền.`,
+            message: `Số tiền ${money(Number(voucher.amount))} chi cho "${voucher.payee}" đã được duyệt. Sự cố chuyển sang trạng thái đã giải quyết, chờ Kế toán chi tiền.`,
             type: 'VOUCHER_APPROVED',
             entityType: 'incidents',
             entityId: voucher.incident_id,
@@ -178,7 +180,7 @@ const rejectVoucher = async (id, rejectedBy, reason) => {
         title: isCompensation
             ? `Khoản đền bù sự cố #${voucher.incident_id} bị từ chối`
             : `Phiếu chi #${voucher.id} bị từ chối`,
-        message: `Số tiền ${Number(voucher.amount).toLocaleString('vi-VN')}đ chi cho "${voucher.payee}" không được duyệt. Lý do: ${trimmedReason}`,
+        message: `Số tiền ${money(Number(voucher.amount))} chi cho "${voucher.payee}" không được duyệt. Lý do: ${trimmedReason}`,
         type: 'VOUCHER_REJECTED',
         entityType: isCompensation ? 'incidents' : 'payment_vouchers',
         entityId: isCompensation ? voucher.incident_id : voucher.id,
@@ -252,7 +254,7 @@ const payVoucher = async (id, paidBy, { proofUrl = null, paymentMethod = null } 
         title: isCompensation
             ? `Khoản đền bù sự cố #${voucher.incident_id} đã được chi`
             : `Phiếu chi #${voucher.id} đã được chi`,
-        message: `Kế toán đã chi ${Number(voucher.amount).toLocaleString('vi-VN')}đ cho "${voucher.payee}".`,
+        message: `Kế toán đã chi ${money(Number(voucher.amount))} cho "${voucher.payee}".`,
         type: 'VOUCHER_PAID',
         entityType: isCompensation ? 'incidents' : 'payment_vouchers',
         entityId: isCompensation ? voucher.incident_id : voucher.id,
@@ -269,7 +271,7 @@ const payVoucher = async (id, paidBy, { proofUrl = null, paymentMethod = null } 
     if (voucher.voucher_type === 'driver_reimbursement' && voucher.expense_driver_id) {
         notificationService.createForUser(voucher.expense_driver_id, {
             title: 'Đã hoàn tiền bạn ứng',
-            message: `Công ty đã chi ${Number(voucher.amount).toLocaleString('vi-VN')}đ hoàn lại khoản bạn ứng trước.`,
+            message: `Công ty đã chi ${money(Number(voucher.amount))} hoàn lại khoản bạn ứng trước.`,
             type: 'VOUCHER_PAID',
             entityType: 'payment_vouchers',
             entityId: voucher.id,

@@ -262,6 +262,14 @@ export const accountantService = {
   createReimbursementVoucher: (body) =>
     apiRequest(`${BASE}/reimbursements`, { method: "POST", body }),
 
+  // ─── Thu hộ (COD) — tiền công ty đang giữ hộ người bán ────────────────────
+  // Ngược chiều với công nợ: ở đây CÔNG TY là bên nợ.
+  getCollectOnBehalf: (params = {}) =>
+    apiRequest(`${BASE}/collect-on-behalf?${new URLSearchParams(params)}`),
+
+  createCollectOnBehalfReturn: (orderId, body) =>
+    apiRequest(`${BASE}/collect-on-behalf/${orderId}/return`, { method: "POST", body }),
+
   // ─── Chấm công (attendance) ───────────────────────────────────────────────
   getAttendanceGrid: (params = {}) =>
     apiRequest(`/api/attendance/grid?${new URLSearchParams(params)}`),

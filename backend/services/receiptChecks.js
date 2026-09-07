@@ -52,7 +52,7 @@ const ACCEPTED_DOC_TYPES = ['invoice', 'receipt'];
 
 // ─── Tiện ích ────────────────────────────────────────────────────────────────
 
-const fmtVND = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0).toLocaleString('vi-VN') + 'đ';
+const { money } = require('../utils/formatNumber');
 
 /** Số hữu hạn hoặc null — mọi thứ khác (chuỗi rỗng, undefined, NaN) đều thành null. */
 const num = (value) => {
@@ -263,8 +263,8 @@ const checkArithmetic = (extraction, items) => {
         if (!subtotalOk) {
             reasons.push(reason(
                 'SUBTOTAL_MISMATCH', 'error',
-                `Cộng các dòng trên hóa đơn ra ${fmtVND(lineSum)} nhưng hóa đơn ghi tiền hàng là `
-                + `${fmtVND(effectiveSubtotal)} (lệch ${fmtVND(Math.abs(lineSum - effectiveSubtotal))}). `
+                `Cộng các dòng trên hóa đơn ra ${money(lineSum)} nhưng hóa đơn ghi tiền hàng là `
+                + `${money(effectiveSubtotal)} (lệch ${money(Math.abs(lineSum - effectiveSubtotal))}). `
                 + 'Vui lòng chụp lại rõ toàn bộ hóa đơn.',
                 { line_sum: lineSum, subtotal: effectiveSubtotal },
             ));
@@ -283,8 +283,8 @@ const checkArithmetic = (extraction, items) => {
     if (lineMismatches.length > 0) {
         const minor = lineMismatches.length === 1 && subtotalOk;
         const detail = lineMismatches
-            .map((m) => `"${m.raw_name ?? '?'}": ${m.quantity} × ${fmtVND(m.unit_price)} = `
-                + `${fmtVND(m.expected)} nhưng ghi ${fmtVND(m.printed)}`)
+            .map((m) => `"${m.raw_name ?? '?'}": ${m.quantity} × ${money(m.unit_price)} = `
+                + `${money(m.expected)} nhưng ghi ${money(m.printed)}`)
             .join('; ');
 
         reasons.push(minor
@@ -305,8 +305,8 @@ const checkArithmetic = (extraction, items) => {
         if (!moneyClose(expectedVat, vatAmount, THRESHOLDS.VAT_ABS, THRESHOLDS.VAT_PCT)) {
             reasons.push(reason(
                 'VAT_MISMATCH', 'warning',
-                `Thuế VAT ${vatRate}% của ${fmtVND(subtotal)} phải là ${fmtVND(expectedVat)} `
-                + `nhưng hóa đơn ghi ${fmtVND(vatAmount)}.`,
+                `Thuế VAT ${vatRate}% của ${money(subtotal)} phải là ${money(expectedVat)} `
+                + `nhưng hóa đơn ghi ${money(vatAmount)}.`,
                 { expected: expectedVat, printed: vatAmount },
             ));
         }
@@ -318,10 +318,10 @@ const checkArithmetic = (extraction, items) => {
         if (!moneyClose(expectedTotal, total, THRESHOLDS.TOTAL_ABS, THRESHOLDS.TOTAL_PCT)) {
             reasons.push(reason(
                 'TOTAL_MISMATCH', 'error',
-                `Tiền hàng ${fmtVND(subtotal)}`
-                + (discount ? ` trừ giảm giá ${fmtVND(discount)}` : '')
-                + (vatAmount ? ` cộng thuế ${fmtVND(vatAmount)}` : '')
-                + ` phải ra ${fmtVND(expectedTotal)} nhưng hóa đơn ghi tổng ${fmtVND(total)}.`,
+                `Tiền hàng ${money(subtotal)}`
+                + (discount ? ` trừ giảm giá ${money(discount)}` : '')
+                + (vatAmount ? ` cộng thuế ${money(vatAmount)}` : '')
+                + ` phải ra ${money(expectedTotal)} nhưng hóa đơn ghi tổng ${money(total)}.`,
                 { expected: expectedTotal, printed: total },
             ));
         }
@@ -482,19 +482,19 @@ const checkClaimedAmount = (claimedAmount, receiptTotal, totals) => {
 
     if (diff <= THRESHOLDS.CLAIM_WARN_ABS && diff <= receiptTotal * THRESHOLDS.CLAIM_WARN_PCT) {
         reasons.push(reason('AMOUNT_MINOR_DIFF', 'warning',
-            `Số khai (${fmtVND(claimed)}) lệch ${fmtVND(diff)} so với tổng hóa đơn (${fmtVND(receiptTotal)}).`,
+            `Số khai (${money(claimed)}) lệch ${money(diff)} so với tổng hóa đơn (${money(receiptTotal)}).`,
             { claimed, receipt_total: receiptTotal, diff }));
         return reasons;
     }
 
     // Nói rõ lệch ở đâu thay vì câu chung chung — người bị từ chối phải biết phải sửa gì.
     const breakdown = totals.subtotal !== null && totals.vat_amount
-        ? ` (${fmtVND(totals.subtotal)} tiền hàng + ${fmtVND(totals.vat_amount)} thuế)`
+        ? ` (${money(totals.subtotal)} tiền hàng + ${money(totals.vat_amount)} thuế)`
         : '';
 
     reasons.push(reason('AMOUNT_MISMATCH', 'error',
-        `Hóa đơn ghi tổng ${fmtVND(receiptTotal)}${breakdown}, bạn khai ${fmtVND(claimed)}, `
-        + `lệch ${fmtVND(diff)}. Vui lòng nhập đúng số tiền trên hóa đơn.`,
+        `Hóa đơn ghi tổng ${money(receiptTotal)}${breakdown}, bạn khai ${money(claimed)}, `
+        + `lệch ${money(diff)}. Vui lòng nhập đúng số tiền trên hóa đơn.`,
         { claimed, receipt_total: receiptTotal, diff }));
 
     return reasons;
@@ -519,8 +519,8 @@ const checkClaimedCeiling = (claimedAmount, receiptTotal) => {
     if (excess <= Math.max(THRESHOLDS.CLAIM_EXACT_ABS, claimed * THRESHOLDS.CLAIM_WARN_PCT)) return reasons;
 
     reasons.push(reason('AMOUNT_BELOW_RECEIPT', 'error',
-        `Riêng hóa đơn này đã là ${fmtVND(receiptTotal)}, lớn hơn chi phí bạn đã nhập `
-        + `(${fmtVND(claimed)}). Vui lòng kiểm tra lại số tiền đã nhập.`,
+        `Riêng hóa đơn này đã là ${money(receiptTotal)}, lớn hơn chi phí bạn đã nhập `
+        + `(${money(claimed)}). Vui lòng kiểm tra lại số tiền đã nhập.`,
         { claimed, receipt_total: receiptTotal, excess }));
 
     return reasons;
@@ -611,9 +611,9 @@ const checkCostOutlier = (cost, costs, { scopeLabel = 'đợt bảo dưỡng tr�
     if (!isOutlier) return reasons;
 
     reasons.push(reason('COST_OUTLIER', 'warning',
-        `Chi phí ${fmtVND(value)} cao bất thường so với ${samples.length} ${scopeLabel} của xe này `
-        + `(khoảng ${fmtVND(samples[0])} – ${fmtVND(samples[samples.length - 1])}, `
-        + `thường vào khoảng ${fmtVND(med)}). Người duyệt vui lòng xác nhận đợt này có hạng mục lớn thật.`,
+        `Chi phí ${money(value)} cao bất thường so với ${samples.length} ${scopeLabel} của xe này `
+        + `(khoảng ${money(samples[0])} – ${money(samples[samples.length - 1])}, `
+        + `thường vào khoảng ${money(med)}). Người duyệt vui lòng xác nhận đợt này có hạng mục lớn thật.`,
         {
             cost: value, median: med, mad, samples: samples.length,
             min: samples[0], max: samples[samples.length - 1],
@@ -801,7 +801,6 @@ const firstErrorMessage = (reasons) =>
 
 module.exports = {
     THRESHOLDS,
-    fmtVND,
     normalizePlate,
     classifyLineItems,
     markTopicality,

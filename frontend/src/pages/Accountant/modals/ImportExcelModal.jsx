@@ -12,6 +12,7 @@ import { APP_NAME } from "../../../constants/brand";
 import {
   PAYMENT_OPTIONS, parseWorkbook,
 } from "../utils/parseImportRows";
+import { money } from "../../../utils/formatNumber";
 
 // ─── Quy ước template "Template Import Don Ngoai.xlsx" ────────────────────────
 // 1 dòng = 1 chuyến đã hoàn thành. Cột nhận diện theo TÊN HEADER (bỏ dấu (*)).
@@ -568,7 +569,7 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                             {display.paymentRaw}
                             {display.holding != null && (
                               <div className="text-[10px] text-gray-400 dark:text-gray-400">
-                                tài giữ {display.holding.toLocaleString("vi-VN")}đ
+                                tài giữ {money(display.holding)}
                               </div>
                             )}
                           </td>

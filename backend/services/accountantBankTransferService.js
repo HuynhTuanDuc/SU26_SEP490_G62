@@ -23,25 +23,27 @@ const getPendingBankTransfers = async ({ page = 1, limit = 20, search = '' } = {
     };
 };
 
-const fmtVND = (n) => Number(n || 0).toLocaleString('vi-VN') + 'đ';
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 
 const confirmBankTransfer = async (receiptId, accountantId, { notes, actual_amount }) => {
     if (!receiptId) throw new Error('Receipt ID không hợp lệ');
-    if (actual_amount === undefined || actual_amount === null || Number(actual_amount) < 0) {
-        throw new Error('Vui lòng nhập số tiền thực nhận (>= 0)');
-    }
-    const actualReceived = Number(actual_amount);
+    // Đây là lỗ NaN cuối cùng còn sót: `Number("1.500.000") < 0` là FALSE (NaN so sánh
+    // với gì cũng false), nên chuỗi hỏng lọt thẳng xuống cột NUMERIC thành 'NaN' —
+    // từ đó mọi SUM() chạm tới phiếu thu này đều trả về NaN.
+    // allowZero: kế toán ghi nhận "khách chưa chuyển đồng nào" là nghiệp vụ hợp lệ.
+    const actualReceived = requireMoney(actual_amount, { field: 'Số tiền thực nhận', allowZero: true });
 
     const result = await accountantBankTransferRepository.confirmBankTransfer(
         receiptId, accountantId, { notes, actualReceived },
     );
 
     if (result.driverId) {
-        let notiMsg = `Kế toán đã xác nhận nhận ${fmtVND(actualReceived)} chuyển khoản cho phiếu thu #${result.receiptId}.`;
+        let notiMsg = `Kế toán đã xác nhận nhận ${money(actualReceived)} chuyển khoản cho phiếu thu #${result.receiptId}.`;
         if (result.action === 'short') {
-            notiMsg += ` Còn thiếu ${fmtVND(result.shortfall)} — đã ghi công nợ khách.`;
+            notiMsg += ` Còn thiếu ${money(result.shortfall)} — đã ghi công nợ khách.`;
         } else if (result.action === 'excess') {
-            notiMsg += ` Thừa ${fmtVND(result.excess)} — đã phân bổ vào nợ cũ.`;
+            notiMsg += ` Thừa ${money(result.excess)} — đã phân bổ vào nợ cũ.`;
         }
         notificationService.createForUser(result.driverId, {
             title: 'Chuyển khoản đã được xác nhận',

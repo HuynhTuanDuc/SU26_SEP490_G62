@@ -16,6 +16,7 @@ import type { MaintenanceRecord, MaintenanceStatus } from '@/types/maintenance';
 import { MAINTENANCE_TYPE_LABEL, MAINTENANCE_STATUS_LABEL } from '@/types/maintenance';
 import type { VehicleStatus } from '@/types/vehicle';
 import { VEHICLE_STATUS_LABEL } from '@/types/vehicle';
+import { moneyShort, num } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -25,12 +26,6 @@ const fmtDate = (iso: string | null) => {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-const fmtMoney = (val: string | number | null) => {
-    if (val === null || val === undefined || val === '') return '—';
-    const n = Number(val);
-    if (!Number.isFinite(n)) return '—';
-    return n.toLocaleString('vi-VN') + '₫';
-};
 
 // ─── Status styles ────────────────────────────────────────────────────────────
 
@@ -86,7 +81,7 @@ function MaintenanceRow({ record }: { record: MaintenanceRecord }) {
                 </Text>
                 <Text fontSize={12} color={appTheme.colors.textMuted}>
                     {fmtDate(record.maintenance_date)}
-                    {record.cost ? ` · ${fmtMoney(record.cost)}` : ''}
+                    {record.cost ? ` · ${moneyShort(record.cost)}` : ''}
                 </Text>
                 {record.description ? (
                     <Text fontSize={12} color={appTheme.colors.textMuted} numberOfLines={1}>
@@ -219,7 +214,7 @@ export function VehicleScreen() {
                                     <InfoRow label="Nhóm xe" value={vehicle.vehicle_group_name} />
                                 )}
                                 {vehicle.load_capacity_kg != null && (
-                                    <InfoRow label="Tải trọng" value={`${vehicle.load_capacity_kg.toLocaleString('vi-VN')} kg`} />
+                                    <InfoRow label="Tải trọng" value={`${num(vehicle.load_capacity_kg)} kg`} />
                                 )}
                                 {vehicle.manufacture_year && (
                                     <InfoRow label="Năm sản xuất" value={String(vehicle.manufacture_year)} />

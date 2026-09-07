@@ -17,6 +17,7 @@ import { LeaderboardSkeleton } from '@/components/skeleton';
 import { appTheme }            from '@/theme/app-theme';
 import { useLeaderboard }      from '@/hooks/use-leaderboard';
 import type { LeaderboardRow } from '@/services/kpi-service';
+import { moneyShort } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -25,13 +26,6 @@ const MONTH_NAMES = [
     'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8',
     'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
 ];
-
-const fmtRevenue = (val: string | number) => {
-    const n = Number(val);
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M ₫`;
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K ₫`;
-    return `${n} ₫`;
-};
 
 const rankColor = (rank: number) =>
     rank === 1 ? '#F59E0B'
@@ -116,7 +110,7 @@ function DriverRow({ row, sortMode, position }: {
             <YStack alignItems="flex-end" gap={2}>
                 <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>
                     {sortMode === 'revenue'
-                        ? fmtRevenue(row.total_revenue)
+                        ? moneyShort(row.total_revenue)
                         : `${row.completed_shipments} chuyến`}
                 </Text>
                 <Text fontSize={10} color={appTheme.colors.textMuted}>

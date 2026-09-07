@@ -20,18 +20,11 @@ import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }     from '@/theme/app-theme';
 import { useDebt, useDebtPayments, useSubmitRepayment } from '@/hooks/use-debt';
 import type { DriverDebt, DebtPayment, RepaymentStatus } from '@/services/debt-service';
+import { money, moneyShort } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmtMoney = (val: string | number) => {
-    const n = Number(val);
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M₫`;
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K₫`;
-    return `${n}₫`;
-};
 
-const fmtMoneyFull = (val: string | number) =>
-    Number(val).toLocaleString('vi-VN') + '₫';
 
 const fmtDate = (iso: string) => {
     const d = new Date(iso);
@@ -75,7 +68,7 @@ function SummaryCard({ summary }: { summary: NonNullable<ReturnType<typeof useDe
                     fontSize={26} fontWeight="900" lineHeight={32}
                     color={hasDebt ? appTheme.colors.dangerText : appTheme.colors.successText}
                 >
-                    {fmtMoneyFull(summary.total_remaining)}
+                    {money(summary.total_remaining)}
                 </Text>
             </YStack>
 
@@ -87,7 +80,7 @@ function SummaryCard({ summary }: { summary: NonNullable<ReturnType<typeof useDe
                 >
                     <AlertTriangle size={13} color={appTheme.colors.danger} />
                     <Text fontSize={12} color={appTheme.colors.dangerText} fontWeight="700">
-                        Quá hạn: {fmtMoney(summary.overdue_remaining)}
+                        Quá hạn: {moneyShort(summary.overdue_remaining)}
                     </Text>
                 </XStack>
             ) : null}
@@ -180,21 +173,21 @@ function RepayOverlay({ debt, receiptUri, onRequestCamera, onDeleteReceipt, onCl
                         <XStack gap={16}>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Tổng nợ</Text>
-                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.dangerText}>{fmtMoney(debt.total_amount)}</Text>
+                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.dangerText}>{moneyShort(debt.total_amount)}</Text>
                             </YStack>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Còn lại</Text>
-                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.dangerText}>{fmtMoney(debt.remaining)}</Text>
+                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.dangerText}>{moneyShort(debt.remaining)}</Text>
                             </YStack>
                         </XStack>
                     </YStack>
 
                     {/* Amount */}
                     <YStack gap={6}>
-                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>Số tiền nộp (₫) *</Text>
+                        <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>Số tiền nộp (đ) *</Text>
                         <TextInput
                             style={s.input}
-                            placeholder={`Tối đa ${fmtMoneyFull(remaining)}`}
+                            placeholder={`Tối đa ${money(remaining)}`}
                             keyboardType="numeric"
                             value={amount}
                             onChangeText={onAmountChange}
@@ -303,7 +296,7 @@ function PaymentRow({ p, onCancel }: { p: DebtPayment; onCancel?: () => void }) 
                 {p.status === 'rejected'  ? <XCircle    size={13} color={appTheme.colors.danger} /> : null}
                 <Text fontSize={12} fontWeight="700" color={badge.color}>{badge.label}</Text>
                 <Text fontSize={12} fontWeight="900" color={appTheme.colors.text} marginLeft="auto">
-                    {fmtMoney(p.amount)}
+                    {moneyShort(p.amount)}
                 </Text>
             </XStack>
 
@@ -395,19 +388,19 @@ function DebtCard({
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Tổng nợ</Text>
                                 <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>
-                                    {fmtMoney(debt.total_amount)}
+                                    {moneyShort(debt.total_amount)}
                                 </Text>
                             </YStack>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Đã xác nhận</Text>
                                 <Text fontSize={13} fontWeight="700" color={appTheme.colors.successText}>
-                                    {fmtMoney(debt.paid_amount)}
+                                    {moneyShort(debt.paid_amount)}
                                 </Text>
                             </YStack>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Còn lại</Text>
                                 <Text fontSize={13} fontWeight="900" color={appTheme.colors.dangerText}>
-                                    {fmtMoney(debt.remaining)}
+                                    {moneyShort(debt.remaining)}
                                 </Text>
                             </YStack>
                         </XStack>

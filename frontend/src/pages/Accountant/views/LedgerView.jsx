@@ -31,6 +31,10 @@ const EVENT_COLOR = {
   driver_debt_created:   "warning",
   customer_debt_created: "warning",
   pass_through_cost:     "default",
+  // Cùng màu hổ phách với dòng "thu hộ (giữ hộ khách)" ở màn Doanh thu — người đọc
+  // nhận ra ngay đây là tiền của khách chứ không phải tiền công ty.
+  collect_on_behalf_held: "warning",
+  collect_on_behalf_returned: "primary",
   expense_recorded:      "danger",
   // Tất toán khoản phải trả tài xế — không phải chi phí phát sinh mới (đã ghi lúc duyệt)
   expense_reimbursed:    "primary",
@@ -38,6 +42,8 @@ const EVENT_COLOR = {
   bonus_paid:            "danger",
   advance_disbursed:     "danger",
   advance_recovered:     "primary",
+  debt_transferred:      "warning",
+  opening_balance:       "default",
 };
 
 const DEFAULT_PAGE_SIZE = 20;

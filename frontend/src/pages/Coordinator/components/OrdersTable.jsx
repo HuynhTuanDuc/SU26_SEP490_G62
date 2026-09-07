@@ -6,6 +6,7 @@ import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { ShipmentSubRows } from "./ShipmentSubRows";
 import { canCancelTrip, canEditTrip, formatCurrency } from "../utils";
+import { money } from "../../../utils/formatNumber";
 
 function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment, onConfirmPrepaid }) {
   return (
@@ -56,7 +57,7 @@ function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder,
         </td>
         <td className="py-3.5 pr-4">
           <div className="flex flex-col">
-            <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{formatCurrency(trip.fare)}</span>
+            <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{money(trip.fare)}</span>
             {trip.trips?.some((s) => s.returning_at) ? (
               <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Có chuyến hoàn hàng · ×2 cước</span>
             ) : null}

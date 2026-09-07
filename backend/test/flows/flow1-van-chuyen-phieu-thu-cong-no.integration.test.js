@@ -410,7 +410,7 @@ describe('L2-FLOW-01/02 — Negative paths (BR violations, invalid input, duplic
         // Không có nợ thật cho case này — chỉ cần assert validate input chạy trước khi đụng DB
         await assert.rejects(
             () => debtService.submitRepayment(DRIVER_ID, 999999, { amount: 0, paymentMethod: 'cash' }, 'https://r.test/x.jpg'),
-            /Số tiền phải lớn hơn 0/,
+            /Số tiền nộp phải lớn hơn 0/,
         );
     });
 

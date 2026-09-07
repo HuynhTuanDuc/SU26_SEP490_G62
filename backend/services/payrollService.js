@@ -2,6 +2,8 @@ const payrollRepository = require('../repositories/payrollRepository');
 const profileRepository = require('../repositories/profileRepository');
 const roleRepository = require('../repositories/roleRepository');
 const notificationService = require('./notificationService');
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 const { MAX_ADVANCE_AMOUNT } = payrollRepository;
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
@@ -17,8 +19,7 @@ const getMyPayrolls = async (driverId, { month, year } = {}) => {
 
 // BR-029: Driver request → Manager approve → Accountant disburse
 const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, requestYear }) => {
-    if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
-    if (Number(amount) > MAX_ADVANCE_AMOUNT) throw new Error(`Số tiền ứng lương tối đa là ${MAX_ADVANCE_AMOUNT.toLocaleString('vi-VN')}₫`);
+    const soTien = requireMoney(amount, { field: 'Số tiền ứng', max: MAX_ADVANCE_AMOUNT });
     const m = Number(requestMonth);
     const y = Number(requestYear);
     if (!m || m < 1 || m > 12) throw new Error('Tháng không hợp lệ (1-12)');
@@ -35,7 +36,7 @@ const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, re
 
     const advance = await payrollRepository.createSalaryAdvance({
         driverId,
-        amount: Number(amount),
+        amount: soTien,
         reason: reason?.trim() ?? null,
         requestMonth: m,
         requestYear:  y,
@@ -45,7 +46,7 @@ const requestSalaryAdvance = async (driverId, { amount, reason, requestMonth, re
     const managerIds = await roleRepository.getUserIdsByRole('manager');
     notificationService.createForUsers(managerIds, {
         title: 'Yêu cầu ứng lương mới',
-        message: `${driver?.full_name ?? 'Tài xế'} yêu cầu ứng ${Number(amount).toLocaleString('vi-VN')}đ cho tháng ${m}/${y}.`,
+        message: `${driver?.full_name ?? 'Tài xế'} yêu cầu ứng ${money(Number(amount))} cho tháng ${m}/${y}.`,
         type: 'SALARY_ADVANCE_REQUESTED',
         entityType: 'salary_advances',
         entityId: advance.id,

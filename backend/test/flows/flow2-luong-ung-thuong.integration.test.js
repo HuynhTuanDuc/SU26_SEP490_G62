@@ -307,7 +307,7 @@ describe('L2-FLOW-03 — Negative paths (BR violations, invalid input, duplicate
     it('N1 — requesting a salary advance with a non-positive amount is rejected regardless of the request day', async () => {
         await assert.rejects(
             () => payrollService.requestSalaryAdvance(DRIVER_C, { amount: 0, requestMonth: MONTH, requestYear: YEAR }),
-            /Số tiền phải lớn hơn 0/,
+            /Số tiền ứng phải lớn hơn 0/,
         );
     });
 
@@ -343,7 +343,7 @@ describe('L2-FLOW-03 — Negative paths (BR violations, invalid input, duplicate
             () => bonusService.createWelfare({
                 driver_id: DRIVER_C, type: 'special', year: YEAR, amount: 0, notes: 'invalid',
             }, ACCT_ID, 'accountant'),
-            /Số tiền phải lớn hơn 0/,
+            /Số tiền thưởng phải lớn hơn 0/,
         );
     });
 

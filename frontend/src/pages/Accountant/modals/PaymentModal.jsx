@@ -13,6 +13,7 @@ import { confirmDialog } from "../../../components/shared-ui/confirm";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { MoneyText } from "../components/shared/MoneyText";
+import { money } from "../../../utils/formatNumber";
 
 const PAYMENT_METHODS = [
   { key: "cash",          label: "Tiền mặt" },
@@ -114,7 +115,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
   const handleVoidPayment = async (payment) => {
     const confirmed = await confirmDialog({
       title: "Hủy khoản thanh toán",
-      description: `Hủy xác nhận khoản ${Number(payment.amount).toLocaleString("vi-VN")}đ? Công nợ sẽ được khôi phục.`,
+      description: `Hủy xác nhận khoản ${money(Number(payment.amount))}? Công nợ sẽ được khôi phục.`,
       confirmLabel: "Hủy khoản",
       danger: true,
     });
@@ -171,7 +172,7 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
       return;
     }
     if (totalOutstanding > 0 && num > totalOutstanding + 0.01) {
-      const message = `Số tiền vượt quá tổng công nợ khách hàng (${Math.round(totalOutstanding).toLocaleString("vi-VN")}đ).`;
+      const message = `Số tiền vượt quá tổng công nợ khách hàng (${money(Math.round(totalOutstanding))}).`;
       setError(message);
       notify.error(message);
       return;
@@ -300,9 +301,9 @@ export function PaymentModal({ isOpen, onClose, order, onPaymentRecorded }) {
               startContent={ic(RiMoneyDollarCircleLine)}
               description={
                 totalOutstanding > 0
-                  ? `Tổng nợ khách: ${Math.round(totalOutstanding).toLocaleString("vi-VN")}đ${
+                  ? `Tổng nợ khách: ${money(Math.round(totalOutstanding))}${
                       orderDebtRemaining > 0 && orderDebtRemaining < totalOutstanding
-                        ? ` — Đơn này: ${Math.round(orderDebtRemaining).toLocaleString("vi-VN")}đ (số thừa tự động trừ đơn cũ hơn)`
+                        ? ` — Đơn này: ${money(Math.round(orderDebtRemaining))} (số thừa tự động trừ đơn cũ hơn)`
                         : ""
                     }`
                   : undefined

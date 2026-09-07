@@ -16,6 +16,7 @@ import { useOrderDetail } from '@/hooks/use-order-detail';
 import type { ShipmentWithPhotos, TripStatus } from '@/types/trip';
 import { TRIP_STATUS_LABEL } from '@/types/trip';
 import { useCallback, useState } from 'react';
+import { money } from '@/lib/format-number';
 
 const fmtDate = (iso: string | null) => {
     if (!iso) return null;
@@ -23,8 +24,6 @@ const fmtDate = (iso: string | null) => {
     return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
 
-const fmtCurrency = (v: string | null) =>
-    v ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v)) : null;
 
 function PhotoViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
     return (
@@ -145,7 +144,7 @@ function ShipmentCard({
                         <YStack alignItems="flex-end">
                             <Text fontSize={12} color={appTheme.colors.textMuted}>
                                 Giá trị: <Text fontWeight="700" color={appTheme.colors.text}>
-                                    {fmtCurrency(shipment.actual_price || shipment.estimated_price)}
+                                    {money(shipment.actual_price || shipment.estimated_price)}
                                 </Text>
                             </Text>
                             {shipment.returning_at ? (
@@ -331,7 +330,7 @@ export default function OrderDetailScreen() {
                             <View style={{ width: 1, backgroundColor: appTheme.colors.border }} />
                             <YStack alignItems="center" flex={1} gap={3}>
                                 <Text fontSize={15} fontWeight="900" color={appTheme.colors.text} numberOfLines={1} adjustsFontSizeToFit>
-                                    {totalPrice > 0 ? fmtCurrency(String(totalPrice)) : '—'}
+                                    {totalPrice > 0 ? money(String(totalPrice)) : '—'}
                                 </Text>
                                 <Text fontSize={11} color={appTheme.colors.textMuted}>Tổng giá trị</Text>
                             </YStack>

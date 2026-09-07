@@ -5,8 +5,16 @@ const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
 const { SHIPMENT_STATUS } = require('../constants/tripConstants');
 const { normalizeVietnamPhone } = require('../utils/phone');
+const { money } = require('../utils/formatNumber');
+const { optionalMoney } = require('../utils/money');
 
 
+// CHỈ dùng cho ĐẠI LƯỢNG ĐO (quãng đường km, khối lượng kg) — KHÔNG dùng cho tiền.
+//
+// Với số đo, dấu chấm đúng là dấu thập phân: "12.5" km nghĩa là mười hai phẩy năm.
+// Với tiền Việt thì ngược lại, dấu chấm phân cách hàng nghìn: "12.000" là mười hai
+// nghìn chứ không phải mười hai. Cùng một chuỗi, hai nghĩa trái ngược — nên hai loại
+// trường phải đi qua hai bộ kiểm khác nhau. Tiền dùng optionalMoney bên dưới.
 const normalizeNumber = (value) => {
     if (value === undefined || value === null || value === '') return null;
     const numericValue = Number(String(value).replace(/,/g, '').trim());
@@ -14,12 +22,11 @@ const normalizeNumber = (value) => {
     return numericValue;
 };
 
-const normalizeNonNegativeAmount = (value, fieldLabel) => {
-    const amount = normalizeNumber(value);
-    if (amount === null) return 0;
-    if (amount < 0) throw new Error(`${fieldLabel} không được âm`);
-    return amount;
-};
+// allowZero: điều phối để trống hoặc gõ 0 đều nghĩa là "không có khoản này" / "dùng giá
+// tự tính", đó là thao tác hợp lệ — chỉ chặn khi con số thật sự sai định dạng.
+const normalizeMoney = (value, fieldLabel) => optionalMoney(value, { field: fieldLabel, allowZero: true });
+
+const normalizeNonNegativeAmount = (value, fieldLabel) => normalizeMoney(value, fieldLabel) ?? 0;
 
 const safeTrim = (value) => String(value ?? '').trim();
 
@@ -318,7 +325,7 @@ const createOrder = async (userId, payload) => {
 
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
             // Đơn giá/km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho từng chuyến
-            const manualPrice = normalizeNumber(trip.price);
+            const manualPrice = normalizeMoney(trip.price, 'Giá cước chuyến');
             const isPriceManual = manualPrice !== null && manualPrice > 0;
             const finalPrice = isPriceManual ? manualPrice : normalizedPrice;
 
@@ -610,7 +617,7 @@ const updateOrder = async (orderId, payload) => {
 
             const normalizedPrice = normalizedDistance * Number(vehicleGroup.price_per_km || 0);
             // Đơn giá/km chỉ là gợi ý — coordinator có thể chốt giá cước khác cho từng chuyến
-            const manualPrice = normalizeNumber(trip.price);
+            const manualPrice = normalizeMoney(trip.price, 'Giá cước chuyến');
             const isPriceManual = manualPrice !== null && manualPrice > 0;
             const finalPrice = isPriceManual ? manualPrice : normalizedPrice;
             const finalVehicleId = vehicle?.id ?? null;
@@ -712,7 +719,7 @@ const cancelOrder = async (orderId, reason, actorId = null) => {
     if (refund) {
         notifyRolesSafe(['accountant'], {
             title: `Cần hoàn tiền ứng trước — đơn #${orderId} đã hủy`,
-            message: `Hoàn ${Number(refund.amount).toLocaleString('vi-VN')}đ cho "${refund.payee}". Phiếu hoàn tiền #${refund.voucherId} đã tạo, chờ Kế toán chi.`,
+            message: `Hoàn ${money(Number(refund.amount))} cho "${refund.payee}". Phiếu hoàn tiền #${refund.voucherId} đã tạo, chờ Kế toán chi.`,
             type: 'PREPAID_REFUND_REQUESTED',
             entityType: 'payment_vouchers',
             entityId: refund.voucherId,
@@ -732,7 +739,7 @@ const confirmPrepaid = async (orderId, actorId, { paymentMethod, proofUrl } = {}
     broadcastCoordinatorOrderChange('updated', order);
     notifyRolesSafe(['accountant', 'coordinator'], {
         title: `Đã xác nhận tiền trả trước — đơn #${orderId}`,
-        message: `${Number(order.prepaid_amount || 0).toLocaleString('vi-VN')}đ (${paymentMethod === 'cash' ? 'tiền mặt' : 'chuyển khoản'}) đã ghi sổ.`,
+        message: `${money(Number(order.prepaid_amount || 0))} (${paymentMethod === 'cash' ? 'tiền mặt' : 'chuyển khoản'}) đã ghi sổ.`,
         type: 'PREPAID_CONFIRMED',
         entityType: 'orders',
         entityId: orderId,

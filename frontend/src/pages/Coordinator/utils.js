@@ -38,7 +38,6 @@ export const formatDateForInput = (dateStr) => {
 };
 
 export const normalizeStatus = (status) => String(status ?? "").trim().toLowerCase();
-export const formatCurrency = (value) => `${Number(value || 0).toLocaleString("vi-VN")} đ`;
 export const formatNotificationTime = (value) => {
   if (!value) return "-";
   const date = new Date(value);

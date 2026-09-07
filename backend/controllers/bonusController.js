@@ -115,7 +115,8 @@ const create = async (req, res) => {
         const bonus = await bonusService.createWelfare({
             driver_id: Number(driver_id),
             type,
-            amount:    amount ? Number(amount) : null,
+            // Nguyên chuỗi — bonusService.createWelfare kiểm bằng requireMoney.
+            amount:    (amount === undefined || amount === null || amount === '') ? null : amount,
             notes,
             year:      optYear(year, null),
             beneficiary_name,
@@ -135,7 +136,8 @@ const create = async (req, res) => {
 const approve = async (req, res) => {
     try {
         const id             = _posInt(req.params.id, 'ID');
-        const adjustedAmount = req.body.amount != null ? Number(req.body.amount) : null;
+        // Nguyên chuỗi — bonusService.approve kiểm bằng optionalMoney.
+        const adjustedAmount = req.body.amount ?? null;
         const bonus = await bonusService.approve(id, req.user.userId, adjustedAmount);
         res.json({ message: 'Đã duyệt khoản thưởng/phúc lợi', bonus });
     } catch (err) { _send(res, err); }

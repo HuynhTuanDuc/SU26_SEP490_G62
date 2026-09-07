@@ -3,6 +3,7 @@ import { HeroUIProvider } from "@heroui/react";
 import {
   RiLineChartLine, RiFileList3Line, RiMoneyDollarCircleLine,
   RiHandCoinLine, RiGiftLine, RiBookOpenLine, RiWalletLine, RiBankCardLine,
+  RiHandHeartLine,
   RiCalendarCheckLine, RiTruckLine, RiEqualizerLine, RiCalendarEventLine,
 } from "react-icons/ri";
 import { TbReportAnalytics } from "react-icons/tb";
@@ -28,6 +29,7 @@ import { APP_NAME } from "../../constants/brand";
 
 const SpendingView = lazy(() => import("./views/SpendingView"));
 const ReimbursementView = lazy(() => import("./views/ReimbursementView"));
+const CollectOnBehalfView = lazy(() => import("./views/CollectOnBehalfView"));
 
 const NAV_GROUPS = [
   {
@@ -41,6 +43,8 @@ const NAV_GROUPS = [
     items: [
       { key: "revenue", label: "Doanh thu", icon: RiLineChartLine },
       { key: "debt",    label: "Công nợ",  icon: RiFileList3Line },
+      // Ngược chiều với Công nợ: ở đây CÔNG TY là bên nợ (tiền thu hộ đang giữ của người bán)
+      { key: "collect-on-behalf", label: "Thu hộ (COD)", icon: RiHandHeartLine },
       { key: "bank-transfer", label: "Chuyển khoản", icon: RiBankCardLine },
       { key: "spending", label: "Quản lý chi", icon: RiWalletLine },
       { key: "reimbursement", label: "Hoàn ứng tài xế", icon: RiHandCoinLine },
@@ -122,6 +126,11 @@ const VIEW_META = {
     subtitle: "Tạo phiếu chi, xác nhận chi tiền và đối chiếu chi phí tài xế, tổng hợp mọi khoản chi",
     searchPlaceholder: "",
   },
+  "collect-on-behalf": {
+    title: "Thu hộ (COD)",
+    subtitle: "Tiền hàng công ty thu hộ khi giao — của người bán, không phải doanh thu. Trả lại rồi thì khoản nợ mới đóng.",
+    searchPlaceholder: "",
+  },
   reimbursement: {
     title: "Hoàn ứng tài xế",
     subtitle: "Trả lại ngay tiền tài xế đã ứng túi (chi hộ khách, xăng, sửa xe, bảo dưỡng) — không phải đợi kỳ lương",
@@ -162,7 +171,7 @@ const NOTIFICATION_VIEW_BY_ENTITY = {
   orders: "revenue",
   reports: "report",
 };
-const VALID_VIEWS = ["report", "revenue", "debt", "bank-transfer", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "reimbursement", "attendance", "holidays", "vehicles"];
+const VALID_VIEWS = ["report", "revenue", "debt", "bank-transfer", "salary", "advance", "bonus", "bonus-rules", "ledger", "spending", "reimbursement", "collect-on-behalf", "attendance", "holidays", "vehicles"];
 
 // Nhớ trang đang đứng — reload/quay lại không bị đưa về trang khác; mặc định Báo cáo
 const getInitialView = () => {
@@ -218,7 +227,8 @@ export default function AccountantPage({ user, onLogout }) {
     : null;
 
   const showSearch = activeView !== "report" && activeView !== "ledger" && activeView !== "spending"
-    && activeView !== "reimbursement" && activeView !== "attendance" && activeView !== "vehicles";
+    && activeView !== "reimbursement" && activeView !== "attendance" && activeView !== "vehicles"
+    && activeView !== "collect-on-behalf";
 
   return (
     <HeroUIProvider>
@@ -285,6 +295,11 @@ export default function AccountantPage({ user, onLogout }) {
             {activeView === "reimbursement" && (
               <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải hoàn ứng tài xế...</div>}>
                 <ReimbursementView />
+              </Suspense>
+            )}
+            {activeView === "collect-on-behalf" && (
+              <Suspense fallback={<div className="p-6 text-sm text-gray-500">Đang tải thu hộ...</div>}>
+                <CollectOnBehalfView />
               </Suspense>
             )}
             {/* Quy tắc thưởng & ngày lễ do Manager cấu hình — kế toán chỉ tra cứu khi tính lương */}

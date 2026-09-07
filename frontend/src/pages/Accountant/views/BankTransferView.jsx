@@ -7,9 +7,10 @@ import { RiBankCardLine, RiCheckLine, RiImageLine, RiSearchLine } from "react-ic
 import { accountantService } from "../services/accountant.service";
 import { notify } from "../../../components/shared-ui/Toast";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
+import { money } from "../../../utils/formatNumber";
 
 const fmt = (v) =>
-  v == null ? "—" : new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(Number(v));
+  v == null ? "—" : money(Number(v));
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";

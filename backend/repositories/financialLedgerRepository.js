@@ -103,17 +103,131 @@ const getPassThroughOutstanding = async (executor, orderId) => {
     return Math.max(0, round2(Number(row.debited) - Number(row.collected)));
 };
 
-// Ghi sự kiện tiền khách về, tự tách vế chi hộ (Có 3388) khỏi vế cước (Có 131).
-// Trả về { freight, passThrough } để tầng gọi biết đã tách bao nhiêu.
+// ─── Thu hộ (COD) đang giữ: nửa còn lại của tài khoản 3388 ────────────────────
+//
+// Phần trên mới chỉ là CHI HỘ (công ty ứng tiền hộ khách → Nợ 3388). Chiều ngược lại là
+// THU HỘ: công ty thu tiền HÀNG giúp khách khi giao, rồi phải trả lại. Đó là khoản công
+// ty NỢ khách, nên vế Có 3388 — tuyệt đối không phải Có 131 (tiền khách nợ công ty).
+//
+// Mang event_type riêng chứ không dùng lại tên của sự kiện cha: getPassThroughOutstanding
+// đếm phần chi hộ đã tất toán bằng mọi dòng Có 3388 có event_type thuộc MONEY_IN_EVENTS.
+// Nếu vế thu hộ đội tên sự kiện cha (driver_debt_created chẳng hạn), nó sẽ bị đếm nhầm
+// thành "đã thu lại tiền chi hộ" và lần tiền về sau của cùng đơn tính thiếu phần chi hộ.
+const COLLECT_ON_BEHALF_EVENT = 'collect_on_behalf_held';
+
+// Vế đóng lại: đã trả tiền thu hộ cho người bán (Nợ 3388 | Có 1111/1121), ghi khi kế toán
+// bấm "Đã chi" trên phiếu chi loại collect_on_behalf_return.
+const COLLECT_ON_BEHALF_RETURN_EVENT = 'collect_on_behalf_returned';
+
+// Biểu thức "còn đang giữ" của MỘT dòng sổ: đã giữ tính dương, đã trả tính âm.
+// Bút toán đảo (reversal_of_id) đổi dấu và đổi luôn vế Nợ/Có, nên phải xét cả hai chiều —
+// nếu không, một lần đảo sai sót sẽ để lại khoản treo vĩnh viễn.
+const COD_DELTA_SQL = (a) => `CASE
+    WHEN ${a}.event_type = '${COLLECT_ON_BEHALF_EVENT}'
+         AND ((${a}.reversal_of_id IS     NULL AND ${a}.credit_account = '3388')
+           OR (${a}.reversal_of_id IS NOT NULL AND ${a}.debit_account  = '3388'))
+    THEN  (CASE WHEN ${a}.reversal_of_id IS NULL THEN ${a}.amount ELSE -${a}.amount END)
+    WHEN ${a}.event_type = '${COLLECT_ON_BEHALF_RETURN_EVENT}'
+         AND ((${a}.reversal_of_id IS     NULL AND ${a}.debit_account  = '3388')
+           OR (${a}.reversal_of_id IS NOT NULL AND ${a}.credit_account = '3388'))
+    THEN -(CASE WHEN ${a}.reversal_of_id IS NULL THEN ${a}.amount ELSE -${a}.amount END)
+    ELSE 0
+END`;
+
+const COD_EVENTS = [COLLECT_ON_BEHALF_EVENT, COLLECT_ON_BEHALF_RETURN_EVENT];
+
+// Số tiền thu hộ của MỘT đơn công ty còn đang giữ, chưa trả lại người bán.
+const getCollectOnBehalfOutstanding = async (executor, orderId) => {
+    if (!orderId) return 0;
+    const { rows: [row] } = await executor.query(
+        `SELECT COALESCE(SUM(${COD_DELTA_SQL('f')}), 0) AS con_giu
+         FROM financial_transactions f
+         WHERE f.event_type = ANY($2)
+           AND ${FT_ORDER_ID_SQL('f')} = $1`,
+        [orderId, COD_EVENTS],
+    );
+    return Math.max(0, round2(Number(row.con_giu)));
+};
+
+// Danh sách các đơn công ty còn đang giữ tiền thu hộ — nguồn cho màn "Thu hộ (COD)".
+//
+// `dang_cho_chi` là số đã lập phiếu chi nhưng chưa chi xong. Tách khỏi `con_giu` vì hai số
+// trả lời hai câu khác nhau: sổ vẫn đang nợ bao nhiêu (con_giu, chỉ giảm khi tiền RA thật),
+// và còn bao nhiêu chưa ai đụng tới (con_giu − dang_cho_chi). Thiếu vế thứ hai thì kế toán
+// nhìn màn hình sẽ lập phiếu chi lần hai cho cùng một khoản.
+const listCollectOnBehalfOutstanding = async ({ search = null } = {}) => {
+    const { rows } = await pool.query(
+        `WITH cod AS (
+             SELECT ${FT_ORDER_ID_SQL('f')} AS order_id,
+                    SUM(${COD_DELTA_SQL('f')}) AS con_giu
+             FROM financial_transactions f
+             WHERE f.event_type = ANY($1)
+             GROUP BY 1
+         ),
+         cho_chi AS (
+             SELECT pv.order_id, COALESCE(SUM(pv.amount), 0) AS so_tien
+             FROM payment_vouchers pv
+             WHERE pv.voucher_type = 'collect_on_behalf_return'
+               AND pv.status IN ('pending', 'approved')
+             GROUP BY pv.order_id
+         )
+         SELECT
+             o.id                                         AS order_id,
+             o.cargo_name,
+             o.created_at,
+             COALESCE(c.company_name, c.full_name)        AS nguoi_ban,
+             c.phone                                      AS nguoi_ban_phone,
+             cod.con_giu::text                            AS con_giu,
+             COALESCE(cc.so_tien, 0)::text                AS dang_cho_chi,
+             GREATEST(cod.con_giu - COALESCE(cc.so_tien, 0), 0)::text AS chua_lap_phieu,
+             COALESCE((
+                 SELECT SUM(os.collect_on_behalf_amount) FROM order_shipments os
+                 WHERE os.order_id = o.id
+             ), 0)::text                                  AS thu_ho_da_khai
+         FROM cod
+         JOIN orders o      ON o.id = cod.order_id
+         LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN cho_chi cc  ON cc.order_id = o.id
+         WHERE cod.con_giu > 0.01
+           AND ($2::text IS NULL
+                OR COALESCE(c.company_name, c.full_name) ILIKE '%' || $2 || '%'
+                OR c.phone ILIKE '%' || $2 || '%'
+                OR o.id::text = $2)
+         ORDER BY cod.con_giu DESC, o.id DESC`,
+        [COD_EVENTS, search || null],
+    );
+    const tong = rows.reduce((a, r) => a + Number(r.con_giu), 0);
+    const tongChuaLapPhieu = rows.reduce((a, r) => a + Number(r.chua_lap_phieu), 0);
+    return { rows, tong: round2(tong), tongChuaLapPhieu: round2(tongChuaLapPhieu) };
+};
+
+// Ghi sự kiện tiền khách về, tách ba vế: chi hộ (Có 3388), thu hộ (Có 3388, tên sự kiện
+// riêng), và phần còn lại là cước (Có 131).
+//
+// `collectOnBehalf` — phần tiền thu hộ NẰM TRONG `amount`. Tầng gọi tính, vì chỉ tầng đó
+// biết nghĩa vụ thật của khách trên chuyến (cước + chi hộ) để suy ra phần dôi ra là COD.
+// Không tự suy ở đây được: lúc hàm này chạy, bút toán doanh thu của chuyến còn CHƯA
+// được ghi, nên hỏi sổ xem khách nợ bao nhiêu thì luôn ra 0.
+//
+// Trả về { freight, passThrough, collectOnBehalf } để tầng gọi biết đã tách bao nhiêu.
 const insertCustomerCashIn = async (executor, {
     eventType, debitAccount, amount, orderId,
     description, refType = null, refId = null, actorId = null, occurredAt = null,
+    collectOnBehalf = 0,
 }) => {
     const total = round2(Number(amount));
-    if (!Number.isFinite(total) || total <= 0) return { freight: 0, passThrough: 0 };
+    if (!Number.isFinite(total) || total <= 0) {
+        return { freight: 0, passThrough: 0, collectOnBehalf: 0 };
+    }
 
     const passThrough = Math.min(await getPassThroughOutstanding(executor, orderId), total);
-    const freight     = round2(total - passThrough);
+    const conLai      = round2(total - passThrough);
+
+    // Kẹp trong phần còn lại: dữ liệu import có thể mâu thuẫn (số thu hộ khai lớn hơn số
+    // tiền thực nhận), và khi đó thà ghi thiếu vế thu hộ còn hơn ghi âm vế cước.
+    const rawCod = Number(collectOnBehalf);
+    const cod    = Number.isFinite(rawCod) && rawCod > 0 ? Math.min(round2(rawCod), conLai) : 0;
+    const freight = round2(conLai - cod);
 
     if (passThrough > 0) {
         await insertTransaction(executor, {
@@ -123,15 +237,23 @@ const insertCustomerCashIn = async (executor, {
             refType, refId, actorId, occurredAt,
         });
     }
+    if (cod > 0) {
+        await insertTransaction(executor, {
+            eventType: COLLECT_ON_BEHALF_EVENT, debitAccount, creditAccount: '3388',
+            amount: cod,
+            description: `${description} — phần thu hộ khách (COD, phải trả lại)`,
+            refType, refId, actorId, occurredAt,
+        });
+    }
     if (freight > 0) {
         await insertTransaction(executor, {
             eventType, debitAccount, creditAccount: '131',
             amount: freight,
-            description: passThrough > 0 ? `${description} — phần cước` : description,
+            description: (passThrough > 0 || cod > 0) ? `${description} — phần cước` : description,
             refType, refId, actorId, occurredAt,
         });
     }
-    return { freight, passThrough };
+    return { freight, passThrough, collectOnBehalf: cod };
 };
 
 // ─── Chi phí tài xế ứng túi: ghi nhận NGAY KHI DUYỆT ──────────────────────────
@@ -444,6 +566,8 @@ module.exports = {
     reverseTransaction, getSpendingSummary,
     // chi hộ khách — tách vế 3388 tại bút toán tiền về
     insertCustomerCashIn, getPassThroughOutstanding, MONEY_IN_EVENTS,
+    getCollectOnBehalfOutstanding, listCollectOnBehalfOutstanding,
+    COLLECT_ON_BEHALF_EVENT, COLLECT_ON_BEHALF_RETURN_EVENT,
     // chi phí tài xế ứng túi — ghi nhận khi duyệt, đảo khi gỡ duyệt
     recordExpenseAccrual, reverseExpenseAccrual, reclassPassThroughToCompany,
 };

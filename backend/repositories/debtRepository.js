@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { money } = require('../utils/formatNumber');
 
 // ─── Driver: danh sách công nợ (chỉ xem, không tự tạo/nộp) ──────────────────
 
@@ -100,7 +101,7 @@ const submitRepayment = async (driverId, debtId, { amount, paymentMethod, notes,
 
     const remaining = totalAmount - confirmedPaid;
     if (Number(amount) > remaining) {
-        throw new Error(`Số tiền nộp (${Number(amount).toLocaleString('vi-VN')}đ) vượt quá số nợ còn lại (${remaining.toLocaleString('vi-VN')}đ)`);
+        throw new Error(`Số tiền nộp (${money(Number(amount))}) vượt quá số nợ còn lại (${money(remaining)})`);
     }
 
     const result = await pool.query(

@@ -5,6 +5,7 @@ const reversalService = require('../services/reversalService');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
+const { money } = require('../utils/formatNumber');
 
 const INSURANCE_SALARY_BASE = 5_310_000;
 const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
@@ -642,10 +643,10 @@ const markPayrollPaid = async (payrollId, accountantId) => {
             ...row,
             bonuses_marked_paid: paidBonuses.length,
             bonus_mismatch_warning: bonusMismatch
-                ? `Tổng thưởng phúc lợi đã duyệt (${bonusPaidTotal.toLocaleString('vi-VN')}đ) khác snapshot trong bảng lương (${bonusSnapshot.toLocaleString('vi-VN')}đ) — có khoản duyệt sau lần tính lương cuối.`
+                ? `Tổng thưởng phúc lợi đã duyệt (${money(bonusPaidTotal)}) khác snapshot trong bảng lương (${money(bonusSnapshot)}) — có khoản duyệt sau lần tính lương cuối.`
                 : null,
             debt_deduction_adjusted: deductionAdjusted
-                ? `Nợ tài xế thực còn ${clearedTotal.toLocaleString('vi-VN')}đ (thấp hơn khấu trừ đã chốt ${debtDeduction.toLocaleString('vi-VN')}đ — tài xế đã nộp quỹ sau khi tính lương). Đã tự điều chỉnh: chỉ trừ ${clearedTotal.toLocaleString('vi-VN')}đ, lương thực nhận cập nhật ${Number(row.net_salary).toLocaleString('vi-VN')}đ.`
+                ? `Nợ tài xế thực còn ${money(clearedTotal)} (thấp hơn khấu trừ đã chốt ${money(debtDeduction)} — tài xế đã nộp quỹ sau khi tính lương). Đã tự điều chỉnh: chỉ trừ ${money(clearedTotal)}, lương thực nhận cập nhật ${money(Number(row.net_salary))}.`
                 : null,
         };
     } catch (err) {
