@@ -1,11 +1,16 @@
 /**
- * Trích xuất hóa đơn thành JSON có cấu trúc bằng vision model.
+ * GIAI ĐOẠN 3 của dây chuyền: TRÍCH XUẤT CÓ CẤU TRÚC bằng vision model.
  *
- * Vì sao không dùng Tesseract nữa: Tesseract trả về một chuỗi text PHẲNG, mất sạch
- * cấu trúc bảng. Từ chuỗi "Nhớt Castrol 1 450.000 450.000 Lọc dầu 2 85.000 170.000"
- * không có cách nào biết đâu là số lượng, đâu là đơn giá, đâu là thành tiền — mà đó
- * đúng là ba con số cần có để kiểm tra "tổng các khoản theo số lượng". Mọi regex viết
- * thêm chỉ là đoán mò trên một cấu trúc đã bị phá vỡ.
+ * Vì sao việc trích xuất giao cho model chứ không cho Tesseract: Tesseract trả về một
+ * chuỗi text PHẲNG, mất sạch cấu trúc bảng. Từ chuỗi "Nhớt Castrol 1 450.000 450.000
+ * Lọc dầu 2 85.000 170.000" không có cách nào biết đâu là số lượng, đâu là đơn giá,
+ * đâu là thành tiền — mà đó đúng là ba con số cần có để kiểm tra "tổng các khoản theo
+ * số lượng". Mọi regex viết thêm chỉ là đoán mò trên một cấu trúc đã bị phá vỡ.
+ *
+ * Tesseract KHÔNG bị bỏ đi: nó chạy song song ở receiptOcrScanner với vai trò nhân
+ * chứng độc lập — nó không dựng lại được bảng, nhưng nó cũng không bịa được con số,
+ * nên nó là thứ duy nhất kiểm chứng được rằng cái model khai có thật trên giấy. Việc
+ * đối chiếu nằm ở receiptCrossCheck.js.
  *
  * File này là nơi DUY NHẤT phụ thuộc nhà cung cấp AI. Nó chỉ trả về "trên giấy viết
  * gì" — mọi phán quyết đúng/sai nằm ở receiptChecks.js.
@@ -16,9 +21,9 @@
  * RECEIPT_VISION_MODEL.
  */
 
-const crypto = require('crypto');
 const { GoogleGenerativeAI, SchemaType } = require('@google/generative-ai');
 const taxonomy = require('./receiptTaxonomy');
+const imagePipeline = require('./receiptImagePipeline');
 
 // GHIM phiên bản, không dùng alias kiểu `-latest`. Alias tự đổi sang model mới khi
 // Google chuyển hướng, nghĩa là hành vi đọc hóa đơn thay đổi mà không ai deploy gì —
@@ -38,15 +43,23 @@ const RETRY_BASE_MS = 700;
 // Đổi số này mỗi khi sửa prompt. Lưu vào receipt_extractions để so được độ chính xác
 // giữa các phiên bản prompt — không có nó thì không biết một thay đổi làm tốt lên hay
 // tệ đi.
-const PROMPT_VERSION = 'v1';
+//
+// v2: thêm nhánh đọc lại có trợ giúp của text OCR. Lượt đọc lại được ghi vết dưới
+// phiên bản RIÊNG ('v2+ocr') chứ không gộp chung — hai lượt có đầu vào khác nhau nên
+// gộp lại thì con số độ chính xác đo được không nói lên điều gì về lượt nào cả.
+const PROMPT_VERSION = 'v2';
+const PROMPT_VERSION_OCR_ASSISTED = 'v2+ocr';
 
-const FETCH_TIMEOUT_MS = 15_000;
 // Đo thực tế trên 7 ảnh hóa đơn: phản hồi THÀNH CÔNG mất từ 2 đến 24 giây (phần lớn
 // độ trễ là xếp hàng phía Google chứ không phải xử lý ảnh). Cắt ở 30 giây là chặt tay
 // đúng phần đuôi của phân phối và biến những lần đọc lẽ ra thành công thành "cần người
 // xem" — đẩy việc sang cho người duyệt một cách vô ích.
 const MODEL_TIMEOUT_MS = 45_000;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+// Text OCR đưa vào prompt phải có trần: một hóa đơn A4 quét ra ~2–4 nghìn ký tự, nhưng
+// một ảnh nhiễu có thể ra hàng chục nghìn ký tự rác. Cắt ở mức này để một bản quét
+// hỏng không kéo theo một lần gọi model đắt gấp mấy lần bình thường.
+const MAX_OCR_HINT_CHARS = 6_000;
 
 let genAI = null;
 const getClient = () => {
@@ -59,44 +72,23 @@ const isVisionEnabled = () => Boolean(process.env.GEMINI_API_KEY);
 // ─── Tải ảnh ─────────────────────────────────────────────────────────────────
 
 /**
- * Ảnh chụp từ điện thoại thường 4–8MB, thừa xa mức cần để đọc chữ trên hóa đơn.
- * Nhờ Cloudinary thu nhỏ ngay lúc tải giúp cắt cả băng thông lẫn token đầu vào.
- * Không ép định dạng — để Cloudinary tự chọn, tránh hỏng với file không phải ảnh.
+ * Việc tải và tiền xử lý ảnh đã chuyển hết sang receiptImagePipeline (giai đoạn 1),
+ * vì cùng một tấm ảnh giờ phục vụ hai kênh đọc với hai biến thể khác nhau và không
+ * được tải hai lần.
+ *
+ * Giữ lại tên hàm cũ ở đây làm bí danh: nó là một phần giao diện công khai của
+ * module, có test đang gọi thẳng, và chuỗi biến đổi của biến thể này chính là thứ
+ * quyết định giá trị `image_sha256` nên nó đáng được nhắc tên ở cả hai chỗ.
  */
-const optimizeCloudinaryUrl = (url) => {
-    const marker = '/image/upload/';
-    if (typeof url !== 'string' || !url.includes(marker)) return url;
-    return url.replace(marker, `${marker}w_1600,c_limit,q_auto:good/`);
-};
+const optimizeCloudinaryUrl = (url) => imagePipeline.visionUrl(url);
 
+/** Tải ảnh khi nơi gọi chưa có sẵn — giữ đúng mã lỗi cũ để tầng trên xử lý như trước. */
 const fetchImage = async (imageUrl) => {
-    const response = await fetch(optimizeCloudinaryUrl(imageUrl), {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-        throw Object.assign(new Error(`Không tải được ảnh (HTTP ${response.status})`), { code: 'FETCH_FAILED' });
+    const loaded = await imagePipeline.loadImage(imageUrl, { withOcrVariant: false });
+    if (!loaded.ok) {
+        throw Object.assign(new Error(loaded.error), { code: loaded.code });
     }
-
-    const contentType = (response.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
-    if (!contentType.startsWith('image/')) {
-        throw Object.assign(new Error(`Tệp tải về không phải ảnh (${contentType})`), { code: 'NOT_AN_IMAGE' });
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    if (buffer.length === 0) {
-        throw Object.assign(new Error('Ảnh rỗng'), { code: 'FETCH_FAILED' });
-    }
-    if (buffer.length > MAX_IMAGE_BYTES) {
-        throw Object.assign(new Error('Ảnh quá lớn'), { code: 'IMAGE_TOO_LARGE' });
-    }
-
-    return {
-        base64: buffer.toString('base64'),
-        mimeType: contentType,
-        // Băm nội dung ảnh để giai đoạn 2 chặn được việc nộp lại đúng một tấm ảnh.
-        // Tính ở đây vì đã có sẵn buffer trong tay, không tốn thêm lần tải nào.
-        sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
-    };
+    return loaded.vision;
 };
 
 // ─── Lược đồ đầu ra ──────────────────────────────────────────────────────────
@@ -308,6 +300,35 @@ const withTimeout = (promise, ms, label) => Promise.race([
 ]);
 
 /**
+ * Khối gợi ý gắn thêm khi đọc LẠI một hóa đơn mà lượt đọc độc lập bị nghi ngờ.
+ *
+ * Ba câu ràng buộc ở đây không phải cho đẹp, chúng chặn đúng ba cách hỏng:
+ *   1. "ẢNH là bản gốc" — text OCR sai chính tả liên tục; không nói rõ thì model sẽ
+ *      chép lại cái sai của Tesseract và ta mất luôn kênh đọc tốt hơn.
+ *   2. "chỉ dùng để soi lại" — nếu để model coi đây là nguồn ngang hàng thì lượt đọc
+ *      lại chỉ là bản sao của OCR, và việc hai bên khớp nhau thành vô nghĩa.
+ *   3. "vẫn được trả null" — mục đích của lượt này là đọc ĐÚNG hơn, không phải điền
+ *      cho đầy; ép có số bằng mọi giá là quay lại đúng cái bệnh đoán mò ban đầu.
+ */
+const buildOcrHint = (ocrText, suspectFields = []) => {
+    const text = String(ocrText ?? '').slice(0, MAX_OCR_HINT_CHARS);
+    const fields = suspectFields.length > 0
+        ? `\nHãy soi kỹ nhất các trường sau, đây là chỗ hai lần đọc đang lệch nhau: ${suspectFields.join(', ')}.`
+        : '';
+
+    return `Dưới đây là văn bản thô do một bộ OCR quét từ CHÍNH tấm ảnh này.
+
+ẢNH mới là bản gốc. Văn bản OCR sai chính tả và sai số rất thường xuyên, nó CHỈ dùng để
+bạn soi lại những chỗ bạn đọc chưa chắc — tuyệt đối không chép lại nó khi nó khác với
+cái bạn nhìn thấy trên ảnh. Trường nào nhìn trên ảnh vẫn không rõ thì vẫn trả null như
+quy tắc chung, không được lấy số từ văn bản OCR để lấp chỗ trống.${fields}
+
+--- VĂN BẢN OCR ---
+${text}
+--- HẾT ---`;
+};
+
+/**
  * Đọc một ảnh hóa đơn thành JSON có cấu trúc.
  *
  * KHÔNG ném lỗi ra ngoài: mọi sự cố đều trả về { ok: false, code }. Nơi gọi quyết định
@@ -315,15 +336,25 @@ const withTimeout = (promise, ms, label) => Promise.race([
  * `passed`, vì "cho qua vì hạ tầng lỗi" nghĩa là không còn ai nhìn lại khoản đó nữa.
  *
  * @param {string} imageUrl
+ * @param {object}  [options]
+ * @param {object}  [options.image]         ảnh đã tải sẵn từ receiptImagePipeline; truyền
+ *                                          vào để một tấm ảnh không bị tải hai lần khi
+ *                                          cả OCR lẫn model cùng cần nó.
+ * @param {string}  [options.ocrText]       text OCR để đọc LẠI có trợ giúp. Không truyền
+ *                                          ở lượt đọc đầu — xem receiptCrossCheck về lý
+ *                                          do hai kênh phải độc lập.
+ * @param {Array}   [options.suspectFields] trường nào đang nghi ngờ, để model soi kỹ.
  * @returns {Promise<{ok: boolean, extraction?: object, error?: string, code?: string, meta: object}>}
  */
-const extractReceipt = async (imageUrl) => {
+const extractReceipt = async (imageUrl, { image: preloaded = null, ocrText = null, suspectFields = [] } = {}) => {
     const startedAt = Date.now();
+    const ocrAssisted = Boolean(ocrText && String(ocrText).trim());
     const meta = {
         provider: 'google',
         model: MODEL,
-        prompt_version: PROMPT_VERSION,
-        image_sha256: null,
+        prompt_version: ocrAssisted ? PROMPT_VERSION_OCR_ASSISTED : PROMPT_VERSION,
+        image_sha256: preloaded?.sha256 ?? null,
+        ocr_assisted: ocrAssisted,
         latency_ms: 0,
     };
 
@@ -331,13 +362,15 @@ const extractReceipt = async (imageUrl) => {
         return { ok: false, code: 'NOT_CONFIGURED', error: 'Chưa cấu hình GEMINI_API_KEY cho việc đọc hóa đơn.', meta };
     }
 
-    let image;
-    try {
-        image = await fetchImage(imageUrl);
-        meta.image_sha256 = image.sha256;
-    } catch (err) {
-        meta.latency_ms = Date.now() - startedAt;
-        return { ok: false, code: err.code || 'FETCH_FAILED', error: err.message, meta };
+    let image = preloaded;
+    if (!image) {
+        try {
+            image = await fetchImage(imageUrl);
+            meta.image_sha256 = image.sha256;
+        } catch (err) {
+            meta.latency_ms = Date.now() - startedAt;
+            return { ok: false, code: err.code || 'FETCH_FAILED', error: err.message, meta };
+        }
     }
 
     const model = getClient().getGenerativeModel({
@@ -351,15 +384,13 @@ const extractReceipt = async (imageUrl) => {
         },
     });
 
-    const request = {
-        contents: [{
-            role: 'user',
-            parts: [
-                { inlineData: { data: image.base64, mimeType: image.mimeType } },
-                { text: 'Đọc chứng từ trong ảnh này và trả JSON đúng lược đồ.' },
-            ],
-        }],
-    };
+    const parts = [
+        { inlineData: { data: image.base64, mimeType: image.mimeType } },
+        { text: 'Đọc chứng từ trong ảnh này và trả JSON đúng lược đồ.' },
+    ];
+    if (ocrAssisted) parts.push({ text: buildOcrHint(ocrText, suspectFields) });
+
+    const request = { contents: [{ role: 'user', parts }] };
 
     let last = null;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -393,11 +424,14 @@ const extractReceipt = async (imageUrl) => {
 
 module.exports = {
     PROMPT_VERSION,
+    PROMPT_VERSION_OCR_ASSISTED,
     RESPONSE_SCHEMA,
     SYSTEM_PROMPT,
     isVisionEnabled,
     classifyError,
     optimizeCloudinaryUrl,
+    fetchImage,
+    buildOcrHint,
     normalizeExtraction,
     extractReceipt,
 };

@@ -156,6 +156,12 @@ const scanReceiptExpenses = async (req, res) => {
                         warnings:      result.reasons.filter((r) => r.severity === 'warning'),
                         receipt_total: result.receipt_total,
                         line_items:    result.items,
+                        // Mức khớp giữa bản đọc của model và văn bản OCR quét độc lập
+                        // từ cùng tấm ảnh. `verdict` nói hóa đơn có hợp lệ không, con
+                        // số này nói MÁY CÓ ĐỌC ĐÚNG KHÔNG — một khoản "hợp lệ" với độ
+                        // tin cậy thấp là khoản phải mở ảnh ra xem tận nơi.
+                        confidence:       result.confidence,
+                        confidence_label: result.confidence_label,
                     };
                 } catch (err) {
                     // Sự cố ở đây KHÔNG được thành "hợp lệ" một cách im lặng như trước:

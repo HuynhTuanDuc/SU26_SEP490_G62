@@ -26,6 +26,8 @@ const saveExtraction = async ({
     rawExtraction, checks, verdict,
     claimedAmount, receiptTotal, latencyMs,
     vendorKey, invoiceNoKey,
+    ocrText, ocrConfidence, ocrEngine,
+    confidence, imageWidth, imageHeight, pipeline,
 }) => {
     const result = await pool.query(
         `INSERT INTO receipt_extractions (
@@ -33,8 +35,10 @@ const saveExtraction = async ({
             provider, model, prompt_version,
             raw_extraction, checks, verdict,
             claimed_amount, receipt_total, latency_ms,
-            vendor_key, invoice_no_key
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+            vendor_key, invoice_no_key,
+            ocr_text, ocr_confidence, ocr_engine,
+            confidence, image_width, image_height, pipeline
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
          RETURNING id`,
         [
             entityType, entityId ?? null, imageUrl, imageSha256 ?? null,
@@ -43,6 +47,9 @@ const saveExtraction = async ({
             JSON.stringify(checks ?? []), verdict,
             claimedAmount ?? null, receiptTotal ?? null, latencyMs ?? null,
             vendorKey ?? null, invoiceNoKey ?? null,
+            ocrText ?? null, ocrConfidence ?? null, ocrEngine ?? null,
+            confidence ?? null, imageWidth ?? null, imageHeight ?? null,
+            pipeline ? JSON.stringify(pipeline) : null,
         ],
     );
     return result.rows[0];
@@ -93,7 +100,10 @@ const findDuplicates = async ({ imageSha256, vendorKey, invoiceNoKey, excludeId 
 const findLatestByImageUrl = async (imageUrl) => {
     const result = await pool.query(
         `SELECT id, image_url, image_sha256, raw_extraction, verdict, receipt_total,
-                provider, model, prompt_version
+                provider, model, prompt_version,
+                -- Lấy kèm text OCR để bước hoàn tất khỏi phải quét lại: quét lại tốn
+                -- khoảng 10 giây CPU mỗi tấm mà kết quả không thể khác đi, ảnh vẫn thế.
+                ocr_text, ocr_confidence, ocr_engine, confidence
            FROM receipt_extractions
           WHERE image_url = $1 AND raw_extraction IS NOT NULL
           ORDER BY created_at DESC
@@ -109,6 +119,8 @@ const listByEntity = async (entityType, entityId) => {
         `SELECT re.id, re.image_url, re.verdict, re.checks, re.raw_extraction,
                 re.receipt_total::text, re.claimed_amount::text,
                 re.provider, re.model, re.prompt_version, re.latency_ms,
+                re.ocr_text, re.ocr_confidence::text, re.ocr_engine,
+                re.confidence::text, re.image_width, re.image_height, re.pipeline,
                 re.review_action, re.review_note, re.reviewed_at, re.reviewed_by,
                 p.full_name AS reviewed_by_name,
                 re.created_at

@@ -2,8 +2,23 @@ const { mock } = require('../helpers/nodeTestMock');
 const assert = require('node:assert');
 
 const repository = require('../../repositories/receiptExtractionRepository');
+const imagePipeline = require('../../services/receiptImagePipeline');
+const ocrScanner = require('../../services/receiptOcrScanner');
 const extractor = require('../../services/receiptVisionExtractor');
 const service = require('../../services/receiptValidationService');
+
+/**
+ * Ảnh giả đã "tải xong". Dây chuyền thật tải ảnh ở giai đoạn 1 rồi mới gọi model, nên
+ * test nào mock model cũng phải mock cả bước tải — nếu không nó đi ra mạng thật với
+ * một URL bịa và cả bộ test phụ thuộc vào việc có Internet hay không.
+ */
+const loadedImage = (overrides = {}) => ({
+    ok: true,
+    vision: { base64: 'ZmFrZQ==', mimeType: 'image/jpeg', sha256: 'abc', bytes: 120_000 },
+    ocr: { buffer: Buffer.from('fake'), mimeType: 'image/jpeg', enhanced: true },
+    quality: { bytes: 120_000, width: 1600, height: 2000, format: 'jpeg', reasons: [] },
+    ...overrides,
+});
 
 /** Hóa đơn bảo dưỡng tối thiểu nhưng tự khớp số học, với tổng cho trước. */
 const billWithTotal = (total) => ({
@@ -38,6 +53,11 @@ describe('receiptValidationService', () => {
         mock.method(repository, 'getExtraKeywords', async () => []);
         mock.method(repository, 'saveExtraction', async () => ({ id: 1 }));
         mock.method(repository, 'findLatestByImageUrl', async () => null);
+        mock.method(imagePipeline, 'loadImage', async () => loadedImage());
+        // Mặc định coi như không có kênh OCR: các test ở file này kiểm tra luật nghiệp
+        // vụ (khớp số tiền, dò trùng, ngưỡng chi phí), không kiểm tra lớp đối chiếu
+        // chéo — lớp đó có bộ test riêng ở receiptCrossCheck.test.js.
+        mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED', latency_ms: 0 }));
     });
 
     afterEach(() => {
@@ -146,6 +166,11 @@ describe('receiptValidationService — chống dùng lại hóa đơn', () => {
         mock.method(repository, 'getExtraKeywords', async () => []);
         mock.method(repository, 'saveExtraction', async () => ({ id: 1 }));
         mock.method(repository, 'findLatestByImageUrl', async () => null);
+        mock.method(imagePipeline, 'loadImage', async () => loadedImage());
+        // Mặc định coi như không có kênh OCR: các test ở file này kiểm tra luật nghiệp
+        // vụ (khớp số tiền, dò trùng, ngưỡng chi phí), không kiểm tra lớp đối chiếu
+        // chéo — lớp đó có bộ test riêng ở receiptCrossCheck.test.js.
+        mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED', latency_ms: 0 }));
     });
 
     afterEach(() => {
@@ -210,5 +235,166 @@ describe('receiptValidationService — chống dùng lại hóa đơn', () => {
         const saved = repository.saveExtraction.mock.calls[0].arguments[0];
         assert.strictEqual(saved.vendorKey, 'name:garagethanhcong');
         assert.strictEqual(saved.invoiceNoKey, 'HD1');
+    });
+});
+
+describe('receiptValidationService — dây chuyền nhiều giai đoạn', () => {
+    const vnd = (value) => value.toLocaleString('en-US').replace(/,/g, '.');
+
+    /**
+     * Bản quét OCR khớp với hóa đơn do billWithTotal dựng ra.
+     *
+     * Có mã số thuế và số tạm ứng là cố ý, không phải cho giống thật: lớp đối chiếu
+     * chéo chỉ coi một bản quét là dùng được khi nó đọc ra được ít nhất hai con số —
+     * một bản quét chỉ ra đúng một con số thì không có gì để đối chiếu.
+     */
+    const scanFor = (total) => {
+        const text = [
+            'GARAGE THANH CONG',
+            'MST 0101234567',
+            'HOA DON BAN HANG so HD-1',
+            `Thay nhot dong co   1   ${vnd(total)}   ${vnd(total)}`,
+            `TONG CONG    ${vnd(total)}`,
+            'Da tam ung 100.000',
+        ].join('\n');
+        return {
+            ok: true, text, confidence: 85, engine: 'tesseract.js/vie+eng', latency_ms: 3_000,
+            lines: text.split('\n').map((line) => ({ text: line, confidence: 85 })),
+        };
+    };
+
+    beforeEach(() => {
+        service.invalidateTaxonomyCache();
+        mock.method(repository, 'getExtraKeywords', async () => []);
+        mock.method(repository, 'saveExtraction', async () => ({ id: 1 }));
+        mock.method(repository, 'findLatestByImageUrl', async () => null);
+        mock.method(repository, 'findDuplicates', async () => []);
+        mock.method(imagePipeline, 'loadImage', async () => loadedImage());
+    });
+
+    afterEach(() => {
+        mock.restoreAll();
+        service.invalidateTaxonomyCache();
+    });
+
+    it('KHÔNG gọi model khi ảnh đã bị loại vì quá nhỏ', async () => {
+        // Tốn một lượt gọi model và cả chục giây OCR để rồi vẫn trả về đúng câu
+        // "chụp lại đi" là lãng phí thuần tuý.
+        mock.method(imagePipeline, 'loadImage', async () => loadedImage({
+            quality: {
+                bytes: 20_000, width: 300, height: 400, format: 'jpeg',
+                reasons: [{ code: 'IMAGE_TOO_SMALL', severity: 'error', message: 'Ảnh quá nhỏ, vui lòng chụp lại' }],
+            },
+        }));
+        const vision = mock.method(extractor, 'extractReceipt', async () => okResult(450_000));
+        const ocr = mock.method(ocrScanner, 'scanImage', async () => scanFor(450_000));
+
+        const result = await service.validateReceipt('a.jpg', { entityId: 1 });
+
+        assert.strictEqual(result.blocked, true);
+        assert.strictEqual(vision.mock.callCount(), 0, 'không được gọi model');
+        assert.strictEqual(ocr.mock.callCount(), 0, 'không được quét OCR');
+    });
+
+    it('lượt đọc ĐẦU không được nhìn thấy text OCR', async () => {
+        // Hai kênh phải độc lập, nếu không thì việc chúng khớp nhau chẳng chứng minh
+        // được gì ngoài việc model biết chép lại.
+        const vision = mock.method(extractor, 'extractReceipt', async () => okResult(450_000));
+        mock.method(ocrScanner, 'scanImage', async () => scanFor(450_000));
+
+        await service.validateReceipt('a.jpg', { entityId: 1 });
+
+        assert.strictEqual(vision.mock.callCount(), 1);
+        assert.strictEqual(vision.mock.calls[0].arguments[1]?.ocrText, undefined);
+    });
+
+    it('hai kênh khớp nhau thì cho qua với độ tin cậy cao nhất', async () => {
+        mock.method(extractor, 'extractReceipt', async () => okResult(450_000));
+        mock.method(ocrScanner, 'scanImage', async () => scanFor(450_000));
+
+        const result = await service.validateReceipt('a.jpg', { entityId: 1 });
+
+        assert.strictEqual(result.verdict, 'passed');
+        assert.strictEqual(result.confidence, 1);
+    });
+
+    it('đọc LẠI có trợ giúp OCR khi tổng tiền không có trên giấy, rồi lấy bản tốt hơn', async () => {
+        // Đây là toàn bộ giá trị của dây chuyền hai kênh: lượt đầu cho một con số
+        // không có trên ảnh, kênh OCR phát hiện ra, lượt hai được chỉ đích danh trường
+        // cần soi lại và đọc đúng.
+        const vision = mock.method(extractor, 'extractReceipt', async (url, options) => (
+            options?.ocrText ? okResult(450_000) : okResult(999_000)
+        ));
+        mock.method(ocrScanner, 'scanImage', async () => scanFor(450_000));
+
+        const result = await service.validateReceipt('a.jpg', { entityId: 1 });
+
+        assert.strictEqual(vision.mock.callCount(), 2, 'phải có lượt đọc lại');
+        assert.ok(vision.mock.calls[1].arguments[1].ocrText, 'lượt hai mới được xem text OCR');
+        assert.ok(vision.mock.calls[1].arguments[1].suspectFields.includes('total'),
+            'phải chỉ đích danh trường đang lệch');
+        assert.strictEqual(result.receipt_total, 450_000, 'lấy bản đọc khớp với giấy');
+    });
+
+    it('KHÔNG đọc lại khi kênh OCR không dùng được', async () => {
+        // Không có nhân chứng thì đọc lại bao nhiêu lần cũng không có gì để đối chiếu,
+        // chỉ tốn thêm tiền gọi API.
+        const vision = mock.method(extractor, 'extractReceipt', async () => okResult(450_000));
+        mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_TIMEOUT' }));
+
+        await service.validateReceipt('a.jpg', { entityId: 1 });
+
+        assert.strictEqual(vision.mock.callCount(), 1);
+    });
+
+    it('lưu nguyên văn text OCR làm bằng chứng độc lập', async () => {
+        // Khi tài xế khiếu nại "máy đọc sai", đây là thứ duy nhất đối chiếu được mà
+        // không phải hỏi lại chính model đã đọc sai.
+        mock.method(extractor, 'extractReceipt', async () => okResult(450_000));
+        mock.method(ocrScanner, 'scanImage', async () => scanFor(450_000));
+
+        await service.validateReceipt('a.jpg', { entityId: 7 });
+        const saved = repository.saveExtraction.mock.calls[0].arguments[0];
+
+        assert.match(saved.ocrText, /TONG CONG/);
+        assert.strictEqual(saved.ocrConfidence, 85);
+        assert.strictEqual(saved.confidence, 1);
+        assert.strictEqual(saved.imageWidth, 1600);
+        assert.strictEqual(saved.pipeline.ocr.ok, true);
+        assert.strictEqual(saved.pipeline.corroboration.trusted, true);
+    });
+
+    it('dựng lại kênh OCR từ vết đã lưu thay vì quét lại ảnh', async () => {
+        // Bước hoàn tất chấm lại cùng tấm ảnh với số tiền khai. Quét lại tốn khoảng
+        // 10 giây CPU mà kết quả không thể khác đi — ảnh vẫn thế.
+        mock.method(repository, 'findLatestByImageUrl', async () => ({
+            raw_extraction: okResult(450_000).raw,
+            provider: 'google', model: 'test', prompt_version: 'v2', image_sha256: 'abc',
+            ocr_text: scanFor(450_000).text, ocr_confidence: '85', ocr_engine: 'tesseract.js/vie+eng',
+        }));
+        const ocr = mock.method(ocrScanner, 'scanImage', async () => scanFor(450_000));
+        const vision = mock.method(extractor, 'extractReceipt', async () => okResult(450_000));
+
+        const result = await service.validateReceipt('a.jpg', { entityId: 1, claimedAmount: 450_000 });
+
+        assert.strictEqual(ocr.mock.callCount(), 0, 'không quét lại');
+        assert.strictEqual(vision.mock.callCount(), 0, 'không gọi lại model');
+        assert.strictEqual(result.verdict, 'passed');
+        assert.strictEqual(result.confidence, 1, 'vẫn chấm được độ tin cậy từ text đã lưu');
+    });
+
+    it('lấy độ tin cậy của ảnh THẤP NHẤT cho cả đợt bảo dưỡng', async () => {
+        // Một hóa đơn đọc chắc chắn không bù được cho một hóa đơn đọc mù mờ — người
+        // duyệt vẫn phải mở đúng cái mù mờ đó ra xem.
+        const totals = { 'a.jpg': 300_000, 'b.jpg': 500_000 };
+        mock.method(extractor, 'extractReceipt', async (url) => okResult(totals[url]));
+        mock.method(ocrScanner, 'scanImage', async (buffer) => (
+            buffer ? { ok: false, code: 'OCR_DISABLED' } : { ok: false, code: 'OCR_DISABLED' }
+        ));
+
+        const result = await service.validateMaintenanceBills(['a.jpg', 'b.jpg'], { claimedAmount: 800_000 });
+
+        assert.ok(result.confidence < 1, 'thiếu kênh đối chiếu thì không thể đạt mức tuyệt đối');
+        assert.strictEqual(result.confidence_label, 'cao');
     });
 });
