@@ -7,6 +7,7 @@ const accountantPaymentController      = require('../controllers/accountantPayme
 const accountantReportController       = require('../controllers/accountantReportController');
 const accountantBankTransferController = require('../controllers/accountantBankTransferController');
 const accountantLedgerController       = require('../controllers/accountantLedgerController');
+const collectOnBehalfController        = require('../controllers/collectOnBehalfController');
 const accountantOrderRoutes   = require('./accountantOrderRoutes');
 const accountantPayrollRoutes = require('./accountantPayrollRoutes');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
@@ -40,6 +41,14 @@ router.post('/debts/payment/preview',    accountantPaymentController.previewAllo
 router.post('/debts/payment/allocate',   accountantPaymentController.allocatePayment);
 router.post('/debts/payment/by-shipment', accountantPaymentController.paymentByShipment);
 router.post('/debts/payment/by-debt',    accountantPaymentController.paymentByDebt);
+
+
+// ─── Thu hộ (COD) — tiền công ty đang giữ hộ người bán ───────────────────────
+// Ngược chiều với /debts: ở đây CÔNG TY là bên nợ. Đặt '/return' dưới :orderId nên không
+// va vào route nào khác.
+router.get ('/collect-on-behalf',                    collectOnBehalfController.list);
+router.get ('/collect-on-behalf/:orderId',           collectOnBehalfController.detail);
+router.post('/collect-on-behalf/:orderId/return',    collectOnBehalfController.createReturn);
 
 router.get ('/receipts/bank-transfer',                              accountantBankTransferController.getPendingBankTransfers);
 router.post('/receipts/:receiptId/confirm-bank-transfer',           accountantBankTransferController.confirmBankTransfer);

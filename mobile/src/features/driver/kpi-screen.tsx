@@ -17,6 +17,7 @@ import { KpiSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
 import { useKpi }      from '@/hooks/use-kpi';
 import type { KpiRecord } from '@/services/kpi-service';
+import { moneyShort } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,12 +27,6 @@ const MONTH_NAMES = [
     'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12',
 ];
 
-const fmtMoney = (val: string | number) => {
-    const n = Number(val);
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M₫`;
-    if (n >= 1_000)     return `${(n / 1_000).toFixed(0)}K₫`;
-    return `${n}₫`;
-};
 
 // ─── Month navigator ──────────────────────────────────────────────────────────
 
@@ -157,7 +152,7 @@ function KpiBonusCard({ record }: { record: KpiRecord }) {
                 <XStack justifyContent="space-between">
                     <Text fontSize={12} color={appTheme.colors.textMuted}>Doanh thu tháng này</Text>
                     <Text fontSize={12} fontWeight="700" color={color}>
-                        {fmtMoney(revenue)} / {fmtMoney(threshold)}
+                        {moneyShort(revenue)} / {moneyShort(threshold)}
                     </Text>
                 </XStack>
                 <View style={s.barTrack}>
@@ -166,11 +161,11 @@ function KpiBonusCard({ record }: { record: KpiRecord }) {
                 <XStack justifyContent="space-between" alignItems="center">
                     <Text fontSize={11} color={appTheme.colors.textMuted}>
                         {achieved
-                            ? `Vượt ngưỡng ${fmtMoney(revenue - threshold)}`
-                            : `Còn thiếu ${fmtMoney(remain)}`}
+                            ? `Vượt ngưỡng ${moneyShort(revenue - threshold)}`
+                            : `Còn thiếu ${moneyShort(remain)}`}
                     </Text>
                     <Text fontSize={13} fontWeight="900" color={color}>
-                        {fmtMoney(reward)}
+                        {moneyShort(reward)}
                     </Text>
                 </XStack>
             </YStack>
@@ -232,7 +227,7 @@ function TopDriverCard({ record }: { record: KpiRecord }) {
                     <XStack alignItems="center" gap={4}>
                         <Star size={12} color={color} fill={color} />
                         <Text fontSize={12} fontWeight="700" color={color}>
-                            {fmtMoney(reward)} cho driver #1
+                            {moneyShort(reward)} cho driver #1
                         </Text>
                     </XStack>
                 </YStack>
@@ -257,7 +252,7 @@ function KpiSection({ record }: { record: KpiRecord }) {
                 <StatCard
                     icon={<TrendingUp size={18} color={appTheme.colors.success} />}
                     label="Doanh thu thực tế"
-                    value={fmtMoney(record.total_revenue)}
+                    value={moneyShort(record.total_revenue)}
                     sub="Chỉ tính giá thực tế"
                     color={appTheme.colors.success}
                 />

@@ -1,4 +1,6 @@
 const tripService = require('../services/tripService');
+const { money } = require('../utils/formatNumber');
+const { optionalMoney } = require('../utils/money');
 
 // GET /api/trips/pool?page=1&limit=5&vehicleGroupId=123
 const getTripPool = async (req, res) => {
@@ -411,9 +413,13 @@ const recordReceiptCollection = async (req, res) => {
         const { payment_type, notes, collected_amount } = req.body;
         if (!payment_type) return res.status(400).json({ error: 'Thiếu hình thức thanh toán' });
 
-        const collectedAmount = collected_amount ? Number(collected_amount) : null;
-        if (collectedAmount !== null && (isNaN(collectedAmount) || collectedAmount <= 0)) {
-            return res.status(400).json({ error: 'Số tiền nhận từ khách phải lớn hơn 0' });
+        // optionalMoney: bỏ trống = không khai số tiền (hợp lệ), còn đã gõ thì phải
+        // hiểu đúng — phép `Number()` cũ đọc "500.000" thành 500.
+        let collectedAmount;
+        try {
+            collectedAmount = optionalMoney(collected_amount, { field: 'Số tiền nhận từ khách' });
+        } catch (err) {
+            return res.status(400).json({ error: err.message });
         }
 
         const file = req.files?.proof?.[0] ?? req.files?.image?.[0] ?? req.files?.photo?.[0];
@@ -429,7 +435,7 @@ const recordReceiptCollection = async (req, res) => {
         const message = result?.excessDistributed
             ? 'Đã ghi nhận thanh toán — phần thừa tự động phân bổ vào nợ cũ của khách.'
             : result?.partialPayment
-                ? `Đã ghi nhận thanh toán một phần — khách còn nợ ${Number(result.shortfall).toLocaleString('vi-VN')}đ.`
+                ? `Đã ghi nhận thanh toán một phần — khách còn nợ ${money(Number(result.shortfall))}.`
                 : 'Đã ghi nhận thanh toán phiếu thu';
 
         res.json({

@@ -4,6 +4,8 @@ const profileRepository = require('../repositories/profileRepository');
 const roleRepository = require('../repositories/roleRepository');
 const notificationService = require('./notificationService');
 const { broadcastToUser } = require('./notificationGateway');
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 
 const VALID_METHODS = ['cash', 'bank_transfer'];
 
@@ -20,7 +22,7 @@ const getDebtPayments = async (driverId, debtId) => {
 };
 
 const submitRepayment = async (driverId, debtId, { amount, paymentMethod, notes }, receiptUrl) => {
-    const amt = Number(amount);
+    const amt = requireMoney(amount, { field: 'Số tiền nộp' });
     if (!amt || amt <= 0) throw new Error('Số tiền phải lớn hơn 0');
     if (!receiptUrl) throw new Error('Ảnh chứng từ là bắt buộc');
     if (paymentMethod && !VALID_METHODS.includes(paymentMethod)) throw new Error('Hình thức thanh toán không hợp lệ');
@@ -33,7 +35,7 @@ const submitRepayment = async (driverId, debtId, { amount, paymentMethod, notes 
     ]);
     notificationService.createForUsers([...managerIds, ...accountantIds], {
         title: 'Báo nộp tiền công nợ mới',
-        message: `${driver?.full_name ?? 'Tài xế'} báo đã nộp ${amt.toLocaleString('vi-VN')}đ cho công nợ #${debtId} — chờ xác nhận.`,
+        message: `${driver?.full_name ?? 'Tài xế'} báo đã nộp ${money(amt)} cho công nợ #${debtId} — chờ xác nhận.`,
         type: 'DEBT_REPAYMENT_SUBMITTED',
         entityType: 'debt_payments',
         entityId: payment.id,
@@ -123,7 +125,7 @@ const notifyOverdueDebts = async () => {
 
     const labelByType = { driver: 'công nợ tài xế', customer: 'công nợ khách hàng' };
     const lines = rows.map((r) =>
-        `${r.debt_count} khoản ${labelByType[r.debt_type] ?? r.debt_type} quá hạn — tổng ${Number(r.total_remaining).toLocaleString('vi-VN')}đ`);
+        `${r.debt_count} khoản ${labelByType[r.debt_type] ?? r.debt_type} quá hạn — tổng ${money(Number(r.total_remaining))}`);
 
     const [managerIds, accountantIds] = await Promise.all([
         roleRepository.getUserIdsByRole('manager'),

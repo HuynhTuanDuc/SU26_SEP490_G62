@@ -14,9 +14,8 @@ import { useClaimTrip }        from '@/hooks/use-claim-trip';
 import { tripService }         from '@/services/trip-service';
 import { useConfirm, useToast } from '@/providers/ui-provider';
 import type { TripPoolItem }   from '@/types/trip';
+import { money } from '@/lib/format-number';
 
-const fmtCurrency = (v: string | null) =>
-    v ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v)) : null;
 
 const fmtWeight = (kg: string | null) => {
     if (!kg) return null;
@@ -199,7 +198,7 @@ export default function PoolOrderDetailScreen() {
                                     <YStack alignItems="center" flex={1} gap={3}>
                                         <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}
                                             numberOfLines={1} adjustsFontSizeToFit>
-                                            {fmtCurrency(data.estimated_price)}
+                                            {money(data.estimated_price)}
                                         </Text>
                                         <Text fontSize={11} color={appTheme.colors.textMuted}>Giá trị</Text>
                                     </YStack>

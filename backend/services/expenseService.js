@@ -5,6 +5,8 @@ const profileRepository = require('../repositories/profileRepository');
 const roleRepository    = require('../repositories/roleRepository');
 const notificationService = require('./notificationService');
 const { ALLOWED_EXPENSE_TYPES, EXPENSE_TYPE_LABEL } = require('../constants/expenseConstants');
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 
 // Trạng thái trip cho phép thêm chi phí (chưa kết thúc)
 const EXPENSE_ALLOWED_STATUSES = [
@@ -14,7 +16,9 @@ const EXPENSE_ALLOWED_STATUSES = [
 const createExpense = async (driverId, { shipmentId, expenseType, amount, description, receiptUrl, clientRequestId }) => {
     if (!receiptUrl) throw new Error('Ảnh bằng chứng là bắt buộc');
     if (!expenseType || !ALLOWED_EXPENSE_TYPES.includes(expenseType)) throw new Error('Loại chi phí không hợp lệ');
-    if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
+    // requireMoney thay cho `Number(amount) <= 0`: phép so cũ để NaN lọt qua
+    // (NaN <= 0 là false) và Postgres nhận 'NaN' như một NUMERIC hợp lệ.
+    const soTien = requireMoney(amount, { field: 'Số tiền' });
 
     const shipment = await tripRepository.getTripById(shipmentId);
     if (!shipment) throw new Error('Chuyến không tồn tại');
@@ -45,7 +49,7 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
         vehicleId,
         driverId,
         expenseType,
-        amount: Number(amount),
+        amount: soTien,
         description: description?.trim() || null,
         clientRequestId: clientRequestId || null,
     });
@@ -75,7 +79,7 @@ const createExpense = async (driverId, { shipmentId, expenseType, amount, descri
     const coordinatorIds = await roleRepository.getUserIdsByRole('coordinator');
     notificationService.createForUsers(coordinatorIds, {
         title: 'Chi phí mới chờ duyệt',
-        message: `${driver?.full_name ?? 'Tài xế'} khai ${EXPENSE_TYPE_LABEL[expenseType] ?? expenseType} — ${Number(amount).toLocaleString('vi-VN')}đ cho chuyến #${shipmentId}.`,
+        message: `${driver?.full_name ?? 'Tài xế'} khai ${EXPENSE_TYPE_LABEL[expenseType] ?? expenseType} — ${money(soTien)} cho chuyến #${shipmentId}.`,
         type: 'EXPENSE_SUBMITTED',
         entityType: 'expenses',
         entityId: expense.id,
@@ -90,7 +94,7 @@ const approveExpense = async (expenseId, reviewerId) => {
 
     notificationService.createForUser(expense.created_by, {
         title: 'Chi phí đã được duyệt',
-        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${Number(expense.amount).toLocaleString('vi-VN')}đ đã được duyệt.`,
+        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${money(Number(expense.amount))} đã được duyệt.`,
         type: 'EXPENSE_APPROVED',
         entityType: 'expenses',
         entityId: expense.id,
@@ -123,7 +127,7 @@ const unapproveExpense = async (expenseId, reviewerId, reason = null, actorRole 
 
     notificationService.createForUser(expense.created_by, {
         title: 'Chi phí cần khai lại',
-        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${Number(expense.amount).toLocaleString('vi-VN')}đ đã bị gỡ duyệt. Bạn có thể sửa hoặc xoá khoản này.`,
+        message: `Chi phí "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${money(Number(expense.amount))} đã bị gỡ duyệt. Bạn có thể sửa hoặc xoá khoản này.`,
         type: 'EXPENSE_REJECTED',
         entityType: 'expenses',
         entityId: expense.id,
@@ -162,8 +166,10 @@ const getExpensesByShipment = async (shipmentId) => {
 
 const updateExpense = async (driverId, expenseId, { expenseType, amount, description, fileUrl }) => {
     if (expenseType && !ALLOWED_EXPENSE_TYPES.includes(expenseType)) throw new Error('Loại chi phí không hợp lệ');
-    if (amount !== undefined && Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
-    return expenseRepository.updateExpense(expenseId, driverId, { expenseType, amount, description, fileUrl });
+    const soTienMoi = amount === undefined ? undefined : requireMoney(amount, { field: 'Số tiền' });
+    return expenseRepository.updateExpense(expenseId, driverId, {
+        expenseType, amount: soTienMoi, description, fileUrl,
+    });
 };
 
 const deleteExpense = async (driverId, expenseId) => {

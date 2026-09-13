@@ -5,6 +5,7 @@ import {
   RiErrorWarningFill, RiAlertLine, RiErrorWarningLine, RiCloseLine,
 } from "react-icons/ri";
 import { notify } from "../../../components/shared-ui/Toast";
+import { money } from "../../../utils/formatNumber";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -170,7 +171,7 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
           <div>
             <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-1">Chi phí tài xế khai</div>
             <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
-              {Number.isFinite(cost) && cost > 0 ? `${cost.toLocaleString("vi-VN")} đ` : "Chưa khai"}
+              {Number.isFinite(cost) && cost > 0 ? `${money(cost)}` : "Chưa khai"}
             </p>
             <p className="text-[11px] text-gray-400 dark:text-gray-400 mt-1">
               Số tiền này đã được đối chiếu tự động với hóa đơn khi tài xế bấm hoàn tất.

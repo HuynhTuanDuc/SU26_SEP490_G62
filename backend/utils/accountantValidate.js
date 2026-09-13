@@ -1,3 +1,4 @@
+const { requireMoney, optionalMoney } = require('./money');
 
 
 const err400 = (msg) => Object.assign(new Error(msg), { status: 400 });
@@ -9,19 +10,16 @@ const posInt = (val, label) => {
     return n;
 };
 
-const posAmount = (val, label = 'Số tiền') => {
-    const n = Number(val);
-    if (isNaN(n) || n <= 0)
-        throw err400(`${label} phải lớn hơn 0.`);
-    return n;
-};
+// Bảy ô tiền của kế toán đi qua hai hàm này: công nợ khai tay, các khoản thanh toán đơn
+// hàng, tiền tài xế thu hộ. Trước đây cả hai dùng `Number()` trần, nên "500.000" —
+// đúng cách người Việt gõ năm trăm nghìn — trở thành 500. Không có cảnh báo nào: khoản
+// công nợ vẫn được tạo, chỉ là ít hơn thật một nghìn lần.
+//
+// Chuyển sang money.js để mọi ô tiền trong hệ thống hiểu số giống hệt nhau và trả về
+// cùng một kiểu câu nhắc bằng tiếng Việt.
+const posAmount = (val, label = 'Số tiền') => requireMoney(val, { field: label });
 
-const nonNegAmount = (val, label = 'Số tiền') => {
-    const n = Number(val ?? 0);
-    if (isNaN(n) || n < 0)
-        throw err400(`${label} không được âm.`);
-    return n;
-};
+const nonNegAmount = (val, label = 'Số tiền') => optionalMoney(val, { field: label, allowZero: true }) ?? 0;
 
 const enumVal = (val, allowed, label) => {
     if (val !== undefined && val !== null && val !== '' && !allowed.includes(val))

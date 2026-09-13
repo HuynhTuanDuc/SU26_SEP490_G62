@@ -137,7 +137,7 @@ describe('Bonus Service', () => {
 
         await assert.rejects(
             () => bonusService.createWelfare({ driver_id: 1, type: 'special', amount: 0 }, 2),
-            { message: 'Số tiền phải lớn hơn 0' },
+            { message: 'Số tiền thưởng phải lớn hơn 0' },
         );
     });
 

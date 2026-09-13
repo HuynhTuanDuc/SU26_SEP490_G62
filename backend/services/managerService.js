@@ -8,6 +8,7 @@ const coordinatorService = require('./coordinatorService');
 const accountantFinanceService = require('./accountantFinanceService');
 const notificationGateway = require('./notificationGateway');
 const notificationService = require('./notificationService');
+const { money } = require('../utils/formatNumber');
 
 const createManagerRealtimePayload = (section, action, extra = {}) => ({
     type: 'manager.workflow.changed',
@@ -336,7 +337,7 @@ const notifyPartnerPaymentRecorded = async (partnerId, amount, actorId = null) =
     broadcastPartnerChange('payment', { partnerId });
     notifyManagerWorkflow('partners', 'payment', {
         title: 'Đối tác đã thanh toán công nợ',
-        message: `Kế toán đã ghi nhận thanh toán ${Number(amount).toLocaleString('vi-VN')}đ cho đối tác "${label}".`,
+        message: `Kế toán đã ghi nhận thanh toán ${money(Number(amount))} cho đối tác "${label}".`,
         entityType: 'partner',
         entityId: partnerId,
     }, actorId);

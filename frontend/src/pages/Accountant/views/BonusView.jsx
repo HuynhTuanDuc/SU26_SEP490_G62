@@ -14,6 +14,7 @@ const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400
 import { useBonuses } from "../hooks/useBonuses";
 import { accountantService } from "../services/accountant.service";
 import { PaginationBar } from "../components/shared/PaginationBar";
+import { money } from "../../../utils/formatNumber";
 
 const TYPE_LABEL = {
   tet_annual:       "Thưởng Tết",
@@ -53,7 +54,7 @@ const RELATION_LABEL = {
 };
 
 const fmt = (n) =>
-  n == null ? "—" : Number(n).toLocaleString("vi-VN") + "đ";
+  n == null ? "—" : money(Number(n));
 
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => currentYear - i);

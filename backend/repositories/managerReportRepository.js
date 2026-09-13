@@ -134,11 +134,14 @@ const _operatingCost = async (year, month) => {
             SELECT COALESCE(SUM(amount), 0)::float AS amount
             FROM payment_vouchers
             WHERE status IN ('approved','paid')
-              -- prepaid_refund là TRẢ LẠI tiền khách ứng trước cho đơn đã huỷ, không phải
-              -- chi phí vận hành: sổ tài chính ghi nó vào 131 (phải thu) với event
-              -- 'prepaid_refunded', không phải 'expense_recorded'. Tính vào đây sẽ đội
-              -- chi phí và làm lợi nhuận gộp thấp giả tạo.
-              AND voucher_type <> 'prepaid_refund'
+              -- Hai loại dưới đây đều là TRẢ LẠI tiền vốn không phải của công ty, không
+              -- phải chi phí vận hành. Sổ tài chính ghi chúng vào 131 / 3388 chứ không vào
+              -- 642, nên tính vào đây sẽ đội chi phí và làm lợi nhuận gộp thấp giả tạo:
+              --   prepaid_refund           — trả lại tiền khách ứng trước cho đơn đã huỷ
+              --   collect_on_behalf_return — trả lại tiền thu hộ (COD) cho người bán
+              -- Riêng COD số tiền thường lớn hơn cả cước, nên bỏ sót chỗ này là báo cáo
+              -- lãi lỗ sai hẳn một bậc.
+              AND voucher_type NOT IN ('prepaid_refund', 'collect_on_behalf_return')
               AND (COALESCE(paid_at, approved_at) AT TIME ZONE '${TZ}') >= make_date($1, $2, 1)
               AND (COALESCE(paid_at, approved_at) AT TIME ZONE '${TZ}') <  (make_date($1, $2, 1) + INTERVAL '1 month')
         `, [year, month]),

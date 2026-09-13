@@ -13,13 +13,10 @@ import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }           from '@/theme/app-theme';
 import { tripService }        from '@/services/trip-service';
 import type { DriverReceiptSummary, ReceiptRequestStatus } from '@/types/trip';
+import { moneyShort } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmtMoney = (v: string | number | null | undefined) => {
-    if (v === null || v === undefined) return '—';
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
-};
 
 const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -84,11 +81,11 @@ function ReceiptCard({ item }: { item: DriverReceiptSummary }) {
                         <YStack alignItems="flex-end" gap={1}>
                             {/* amount đã gồm cước + chi hộ khách (backend chốt khi duyệt) */}
                             <Text fontSize={15} fontWeight="900" color={statusCfg.color}>
-                                {fmtMoney(Number(item.amount))}
+                                {moneyShort(Number(item.amount))}
                             </Text>
                             {Number(item.pass_through_total) > 0 ? (
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>
-                                    gồm chi hộ {fmtMoney(item.pass_through_total)}
+                                    gồm chi hộ {moneyShort(item.pass_through_total)}
                                 </Text>
                             ) : null}
                         </YStack>

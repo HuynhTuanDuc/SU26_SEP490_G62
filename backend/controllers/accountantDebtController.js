@@ -1,5 +1,6 @@
 ﻿const accountantDebtRepository = require('../repositories/accountantDebtRepository');
 const { posInt, posAmount, enumVal, pageParams, validDate, sendError, err400 } = require('../utils/accountantValidate');
+const { money } = require('../utils/formatNumber');
 
 const DEBT_TYPES   = ['customer', 'driver', 'partner'];
 const DEBT_STATUSES = ['paid', 'partial', 'unpaid'];
@@ -104,7 +105,7 @@ const transferToDriver = async (req, res) => {
 const validateManualDebtBody = (body, { requireOwner = true } = {}) => {
     const totalAmount = posAmount(body.total_amount, 'Số tiền công nợ');
     if (totalAmount > MAX_MANUAL_DEBT) {
-        throw err400(`Số tiền công nợ vượt mức cho phép (tối đa ${MAX_MANUAL_DEBT.toLocaleString('vi-VN')}đ) — kiểm tra lại xem có thừa số 0 không.`);
+        throw err400(`Số tiền công nợ vượt mức cho phép (tối đa ${money(MAX_MANUAL_DEBT)}) — kiểm tra lại xem có thừa số 0 không.`);
     }
 
     // Ngày phát sinh: bắt buộc, và KHÔNG được ở tương lai. Nợ cũ mà ghi ngày tương lai

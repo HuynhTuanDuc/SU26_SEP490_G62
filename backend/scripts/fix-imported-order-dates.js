@@ -26,7 +26,7 @@ const FROM_DATE = process.env.FROM_DATE || '2026-12-08'; // ngày bị hiểu nh
 const TO_DATE   = process.env.TO_DATE   || '2026-08-12'; // ngày đúng (12 tháng 8)
 const APPLY     = process.argv.includes('--apply');
 
-const money = (n) => Number(n || 0).toLocaleString('vi-VN') + 'đ';
+const { money } = require('../utils/formatNumber');
 
 (async () => {
     console.log(`DB: ${process.env.DB_NAME}@${process.env.DB_HOST}:${process.env.DB_PORT}`);

@@ -7,6 +7,7 @@ import {
 import { RiAddLine, RiPencilLine, RiDeleteBinLine } from "react-icons/ri";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
+import { money } from "../../../utils/formatNumber";
 
 const PAGE_SIZE = 10;
 
@@ -32,7 +33,6 @@ const EMPTY_FORM = {
   reward_amount: null, reward_multiplier: null, min_revenue: null, is_active: true,
 };
 
-const formatCurrency = (value) => (value != null ? Number(value).toLocaleString("vi-VN") + " đ" : "-");
 
 // readOnly: dùng khi Kế toán mở màn này để đối chiếu khi tính lương — chỉ Manager
 // mới được cấu hình quy tắc (backend cũng chặn POST/PUT/DELETE với role khác).
@@ -250,12 +250,12 @@ export default function BonusRulesView({ readOnly = false }) {
                 <div className="flex items-center gap-6 shrink-0">
                   <div className="text-right">
                     <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Số tiền thưởng</div>
-                    <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{formatCurrency(rule.reward_amount)}</div>
+                    <div className="text-sm font-semibold text-blue-600 dark:text-blue-300">{money(rule.reward_amount)}</div>
                   </div>
                   {rule.conditions_json?.min_revenue && (
                     <div className="text-right">
                       <div className="text-[10px] text-gray-400 dark:text-gray-400 uppercase">Ngưỡng doanh thu</div>
-                      <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(rule.conditions_json.min_revenue)}</div>
+                      <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{money(rule.conditions_json.min_revenue)}</div>
                     </div>
                   )}
                   {!readOnly && (

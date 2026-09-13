@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 
+import { num } from '@/lib/format-number';
+
 type UseMoneyInputResult = {
     displayValue: string;
     rawValue: number;
@@ -11,7 +13,7 @@ type UseMoneyInputResult = {
 function parseInitial(initial: number | string): string {
     if (initial === '' || initial === null || initial === undefined) return '';
     const n = Math.floor(Number(initial));
-    return n > 0 ? n.toLocaleString('vi-VN') : '';
+    return n > 0 ? num(n) : '';
 }
 
 export function useMoneyInput(initial: number | string = ''): UseMoneyInputResult {
@@ -21,13 +23,13 @@ export function useMoneyInput(initial: number | string = ''): UseMoneyInputResul
 
     const onChangeText = useCallback((text: string) => {
         const digits = text.replace(/[^0-9]/g, '');
-        setDisplayValue(digits ? Number(digits).toLocaleString('vi-VN') : '');
+        setDisplayValue(digits ? num(Number(digits)) : '');
     }, []);
 
     const clear = useCallback(() => setDisplayValue(''), []);
 
     const setValue = useCallback((n: number) => {
-        setDisplayValue(n > 0 ? n.toLocaleString('vi-VN') : '');
+        setDisplayValue(n > 0 ? num(n) : '');
     }, []);
 
     return { displayValue, rawValue, onChangeText, clear, setValue };

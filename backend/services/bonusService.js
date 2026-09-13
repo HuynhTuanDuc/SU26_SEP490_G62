@@ -1,6 +1,8 @@
 const bonusRepository  = require('../repositories/bonusRepository');
 const roleRepository   = require('../repositories/roleRepository');
 const notificationService = require('./notificationService');
+const { money } = require('../utils/formatNumber');
+const { requireMoney, optionalMoney } = require('../utils/money');
 
 const TYPE_LABEL = {
     tet_annual:       'Thưởng Tết âm lịch',
@@ -97,8 +99,7 @@ const createWelfare = async (data, createdBy, createdByRole) => {
             amount = FUNERAL_AMOUNTS[beneficiary_relation] ?? 500_000;
             break;
         default:
-            if (!amount || Number(amount) <= 0) throw new Error('Số tiền phải lớn hơn 0');
-            amount = Number(amount);
+            amount = requireMoney(amount, { field: 'Số tiền thưởng' });
     }
 
     const bonus = await bonusRepository.create({
@@ -137,10 +138,11 @@ const createWelfare = async (data, createdBy, createdByRole) => {
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
 const approve = async (id, approvedBy, adjustedAmount) => {
-    if (adjustedAmount != null && Number(adjustedAmount) <= 0)
-        throw new Error('Số tiền điều chỉnh phải lớn hơn 0');
+    // `Number(x) <= 0` cũ để NaN lọt: NaN so sánh với gì cũng false. Manager sửa số
+    // tiền lúc duyệt mà gõ "1.500.000" là NaN đi thẳng xuống driver_bonuses.amount.
+    const soTienSua = optionalMoney(adjustedAmount, { field: 'Số tiền điều chỉnh' });
 
-    const bonus = await bonusRepository.approve(id, approvedBy, adjustedAmount ?? null);
+    const bonus = await bonusRepository.approve(id, approvedBy, soTienSua);
 
     // Notify accountant
     const accountantIds = await _getUserIdsByRole('accountant');
@@ -157,7 +159,7 @@ const approve = async (id, approvedBy, adjustedAmount) => {
     // Notify driver
     notificationService.createForUser(bonus.driver_id, {
         title:      'Khoản thưởng được duyệt',
-        message:    `"${TYPE_LABEL[bonus.type] ?? bonus.type}" của bạn đã được duyệt — ${Number(bonus.amount).toLocaleString('vi-VN')}đ.`,
+        message:    `"${TYPE_LABEL[bonus.type] ?? bonus.type}" của bạn đã được duyệt — ${money(Number(bonus.amount))}.`,
         type:       'BONUS_APPROVED',
         entityType: 'driver_bonuses',
         entityId:   id,
@@ -186,7 +188,7 @@ const pay = async (id, paidBy) => {
 
     notificationService.createForUser(bonus.driver_id, {
         title:      'Khoản thưởng đã được chi trả',
-        message:    `"${TYPE_LABEL[bonus.type] ?? bonus.type}" — ${Number(bonus.amount).toLocaleString('vi-VN')}đ đã được chi trả.`,
+        message:    `"${TYPE_LABEL[bonus.type] ?? bonus.type}" — ${money(Number(bonus.amount))} đã được chi trả.`,
         type:       'BONUS_PAID',
         entityType: 'driver_bonuses',
         entityId:   id,

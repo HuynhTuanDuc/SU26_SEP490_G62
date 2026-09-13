@@ -4,15 +4,15 @@ import {
   ResponsiveContainer, Cell,
 } from "recharts";
 import { RiCheckboxCircleLine } from "react-icons/ri";
+import { money } from "../../utils/formatNumber";
 
 export const VND = (n) => {
   const num = Number(n || 0);
   if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)} tỷ`;
   if (num >= 1_000_000)     return `${(num / 1_000_000).toFixed(1)} tr`;
   if (num >= 1_000)         return `${(num / 1_000).toFixed(0)}k`;
-  return num.toLocaleString("vi-VN") + "đ";
+  return money(num);
 };
-export const VND_FULL = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 
 export const VEHICLE_BAR_COLORS = ["#3b82f6", "#6366f1", "#8b5cf6", "#0ea5e9", "#14b8a6", "#f59e0b"];
 
@@ -25,7 +25,7 @@ export function ChartTooltip({ active, payload, label }) {
         <div key={p.dataKey} className="flex items-center justify-between gap-3">
           <span className="text-gray-500 dark:text-gray-400">{p.name ?? p.dataKey}</span>
           <span className="font-semibold" style={{ color: p.color }}>
-            {p.dataKey === "order_count" ? `${p.value} đơn` : VND_FULL(p.value)}
+            {p.dataKey === "order_count" ? `${p.value} đơn` : money(p.value)}
           </span>
         </div>
       ))}
@@ -99,7 +99,7 @@ export function DebtAgingBars({ data }) {
       </div>
       <div className="flex items-center justify-between px-1 pt-1 border-t border-gray-100 dark:border-white/10">
         <span className="text-xs text-gray-400 dark:text-gray-400 font-medium">Tổng nợ khách chưa thu</span>
-        <span className="text-sm font-bold text-red-600 dark:text-red-300">{VND_FULL(total)}</span>
+        <span className="text-sm font-bold text-red-600 dark:text-red-300">{money(total)}</span>
       </div>
     </div>
   );
@@ -167,7 +167,7 @@ export function DriverHoldingsList({ data }) {
       ))}
       <div className="flex items-center justify-between px-1 pt-2 border-t border-gray-100 dark:border-white/10">
         <span className="text-xs text-gray-400 dark:text-gray-400 font-medium">Tổng tiền tài xế đang cầm</span>
-        <span className="text-sm font-bold text-amber-600 dark:text-amber-300">{VND_FULL(total)}</span>
+        <span className="text-sm font-bold text-amber-600 dark:text-amber-300">{money(total)}</span>
       </div>
     </div>
   );
@@ -249,7 +249,7 @@ export function PayrollQuickStats({ data }) {
       {Number(data.total_net) > 0 && (
         <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-500/10 rounded-xl px-4 py-3 mt-1">
           <span className="text-xs text-blue-600 dark:text-blue-300 font-medium">Tổng lương net tháng này</span>
-          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{VND_FULL(data.total_net)}</span>
+          <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{money(data.total_net)}</span>
         </div>
       )}
     </div>

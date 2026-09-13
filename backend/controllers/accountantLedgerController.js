@@ -11,12 +11,23 @@ const EVENT_TYPE_LABEL = {
     customer_debt_created: 'Phát sinh nợ khách hàng',
     customer_payment:      'Khách hàng thanh toán',
     pass_through_cost:     'Chi hộ khách',
+    // Nửa còn lại của 3388, ngược chiều với chi hộ: tiền HÀNG công ty thu giúp khách
+    // khi giao, đang giữ và phải trả lại. Không phải doanh thu, không phải khách nợ.
+    collect_on_behalf_held: 'Thu hộ khách (COD)',
+    // Vế đóng lại: đã trả tiền thu hộ cho người bán. Hai dòng này luôn đi thành cặp —
+    // nhìn hiệu số của chúng là biết công ty còn đang giữ hộ bao nhiêu.
+    collect_on_behalf_returned: 'Trả tiền thu hộ cho người bán',
     expense_recorded:      'Chi phí vận hành',
     expense_reimbursed:    'Hoàn tiền tài xế đã ứng',
     payroll_paid:          'Chi lương',
     bonus_paid:            'Chi thưởng ngoài kỳ',
     advance_disbursed:     'Giải ngân ứng lương',
     advance_recovered:     'Hoàn ứng lương',
+    // Hai dòng dưới đây vốn bị bỏ sót: CSDL cho phép ghi nhưng bảng nhãn không có,
+    // nên trên màn Sổ nhật ký chúng hiện tên máy và ô lọc trả 400 cho đúng chúng.
+    // Test B10 đối chiếu bảng này với CHECK trong CSDL để không sót lần nữa.
+    debt_transferred:      'Chuyển nợ khách sang tài xế',
+    opening_balance:       'Số dư đầu kỳ',
 };
 
 // GET /api/accountant/ledger?event_type=&from=&to=&exported=&page=&pageSize=
@@ -123,4 +134,7 @@ const exportPeriod = async (req, res) => {
 // (VD: hủy xác nhận khoản nộp → debtRepository.voidRepayment vừa set debt_payments='voided'
 // vừa đảo dòng sổ tương ứng). Cho sửa sổ trực tiếp sẽ khiến sổ lệch với bản ghi nghiệp vụ,
 // vì không tồn tại chiều đồng bộ ngược từ sổ về nghiệp vụ.
-module.exports = { getJournal, getJournalStats, exportPeriod };
+// EVENT_TYPE_LABEL xuất ra để test đối chiếu được với danh sách CHECK trong CSDL:
+// bảng này vừa là nhãn hiển thị vừa là bộ kiểm hợp lệ của tham số lọc, nên thiếu
+// một dòng là hỏng cả hai chỗ cùng lúc.
+module.exports = { getJournal, getJournalStats, exportPeriod, EVENT_TYPE_LABEL };

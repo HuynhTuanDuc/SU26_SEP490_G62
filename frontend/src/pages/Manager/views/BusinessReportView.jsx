@@ -18,6 +18,7 @@ import {
   VND, VND_FULL, DebtAgingBars,
   DriverHoldingsList, TopCustomersTable,
 } from "../../../components/shared-ui/reportCharts";
+import { money } from "../../../utils/formatNumber";
 
 // 12 kỳ gần nhất (tháng) tính từ tháng hiện tại theo giờ VN.
 function buildPeriodOptions() {
@@ -104,7 +105,7 @@ export default function BusinessReportView() {
 
     const unpricedWarning = preflight?.unpriced_trips > 0
       ? `\n\n⚠️ Kỳ này còn ${preflight.unpriced_trips} chuyến đã chạy nhưng CHƯA chốt giá `
-        + `(ước tính ${VND_FULL(preflight.unpriced_estimated_total)}). Ký duyệt bây giờ thì `
+        + `(ước tính ${money(preflight.unpriced_estimated_total)}). Ký duyệt bây giờ thì `
         + "doanh thu của những chuyến đó sẽ được ghi nhận sang kỳ mở kế tiếp, không nằm "
         + `trong báo cáo ${opt.label}. Muốn tính đủ vào kỳ này thì duyệt hết phiếu thu TRƯỚC, `
         + "rồi mới ký — ký rồi là không sửa được nữa."
@@ -234,7 +235,7 @@ export default function BusinessReportView() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-800 dark:text-gray-100">
-              Bao gồm {VND_FULL(pnl.revenue_carried_in)} doanh thu kỳ trước chuyển sang
+              Bao gồm {money(pnl.revenue_carried_in)} doanh thu kỳ trước chuyển sang
             </p>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
               {pnl.trips_carried_in ?? 0} chuyến chạy ở kỳ trước, chốt giá sau khi kỳ đó đã ký duyệt
@@ -462,7 +463,7 @@ function CostBreakdown({ items, total }) {
       </div>
       <div className="flex items-center justify-between px-1 pt-1 border-t border-gray-100 dark:border-white/10">
         <span className="text-xs text-gray-400 dark:text-gray-400 font-medium">Tổng chi phí kỳ</span>
-        <span className="text-sm font-bold text-orange-600 dark:text-orange-300">{VND_FULL(total)}</span>
+        <span className="text-sm font-bold text-orange-600 dark:text-orange-300">{money(total)}</span>
       </div>
     </div>
   );
@@ -530,7 +531,7 @@ function CustomerDebtTable({ data, cashflow }) {
                 {c.name}
                 {c.party_type === "partner" && <PartyTag />}
               </td>
-              <td className={`${cell} font-bold text-gray-800 dark:text-gray-100`}>{VND_FULL(c.outstanding)}</td>
+              <td className={`${cell} font-bold text-gray-800 dark:text-gray-100`}>{money(c.outstanding)}</td>
               <td className={`${cell} text-gray-500 dark:text-gray-400`}>{Number(c.d0_30) > 0 ? VND(c.d0_30) : "—"}</td>
               <td className={`${cell} text-yellow-600 dark:text-yellow-300`}>{Number(c.d30_60) > 0 ? VND(c.d30_60) : "—"}</td>
               <td className={`${cell} text-orange-600 dark:text-orange-300`}>{Number(c.d60_90) > 0 ? VND(c.d60_90) : "—"}</td>
@@ -542,7 +543,7 @@ function CustomerDebtTable({ data, cashflow }) {
           ))}
           <tr className="border-t-2 border-gray-100 dark:border-white/10 font-bold text-gray-700 dark:text-gray-200">
             <td className="py-2.5 px-2">TỔNG CỘNG</td>
-            <td className={cell}>{VND_FULL(total.outstanding)}</td>
+            <td className={cell}>{money(total.outstanding)}</td>
             <td className={cell}>{VND(total.d0_30)}</td>
             <td className={cell}>{VND(total.d30_60)}</td>
             <td className={cell}>{VND(total.d60_90)}</td>
@@ -576,10 +577,10 @@ function RiskyCustomers({ data }) {
                 {c.name}
                 {c.party_type === "partner" && <PartyTag />}
               </td>
-              <td className="py-2.5 px-2 text-right font-semibold text-gray-700 dark:text-gray-200">{VND_FULL(c.outstanding)}</td>
+              <td className="py-2.5 px-2 text-right font-semibold text-gray-700 dark:text-gray-200">{money(c.outstanding)}</td>
               <td className="py-2.5 px-2 text-right font-bold">
                 {Number(c.overdue) > 0
-                  ? <span className="text-red-500">{VND_FULL(c.overdue)}</span>
+                  ? <span className="text-red-500">{money(c.overdue)}</span>
                   : <span className="text-gray-300">—</span>}
               </td>
             </tr>

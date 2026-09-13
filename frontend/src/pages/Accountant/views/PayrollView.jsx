@@ -19,8 +19,9 @@ import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVeh
 import { notify } from "../../../components/shared-ui/Toast";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
 import { exportPayslipToPDF } from "../../../utils/exportPayslip";
+import { money } from "../../../utils/formatNumber";
 
-const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
+const VND = (n) => Number(n || money(0));
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => ({
   key: String(i + 1),

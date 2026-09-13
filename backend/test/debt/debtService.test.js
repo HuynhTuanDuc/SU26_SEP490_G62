@@ -46,7 +46,7 @@ describe('Debt Service', () => {
         it('rejects a non-positive amount', async () => {
             await assert.rejects(
                 () => debtService.submitRepayment(1, 10, { amount: 0 }, 'url'),
-                { message: 'Số tiền phải lớn hơn 0' },
+                { message: 'Số tiền nộp phải lớn hơn 0' },
             );
         });
 

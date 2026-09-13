@@ -616,3 +616,82 @@ describe('receiptChecks — chọn tập chi phí để so sánh', () => {
         assert.strictEqual(reasons.length, 1);
     });
 });
+
+describe('evaluateReceipt — chất lượng ảnh và độ tin cậy', () => {
+    it('CHẶN ngay khi ảnh không đủ để đọc, không xét tới nội dung', () => {
+        // Ảnh không đọc nổi thì mọi kết luận rút ra từ nó đều vô nghĩa, và lý do trả
+        // cho tài xế phải là "chụp lại đi" chứ không phải một lỗi nội dung khó hiểu do
+        // đọc nhầm trên ảnh mờ.
+        const result = checks.evaluateReceipt(cleanInvoice(), {
+            keywordIndex,
+            imageQuality: {
+                width: 300,
+                height: 400,
+                reasons: [{ code: 'IMAGE_TOO_SMALL', severity: 'error', message: 'Ảnh quá nhỏ' }],
+            },
+        });
+
+        assert.strictEqual(result.verdict, 'rejected');
+        assert.strictEqual(result.reasons[0].code, 'IMAGE_TOO_SMALL');
+        assert.strictEqual(result.confidence, 0);
+    });
+
+    it('cảnh báo ảnh mờ vẫn cho đi tiếp và vẫn chấm nội dung', () => {
+        const result = checks.evaluateReceipt(cleanInvoice(), {
+            keywordIndex,
+            imageQuality: {
+                reasons: [{ code: 'IMAGE_LOW_RESOLUTION', severity: 'warning', message: 'Ảnh phân giải thấp' }],
+            },
+        });
+
+        assert.strictEqual(result.verdict, 'needs_review');
+        assert.strictEqual(result.receipt_total, 847_000, 'vẫn phải đọc ra được tổng tiền');
+    });
+
+    it('gộp cảnh báo của lớp đối chiếu chéo vào cùng danh sách lý do', () => {
+        const result = checks.evaluateReceipt(cleanInvoice(), {
+            keywordIndex,
+            corroboration: {
+                confidence: 0.7,
+                confidence_label: 'trung bình',
+                penalties: [{ code: 'TOTAL_NOT_GROUNDED', weight: 0.3 }],
+                reasons: [{ code: 'OCR_TOTAL_NOT_GROUNDED', severity: 'warning', message: 'Không tìm thấy tổng tiền' }],
+            },
+        });
+
+        assert.strictEqual(result.verdict, 'needs_review');
+        assert.ok(result.reasons.some((r) => r.code === 'OCR_TOTAL_NOT_GROUNDED'));
+        assert.strictEqual(result.confidence, 0.7);
+    });
+
+    it('độ tin cậy thấp TỰ NÓ là lý do cần người xem', () => {
+        // Lớp chốt: kể cả khi không lý do cụ thể nào bật lên, một hóa đơn mà mọi phép
+        // kiểm đều "không đủ dữ liệu để kết luận" không được lặng lẽ `passed` — đó
+        // đúng là cái bẫy fail-open mà cả thiết kế này sinh ra để tránh.
+        const result = checks.evaluateReceipt(cleanInvoice(), {
+            keywordIndex,
+            corroboration: { confidence: 0.4, confidence_label: 'thấp', penalties: [], reasons: [] },
+        });
+
+        assert.strictEqual(result.verdict, 'needs_review');
+        assert.ok(result.reasons.some((r) => r.code === 'LOW_CONFIDENCE'));
+    });
+
+    it('độ tin cậy cao thì không thêm lý do nào', () => {
+        const result = checks.evaluateReceipt(cleanInvoice(), {
+            keywordIndex,
+            corroboration: { confidence: 1, confidence_label: 'cao', penalties: [], reasons: [] },
+        });
+
+        assert.strictEqual(result.verdict, 'passed');
+        assert.strictEqual(result.confidence, 1);
+    });
+
+    it('thiếu cả hai lớp mới thì chấm y như trước, không đổi phán quyết', () => {
+        // Tương thích ngược: mọi nơi gọi cũ không truyền imageQuality/corroboration.
+        const result = checks.evaluateReceipt(cleanInvoice(), { keywordIndex });
+
+        assert.strictEqual(result.verdict, 'passed');
+        assert.strictEqual(result.confidence, null);
+    });
+});

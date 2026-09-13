@@ -19,6 +19,7 @@ import { tripService } from '@/services/trip-service';
 import { sendOrQueue } from '@/lib/send-or-queue';
 import type { ExpenseType } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
+import { money } from '@/lib/format-number';
 
 const EXPENSE_TYPES: ExpenseType[] = ['toll', 'parking', 'etc', 'fuel', 'repair'];
 
@@ -166,7 +167,7 @@ export function ExpenseFormModal({ visible, shipmentId, onClose, onSuccess }: Pr
                     path: '/api/expenses',
                     photoUri: receiptUri,
                     photoField: 'receipt',
-                    label: `Khai chi phí ${amt.toLocaleString('vi-VN')}đ — chuyến #${shipmentId}`,
+                    label: `Khai chi phí ${money(amt)} — chuyến #${shipmentId}`,
                     fields: {
                         shipmentId: String(shipmentId),
                         expenseType,

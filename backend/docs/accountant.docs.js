@@ -893,7 +893,7 @@
  *         name: event_type
  *         schema:
  *           type: string
- *           enum: [shipment_revenue, prepaid_received, prepaid_refunded, cash_receipt, bank_receipt, driver_debt_created, driver_debt_paid, customer_debt_created, customer_payment, pass_through_cost, expense_recorded, payroll_paid, bonus_paid, advance_disbursed, advance_recovered]
+ *           enum: [shipment_revenue, prepaid_received, prepaid_refunded, cash_receipt, bank_receipt, driver_debt_created, driver_debt_paid, customer_debt_created, customer_payment, pass_through_cost, expense_recorded, payroll_paid, bonus_paid, advance_disbursed, advance_recovered, collect_on_behalf_held, collect_on_behalf_returned]
  *       - in: query
  *         name: from
  *         schema: { type: string, format: date }

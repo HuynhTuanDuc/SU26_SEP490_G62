@@ -26,7 +26,9 @@ describe('Driver Service', () => {
 
         await assert.rejects(
             () => driverService.completeMaintenance(7, 11, {}),
-            (err) => err.statusCode === 400 && err.message === 'cost must be greater than 0',
+            // Gọi với payload rỗng = KHÔNG nhập chi phí. Câu cũ ('cost must be greater
+            // than 0') mô tả sai tình huống — thiếu hẳn ô nhập, chứ không phải nhập số 0.
+            (err) => err.statusCode === 400 && err.message === 'Chi phí bảo dưỡng là bắt buộc',
         );
     });
 

@@ -2,6 +2,7 @@
 const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
 const { buildImportFingerprint } = require('../utils/importFingerprint');
+const { money } = require('../utils/formatNumber');
 
 const PAYMENT_TYPES        = ['cash', 'bank_transfer', 'client_credit'];
 // driver_paid: tài xế đã thu tiền VÀ đã nộp về công ty (import đơn cũ) — nợ tạo + tất toán ngay
@@ -178,7 +179,7 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
         order_date:       order_date  || null,
         completed_at:     body.completed_at || null,
         notes:            notes?.trim() || null,
-        prepaid_amount:   Number(prepaid_amount ?? 0),
+        prepaid_amount:   nonNegAmount(prepaid_amount, 'Số tiền khách ứng trước'),
         partner_id:       partner_id ? Number(partner_id) : null,
         partner_name:     partner_name?.trim() || null,
         shipments,
@@ -423,7 +424,7 @@ const createPayment = async (req, res) => {
         });
 
         const message = result.spreadAcrossOrders
-            ? `Đã phân bổ ${Math.round(result.totalAllocated).toLocaleString('vi-VN')}đ vào ${result.allocations.length} đơn hàng.`
+            ? `Đã phân bổ ${money(Math.round(result.totalAllocated))} vào ${result.allocations.length} đơn hàng.`
             : 'Ghi nhận thanh toán thành công.';
 
         res.status(201).json({

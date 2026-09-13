@@ -7,6 +7,7 @@ import {
   RiFileTextLine, RiMoneyDollarCircleLine, RiBankCardLine, RiUserReceivedLine,
   RiAlertLine, RiArrowGoBackLine,
 } from "react-icons/ri";
+import { money } from "../../../utils/formatNumber";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 
@@ -186,7 +187,7 @@ export default function IncidentDetailModal({ open, incident, incidentForm, setI
               <p className="font-semibold">{COMPENSATION_BANNER.text}</p>
               {incident.compensation_amount && (
                 <p className="mt-1 opacity-80">
-                  {Number(incident.compensation_amount).toLocaleString("vi-VN")}đ
+                  {money(Number(incident.compensation_amount))}
                   {incident.compensation_payee ? ` — ${incident.compensation_payee}` : ""}
                 </p>
               )}

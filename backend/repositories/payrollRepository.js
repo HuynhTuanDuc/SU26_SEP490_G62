@@ -3,6 +3,7 @@ const revenueAllocationRepository = require('./revenueAllocationRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
 const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
+const { money } = require('../utils/formatNumber');
 
 // ─── Payroll ─────────────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ const createSalaryAdvance = async ({ driverId, amount, reason, requestMonth, req
     const activeTotal = Number(existing.rows[0]?.active_total ?? 0);
     if (activeTotal + Number(amount) > MAX_ADVANCE_AMOUNT) {
         const remaining = Math.max(0, MAX_ADVANCE_AMOUNT - activeTotal);
-        throw new Error(`Tổng tiền ứng lương trong tháng không được vượt quá ${MAX_ADVANCE_AMOUNT.toLocaleString('vi-VN')}đ. Còn có thể ứng: ${remaining.toLocaleString('vi-VN')}đ`);
+        throw new Error(`Tổng tiền ứng lương trong tháng không được vượt quá ${money(MAX_ADVANCE_AMOUNT)}. Còn có thể ứng: ${money(remaining)}`);
     }
 
     const result = await pool.query(

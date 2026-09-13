@@ -3,6 +3,7 @@ const reversalService = require('./reversalService');
 const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
+const { requireMoney } = require('../utils/money');
 
 const VEHICLE_STATUSES = ['active', 'maintenance', 'broken', 'retired'];
 const FAILURE_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -84,8 +85,12 @@ const normalizeVehicleGroupPayload = (payload = {}) => {
     const name = String(payload.name || '').trim();
     if (!name) throw createError('Vehicle group name is required', 400);
 
-    const pricePerKm = parseNullableNumber(payload.price_per_km, 'price_per_km', { min: 0 });
-    if (pricePerKm === null) throw createError('price_per_km is required', 400);
+    // Đây là ô tiền có sức lan xa nhất hệ thống: đơn giá này nhân với quãng đường để ra
+    // giá MỌI đơn thuộc nhóm xe. Phép `Number()` cũ nhận "12.000" thành 12 — cả nhóm xe
+    // báo giá 12đ/km thay vì 12.000đ/km, và sai số đó chỉ lộ ra khi khách nhìn hoá đơn.
+    // Trần 1 triệu/km: cao gấp ~70 lần mức thực tế, đủ rộng cho mọi loại xe nhưng vẫn
+    // chặn được lỗi gõ thừa số 0.
+    const pricePerKm = requireMoney(payload.price_per_km, { field: 'Đơn giá/km', max: 1_000_000 });
 
     return {
         name,

@@ -18,6 +18,7 @@ import {
   emptyReceiptForm, formatCurrency, formatNotificationTime,
   newReceiptExpense, normalizeStatus,
 } from "../utils";
+import { money } from "../../../utils/formatNumber";
 
 export default function ReceiptsView({ search, refreshKey, onReceiptPublished }) {
   const [receiptRequests, setReceiptRequests] = useState([]);
@@ -263,7 +264,7 @@ export default function ReceiptsView({ search, refreshKey, onReceiptPublished })
                       coordinator không tưởng số bị nhân nhầm. */}
                   <TableCell>
                     <div className="flex flex-col">
-                      <span>{formatCurrency(request.receipt_amount)}</span>
+                      <span>{money(request.receipt_amount)}</span>
                       {request.returning_at ? (
                         <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</span>
                       ) : null}

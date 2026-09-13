@@ -7,7 +7,7 @@ const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const kpiService          = require('./kpiService');
 
-const fmtVND = (n) => Number(n).toLocaleString('vi-VN') + 'đ';
+const { money } = require('../utils/formatNumber');
 const {
     SHIPMENT_STATUS,
     ALLOWED_TRANSITIONS,
@@ -17,6 +17,7 @@ const {
     UNDOABLE_TRANSITIONS,
 } = require('../constants/tripConstants');
 const reversalService = require('./reversalService');
+const { requireMoney } = require('../utils/money');
 
 // Nội dung thông báo cho từng bước vòng đời chuyến
 const STATUS_NOTIF = {
@@ -380,19 +381,16 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
         throw new Error('Chỉ có thể báo nợ khi chuyến đã hoàn thành (completed)');
     }
 
-    const amt = Number(amount);
-    if (!amt || isNaN(amt) || amt <= 0) {
-        throw new Error('Số tiền nợ phải là số dương hợp lệ');
-    }
+    const amt = requireMoney(amount, { field: 'Số tiền nợ' });
 
     // Anti-spam + TH2+TH3 overflow guard
     const summary = await paymentRepository.getShipmentFinancialSummary(tripId);
     if (summary && summary.remaining !== null) {
         if (amt > summary.remaining) {
             const msg = summary.remaining <= 0
-                ? `Chuyến này đã được ghi nhận đủ số tiền (${fmtVND(summary.trip_value)}). Không thể báo thêm nợ.`
-                : `Số tiền báo nợ ${fmtVND(amt)} vượt quá phần còn lại ${fmtVND(summary.remaining)} ` +
-                  `(giá trị chuyến ${fmtVND(summary.trip_value)}, đã thu mặt ${fmtVND(summary.cash_collected)}, đã báo nợ ${fmtVND(summary.customer_debt_total)}).`;
+                ? `Chuyến này đã được ghi nhận đủ số tiền (${money(summary.trip_value)}). Không thể báo thêm nợ.`
+                : `Số tiền báo nợ ${money(amt)} vượt quá phần còn lại ${money(summary.remaining)} ` +
+                  `(giá trị chuyến ${money(summary.trip_value)}, đã thu mặt ${money(summary.cash_collected)}, đã báo nợ ${money(summary.customer_debt_total)}).`;
             throw new Error(msg);
         }
     }
@@ -407,7 +405,7 @@ const markUnpaid = async (tripId, driverId, { amount, notes } = {}) => {
 
     notificationService.createForUser(driverId, {
         title: 'Đã ghi nhận công nợ khách hàng',
-        message: `Chuyến #${tripId} — khách chưa thanh toán ${Number(amount).toLocaleString('vi-VN')}đ.`,
+        message: `Chuyến #${tripId} — khách chưa thanh toán ${money(Number(amount))}.`,
         type: 'DEBT_CREATED',
         entityType: 'shipments',
         entityId: tripId,

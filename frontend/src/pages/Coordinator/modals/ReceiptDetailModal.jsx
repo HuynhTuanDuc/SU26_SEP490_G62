@@ -12,6 +12,7 @@ const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { coordinatorService } from "../services/coordinator.service";
 import { expenseTypeOptions, formatCurrency, normalizeStatus } from "../utils";
+import { money } from "../../../utils/formatNumber";
 
 const EXPENSE_STATUS_CHIP = {
   pending: { label: "Sẽ duyệt khi phát hành", color: "warning" },
@@ -153,7 +154,7 @@ export default function ReceiptDetailModal({
                       <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Tài xế</span><strong>{shipment.driver_name || "-"}</strong></div>
                       <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Biển số</span><strong>{shipment.plate_number || "-"}</strong></div>
                       <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Nhóm xe</span><strong>{shipment.vehicle_group_name || "-"}</strong></div>
-                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Đơn giá/km</span><strong>{formatCurrency(shipment.price_per_km)}</strong></div>
+                      <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Đơn giá/km</span><strong>{money(shipment.price_per_km)}</strong></div>
                       <div><span className="text-xs text-gray-400 dark:text-gray-400 block">KM thực tế</span><strong>{shipment.actual_km ? `${shipment.actual_km} km` : "-"}</strong></div>
                       {!readonly && primaryShipment && shipment.id === primaryShipment.id ? (
                         <div>
@@ -164,19 +165,19 @@ export default function ReceiptDetailModal({
                             step="1000"
                             size="sm"
                             variant="bordered"
-                            placeholder={`Gợi ý: ${formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}`}
+                            placeholder={`Gợi ý: ${money(shipment.actual_revenue || shipment.actual_price || 0)}`}
                             value={form?.priceOverride ?? ""}
                             onValueChange={(v) => updateField("priceOverride", v)}
                             startContent={ic(RiMoneyDollarCircleLine)}
                           />
                         </div>
                       ) : (
-                        <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Doanh thu</span><strong>{formatCurrency(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
+                        <div><span className="text-xs text-gray-400 dark:text-gray-400 block">Doanh thu</span><strong>{money(shipment.actual_revenue || shipment.actual_price || 0)}</strong></div>
                       )}
                       <div className="col-span-2"><span className="text-xs text-gray-400 dark:text-gray-400 block">Lộ trình</span><strong>{formatRouteLabel(shipment)}</strong></div>
                       <div>
                         <span className="text-xs text-gray-400 dark:text-gray-400 block">Chi phí phát sinh</span>
-                        <strong>{formatCurrency(shipment.total_expenses)}</strong>
+                        <strong>{money(shipment.total_expenses)}</strong>
                         {isCompanyBorneShipment(shipment) && Number(shipment.total_expenses) > 0 && (
                           <span className="text-[11px] text-amber-600 dark:text-amber-400 block">Doanh nghiệp chịu</span>
                         )}
@@ -243,7 +244,7 @@ export default function ReceiptDetailModal({
                             <Chip size="sm" variant="flat" color={EXPENSE_STATUS_CHIP[expense.status]?.color || "default"}>
                               {EXPENSE_STATUS_CHIP[expense.status]?.label || expense.status}
                             </Chip>
-                            <strong className="text-sm">{formatCurrency(expense.amount)}</strong>
+                            <strong className="text-sm">{money(expense.amount)}</strong>
                           </div>
                         </div>
                         {hasImage && (
@@ -341,7 +342,7 @@ export default function ReceiptDetailModal({
                   <div className="mt-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30 p-4">
                     <span className="text-xs text-orange-600 dark:text-orange-400 block">Chưa phát hành được phiếu thu</span>
                     <strong className="text-sm text-orange-900 dark:text-orange-200 block">
-                      Đơn khai đã ứng trước {formatCurrency(prepaidDeclared)} nhưng kế toán chưa xác nhận.
+                      Đơn khai đã ứng trước {money(prepaidDeclared)} nhưng kế toán chưa xác nhận.
                       Số này chưa được trừ vào tiền khách phải trả — cần xác nhận tiền ứng trước khi chốt phiếu thu.
                     </strong>
                   </div>
@@ -357,7 +358,7 @@ export default function ReceiptDetailModal({
                     </div>
                     <div className="text-right">
                       <span className="text-xs text-amber-600 dark:text-amber-400 block">Đã gạt khỏi tổng thu</span>
-                      <strong className="text-lg text-amber-900 dark:text-amber-200">{formatCurrency(companyBorneExpenses)}</strong>
+                      <strong className="text-lg text-amber-900 dark:text-amber-200">{money(companyBorneExpenses)}</strong>
                     </div>
                   </div>
                 )}
@@ -373,7 +374,7 @@ export default function ReceiptDetailModal({
                     </div>
                     <div className="text-right">
                       <span className="text-xs text-rose-600 dark:text-rose-400 block">Tiền hoàn</span>
-                      <strong className="text-lg text-rose-900 dark:text-rose-200">{formatCurrency(prepaidRefundDue)}</strong>
+                      <strong className="text-lg text-rose-900 dark:text-rose-200">{money(prepaidRefundDue)}</strong>
                     </div>
                   </div>
                 )}
@@ -386,12 +387,12 @@ export default function ReceiptDetailModal({
                   <div className="text-right">
                     {prepaidAmount > 0 && (
                       <>
-                        <span className="text-[11px] text-blue-500 block">Tổng thu {formatCurrency(finalPrice)}</span>
-                        <span className="text-[11px] text-blue-500 block">Đã trả trước −{formatCurrency(prepaidAmount)}</span>
+                        <span className="text-[11px] text-blue-500 block">Tổng thu {money(finalPrice)}</span>
+                        <span className="text-[11px] text-blue-500 block">Đã trả trước −{money(prepaidAmount)}</span>
                       </>
                     )}
                     <span className="text-xs text-blue-500 block">Khách phải trả</span>
-                    <strong className="text-lg text-blue-900 dark:text-blue-200">{formatCurrency(amountDue)}</strong>
+                    <strong className="text-lg text-blue-900 dark:text-blue-200">{money(amountDue)}</strong>
                     {amountDue <= 0 && (
                       <span className="text-[11px] text-blue-500 block">Không phải thu của khách</span>
                     )}

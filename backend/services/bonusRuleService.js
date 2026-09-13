@@ -2,6 +2,7 @@ const bonusRuleRepository = require('../repositories/bonusRuleRepository');
 const notificationGateway = require('./notificationGateway');
 const { notifyRolesSafe } = require('./roleNotificationService');
 const { err400 } = require('../utils/accountantValidate');
+const { optionalMoney } = require('../utils/money');
 
 // Lỗi "không tìm thấy" tách riêng để controller không phải đoán ý qua nội dung câu chữ.
 const err404 = (msg) => Object.assign(new Error(msg), { status: 404 });
@@ -20,11 +21,9 @@ const normalizePayload = (payload = {}, { unchangedBonusType = null, wasActive =
 
     const vehicleGroupId = payload.vehicle_group_id ? Number(payload.vehicle_group_id) : null;
 
-    const rewardAmount = payload.reward_amount != null && payload.reward_amount !== ''
-        ? Number(payload.reward_amount) : null;
-    if (rewardAmount != null && (!Number.isFinite(rewardAmount) || rewardAmount < 0)) {
-        throw err400('Số tiền thưởng không hợp lệ');
-    }
+    // allowZero: quy tắc thưởng tính theo hệ số (reward_multiplier) để trống ô tiền,
+    // nên 0 và bỏ trống đều hợp lệ ở đây.
+    const rewardAmount = optionalMoney(payload.reward_amount, { field: 'Số tiền thưởng', allowZero: true });
 
     const rewardMultiplier = payload.reward_multiplier != null && payload.reward_multiplier !== ''
         ? Number(payload.reward_multiplier) : null;

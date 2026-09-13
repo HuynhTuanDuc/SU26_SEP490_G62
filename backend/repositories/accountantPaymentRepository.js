@@ -1,6 +1,7 @@
 ﻿const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const { CUSTOMER_BILLABLE_EXPENSE_SQL } = require('../constants/expenseConstants');
+const { money } = require('../utils/formatNumber');
 
 const _debtStatus = (paid, total) => {
     if (paid >= total - 0.01) return 'paid';
@@ -23,7 +24,7 @@ const _applyPaymentToDebt = async (client, { debt, amount, method, createdBy, no
 
     if (numericAmount > remaining + 0.01) {
         throw new Error(
-            `Số tiền thanh toán (${numericAmount.toLocaleString('vi-VN')}đ) vượt quá số dư (${remaining.toLocaleString('vi-VN')}đ)`
+            `Số tiền thanh toán (${money(numericAmount)}) vượt quá số dư (${money(remaining)})`
         );
     }
 
@@ -234,7 +235,7 @@ const recordPaymentWithOverflow = async (orderId, paymentData) => {
         }
         if (requestedAmount > totalRemaining + 0.01) {
             throw new Error(
-                `Số tiền thanh toán (${Math.round(requestedAmount).toLocaleString('vi-VN')}đ) vượt quá tổng công nợ khách hàng (${Math.round(totalRemaining).toLocaleString('vi-VN')}đ).`
+                `Số tiền thanh toán (${money(Math.round(requestedAmount))}) vượt quá tổng công nợ khách hàng (${money(Math.round(totalRemaining))}).`
             );
         }
 
@@ -490,7 +491,7 @@ const allocatePayment = async (personType, personId, paymentData) => {
         }
         if (requestedAmount > totalRemaining + 0.01) {
             throw new Error(
-                `Số tiền thanh toán (${requestedAmount.toLocaleString('vi-VN')}đ) vượt quá số dư công nợ (${totalRemaining.toLocaleString('vi-VN')}đ)`
+                `Số tiền thanh toán (${money(requestedAmount)}) vượt quá số dư công nợ (${money(totalRemaining)})`
             );
         }
 
@@ -642,7 +643,7 @@ const confirmDriverPayment = async (shipmentId, driverPaymentState, amount, paym
             const remaining = Number(debtRemaining?.remaining ?? 0);
             if (Number(amount) > remaining + 0.01) {
                 throw new Error(
-                    `Số tiền nộp (${Number(amount).toLocaleString('vi-VN')}đ) vượt quá nợ còn lại (${remaining.toLocaleString('vi-VN')}đ)`
+                    `Số tiền nộp (${money(Number(amount))}) vượt quá nợ còn lại (${money(remaining)})`
                 );
             }
 

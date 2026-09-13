@@ -1,4 +1,5 @@
 const orderService = require('../services/orderService');
+const { money } = require('../utils/formatNumber');
 
 const listOrders = async (req, res) => {
     try {
@@ -17,6 +18,10 @@ const createOrder = async (req, res) => {
             ...result,
         });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         const status = err.message.includes('Thiếu') ? 400 : 422;
         res.status(status).json({ error: err.message });
     }
@@ -35,6 +40,10 @@ const updateOrder = async (req, res) => {
 
         res.json({ message: 'Cập nhật đơn hàng thành công', order: updatedOrder });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         res.status(422).json({ error: err.message });
     }
 };
@@ -48,10 +57,14 @@ const cancelOrder = async (req, res) => {
         if (!cancelledOrder) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
 
         const message = cancelledOrder.refund
-            ? `Đã hủy đơn. Tạo phiếu hoàn ${Number(cancelledOrder.refund.amount).toLocaleString('vi-VN')}đ cho khách, chờ Kế toán chi.`
+            ? `Đã hủy đơn. Tạo phiếu hoàn ${money(Number(cancelledOrder.refund.amount))} cho khách, chờ Kế toán chi.`
             : 'Hủy đơn hàng thành công';
         res.json({ message, order: cancelledOrder });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         res.status(422).json({ error: err.message });
     }
 };
@@ -63,6 +76,10 @@ const importOrders = async (req, res) => {
         const orders = await orderService.importOrdersFromExcel(req.user.userId, req.file.buffer);
         res.status(201).json({ message: `Import thành công ${orders.length} đơn hàng`, orders });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         res.status(422).json({ error: err.message });
     }
 };
@@ -107,6 +124,10 @@ const confirmPrepaid = async (req, res) => {
         if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
         res.json({ message: 'Đã xác nhận tiền trả trước', order });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         res.status(422).json({ error: err.message });
     }
 };
@@ -121,6 +142,10 @@ const rejectPrepaid = async (req, res) => {
         if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng' });
         res.json({ message: 'Đã hủy khoản trả trước (chưa ghi sổ)', order });
     } catch (err) {
+        // Lỗi đã mang sẵn mã HTTP từ tầng dưới (vd requireMoney kiểm số tiền) thì dùng
+        // thẳng — đoán mã bằng cách dò chữ trong câu tiếng Việt chỉ đúng với câu đã biết.
+        const known = err.statusCode || err.status;
+        if (known) return res.status(known).json({ error: err.message });
         res.status(422).json({ error: err.message });
     }
 };

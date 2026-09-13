@@ -23,8 +23,9 @@ import { accountantService } from "../services/accountant.service";
 import { notify } from "../../../components/shared-ui/Toast";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
 import { ManualDebtModal } from "../modals/ManualDebtModal";
+import { money } from "../../../utils/formatNumber";
 
-const VND = (n) => Number(n || 0).toLocaleString("vi-VN") + "đ";
+const VND = (n) => Number(n || money(0));
 
 const STATUS_OPTIONS = [
   { key: "all",     label: "Tất cả" },

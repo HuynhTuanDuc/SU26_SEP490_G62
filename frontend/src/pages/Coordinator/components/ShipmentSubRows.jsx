@@ -3,6 +3,7 @@ import { RiTruckLine, RiExchangeLine, RiCloseCircleLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { formatCurrency } from "../utils";
+import { money } from "../../../utils/formatNumber";
 
 const SHIPMENT_CANCELLABLE = ["available", "claimed", "picking", "transit", "arrived", "returning", "failed"];
 
@@ -35,7 +36,7 @@ function ShipmentSubRow({ shipment, onReassign, onCancel }) {
       </td>
       <td className="py-3 pr-4">
         <div className="flex flex-col">
-          <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(shipment.fare)}</span>
+          <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{money(shipment.fare)}</span>
           {shipment.returning_at ? (
             <span className="text-[10px] font-semibold text-orange-600 dark:text-orange-300">Hoàn hàng · ×2 cước</span>
           ) : null}

@@ -4,6 +4,7 @@ import {
   RiCheckLine, RiErrorWarningFill, RiAlertLine, RiInformationLine,
   RiRobot2Line, RiPriceTag3Line,
 } from "react-icons/ri";
+import { money } from "../../utils/formatNumber";
 
 /**
  * Kết quả máy đọc hóa đơn, bày ra cho người duyệt: ảnh bên trái, bảng dòng hàng bên
@@ -24,7 +25,41 @@ const VERDICT = {
   error: { label: "Không đọc được", color: "default", Icon: RiInformationLine },
 };
 
-const vnd = (n) => (Number.isFinite(Number(n)) ? `${Number(n).toLocaleString("vi-VN")}đ` : "—");
+const vnd = (n) => (Number.isFinite(Number(n)) ? `${money(Number(n))}` : "—");
+
+/**
+ * Màu của độ tin cậy suy từ CHÍNH con số, không tra theo nhãn chữ.
+ *
+ * Nhãn ("cao"/"trung bình"/"thấp") do backend sinh và có thể đổi cách diễn đạt; tra
+ * theo chữ thì một ngày nào đó đổi chữ là chip mất màu mà không ai biết.
+ */
+const confidenceColor = (value) => {
+  if (value >= 0.8) return "success";
+  if (value >= 0.6) return "warning";
+  return "danger";
+};
+
+/**
+ * Độ tin cậy của lần đọc, chấm bằng cách đối chiếu bản đọc của AI với văn bản OCR quét
+ * độc lập từ cùng tấm ảnh.
+ *
+ * Vì sao đáng bày ra: phán quyết "Đạt/Cần xem" nói hóa đơn có hợp lệ không, còn con số
+ * này nói MÁY CÓ ĐỌC ĐÚNG KHÔNG — hai chuyện khác nhau. Một hóa đơn "Đạt" với độ tin
+ * cậy thấp là tờ người duyệt phải mở ảnh ra xem tận nơi.
+ */
+function ConfidenceChip({ value, label }) {
+  if (!Number.isFinite(value)) return null;
+  return (
+    <Chip
+      size="sm"
+      variant="dot"
+      color={confidenceColor(value)}
+      title="Mức khớp giữa bản đọc của AI và văn bản quét được từ ảnh"
+    >
+      Đọc {label ?? ""} · {Math.round(value * 100)}%
+    </Chip>
+  );
+}
 
 /** Một dòng hàng trên hóa đơn, kèm ô sửa phân loại khi người duyệt bấm vào. */
 function LineItemRow({ item, onTeach, teachable, categories, profileLabel }) {
@@ -137,6 +172,7 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel }) 
           <Chip size="sm" color={verdict.color} variant="flat" startContent={<verdict.Icon size={13} />}>
             {verdict.label}
           </Chip>
+          <ConfidenceChip value={receipt.confidence} label={receipt.confidence_label} />
           {receipt.invoice_no && (
             <span className="text-xs text-gray-400 dark:text-gray-400 truncate">
               Số {receipt.invoice_no}
@@ -240,6 +276,24 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel }) 
         </div>
       )}
 
+      {/* Văn bản OCR — mặc định gập lại vì phần lớn lần duyệt không cần tới.
+          Khi cần thì nó là thứ quan trọng nhất trên màn này: bảng dòng hàng ở trên là
+          lời khai của AI, còn đây là chữ quét thẳng từ ảnh, không đi qua AI nào. Tranh
+          chấp "máy đọc sai số tiền" chỉ phân xử được bằng cách so hai thứ đó với nhau. */}
+      {receipt.ocr?.text && (
+        <details className="mt-3">
+          <summary className="text-xs text-gray-400 dark:text-gray-400 cursor-pointer select-none">
+            Văn bản quét thẳng từ ảnh (không qua AI)
+            {Number.isFinite(Number(receipt.ocr.confidence))
+              ? ` · độ rõ ${Math.round(Number(receipt.ocr.confidence))}%`
+              : ""}
+          </summary>
+          <pre className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 dark:bg-gray-900/50 p-2 text-[11px] leading-snug text-gray-600 dark:text-gray-300">
+            {receipt.ocr.text}
+          </pre>
+        </details>
+      )}
+
       {!readOnly && (
         <div className="mt-3 flex flex-col gap-2">
           <Textarea
@@ -311,10 +365,14 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
           <RiAlertLine size={14} className="shrink-0 mt-0.5" /><span>{check.message}</span>
         </p>
       ))}
-      {(summary.rejected > 0 || summary.needs_review > 0) && (
+      {(summary.rejected > 0 || summary.needs_review > 0 || summary.low_confidence > 0) && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           {summary.rejected > 0 && `${summary.rejected} hóa đơn không đạt. `}
           {summary.needs_review > 0 && `${summary.needs_review} hóa đơn cần người xem. `}
+          {/* Tách riêng khỏi "cần người xem": đây là những tờ máy ĐỌC KHÔNG CHẮC, tức
+              là phải mở ảnh ra đối chiếu tận nơi — khác với tờ bị gắn cảnh báo vì lý do
+              nghiệp vụ (lệch ngày, lệch biển số) mà việc đọc thì không có vấn đề gì. */}
+          {summary.low_confidence > 0 && `${summary.low_confidence} hóa đơn máy đọc không chắc, cần mở ảnh đối chiếu. `}
           Vui lòng đối chiếu trước khi xác nhận.
         </p>
       )}

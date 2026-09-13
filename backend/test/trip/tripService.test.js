@@ -323,7 +323,7 @@ describe('Trip Service', () => {
 
             await assert.rejects(
                 () => tripService.markUnpaid(10, 1, { amount: -5 }),
-                { message: 'Số tiền nợ phải là số dương hợp lệ' },
+                { message: 'Số tiền nợ phải lớn hơn 0' },
             );
         });
 

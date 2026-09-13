@@ -31,14 +31,14 @@ describe('Payroll Service Unit Tests (L1)', () => {
     it('L1-PAY-04: requestSalaryAdvance - should throw if amount <= 0', async () => {
         await assert.rejects(
             payrollService.requestSalaryAdvance(1, { amount: 0, requestMonth: 5, requestYear: 2025 }),
-            /Số tiền phải lớn hơn 0/
+            /Số tiền ứng phải lớn hơn 0/
         );
     });
 
     it('L1-PAY-05: requestSalaryAdvance - should throw if amount exceeds limit', async () => {
         await assert.rejects(
             payrollService.requestSalaryAdvance(1, { amount: 100000000, requestMonth: 5, requestYear: 2025 }),
-            /Số tiền ứng lương tối đa/
+            /Số tiền ứng vượt quá mức cho phép/
         );
     });
 

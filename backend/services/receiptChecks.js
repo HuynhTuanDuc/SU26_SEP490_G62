@@ -14,6 +14,10 @@
  */
 
 const taxonomy = require('./receiptTaxonomy');
+// Chỉ lấy bộ ngưỡng độ tin cậy. Chiều phụ thuộc là một chiều (crossCheck không biết
+// gì về file này) nên không có vòng lặp, và ngưỡng "dưới bao nhiêu thì cần người xem"
+// chỉ được định nghĩa ở đúng một chỗ.
+const { CONFIDENCE } = require('./receiptCrossCheck');
 
 // ─── Ngưỡng ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +56,7 @@ const ACCEPTED_DOC_TYPES = ['invoice', 'receipt'];
 
 // ─── Tiện ích ────────────────────────────────────────────────────────────────
 
-const fmtVND = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0).toLocaleString('vi-VN') + 'đ';
+const { money } = require('../utils/formatNumber');
 
 /** Số hữu hạn hoặc null — mọi thứ khác (chuỗi rỗng, undefined, NaN) đều thành null. */
 const num = (value) => {
@@ -263,8 +267,8 @@ const checkArithmetic = (extraction, items) => {
         if (!subtotalOk) {
             reasons.push(reason(
                 'SUBTOTAL_MISMATCH', 'error',
-                `Cộng các dòng trên hóa đơn ra ${fmtVND(lineSum)} nhưng hóa đơn ghi tiền hàng là `
-                + `${fmtVND(effectiveSubtotal)} (lệch ${fmtVND(Math.abs(lineSum - effectiveSubtotal))}). `
+                `Cộng các dòng trên hóa đơn ra ${money(lineSum)} nhưng hóa đơn ghi tiền hàng là `
+                + `${money(effectiveSubtotal)} (lệch ${money(Math.abs(lineSum - effectiveSubtotal))}). `
                 + 'Vui lòng chụp lại rõ toàn bộ hóa đơn.',
                 { line_sum: lineSum, subtotal: effectiveSubtotal },
             ));
@@ -283,8 +287,8 @@ const checkArithmetic = (extraction, items) => {
     if (lineMismatches.length > 0) {
         const minor = lineMismatches.length === 1 && subtotalOk;
         const detail = lineMismatches
-            .map((m) => `"${m.raw_name ?? '?'}": ${m.quantity} × ${fmtVND(m.unit_price)} = `
-                + `${fmtVND(m.expected)} nhưng ghi ${fmtVND(m.printed)}`)
+            .map((m) => `"${m.raw_name ?? '?'}": ${m.quantity} × ${money(m.unit_price)} = `
+                + `${money(m.expected)} nhưng ghi ${money(m.printed)}`)
             .join('; ');
 
         reasons.push(minor
@@ -305,8 +309,8 @@ const checkArithmetic = (extraction, items) => {
         if (!moneyClose(expectedVat, vatAmount, THRESHOLDS.VAT_ABS, THRESHOLDS.VAT_PCT)) {
             reasons.push(reason(
                 'VAT_MISMATCH', 'warning',
-                `Thuế VAT ${vatRate}% của ${fmtVND(subtotal)} phải là ${fmtVND(expectedVat)} `
-                + `nhưng hóa đơn ghi ${fmtVND(vatAmount)}.`,
+                `Thuế VAT ${vatRate}% của ${money(subtotal)} phải là ${money(expectedVat)} `
+                + `nhưng hóa đơn ghi ${money(vatAmount)}.`,
                 { expected: expectedVat, printed: vatAmount },
             ));
         }
@@ -318,10 +322,10 @@ const checkArithmetic = (extraction, items) => {
         if (!moneyClose(expectedTotal, total, THRESHOLDS.TOTAL_ABS, THRESHOLDS.TOTAL_PCT)) {
             reasons.push(reason(
                 'TOTAL_MISMATCH', 'error',
-                `Tiền hàng ${fmtVND(subtotal)}`
-                + (discount ? ` trừ giảm giá ${fmtVND(discount)}` : '')
-                + (vatAmount ? ` cộng thuế ${fmtVND(vatAmount)}` : '')
-                + ` phải ra ${fmtVND(expectedTotal)} nhưng hóa đơn ghi tổng ${fmtVND(total)}.`,
+                `Tiền hàng ${money(subtotal)}`
+                + (discount ? ` trừ giảm giá ${money(discount)}` : '')
+                + (vatAmount ? ` cộng thuế ${money(vatAmount)}` : '')
+                + ` phải ra ${money(expectedTotal)} nhưng hóa đơn ghi tổng ${money(total)}.`,
                 { expected: expectedTotal, printed: total },
             ));
         }
@@ -482,19 +486,19 @@ const checkClaimedAmount = (claimedAmount, receiptTotal, totals) => {
 
     if (diff <= THRESHOLDS.CLAIM_WARN_ABS && diff <= receiptTotal * THRESHOLDS.CLAIM_WARN_PCT) {
         reasons.push(reason('AMOUNT_MINOR_DIFF', 'warning',
-            `Số khai (${fmtVND(claimed)}) lệch ${fmtVND(diff)} so với tổng hóa đơn (${fmtVND(receiptTotal)}).`,
+            `Số khai (${money(claimed)}) lệch ${money(diff)} so với tổng hóa đơn (${money(receiptTotal)}).`,
             { claimed, receipt_total: receiptTotal, diff }));
         return reasons;
     }
 
     // Nói rõ lệch ở đâu thay vì câu chung chung — người bị từ chối phải biết phải sửa gì.
     const breakdown = totals.subtotal !== null && totals.vat_amount
-        ? ` (${fmtVND(totals.subtotal)} tiền hàng + ${fmtVND(totals.vat_amount)} thuế)`
+        ? ` (${money(totals.subtotal)} tiền hàng + ${money(totals.vat_amount)} thuế)`
         : '';
 
     reasons.push(reason('AMOUNT_MISMATCH', 'error',
-        `Hóa đơn ghi tổng ${fmtVND(receiptTotal)}${breakdown}, bạn khai ${fmtVND(claimed)}, `
-        + `lệch ${fmtVND(diff)}. Vui lòng nhập đúng số tiền trên hóa đơn.`,
+        `Hóa đơn ghi tổng ${money(receiptTotal)}${breakdown}, bạn khai ${money(claimed)}, `
+        + `lệch ${money(diff)}. Vui lòng nhập đúng số tiền trên hóa đơn.`,
         { claimed, receipt_total: receiptTotal, diff }));
 
     return reasons;
@@ -519,8 +523,8 @@ const checkClaimedCeiling = (claimedAmount, receiptTotal) => {
     if (excess <= Math.max(THRESHOLDS.CLAIM_EXACT_ABS, claimed * THRESHOLDS.CLAIM_WARN_PCT)) return reasons;
 
     reasons.push(reason('AMOUNT_BELOW_RECEIPT', 'error',
-        `Riêng hóa đơn này đã là ${fmtVND(receiptTotal)}, lớn hơn chi phí bạn đã nhập `
-        + `(${fmtVND(claimed)}). Vui lòng kiểm tra lại số tiền đã nhập.`,
+        `Riêng hóa đơn này đã là ${money(receiptTotal)}, lớn hơn chi phí bạn đã nhập `
+        + `(${money(claimed)}). Vui lòng kiểm tra lại số tiền đã nhập.`,
         { claimed, receipt_total: receiptTotal, excess }));
 
     return reasons;
@@ -611,9 +615,9 @@ const checkCostOutlier = (cost, costs, { scopeLabel = 'đợt bảo dưỡng tr�
     if (!isOutlier) return reasons;
 
     reasons.push(reason('COST_OUTLIER', 'warning',
-        `Chi phí ${fmtVND(value)} cao bất thường so với ${samples.length} ${scopeLabel} của xe này `
-        + `(khoảng ${fmtVND(samples[0])} – ${fmtVND(samples[samples.length - 1])}, `
-        + `thường vào khoảng ${fmtVND(med)}). Người duyệt vui lòng xác nhận đợt này có hạng mục lớn thật.`,
+        `Chi phí ${money(value)} cao bất thường so với ${samples.length} ${scopeLabel} của xe này `
+        + `(khoảng ${money(samples[0])} – ${money(samples[samples.length - 1])}, `
+        + `thường vào khoảng ${money(med)}). Người duyệt vui lòng xác nhận đợt này có hạng mục lớn thật.`,
         {
             cost: value, median: med, mad, samples: samples.length,
             min: samples[0], max: samples[samples.length - 1],
@@ -737,6 +741,11 @@ const resolveVerdict = (reasons) => {
  *                               keywordIndex, profile } — `profile` là mã loại chi phí
  *                               ('maintenance', 'fuel', 'toll'...), quyết định hạng mục
  *                               nào được coi là đúng chủ đề.
+ *                               `imageQuality` là kết quả chấm ảnh của giai đoạn 1;
+ *                               `corroboration` là kết quả đối chiếu chéo với kênh OCR
+ *                               (receiptCrossCheck). Cả hai đều được phép vắng mặt —
+ *                               thiếu thì đơn giản là bớt một lớp kiểm tra, không đổi
+ *                               cách chấm của những lớp còn lại.
  */
 const evaluateReceipt = (extraction, context = {}) => {
     const keywordIndex = context.keywordIndex ?? taxonomy.buildKeywordIndex();
@@ -747,6 +756,24 @@ const evaluateReceipt = (extraction, context = {}) => {
     const groups = summarizeGroups(items);
 
     const reasons = [];
+
+    // Chất lượng ảnh xét TRƯỚC nội dung: ảnh không đủ để đọc thì mọi kết luận rút ra
+    // từ nó đều không đáng tin, và lý do trả cho tài xế phải là "chụp lại đi" chứ
+    // không phải một lỗi nội dung khó hiểu do đọc nhầm trên ảnh mờ.
+    const qualityReasons = Array.isArray(context.imageQuality?.reasons) ? context.imageQuality.reasons : [];
+    reasons.push(...qualityReasons);
+    if (qualityReasons.some((r) => r.severity === 'error')) {
+        return {
+            verdict: 'rejected',
+            reasons,
+            items,
+            groups,
+            totals: null,
+            receipt_total: null,
+            confidence: 0,
+            confidence_label: 'thấp',
+        };
+    }
 
     // Không phải chứng từ / sai loại / không có dòng hàng thì các kiểm tra sau vô nghĩa.
     const documentReasons = checkDocument(extraction, items);
@@ -759,6 +786,8 @@ const evaluateReceipt = (extraction, context = {}) => {
             groups,
             totals: null,
             receipt_total: null,
+            confidence: context.corroboration?.confidence ?? null,
+            confidence_label: context.corroboration?.confidence_label ?? null,
         };
     }
 
@@ -785,6 +814,24 @@ const evaluateReceipt = (extraction, context = {}) => {
             { fields: unreadable }));
     }
 
+    // Đối chiếu chéo với kênh OCR do tầng dịch vụ chạy rồi truyền vào — file này không
+    // đụng I/O. Mọi lý do từ đó đều là cảnh báo, không cái nào chặn được tài xế: bằng
+    // chứng OCR quá nhiễu để dùng làm căn cứ từ chối (xem receiptCrossCheck).
+    const corroboration = context.corroboration ?? null;
+    reasons.push(...(corroboration?.reasons ?? []));
+
+    // Chốt bằng một lớp CHUNG: kể cả khi không lý do cụ thể nào bật lên, độ tin cậy
+    // thấp tự nó đã là lý do để có người nhìn lại. Không có lớp này thì một hóa đơn
+    // mà mọi phép kiểm đều "không đủ dữ liệu để kết luận" sẽ lặng lẽ được `passed` —
+    // đúng cái bẫy fail-open mà cả thiết kế này sinh ra để tránh.
+    const confidence = corroboration?.confidence ?? null;
+    if (confidence !== null && confidence < CONFIDENCE.REVIEW) {
+        reasons.push(reason('LOW_CONFIDENCE', 'warning',
+            `Độ tin cậy của lần đọc này chỉ ở mức ${Math.round(confidence * 100)}%. `
+            + 'Người duyệt vui lòng đối chiếu trực tiếp với ảnh hóa đơn.',
+            { confidence, penalties: corroboration.penalties }));
+    }
+
     return {
         verdict: resolveVerdict(reasons),
         reasons,
@@ -792,6 +839,8 @@ const evaluateReceipt = (extraction, context = {}) => {
         groups,
         totals: arithmetic.totals,
         receipt_total: arithmetic.receiptTotal,
+        confidence,
+        confidence_label: corroboration?.confidence_label ?? null,
     };
 };
 
@@ -801,7 +850,6 @@ const firstErrorMessage = (reasons) =>
 
 module.exports = {
     THRESHOLDS,
-    fmtVND,
     normalizePlate,
     classifyLineItems,
     markTopicality,

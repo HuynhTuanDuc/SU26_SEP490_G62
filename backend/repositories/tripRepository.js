@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
 const activityLogRepository = require('./activityLogRepository');
+const { money } = require('../utils/formatNumber');
 const {
     SHIPMENT_STATUS,
     ACTIVE_STATUSES,
@@ -2110,7 +2111,7 @@ const recordReceiptCollection = async (orrId, driverId, { paymentType, proofUrl,
                     [
                         debtorType, debtorCustId, debtorPartId,
                         rec.order_id, rec.shipment_id, shortfall,
-                        `${who} chưa trả đủ — còn thiếu (đã trả ${totalCollected.toLocaleString('vi-VN')}đ / tổng ${receiptAmount.toLocaleString('vi-VN')}đ)`,
+                        `${who} chưa trả đủ — còn thiếu (đã trả ${money(totalCollected)} / tổng ${money(receiptAmount)})`,
                         driverId,
                     ],
                 );

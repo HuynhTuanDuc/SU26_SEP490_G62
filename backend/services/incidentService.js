@@ -8,6 +8,8 @@ const notificationService = require('./notificationService');
 const notificationGateway = require('./notificationGateway');
 const vehicleManagementService = require('./vehicleManagementService');
 const spendingService = require('./spendingService');
+const { money } = require('../utils/formatNumber');
+const { requireMoney } = require('../utils/money');
 const {
     ALLOWED_INCIDENT_TYPES,
     ALLOWED_SEVERITIES,
@@ -331,10 +333,7 @@ const updateIncidentStatus = async (incidentId, coordinatorId, { status, resolut
     // Khoản đền bù hàng hóa hư hại (tùy chọn) — validate trước khi thay đổi dữ liệu sự cố
     let compensationPayload = null;
     if (compensation && compensation.amount != null && String(compensation.amount).trim() !== '') {
-        const amount = Number(compensation.amount);
-        if (!Number.isFinite(amount) || amount <= 0) {
-            throw new Error('Số tiền đền bù không hợp lệ');
-        }
+        const amount = requireMoney(compensation.amount, { field: 'Số tiền đền bù' });
         if (!compensation.payee || !String(compensation.payee).trim()) {
             throw new Error('Cần ghi rõ người/đơn vị nhận đền bù');
         }
@@ -662,7 +661,7 @@ const cancelDamagedShipment = async (incidentId, coordinatorId, { reason }) => {
         notificationService.getUserIdsByRole('accountant').then((ids) =>
             notificationService.createForUsers(ids, {
                 title: 'Cần hoàn tiền ứng trước cho khách',
-                message: `Đơn #${orderId} không còn chuyến nào giao được do hàng hóa hư hại. Phiếu hoàn ${refund.amount.toLocaleString('vi-VN')}đ (#${refund.voucherId}) đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
+                message: `Đơn #${orderId} không còn chuyến nào giao được do hàng hóa hư hại. Phiếu hoàn ${money(refund.amount)} (#${refund.voucherId}) đã được duyệt sẵn, vui lòng chi và đính chứng từ.`,
                 type: 'PREPAID_REFUND_REQUIRED',
                 entityType: 'payment_voucher',
                 entityId: refund.voucherId,

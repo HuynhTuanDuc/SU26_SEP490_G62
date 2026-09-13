@@ -7,20 +7,12 @@ import {
 import { Section } from "./Section";
 import { PaginationBar } from "./PaginationBar";
 import { DriverVehicleGroupModal } from "./DriverVehicleGroupModal";
+import { moneyShort } from "../../utils/formatNumber";
 
 const now = new Date();
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 const YEARS = Array.from({ length: 3 }, (_, i) => now.getFullYear() - i);
 const PAGE_SIZE = 10;
-
-const formatCurrency = (value) => Number(value || 0).toLocaleString("vi-VN") + " đ";
-const formatCompact = (value) => {
-  const n = Number(value || 0);
-  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + " tỷ";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + " tr";
-  if (n >= 1_000) return Math.round(n / 1_000) + "k";
-  return String(n);
-};
 
 const SORT_LABELS = {
   revenue: "Doanh thu",
@@ -161,7 +153,7 @@ function PodiumCard({ row, rank, maxRevenue }) {
           </div>
         </div>
         <div className="text-right">
-          <div className="text-lg font-black text-blue-700 dark:text-blue-300">{formatCompact(row.total_revenue)} đ</div>
+          <div className="text-lg font-black text-blue-700 dark:text-blue-300">{moneyShort(row.total_revenue)}</div>
           <div className="text-[11px] text-gray-400 dark:text-gray-400">{row.completed_shipments || 0} chuyến</div>
         </div>
       </div>
@@ -197,7 +189,7 @@ function DriverKpiRow({ row, rank, maxRevenue, avgRevenue, onEdit, editIcon: Edi
         </div>
         <div className="grid grid-cols-3 gap-2 lg:w-[460px]">
           <MetricPill label="Chuyến" value={row.completed_shipments || 0} tone="gray" />
-          <MetricPill label="Doanh thu" value={formatCompact(row.total_revenue) + " đ"} tone="blue" />
+          <MetricPill label="Doanh thu" value={moneyShort(row.total_revenue)} tone="blue" />
           <MetricPill label="Sự cố" value={incidents} tone={incidents > 0 ? "rose" : "green"} />
         </div>
       </div>
@@ -233,7 +225,7 @@ function LeaderboardRow({ row, rank, maxRevenue, sortBy }) {
         </div>
         <div className="grid grid-cols-2 gap-2 md:w-72">
           <MetricPill label="Chuyến" value={row.completed_shipments || 0} tone="gray" />
-          <MetricPill label="Doanh thu" value={formatCompact(row.total_revenue) + " đ"} tone="blue" />
+          <MetricPill label="Doanh thu" value={moneyShort(row.total_revenue)} tone="blue" />
         </div>
       </div>
       <RevenueBar value={row.total_revenue} max={maxRevenue} />
@@ -363,12 +355,12 @@ export function KpiLeaderboard({ getVehicleGroups, getAllDriversKPI, getLeaderbo
                 <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
                   <StatChip label="Tài xế" value={kpiSummary.drivers} icon={RiUserStarLine} />
                   <StatChip label="Tổng chuyến" value={kpiSummary.trips} icon={RiRouteLine} tone="gray" />
-                  <StatChip label="Tổng doanh thu" value={formatCompact(kpiSummary.revenue) + " đ"} icon={RiMoneyDollarCircleLine} tone="blue" />
+                  <StatChip label="Tổng doanh thu" value={moneyShort(kpiSummary.revenue)} icon={RiMoneyDollarCircleLine} tone="blue" />
                   <StatChip label="Không sự cố" value={`${kpiSummary.cleanRate}%`} icon={RiShieldCheckLine} tone="green" />
                 </div>
 
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                  <StatChip label="Doanh thu TB/tài xế" value={formatCompact(kpiSummary.avgRevenue) + " đ"} icon={RiCarLine} tone="amber" />
+                  <StatChip label="Doanh thu TB/tài xế" value={moneyShort(kpiSummary.avgRevenue)} icon={RiCarLine} tone="amber" />
                   <StatChip label="Tổng sự cố" value={kpiSummary.incidents} icon={RiAlertLine} tone={kpiSummary.incidents > 0 ? "rose" : "green"} />
                   <StatChip
                     label="Cần chú ý nhất"

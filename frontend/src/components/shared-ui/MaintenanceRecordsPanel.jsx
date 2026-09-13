@@ -1,5 +1,6 @@
 import { Chip, Image } from "@heroui/react";
 import { RiImageLine } from "react-icons/ri";
+import { money } from "../../utils/formatNumber";
 
 // Lịch sử bảo dưỡng của 1 xe kèm ẢNH HÓA ĐƠN tài xế đã tải lên. Dùng chung cho màn
 // Quản lý xe của Manager và Accountant — trước đây chỉ xem được ảnh ở modal xác nhận
@@ -30,7 +31,7 @@ const formatDate = (value) => {
 
 const formatCost = (value) => {
   const amount = Number(value);
-  return Number.isFinite(amount) && amount > 0 ? `${amount.toLocaleString("vi-VN")}đ` : "Chưa khai";
+  return Number.isFinite(amount) && amount > 0 ? `${money(amount)}` : "Chưa khai";
 };
 
 const normalizeBillPics = (value) =>
