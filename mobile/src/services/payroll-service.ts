@@ -31,6 +31,10 @@ export type Payroll = {
     net_salary: string;
     status: PayrollStatus;
     paid_at: string | null;
+    // Số ngày thuộc thời gian làm việc trong kỳ / số công tính lương. NULL ở phiếu tạo
+    // trước khi BE lưu hai cột này — hiểu là đủ tháng.
+    employed_days: number | null;
+    working_days: string | null;
 };
 
 export type PayrollEstimate = {
@@ -54,11 +58,22 @@ export type PayrollEstimate = {
     insurance_employee: string;
     insurance_salary_base: string;
     advance_deduction: string;
+    // Tổng đã ứng kỳ này; phần lương không đủ trừ (advance_carried_over) chuyển thành công
+    // nợ khi chi lương. Tuỳ chọn: server cũ không trả hai trường này.
+    advance_total?: string;
+    advance_carried_over?: string;
     driver_debt_deduction: string;
     max_advance_amount: string;
     expense_reimbursement: string;
     estimated_gross: string;
     estimated_net: string;
+    // employed_days < days_in_month nghĩa là vào làm / nghỉ việc giữa tháng: chỉ tính công
+    // trong [hire_date, termination_date], phụ cấp ĐT và BHXH chia theo tỉ lệ
+    // employed_days / days_in_month
+    days_in_month: number;
+    employed_days: number;
+    hire_date: string;
+    termination_date: string | null; // ngày làm việc cuối cùng, null = đang làm
 };
 
 export type SalaryAdvance = {

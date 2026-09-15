@@ -4,20 +4,11 @@ const activityLogRepository = require('./activityLogRepository');
 const reversalService = require('../services/reversalService');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
 const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
-const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
+const { WORK_DAYS_SQL, WORKING_DAYS_PER_MONTH, prorateByEmployment, splitAdvance } = require('../constants/payrollConstants');
 const { money } = require('../utils/formatNumber');
 
-const INSURANCE_SALARY_BASE = 5_310_000;
-const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
-const BHXH_COMPANY          = Math.round(INSURANCE_SALARY_BASE * 0.215);
-const PHONE_ALLOWANCE        = 200_000;
 const BASE_SALARY_JUNIOR     = 8_000_000;
 const BASE_SALARY_SENIOR     = 9_000_000;
-const WORKING_DAYS_PER_MONTH = 28;
-
-// Số ngày lịch của tháng (28-31) — dùng làm mốc "ngày dư" so với quota 28 công:
-// tháng càng dài thì càng có nhiều ngày nghỉ được miễn trừ trước khi hụt công.
-const getDaysInMonth = (month, year) => new Date(Number(year), Number(month), 0).getDate();
 
 // Điều III — trả lương 1 lần vào ngày 10 hàng tháng; nếu ngày 10 trùng cuối tuần/ngày
 // lễ thì dời sang ngày làm việc liền kề (trước hoặc sau — công ty được chọn).
@@ -73,24 +64,27 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     const baseSalary      = monthsOfService >= 12 ? BASE_SALARY_SENIOR : BASE_SALARY_JUNIOR;
     const revenuePct      = Number(driver.revenue_share_percent ?? 15);
 
-    // Ngày công không lương = leave_requests (nghỉ không lương) HOẶC chấm công đánh dấu
-    // 'absent_unexcused' — nhưng nếu Manager/Coordinator đã ghi đè 'present' cho đúng
-    // ngày đó (vd tài xế xin nghỉ nhưng thực tế vẫn đi làm), ghi đè luôn được ưu tiên,
-    // không tính ngày đó là nghỉ nữa.
-    // Ngày lễ luôn được loại khỏi mọi phép trừ công: Điều V.1 quy định nghỉ lễ vẫn
-    // hưởng nguyên lương, nên dù tài có đơn nghỉ hay bị chấm vắng đúng ngày lễ thì
-    // cũng không được trừ.
-    // Một truy vấn DUY NHẤT, khử trùng theo ngày — xem UNPAID_DAYS_SQL để biết thứ tự ưu
-    // tiên giữa chấm công và đơn nghỉ, và vì sao KHÔNG được cộng ba truy vấn rời.
-    const { rows: [dayRow] } = await client.query(UNPAID_DAYS_SQL, [driver.driver_id, month, year]);
-    const unpaidDays     = Number(dayRow.unpaid_days ?? 0);
+    // Ngày công — MỘT truy vấn dùng chung với màn ước tính (WORK_DAYS_SQL):
+    //  • chỉ tính từ ngày vào làm: ngày trước hire_date không phải ngày công, cũng không
+    //    phải ngày nghỉ. Trước đây mọi ngày trong tháng mặc định là ngày đi làm, nên tài
+    //    vào làm ngày 25 vẫn nhận đủ lương cứng cả tháng;
+    //  • ngày công không lương = đơn nghỉ không lương HOẶC chấm vắng/nửa công, khử trùng
+    //    theo ngày, chấm công thắng đơn nghỉ, ngày lễ luôn được miễn trừ (Điều V.1).
+    const { rows: [dayRow] } = await client.query(WORK_DAYS_SQL, [driver.driver_id, month, year]);
+    const employedDays = Number(dayRow?.employed_days ?? 0);
+    // Vào làm SAU kỳ này → không có phiếu lương (caller gỡ phiếu 'pending' lỡ tạo trước đó)
+    if (employedDays <= 0) return null;
+    const daysInMonth = Number(dayRow.days_in_month);
+    const unpaidDays  = Number(dayRow.unpaid_days ?? 0);
+
     // "28 công" là đơn giá quy đổi 1 ngày lương (base/28), KHÔNG phải trần số ngày được
     // trả. Tháng dài hơn 28 ngày lịch mà tài đi làm hết cả những ngày dư (29, 30, 31) thì
     // được trả thêm đúng phần dư đó — proRatedBase khi ấy VƯỢT base_salary. Ngược lại,
-    // vắng/nghỉ không lương thì trừ đúng phần hụt so với số ngày lịch của tháng.
-    const daysInMonth    = getDaysInMonth(month, year);
-    const actualWorkDays = Math.max(0, daysInMonth - unpaidDays);
-    const proRatedBase   = Math.round((baseSalary / WORKING_DAYS_PER_MONTH) * actualWorkDays);
+    // vắng/nghỉ không lương hoặc vào làm giữa tháng thì trừ đúng phần hụt.
+    // Phụ cấp ĐT và BHXH chia theo tỉ lệ số ngày thuộc biên chế — xem prorateByEmployment.
+    const prorated       = prorateByEmployment({ baseSalary, daysInMonth, employedDays, unpaidDays });
+    const actualWorkDays = prorated.actualWorkDays;
+    const proRatedBase   = Math.round(prorated.proRatedBase);
     const absencePenalty = baseSalary - proRatedBase;
 
     const { rows: [kpi] } = await client.query(`
@@ -126,7 +120,8 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
           AND request_month = $2 AND request_year = $3
           AND status = 'paid'
     `, [driver.driver_id, month, year]);
-    const advanceDeduction = Number(advRow.total ?? 0);
+    // Số thực trừ vào lương tính ở dưới (splitAdvance) — không vượt số lương làm ra
+    const advancePaid = Number(advRow.total ?? 0);
 
     const { rows: [debtRow] } = await client.query(`
         SELECT COALESCE(SUM(
@@ -210,7 +205,7 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     `, [driver.driver_id]);
     const expenseReimbursement = Number(reimbRow.total ?? 0);
 
-    const gross        = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
+    const gross        = proRatedBase + revenueBonus + prorated.phoneAllowance + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
     // proRatedBase đã phản ánh ngày nghỉ; DB computed net_salary dùng full baseSalary rồi trừ absence_penalty
     // → không trừ kép absencePenalty ở đây để tránh cap driverDebtDeduction quá thấp
     //
@@ -221,7 +216,14 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
     // Bỏ sót nó làm bản chốt lệch bản tài xế xem trước (payrollRepository.getPayrollEstimate
     // đã cộng từ đầu): tài có chi phí ứng túi chờ hoàn sẽ thấy một số tiền trừ nợ ở app rồi
     // nhận về một số khác trên phiếu lương. Lệch đúng bằng N% × tiền hoàn chi phí.
-    const netBeforeDebt= gross + expenseReimbursement - BHXH_EMPLOYEE - advanceDeduction;
+    //
+    // Ứng lương trừ tối đa bằng số lương làm ra (splitAdvance) — kỳ lương cuối khi nghỉ
+    // giữa tháng có thể thấp hơn số đã ứng. Phần vượt không trừ ở đây mà chuyển thành công
+    // nợ tài xế lúc chi lương (markPayrollPaid), để kế toán thu như mọi khoản nợ khác.
+    const { advanceDeduction } = splitAdvance(
+        advancePaid, gross + expenseReimbursement - prorated.insuranceEmployee,
+    );
+    const netBeforeDebt= gross + expenseReimbursement - prorated.insuranceEmployee - advanceDeduction;
 
     // Trần khấu trừ công nợ mỗi kỳ: chỉ lấy tối đa N% số tài xế còn được nhận, phần nợ
     // còn lại tự chuyển sang kỳ sau (lần tính lương tháng sau vẫn thấy nó trong tổng nợ).
@@ -252,7 +254,11 @@ const _calcDriverPayroll = async (client, driver, month, year) => {
         holidayMultiplier,
         bonusWelfareTotal,
         expenseReimbursement,
-        phoneAllowance: PHONE_ALLOWANCE,
+        phoneAllowance:    prorated.phoneAllowance,
+        insuranceEmployee: prorated.insuranceEmployee,
+        insuranceCompany:  prorated.insuranceCompany,
+        employedDays,
+        actualWorkDays,
         advanceDeduction,
         driverDebtDeduction,
         gross,
@@ -300,6 +306,8 @@ const getAllPayrolls = async ({ month, year, status = null, search = null, sort 
             p.manual_bonus::text,
             p.manual_deduction::text,
             p.expense_reimbursement::text,
+            p.employed_days,
+            p.working_days::text,
             p.gross_salary::text,
             p.net_salary::text,
             p.status,
@@ -310,12 +318,25 @@ const getAllPayrolls = async ({ month, year, status = null, search = null, sort 
             pr.phone      AS driver_phone,
             d.default_vehicle_group_id AS vehicle_group_id,
             COALESCE(vg.name, '')       AS vehicle_group,
-            COALESCE(v.plate_number, '') AS plate_number
+            COALESCE(v.plate_number, '') AS plate_number,
+            -- Kỳ lương cuối của tài đã nghỉ việc: màn bảng lương đánh dấu để kế toán biết
+            -- sau kỳ này không còn kỳ nào trừ tiếp ứng lương / công nợ
+            to_char(d.termination_date, 'YYYY-MM-DD') AS termination_date,
+            -- Tổng ứng lương đã giải ngân của kỳ — lớn hơn advance_deduction nghĩa là lương
+            -- không đủ trừ hết, phần vượt chuyển thành công nợ lúc chi lương
+            adv.total::text AS advance_total
         FROM payrolls p
         JOIN  profiles pr ON pr.id = p.driver_id
         LEFT JOIN drivers d ON d.profile_id = p.driver_id
         LEFT JOIN vehicles v ON v.id = d.vehicle_id
         LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(SUM(sa.amount), 0) AS total
+            FROM salary_advances sa
+            WHERE sa.driver_id = p.driver_id
+              AND sa.request_month = p.payroll_month AND sa.request_year = p.payroll_year
+              AND sa.status = 'paid'
+        ) adv ON TRUE
         WHERE ${conditions.join(' AND ')}
         ORDER BY ${PAYROLL_SORTS[sort] ?? 'pr.full_name'}
     `, params);
@@ -344,6 +365,13 @@ const calculateAndUpsertPayrolls = async (month, year) => {
     try {
         await client.query('BEGIN');
 
+        // Ai được xét bảng lương kỳ này:
+        //  • tài khoản đang hoạt động;
+        //  • tài đã khoá nhưng ngày nghỉ việc rơi vào kỳ này hoặc sau đó — tài nghỉ giữa
+        //    tháng thường bị khoá trước kỳ tính lương (ngày 10 tháng sau), trước đây bị loại
+        //    hẳn khỏi bảng lương nên mất trắng lương các ngày đã làm;
+        //  • tài đã khoá mà còn phiếu 'pending' của kỳ này — để tính lại / gỡ phiếu cũ.
+        // Số ngày công do WORK_DAYS_SQL cắt đúng theo ngày vào làm / nghỉ việc.
         const { rows: drivers } = await client.query(`
             SELECT d.profile_id AS driver_id,
                    d.hire_date,
@@ -352,14 +380,38 @@ const calculateAndUpsertPayrolls = async (month, year) => {
             FROM drivers d
             JOIN accounts a ON a.id = d.profile_id
             WHERE a.is_active = TRUE
-        `);
+               OR d.termination_date >= make_date($2::int, $1::int, 1)
+               OR EXISTS (
+                   SELECT 1 FROM payrolls p
+                   WHERE p.driver_id = d.profile_id
+                     AND p.payroll_month = $1 AND p.payroll_year = $2
+                     AND p.status = 'pending'
+               )
+        `, [month, year]);
 
         let created = 0;
         let updated = 0;
         let skipped = 0;
+        let notEmployed = 0;
+        let removed = 0;
 
         for (const driver of drivers) {
             const c = await _calcDriverPayroll(client, driver, month, year);
+
+            // Vào làm SAU kỳ này: không có phiếu lương. Gỡ luôn phiếu 'pending' lỡ tạo trước
+            // đó (bản cũ chưa xét ngày vào làm, hoặc ngày vào làm vừa được sửa lùi lại).
+            // Phiếu đã duyệt/đã chi thì để nguyên — muốn gỡ phải trả về 'pending' trước.
+            if (!c) {
+                const { rowCount } = await client.query(
+                    `DELETE FROM payrolls
+                     WHERE driver_id = $1 AND payroll_month = $2 AND payroll_year = $3
+                       AND status = 'pending'`,
+                    [driver.driver_id, month, year],
+                );
+                notEmployed++;
+                removed += rowCount;
+                continue;
+            }
 
             const { rows: [upserted] } = await client.query(`
                 INSERT INTO payrolls (
@@ -372,6 +424,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     driver_debt_deduction, advance_deduction,
                     absence_penalty, other_deduction,
                     expense_reimbursement,
+                    employed_days, working_days,
                     status
                 ) VALUES (
                     $1, $2, $3,
@@ -383,6 +436,7 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     $15, $16,
                     $17, 0,
                     $19,
+                    $20, $21,
                     'pending'
                 )
                 ON CONFLICT (driver_id, payroll_month, payroll_year)
@@ -403,6 +457,8 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                     advance_deduction      = EXCLUDED.advance_deduction,
                     absence_penalty        = EXCLUDED.absence_penalty,
                     expense_reimbursement  = EXCLUDED.expense_reimbursement,
+                    employed_days          = EXCLUDED.employed_days,
+                    working_days           = EXCLUDED.working_days,
                     updated_at             = NOW()
                 WHERE payrolls.status = 'pending'
                 RETURNING (xmax = 0) AS is_insert
@@ -412,12 +468,13 @@ const calculateAndUpsertPayrolls = async (month, year) => {
                 c.totalRevenue, c.revenuePct, c.revenueBonus,
                 c.kpiBonus, c.topDriverBonus,
                 c.bonusWelfareTotal,
-                PHONE_ALLOWANCE,
-                BHXH_EMPLOYEE, BHXH_COMPANY,
+                c.phoneAllowance,
+                c.insuranceEmployee, c.insuranceCompany,
                 c.driverDebtDeduction, c.advanceDeduction,
                 c.absencePenalty,
                 c.holidayBonus,
                 c.expenseReimbursement,
+                c.employedDays, c.actualWorkDays,
             ]);
 
             if (!upserted) { skipped++; }
@@ -426,7 +483,8 @@ const calculateAndUpsertPayrolls = async (month, year) => {
         }
 
         await client.query('COMMIT');
-        return { total: drivers.length, created, updated, skipped };
+        // not_employed: tài vào làm sau kỳ (không có phiếu); removed: phiếu 'pending' cũ bị gỡ
+        return { total: drivers.length, created, updated, skipped, not_employed: notEmployed, removed };
     } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -611,6 +669,45 @@ const markPayrollPaid = async (payrollId, accountantId) => {
             });
         }
 
+        // 3b. Ứng lương CHƯA trừ hết vào lương kỳ này — lương làm ra ít hơn số đã ứng (thường
+        // là kỳ lương cuối khi nghỉ việc giữa tháng; splitAdvance chặn không cho thực nhận âm)
+        // hoặc có khoản giải ngân sau lần tính lương cuối. Phần còn lại chuyển thành công nợ
+        // tài xế: Nợ 1388 | Có 141 — TK 141 của kỳ được tất toán đủ, còn khoản tài nợ lại nằm
+        // trong công nợ: tài còn làm thì kỳ sau trừ tiếp theo trần % như mọi khoản nợ, tài đã
+        // nghỉ thì kế toán thu ở màn Quyết toán nghỉ việc.
+        //
+        // Tạo SAU bước cấn trừ nợ (2) nên không bị trừ luôn vào chính phiếu lương này.
+        let advanceCarried = null;
+        {
+            const { rows: [adv] } = await client.query(`
+                SELECT COALESCE(SUM(amount), 0)::numeric AS total
+                FROM salary_advances
+                WHERE driver_id = $1 AND request_month = $2 AND request_year = $3
+                  AND status = 'paid'
+            `, [row.driver_id, row.payroll_month, row.payroll_year]);
+            const carried = Math.round((Number(adv.total) - Number(row.advance_deduction ?? 0)) * 100) / 100;
+            if (carried > 0.01) {
+                const period = `${row.payroll_month}/${row.payroll_year}`;
+                const { rows: [debt] } = await client.query(`
+                    INSERT INTO debts (debt_type, driver_id, total_amount, source, incurred_on, notes, created_by)
+                    VALUES ('driver', $1, $2, 'payroll', CURRENT_DATE, $3, $4)
+                    RETURNING id
+                `, [
+                    row.driver_id, carried,
+                    `Ứng lương tháng ${period} chưa trừ hết vào lương — bảng lương #${payrollId}`,
+                    accountantId,
+                ]);
+                await financialLedgerRepository.insertTransaction(client, {
+                    eventType: 'advance_to_debt',
+                    debitAccount: '1388', creditAccount: '141',
+                    amount: carried,
+                    description: `Ứng lương tháng ${period} vượt lương kỳ — chuyển thành công nợ tài xế #${debt.id}`,
+                    refType: 'debt', refId: debt.id, actorId: accountantId,
+                });
+                advanceCarried = { amount: carried, debtId: debt.id };
+            }
+        }
+
         // 4. Ghi sổ chi tiền — TÁCH lương và tiền hoàn ứng, dù cả hai cùng ra khỏi quỹ
         // trong một lần trả và cùng bút toán Nợ 334 | Có 1111.
         //
@@ -647,6 +744,9 @@ const markPayrollPaid = async (payrollId, accountantId) => {
                 : null,
             debt_deduction_adjusted: deductionAdjusted
                 ? `Nợ tài xế thực còn ${money(clearedTotal)} (thấp hơn khấu trừ đã chốt ${money(debtDeduction)} — tài xế đã nộp quỹ sau khi tính lương). Đã tự điều chỉnh: chỉ trừ ${money(clearedTotal)}, lương thực nhận cập nhật ${money(Number(row.net_salary))}.`
+                : null,
+            advance_carried_to_debt: advanceCarried
+                ? `Lương kỳ này không đủ trừ hết tiền đã ứng — ${money(advanceCarried.amount)} còn lại đã chuyển thành công nợ tài xế #${advanceCarried.debtId} để thu.`
                 : null,
         };
     } catch (err) {
@@ -812,7 +912,110 @@ const adjustPayroll = async (payrollId, { manualBonus, manualDeduction, note }, 
     return row;
 };
 
+// Quyết toán tài xế đã chấm dứt hợp đồng (Bảng lương → "Quyết toán nghỉ việc"). Lương kỳ
+// cuối vẫn đi đường thường (tính → duyệt → chi, đã trừ ứng lương và công nợ theo trần %);
+// màn này gom phần CÒN LẠI để kế toán ghi nhận thu/chi cho đủ:
+//   remaining_debt        phải THU — công nợ chưa trừ hết, gồm cả ứng lương vượt lương đã
+//                         chuyển thành nợ lúc chi (source = 'payroll');
+//   advance_unrecovered   ứng lương đã giải ngân của kỳ CHƯA chi lương — sẽ trừ vào lương kỳ
+//                         đó hoặc thành nợ lúc chi, chưa phải nợ nhưng chưa xong;
+//   pending_reimbursement phải CHI — chi phí tài đã ứng, đã duyệt, chưa hoàn;
+//   unpaid_bonuses        phải CHI — thưởng đã duyệt chưa chi (không đi qua kỳ lương nào).
+// settled = kỳ lương cuối đã chi và mọi khoản trên bằng 0.
+const getTerminationSettlements = async () => {
+    const { rows } = await pool.query(`
+        SELECT
+            d.profile_id                               AS driver_id,
+            pr.full_name                               AS driver_name,
+            pr.phone                                   AS driver_phone,
+            a.is_active,
+            to_char(d.hire_date, 'YYYY-MM-DD')         AS hire_date,
+            to_char(d.termination_date, 'YYYY-MM-DD')  AS termination_date,
+            EXTRACT(MONTH FROM d.termination_date)::int AS final_month,
+            EXTRACT(YEAR  FROM d.termination_date)::int AS final_year,
+            fp.id                                      AS final_payroll_id,
+            fp.status                                  AS final_payroll_status,
+            fp.net_salary::text                        AS final_payroll_net,
+            (SELECT COUNT(*)::int FROM payrolls p
+              WHERE p.driver_id = d.profile_id AND p.status <> 'paid') AS unpaid_payrolls,
+            COALESCE(debt.remaining, 0)::text          AS remaining_debt,
+            COALESCE(adv.total, 0)::text               AS advance_unrecovered,
+            COALESCE(reimb.total, 0)::text             AS pending_reimbursement,
+            COALESCE(bon.total, 0)::text               AS unpaid_bonuses
+        FROM drivers d
+        JOIN profiles pr ON pr.id = d.profile_id
+        JOIN accounts a  ON a.id  = d.profile_id
+        LEFT JOIN payrolls fp
+               ON fp.driver_id = d.profile_id
+              AND fp.payroll_month = EXTRACT(MONTH FROM d.termination_date)
+              AND fp.payroll_year  = EXTRACT(YEAR  FROM d.termination_date)
+        LEFT JOIN LATERAL (
+            SELECT SUM(GREATEST(0, dd.total_amount - COALESCE((
+                       SELECT SUM(dp.amount) FROM debt_payments dp
+                       WHERE dp.debt_id = dd.id AND dp.status = 'confirmed'
+                   ), 0))) AS remaining
+            FROM debts dd
+            WHERE dd.driver_id = d.profile_id AND dd.debt_type = 'driver'
+        ) debt ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT SUM(sa.amount) AS total
+            FROM salary_advances sa
+            WHERE sa.driver_id = d.profile_id
+              AND sa.status = 'paid'
+              AND NOT EXISTS (
+                  SELECT 1 FROM payrolls p2
+                  WHERE p2.driver_id = sa.driver_id
+                    AND p2.payroll_month = sa.request_month AND p2.payroll_year = sa.request_year
+                    AND p2.status = 'paid'
+              )
+        ) adv ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT SUM(e.amount) AS total
+            FROM expenses e
+            LEFT JOIN v_shipment_current sc ON sc.shipment_id = e.shipment_id
+            LEFT JOIN maintenance_records mr ON mr.expense_id = e.id
+            WHERE e.status = 'approved'
+              AND e.reimbursement_status = 'pending'
+              AND ${NO_LIVE_REIMBURSEMENT_VOUCHER_SQL('e')}
+              AND COALESCE(sc.owner_driver_id, mr.performed_by, e.created_by) = d.profile_id
+        ) reimb ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT SUM(b.amount) AS total
+            FROM driver_bonuses b
+            WHERE b.driver_id = d.profile_id AND b.status = 'approved'
+        ) bon ON TRUE
+        WHERE d.termination_date IS NOT NULL
+        ORDER BY d.termination_date DESC, pr.full_name
+    `);
+
+    return rows.map((r) => {
+        const finalPayroll = r.final_payroll_id
+            ? { id: r.final_payroll_id, status: r.final_payroll_status, net_salary: r.final_payroll_net }
+            : null;
+        const open = [r.remaining_debt, r.advance_unrecovered, r.pending_reimbursement, r.unpaid_bonuses]
+            .some((v) => Number(v) > 0.01);
+        return {
+            driver_id:             r.driver_id,
+            driver_name:           r.driver_name,
+            driver_phone:          r.driver_phone,
+            is_active:             r.is_active,
+            hire_date:             r.hire_date,
+            termination_date:      r.termination_date,
+            final_month:           r.final_month,
+            final_year:            r.final_year,
+            final_payroll:         finalPayroll,
+            unpaid_payrolls:       r.unpaid_payrolls,
+            remaining_debt:        r.remaining_debt,
+            advance_unrecovered:   r.advance_unrecovered,
+            pending_reimbursement: r.pending_reimbursement,
+            unpaid_bonuses:        r.unpaid_bonuses,
+            settled: finalPayroll?.status === 'paid' && r.unpaid_payrolls === 0 && !open,
+        };
+    });
+};
+
 module.exports = {
+    getTerminationSettlements,
     getAllPayrolls,
     getPayrollStats,
     calculateAndUpsertPayrolls,

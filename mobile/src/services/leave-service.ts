@@ -13,7 +13,8 @@ export type LeaveRequest = {
     created_at: string;
 };
 
-// working_days = min(28, số ngày lịch − nghỉ không lương − vắng không phép − nửa công×0.5)
+// working_days = min(28, số ngày làm việc − nghỉ không lương − vắng không phép − nửa công×0.5)
+// — cùng công thức với bảng lương; "số ngày làm việc" tính từ ngày vào làm (employed_days).
 // Ba nguồn trừ công phải hiện đủ trên màn hình, nếu không tài xế thấy số công tụt mà
 // không biết vì sao (kế toán chấm vắng/nửa công thì tài không hề được báo).
 // Ngày lễ được loại khỏi mọi phép trừ (Điều V.1) và đi làm ngày lễ thì tính 200%.
@@ -26,10 +27,14 @@ export type AttendanceSummary = {
     working_days: number | string;
     holiday_days: number;
     holiday_days_worked: number;
+    employed_days?: number;
+    days_in_month?: number;
+    hire_date?: string | null;
 };
 
 // Chấm công từng ngày trong tháng của chính tài xế. status trùng bộ nhãn của kế toán:
 // present | holiday | holiday_worked | leave_paid | leave_unpaid | absent_unexcused | half_day
+// | not_employed / terminated (trước ngày vào làm / sau ngày nghỉ việc — không tính công)
 export type AttendanceDay = {
     work_date: string;
     status: string;

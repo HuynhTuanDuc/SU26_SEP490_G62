@@ -47,6 +47,9 @@ const DAY_STYLE: Record<string, { bg: string; fg: string; ky: string }> = {
     leave_unpaid:     { bg: appTheme.colors.warningSoft, fg: appTheme.colors.warningText, ky: 'KL' },
     half_day:         { bg: appTheme.colors.warningSoft, fg: appTheme.colors.warningText, ky: '½' },
     absent_unexcused: { bg: appTheme.colors.dangerSoft,  fg: appTheme.colors.dangerText,  ky: 'V' },
+    // Ngoài thời gian làm việc (trước ngày vào làm / sau ngày nghỉ việc) — không tính công
+    not_employed:     { bg: appTheme.colors.surfaceSoft, fg: appTheme.colors.textMuted,   ky: '–' },
+    terminated:       { bg: appTheme.colors.surfaceSoft, fg: appTheme.colors.textMuted,   ky: 'NV' },
 };
 const dayStyle = (s: string) => DAY_STYLE[s] ?? { bg: appTheme.colors.surfaceSoft, fg: appTheme.colors.textMuted, ky: '' };
 

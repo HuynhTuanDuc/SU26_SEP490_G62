@@ -180,9 +180,21 @@ const disburseAdvance = async (req, res) => {
     }
 };
 
+// GET /accountant/payroll/settlements — tài xế đã chấm dứt hợp đồng và các khoản còn phải
+// quyết toán: lương kỳ cuối, ứng lương/công nợ còn lại (thu), hoàn chi phí/thưởng chưa chi.
+const getTerminationSettlements = async (req, res) => {
+    try {
+        const settlements = await accountantPayrollRepository.getTerminationSettlements();
+        res.json({ settlements });
+    } catch (err) {
+        sendError(res, err);
+    }
+};
+
 module.exports = {
     getPayrolls,
     generatePayrolls,
+    getTerminationSettlements,
     confirmPayroll,
     markPayrollPaid,
     revertPayroll,

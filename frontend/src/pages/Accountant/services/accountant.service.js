@@ -184,6 +184,10 @@ export const accountantService = {
       body: { notes },
     }),
 
+  // Tài xế đã chấm dứt hợp đồng + các khoản còn phải quyết toán
+  getTerminationSettlements: () =>
+    apiRequest(`${BASE}/payroll/settlements`),
+
   // ─── Bonus & Welfare ───────────────────────────────────────────────────────
   getBonuses: (params) =>
     apiRequest(`/api/bonuses?${new URLSearchParams(params)}`),

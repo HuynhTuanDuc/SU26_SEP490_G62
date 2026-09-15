@@ -84,6 +84,10 @@ export const managerService = {
   getUsers: () => apiRequest("/api/admin/users"),
   createUser: (payload) => apiRequest("/api/admin/users", { method: "POST", body: payload }),
   updateUser: (id, payload) => apiRequest(`/api/admin/users/${id}`, { method: "PUT", body: payload }),
+  // Hồ sơ công việc tài xế: { hire_date, termination_date } — termination_date null = đang làm
+  updateDriverEmployment: (id, payload) => apiRequest(`/api/admin/users/${id}/employment`, { method: "PATCH", body: payload }),
+  // Chấm dứt hợp đồng tài xế: { termination_date, reason? } — khoá tài khoản ngay
+  terminateDriverContract: (id, payload) => apiRequest(`/api/admin/users/${id}/terminate`, { method: "POST", body: payload }),
   toggleUserStatus: (id, isActive) => apiRequest(`/api/admin/users/${id}/status`, { method: "PATCH", body: { is_active: isActive } }),
   resetUserPassword: (id) => apiRequest(`/api/admin/users/${id}/reset-password`, { method: "POST" }),
   getDriverList: () => apiRequest("/api/admin/users?role=driver&limit=200"),

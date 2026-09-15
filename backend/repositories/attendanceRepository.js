@@ -3,9 +3,19 @@ const pool = require('../config/database');
 // Lưới chấm công tháng cho toàn bộ tài xế đang hoạt động — trạng thái hiệu lực của
 // mỗi ngày được tính theo thứ tự ưu tiên: attendance_overrides (nếu Manager/Coordinator
 // đã đánh dấu) > leave_requests đã duyệt (tài xế tự báo nghỉ) > mặc định 'present'.
+// Ngày ngoài thời gian làm việc mang cờ before_hire / after_termination — bảng lương
+// không tính công những ngày này.
 const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = null }) => {
     const params = [year, month];
-    const driverConds = ['a.is_active = TRUE'];
+    // Ai có mặt trong lưới tháng: đã vào làm trước khi tháng kết thúc và chưa nghỉ việc
+    // trước khi tháng bắt đầu. Tài đã khoá tài khoản vẫn hiện nếu nghỉ việc trong tháng này
+    // — các ngày trước đó vẫn là công phải trả lương; khoá mà không ghi ngày nghỉ việc thì
+    // không xác định được còn làm tới đâu, bỏ ra như trước.
+    const driverConds = [
+        "d.hire_date <= (make_date($1::int, $2::int, 1) + INTERVAL '1 month - 1 day')::date",
+        '(d.termination_date IS NULL OR d.termination_date >= make_date($1::int, $2::int, 1))',
+        '(a.is_active = TRUE OR d.termination_date IS NOT NULL)',
+    ];
     if (driverId)       { params.push(driverId);       driverConds.push(`d.profile_id = $${params.length}`); }
     // Lọc theo NHÓM CỐ ĐỊNH của tài (biên chế), KHÔNG theo nhóm của xe đang cầm.
     // Tài nhóm 4m2 mượn xe cắt nóc vẫn phải nằm trong danh sách chấm công 4m2 —
@@ -23,7 +33,8 @@ const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = n
         drv AS (
             -- Biển số lấy theo xe ĐANG CẦM (thông tin vận hành), còn tên nhóm lấy
             -- theo nhóm CỐ ĐỊNH để khớp với KPI, xếp hạng và bảng lương.
-            SELECT d.profile_id AS driver_id, p.full_name, v.plate_number, vg.name AS vehicle_group_name
+            SELECT d.profile_id AS driver_id, p.full_name, v.plate_number, vg.name AS vehicle_group_name,
+                   d.hire_date, d.termination_date
             FROM drivers d
             JOIN profiles p ON p.id = d.profile_id
             JOIN accounts a ON a.id = p.id
@@ -33,7 +44,11 @@ const getMonthlyGrid = async ({ month, year, driverId = null, vehicleGroupId = n
         )
         SELECT
             drv.driver_id, drv.full_name, drv.plate_number, drv.vehicle_group_name,
+            to_char(drv.hire_date, 'YYYY-MM-DD')                AS hire_date,
+            to_char(drv.termination_date, 'YYYY-MM-DD')         AS termination_date,
             dd.work_date,
+            dd.work_date < drv.hire_date                        AS before_hire,
+            COALESCE(dd.work_date > drv.termination_date, FALSE) AS after_termination,
             ao.id     AS override_id,
             ao.status AS override_status,
             ao.notes  AS override_notes,
@@ -68,6 +83,19 @@ const isHoliday = async (workDate) => {
         [workDate],
     );
     return result.rows[0]?.name ?? null;
+};
+
+// Thời gian làm việc của tài xế: { hire_date, termination_date } dạng 'YYYY-MM-DD' (chuỗi,
+// không qua Date để khỏi lệch múi giờ; termination_date NULL = đang làm) — null nếu
+// driverId không phải tài xế.
+const getEmploymentDates = async (driverId) => {
+    const result = await pool.query(
+        `SELECT to_char(hire_date, 'YYYY-MM-DD')        AS hire_date,
+                to_char(termination_date, 'YYYY-MM-DD') AS termination_date
+         FROM drivers WHERE profile_id = $1`,
+        [driverId],
+    );
+    return result.rows[0] ?? null;
 };
 
 // Bảng lương kỳ đó đã chốt chưa — chặn sửa chấm công của kỳ đã trả tiền
@@ -124,4 +152,4 @@ const getUnexcusedAbsenceDays = async (driverId, month, year) => {
     return Number(result.rows[0]?.days ?? 0);
 };
 
-module.exports = { getMonthlyGrid, upsertOverride, deleteOverride, getUnexcusedAbsenceDays, findApprovedLeave, isHoliday, getPayrollStatus };
+module.exports = { getMonthlyGrid, upsertOverride, deleteOverride, getUnexcusedAbsenceDays, findApprovedLeave, isHoliday, getEmploymentDates, getPayrollStatus };

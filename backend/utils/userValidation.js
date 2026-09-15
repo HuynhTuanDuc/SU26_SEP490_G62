@@ -103,6 +103,45 @@ const normalizeDob = (value, { errorFactory } = {}) => {
     return /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : parsedDate.toISOString().slice(0, 10);
 };
 
+// Ngày vào làm / ngày nghỉ việc quyết định tháng đó được tính bao nhiêu công (ngày ngoài
+// khoảng làm việc không tính lương), nên phải là một ngày lịch có thật — new Date(
+// '2026-02-30') tự lăn sang 02/03 nên phải so lại từng phần. Cho phép ngày tương lai (tạo
+// tài khoản trước ngày nhận việc, tài báo nghỉ trước) nhưng không quá 1 năm: xa hơn thì
+// gần như chắc chắn là gõ nhầm năm.
+const normalizeEmploymentDate = (value, { fieldLabel, errorFactory } = {}) => {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value !== 'string') {
+        fail(`${fieldLabel} không hợp lệ.`, 400, errorFactory);
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const datePart = trimmed.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        fail(`${fieldLabel} không hợp lệ (định dạng YYYY-MM-DD).`, 400, errorFactory);
+    }
+    const [y, m, d] = datePart.split('-').map(Number);
+    const parsed = new Date(Date.UTC(y, m - 1, d));
+    if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d || y < 2000) {
+        fail(`${fieldLabel} không hợp lệ.`, 400, errorFactory);
+    }
+
+    const limit = new Date();
+    limit.setFullYear(limit.getFullYear() + 1);
+    if (datePart > limit.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })) {
+        fail(`${fieldLabel} không được quá 1 năm kể từ hôm nay.`, 400, errorFactory);
+    }
+
+    return datePart;
+};
+
+const normalizeHireDate = (value, { errorFactory } = {}) =>
+    normalizeEmploymentDate(value, { fieldLabel: 'Ngày vào làm', errorFactory });
+
+const normalizeTerminationDate = (value, { errorFactory } = {}) =>
+    normalizeEmploymentDate(value, { fieldLabel: 'Ngày nghỉ việc', errorFactory });
+
 const normalizeRole = (value, { errorFactory } = {}) => {
     return normalizeRequiredText(value, { fieldLabel: 'Vai trò', errorFactory }).toLowerCase();
 };
@@ -167,6 +206,8 @@ module.exports = {
     normalizePhone,
     normalizeGender,
     normalizeDob,
+    normalizeHireDate,
+    normalizeTerminationDate,
     normalizeRole,
     normalizeEmail,
     normalizeOptionalEmail,

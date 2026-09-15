@@ -17,12 +17,24 @@ const STATUS_LABEL = {
     leave_unpaid:      'Nghỉ không lương',
     absent_unexcused:  'Vắng không phép',
     half_day:          'Nửa công (nghỉ nửa buổi)',
+    not_employed:      'Chưa vào làm',
+    terminated:        'Đã nghỉ việc',
 };
 
-// Ngày lễ đè lên mọi trạng thái khác: theo Điều V.1 chính sách lương, ngày lễ được
+// Trạng thái của ngày NGOÀI thời gian làm việc — không tính công, không chấm được
+const OUTSIDE_EMPLOYMENT = ['not_employed', 'terminated'];
+
+// Ngày ngoài thời gian làm việc (trước ngày vào làm / sau ngày nghỉ việc) đè lên MỌI
+// trạng thái: không có quan hệ lao động thì không có công để tính, cũng không có gì để
+// chấm — bảng lương bỏ qua những ngày này (WORK_DAYS_SQL). Trước đây lưới mặc định mọi
+// ngày là "Có mặt", nên tài vào làm ngày 25 hiện đủ công cả tháng.
+//
+// Ngày lễ đè lên mọi trạng thái còn lại: theo Điều V.1 chính sách lương, ngày lễ được
 // nghỉ mà vẫn hưởng nguyên lương — nên không có khái niệm "vắng" hay "nghỉ không
 // lương" trong ngày lễ. Chỉ còn hai khả năng: nghỉ lễ, hoặc đi làm và ăn 200%.
 const resolveDayStatus = (row) => {
+    if (row.before_hire) return 'not_employed';
+    if (row.after_termination) return 'terminated';
     if (row.holiday_name) {
         return (row.override_status === 'holiday_worked' || row.has_completed_trip)
             ? 'holiday_worked'
@@ -55,10 +67,13 @@ const getMonthlyGrid = async ({ month, year, driverId, vehicleGroupId }) => {
                 full_name: r.full_name,
                 plate_number: r.plate_number,
                 vehicle_group_name: r.vehicle_group_name,
+                hire_date: r.hire_date,
+                termination_date: r.termination_date,
                 days: [],
                 summary: {
                     present: 0, holiday: 0, holiday_worked: 0,
                     leave_paid: 0, leave_unpaid: 0, absent_unexcused: 0, half_day: 0,
+                    not_employed: 0, terminated: 0,
                 },
             });
         }
@@ -74,7 +89,7 @@ const getMonthlyGrid = async ({ month, year, driverId, vehicleGroupId }) => {
             leave_request_id: r.leave_request_id,
             holiday_name: r.holiday_name ?? null,
             has_completed_trip: Boolean(r.has_completed_trip),
-            editable: true,
+            editable: !OUTSIDE_EMPLOYMENT.includes(status),
         });
         driver.summary[status] += 1;
     }
@@ -139,6 +154,18 @@ const markAttendance = async ({ driverId, workDate, status, notes }, markedBy) =
     const todayVN = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
     if (day > todayVN) {
         throw new AttendanceError('Không thể chấm công cho ngày trong tương lai');
+    }
+
+    // Ngày ngoài thời gian làm việc — bảng lương không tính công những ngày này, nên chấm
+    // vào đó chỉ sinh dữ liệu vô nghĩa (và gửi cho tài một thông báo "vắng không phép"
+    // sai). So sánh chuỗi YYYY-MM-DD, cùng lý do với trên.
+    const employment = await attendanceRepository.getEmploymentDates(Number(driverId));
+    if (!employment) throw new AttendanceError('Không tìm thấy tài xế', 404);
+    if (day < employment.hire_date) {
+        throw new AttendanceError(`Tài xế vào làm từ ${fmtDate(employment.hire_date)} — ngày ${fmtDate(day)} chưa thuộc thời gian làm việc nên không chấm công được.`);
+    }
+    if (employment.termination_date && day > employment.termination_date) {
+        throw new AttendanceError(`Tài xế đã nghỉ việc (ngày làm cuối ${fmtDate(employment.termination_date)}) — ngày ${fmtDate(day)} không còn thuộc thời gian làm việc nên không chấm công được.`);
     }
 
     // Chấm lùi vào kỳ lương ĐÃ CHỐT làm số công lệch với số tiền đã trả — chặn lại,

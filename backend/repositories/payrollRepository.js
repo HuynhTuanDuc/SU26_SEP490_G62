@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 const revenueAllocationRepository = require('./revenueAllocationRepository');
 const { ruleLateralSql, getHolidayMultiplier } = require('./bonusRuleLookup');
-const { UNPAID_DAYS_SQL } = require('../constants/payrollConstants');
+const { WORK_DAYS_SQL, WORKING_DAYS_PER_MONTH, prorateByEmployment, splitAdvance } = require('../constants/payrollConstants');
 const { NO_LIVE_REIMBURSEMENT_VOUCHER_SQL } = require('../constants/expenseConstants');
 const { money } = require('../utils/formatNumber');
 
@@ -32,6 +32,8 @@ const getDriverPayrolls = async (driverId, { month = null, year = null } = {}) =
             absence_penalty::text,
             other_deduction::text,
             expense_reimbursement::text,
+            employed_days,
+            working_days::text,
             gross_salary::text,
             net_salary::text,
             status,
@@ -91,15 +93,11 @@ const getDriverAdvances = async (driverId, { status = null } = {}) => {
 
 // ─── Estimate lương tháng hiện tại (computed, không phải finalized) ───────────
 // Công thức: (base/28) × working_days + revenue_share% + phụ cấp + thưởng − BHXH − advance − driver_debt
-// BHXH người lao động: vùng I 2025 → mức lương cơ sở 5,310,000 × 10.5%
+// Hằng số lương (phụ cấp ĐT, BHXH, 28 công) lấy từ constants/payrollConstants — phải khớp
+// accountantPayrollRepository, xem trước lệch với lúc chốt lương là tài xế nhìn thấy một
+// con số rồi nhận một con số khác.
 
-const INSURANCE_SALARY_BASE = 5_310_000;
-const BHXH_EMPLOYEE         = Math.round(INSURANCE_SALARY_BASE * 0.105);
-const PHONE_ALLOWANCE        = 200_000;
 const MAX_ADVANCE_AMOUNT     = 5_000_000;
-// Phải khớp accountantPayrollRepository — xem trước lệch số công với lúc chốt lương
-// là tài xế nhìn thấy một con số rồi nhận một con số khác.
-const WORKING_DAYS_PER_MONTH = 28;
 
 const getMonthsOfServiceAtPeriodEnd = (hireDateValue, month, year) => {
     const hireDate = new Date(hireDateValue);
@@ -125,18 +123,21 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const monthsOfService = getMonthsOfServiceAtPeriodEnd(hire_date, month, year);
     const baseSalary = monthsOfService >= 12 ? 9_000_000 : 8_000_000;
 
-    // 2. Số ngày nghỉ không lương / vắng không phép tháng này — DÙNG CHUNG một câu SQL với
-    // accountantPayrollRepository (UNPAID_DAYS_SQL). Hai bên lệch công thức nghĩa là tài xế
-    // xem trước một số rồi nhận một số khác, nên tuyệt đối không chép lại logic ở đây.
-    const dayRes = await pool.query(UNPAID_DAYS_SQL, [driverId, month, year]);
-    const unpaidDays = Number(dayRes.rows[0].unpaid_days ?? 0);
+    // 2. Ngày công tháng này — DÙNG CHUNG một câu SQL + một công thức với
+    // accountantPayrollRepository (WORK_DAYS_SQL, prorateByEmployment). Hai bên lệch công
+    // thức nghĩa là tài xế xem trước một số rồi nhận một số khác, nên tuyệt đối không chép
+    // lại logic ở đây. Chỉ tính công từ ngày vào làm; phụ cấp ĐT và BHXH chia theo tỉ lệ
+    // số ngày thuộc biên chế. Xem tháng trước ngày vào làm thì mọi khoản theo ngày bằng 0.
+    const { rows: [dayRow] } = await pool.query(WORK_DAYS_SQL, [driverId, month, year]);
+    const daysInMonth  = Number(dayRow.days_in_month);
+    const employedDays = Number(dayRow.employed_days ?? 0);
+    const unpaidDays   = Number(dayRow.unpaid_days ?? 0);
     // "28 công" là đơn giá quy đổi 1 ngày lương (base/28), KHÔNG phải trần số ngày được
-    // trả — khớp accountantPayrollRepository. Tháng dài hơn 28 ngày lịch mà tài đi làm
-    // hết cả những ngày dư (29, 30, 31) thì được trả thêm đúng phần dư đó (proRatedBase
-    // vượt base_salary). Vắng/nghỉ không lương thì trừ đúng phần hụt so với ngày lịch.
-    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-    const actualWorkingDays = Math.max(0, daysInMonth - unpaidDays);
-    const proRatedBase = (baseSalary / 28) * actualWorkingDays;
+    // trả. Tháng dài hơn 28 ngày lịch mà tài đi làm hết cả những ngày dư (29, 30, 31) thì
+    // được trả thêm đúng phần dư đó (proRatedBase vượt base_salary).
+    const prorated = prorateByEmployment({ baseSalary, daysInMonth, employedDays, unpaidDays });
+    const actualWorkingDays = prorated.actualWorkDays;
+    const proRatedBase = prorated.proRatedBase;
     const absencePenalty = baseSalary - proRatedBase;
 
     // 3. Doanh thu & bonus từ KPI tháng này
@@ -167,7 +168,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     const topDriverBonus = (Number(kpi.revenue_rank) === 1 && kpi.top_driver_reward)
         ? Number(kpi.top_driver_reward) : 0;
 
-    // 4. Tiền ứng lương đã được duyệt tháng này
+    // 4. Tiền ứng lương đã giải ngân tháng này — số thực trừ tính ở dưới (splitAdvance)
     const advRes = await pool.query(
         `SELECT COALESCE(SUM(amount), 0) AS advance_total
          FROM salary_advances
@@ -175,7 +176,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
            AND status = 'paid'`,
         [driverId, month, year],
     );
-    const advanceDeduction = Number(advRes.rows[0].advance_total ?? 0);
+    const advancePaid = Number(advRes.rows[0].advance_total ?? 0);
 
     // 5. Công nợ driver chưa nộp (BR-020 / Payroll §24)
     const debtRes = await pool.query(
@@ -257,7 +258,7 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const expenseReimbursement = Number(reimbRes.rows[0].total ?? 0);
 
-    const estimatedGross = proRatedBase + revenueBonus + PHONE_ALLOWANCE + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
+    const estimatedGross = proRatedBase + revenueBonus + prorated.phoneAllowance + kpiBonus + topDriverBonus + holidayBonus + bonusWelfareTotal;
 
     // Trần khấu trừ công nợ: chỉ trừ tối đa N% của số tài xế CÒN ĐƯỢC NHẬN sau khi đã
     // trừ BHXH / ứng lương / nghỉ không lương. Phần nợ còn lại tự động chuyển sang kỳ sau.
@@ -271,7 +272,11 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
     );
     const capPercent = Number(capRes.rows[0]?.pct ?? 30);
 
-    const payableBeforeDebt = Math.max(0, estimatedGross + expenseReimbursement - BHXH_EMPLOYEE - advanceDeduction);
+    // Ứng lương trừ tối đa bằng số lương làm ra — cùng quy tắc với bảng lương chốt
+    const { advanceDeduction, advanceCarriedOver } = splitAdvance(
+        advancePaid, estimatedGross + expenseReimbursement - prorated.insuranceEmployee,
+    );
+    const payableBeforeDebt = Math.max(0, estimatedGross + expenseReimbursement - prorated.insuranceEmployee - advanceDeduction);
     const debtCap = Math.round(payableBeforeDebt * capPercent / 100);
     const driverDebtDeduction = Math.min(driverDebtOutstanding, debtCap);
     const driverDebtCarriedOver = driverDebtOutstanding - driverDebtDeduction;
@@ -282,6 +287,12 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         month, year,
         months_of_service:      monthsOfService,
         base_salary:            baseSalary.toFixed(2),
+        // Vào làm / nghỉ việc giữa tháng: employed_days < days_in_month — app giải thích vì
+        // sao lương cứng, phụ cấp, BHXH đều thấp hơn mức đủ tháng
+        hire_date:              dayRow.hire_date,
+        termination_date:       dayRow.termination_date,
+        days_in_month:          daysInMonth,
+        employed_days:          employedDays,
         actual_working_days:    actualWorkingDays,
         unpaid_days:            unpaidDays,
         absence_penalty:        absencePenalty.toFixed(2),
@@ -289,16 +300,19 @@ const getPayrollEstimate = async (driverId, { month, year }) => {
         total_revenue:          totalRevenue.toFixed(2),
         revenue_share_pct:      revenuePct.toFixed(2),
         revenue_bonus:          revenueBonus.toFixed(2),
-        phone_allowance:        PHONE_ALLOWANCE.toFixed(2),
+        phone_allowance:        prorated.phoneAllowance.toFixed(2),
         kpi_bonus:              kpiBonus.toFixed(2),
         top_driver_bonus:       topDriverBonus.toFixed(2),
         holiday_bonus:          holidayBonus.toFixed(2),
         holiday_days_worked:    holidayDaysWorked,
         bonus_welfare_total:    bonusWelfareTotal.toFixed(2),
         expense_reimbursement:  expenseReimbursement.toFixed(2),
-        insurance_employee:     BHXH_EMPLOYEE.toFixed(2),
-        insurance_salary_base:  INSURANCE_SALARY_BASE.toFixed(2),
+        insurance_employee:     prorated.insuranceEmployee.toFixed(2),
+        insurance_salary_base:  prorated.insuranceSalaryBase.toFixed(2),
         advance_deduction:      advanceDeduction.toFixed(2),
+        // Lương kỳ này không đủ trừ hết tiền đã ứng → phần còn lại thành công nợ khi chi lương
+        advance_total:          advancePaid.toFixed(2),
+        advance_carried_over:   advanceCarriedOver.toFixed(2),
         driver_debt_deduction:  driverDebtDeduction.toFixed(2),
         // Cho màn lương giải thích được vì sao chỉ trừ bấy nhiêu, và còn nợ bao nhiêu
         driver_debt_outstanding:   driverDebtOutstanding.toFixed(2),

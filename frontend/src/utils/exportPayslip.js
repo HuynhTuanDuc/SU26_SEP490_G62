@@ -1,4 +1,5 @@
 import { money } from "./formatNumber";
+import { attendanceLine, phoneAllowanceOf, prorationNote } from "./payrollDisplay";
 // Xuất phiếu lương PDF cho từng tài xế.
 //
 // Cách tiếp cận: dựng một trang HTML tối ưu cho in ấn rồi nạp vào iframe ẩn và gọi
@@ -50,28 +51,30 @@ export function exportPayslipToPDF(row, { month, year, companyInfo } = {}) {
   const dailyWage    = Math.round(toNum(row.base_salary) / 28);
   const holidayDays  = dailyWage > 0 ? Math.round(holidayBonus / dailyWage) : 0;
 
-  // Thu nhập — bám sát đúng các dòng hiển thị trên màn hình bảng lương
+  // Phụ cấp ĐT, BHXH chia theo ngày làm và dòng trừ/cộng công — nhãn dùng chung với màn
+  // hình bảng lương (utils/payrollDisplay)
+  const period = { month: m, year: y };
+  const attendance = attendanceLine(row, period);
+
+  // Thu nhập — bám sát đúng các dòng hiển thị trên màn hình bảng lương.
+  // other_bonus CHÍNH LÀ phụ cấp điện thoại (không phải "thưởng khác") — trước đây in cả
+  // hai dòng nên phiếu PDF hiện phụ cấp hai lần.
   const incomeRows = [
     ["Lương cứng", toNum(row.base_salary)],
     ["Thưởng doanh thu", toNum(row.revenue_bonus)],
-    ["Phụ cấp điện thoại", 200000],
+    [`Phụ cấp điện thoại${prorationNote(row, period)}`, phoneAllowanceOf(row)],
     ["Thưởng KPI", toNum(row.kpi_bonus)],
     ["Thưởng xuất sắc", toNum(row.top_driver_bonus)],
     ...(holidayBonus > 0 ? [[`Đi làm ngày lễ ×2 (${holidayDays} ngày)`, holidayBonus]] : []),
     ["Thưởng & Phúc lợi", toNum(row.overtime_bonus)],
   ];
-  if (toNum(row.other_bonus) > 0) incomeRows.push(["Thưởng khác", toNum(row.other_bonus)]);
   if (toNum(row.manual_bonus) > 0) incomeRows.push(["Điều chỉnh (+)", toNum(row.manual_bonus)]);
 
   // Điều chỉnh & khấu trừ (dấu để hiển thị, không tự tính lại tổng)
   const adjustRows = [
     ["Hoàn chi phí đã ứng", toNum(row.expense_reimbursement), "plus"],
-    ["BHXH (10.5%)", toNum(row.insurance_employee), "minus"],
-    // absence_penalty âm = đi làm dư ngày công (>28, tháng 29-31 ngày đi đủ) → được trả
-    // thêm, không phải bị trừ.
-    toNum(row.absence_penalty) >= 0
-      ? ["Nghỉ không lương", toNum(row.absence_penalty), "minus"]
-      : ["Đi làm dư ngày công (>28)", -toNum(row.absence_penalty), "plus"],
+    [`BHXH (10.5%)${prorationNote(row, period)}`, toNum(row.insurance_employee), "minus"],
+    [attendance.label, attendance.amount, attendance.sign],
     ["Trừ ứng lương", toNum(row.advance_deduction), "minus"],
     ["Trừ công nợ", toNum(row.driver_debt_deduction), "minus"],
   ];

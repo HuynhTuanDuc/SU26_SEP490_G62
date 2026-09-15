@@ -19,6 +19,8 @@ import { DriverVehicleGroupModal } from "../../../components/shared-ui/DriverVeh
 import { notify } from "../../../components/shared-ui/Toast";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
 import { exportPayslipToPDF } from "../../../utils/exportPayslip";
+import { attendanceLine, phoneAllowanceOf, prorationNote } from "../../../utils/payrollDisplay";
+import TerminationSettlementPanel from "./TerminationSettlementPanel";
 import { money } from "../../../utils/formatNumber";
 
 const VND = (n) => Number(n || money(0));
@@ -77,12 +79,13 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
   const holidayBonus  = Number(row.holiday_bonus ?? 0);
   const dailyWage     = Math.round(Number(row.base_salary ?? 0) / 28);
   const holidayDays   = dailyWage > 0 ? Math.round(holidayBonus / dailyWage) : 0;
+  const attendance    = attendanceLine(row);
 
   const detail = [
     { label: "Lương cứng",      value: row.base_salary },
     { label: "Doanh thu",       value: row.total_revenue },
     { label: "Thưởng DT (15%)", value: row.revenue_bonus },
-    { label: "Phụ cấp ĐT",     value: "200,000đ",       raw: true },
+    { label: `Phụ cấp ĐT${prorationNote(row)}`, value: phoneAllowanceOf(row) },
     { label: "Thưởng KPI",           value: row.kpi_bonus },
     { label: "Thưởng xuất sắc",     value: row.top_driver_bonus },
     ...(holidayBonus > 0
@@ -93,13 +96,20 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
     { label: "Lương gộp",           value: row.gross_salary,  bold: true },
     // Tiền hoàn khoản tài đã ứng (chi hộ khách + chi phí công ty) — không phải thu nhập
     { label: "Hoàn chi phí đã ứng", value: row.expense_reimbursement },
-    { label: "BHXH (10.5%)",    value: `-${VND(row.insurance_employee)}`, raw: true, neg: true },
-    // absence_penalty âm = đi làm dư ngày công (>28, tháng 29-31 ngày đi đủ) → được trả
-    // thêm, không phải bị trừ — đổi nhãn/dấu cho đúng, không hiện "-(-x)" gây hiểu nhầm.
-    (Number(row.absence_penalty ?? 0) >= 0
-      ? { label: "Nghỉ không lương", value: `-${VND(row.absence_penalty)}`, raw: true, neg: true }
-      : { label: "Đi làm dư ngày công (>28)", value: `+${VND(-row.absence_penalty)}`, raw: true }),
-    { label: "Trừ ứng lương",   value: `-${VND(row.advance_deduction)}`,  raw: true, neg: true },
+    { label: `BHXH (10.5%)${prorationNote(row)}`, value: `-${VND(row.insurance_employee)}`, raw: true, neg: true },
+    // Trừ công (nghỉ không lương / vào làm giữa tháng) hoặc cộng công (đi làm dư quota 28)
+    // — nhãn + dấu theo đúng bản chất, không hiện "-(-x)" gây hiểu nhầm (utils/payrollDisplay)
+    (attendance.sign === "minus"
+      ? { label: attendance.label, value: `-${VND(attendance.amount)}`, raw: true, neg: true }
+      : { label: attendance.label, value: `+${VND(attendance.amount)}`, raw: true }),
+    // Ứng lương vượt số lương kỳ (kỳ cuối khi nghỉ việc giữa tháng): chỉ trừ bằng số làm ra,
+    // phần còn lại chuyển thành công nợ tài xế lúc bấm "Đã trả"
+    {
+      label: Number(row.advance_total ?? 0) > Number(row.advance_deduction ?? 0) + 0.01
+        ? `Trừ ứng lương (còn ${money(Number(row.advance_total) - Number(row.advance_deduction))} chuyển công nợ)`
+        : "Trừ ứng lương",
+      value: `-${VND(row.advance_deduction)}`, raw: true, neg: true,
+    },
     { label: "Trừ công nợ",     value: `-${VND(row.driver_debt_deduction)}`, raw: true, neg: true },
     ...(Number(row.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${VND(row.manual_deduction)}`, raw: true, neg: true }] : []),
     { label: "Lương thực nhận", value: row.net_salary,   bold: true, highlight: true },
@@ -122,6 +132,13 @@ function PayrollRow({ row, onConfirm, onPay, confirming, onEditGroup, onExportPd
             <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{row.driver_name}</span>
             {row.driver_phone && (
               <span className="text-xs text-gray-400 dark:text-gray-400 font-mono">{row.driver_phone}</span>
+            )}
+            {/* Kỳ lương cuối của tài đã nghỉ — sau kỳ này không còn kỳ nào trừ tiếp ứng lương / công nợ */}
+            {row.termination_date
+              && row.termination_date.slice(0, 7) === `${row.payroll_year}-${String(row.payroll_month).padStart(2, "0")}` && (
+              <span className="text-[11px] text-rose-500">
+                Nghỉ việc — làm tới {row.termination_date.split("-").reverse().join("/")}
+              </span>
             )}
           </div>
         </td>
@@ -539,6 +556,37 @@ export function PayrollView({ defaultTab = "payroll" }) {
   const [advPage, setAdvPage]         = useState(1);
   const [advPageSize, setAdvPageSize] = useState(10);
 
+  // Quyết toán tài xế nghỉ việc — tải ở đây (không trong panel) để nhãn tab có số chờ xử lý
+  const [settlements, setSettlements]     = useState([]);
+  const [settleLoading, setSettleLoading] = useState(false);
+  const [settleError, setSettleError]     = useState(null);
+
+  const loadSettlements = async () => {
+    setSettleLoading(true);
+    setSettleError(null);
+    try {
+      const data = await accountantService.getTerminationSettlements();
+      setSettlements(data?.settlements || []);
+    } catch (err) {
+      setSettleError(err.message || "Không tải được danh sách quyết toán.");
+    } finally {
+      setSettleLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSettlements(); }, []);
+
+  const openSettlements = settlements.filter((s) => !s.settled).length;
+
+  // Từ màn quyết toán nhảy sang đúng kỳ lương cuối của tài đó
+  const openPayrollFor = (month, year, driverName) => {
+    setPeriod({ month, year });
+    setPayrollSearch(driverName || "");
+    setPayrollStatusFilter("");
+    setPayPage(1);
+    setTab("payroll");
+  };
+
   const filteredPayrolls = useMemo(() => {
     const rows = payrolls.filter((row) => {
       if (payrollStatusFilter && row.status !== payrollStatusFilter) return false;
@@ -617,9 +665,12 @@ export function PayrollView({ defaultTab = "payroll" }) {
     }))) return;
     setConfirming(id);
     try {
-      await accountantService.markPayrollPaid(id);
+      const res = await accountantService.markPayrollPaid(id);
       refetch();
+      loadSettlements();
       notify.success("Đã đánh dấu đã trả lương.");
+      // Ứng lương vượt lương kỳ (thường là kỳ cuối khi nghỉ việc) → đã thành công nợ để thu
+      if (res?.payroll?.advance_carried_to_debt) notify.warning(res.payroll.advance_carried_to_debt);
     } catch (err) {
       notify.error(err.message || "Không thể đánh dấu đã trả lương.");
     } finally {
@@ -636,6 +687,7 @@ export function PayrollView({ defaultTab = "payroll" }) {
         {[
           { key: "payroll", label: "Bảng lương" },
           { key: "advance", label: `Ứng lương${pendingAdvances.length ? ` (${pendingAdvances.length})` : ""}` },
+          { key: "settlement", label: `Quyết toán nghỉ việc${openSettlements ? ` (${openSettlements})` : ""}` },
         ].map(({ key, label }) => (
           <button
             key={key}
@@ -861,6 +913,16 @@ export function PayrollView({ defaultTab = "payroll" }) {
       )}
 
       {}
+      {tab === "settlement" && (
+        <TerminationSettlementPanel
+          rows={settlements}
+          loading={settleLoading}
+          error={settleError}
+          onRefresh={loadSettlements}
+          onOpenPayroll={openPayrollFor}
+        />
+      )}
+
       {tab === "advance" && (
         <>
           {}

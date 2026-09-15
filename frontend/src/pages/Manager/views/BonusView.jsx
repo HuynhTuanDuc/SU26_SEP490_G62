@@ -325,6 +325,10 @@ export default function BonusView() {
               <div className="flex flex-col gap-3">
                 <div className="rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 p-3 text-sm text-blue-700 dark:text-blue-300">
                   {preview.filter((p) => !p.already_exists).length} tài xế sẽ được tạo phiếu thưởng mới · {preview.filter((p) => p.already_exists).length} đã có sẵn
+                  <p className="text-xs mt-1 opacity-80">
+                    Chỉ gồm tài xế còn làm tới 31/12/{tetYear} — ai có ngày nghỉ việc trong năm không được xét.
+                    Tháng vào làm chỉ được xét chuyên cần khi vào làm đúng mùng 1.
+                  </p>
                 </div>
                 <div className="max-h-[360px] overflow-auto">
                   <Table removeWrapper aria-label="Xem trước thưởng Tết" classNames={{ th: "px-4 first:pl-5 last:pr-5", td: "px-4 py-3 first:pl-5 last:pr-5" }}>
@@ -340,7 +344,14 @@ export default function BonusView() {
                     <TableBody items={preview} emptyContent="Không có dữ liệu.">
                       {(p) => (
                         <TableRow key={p.driver_id}>
-                          <TableCell>{p.full_name}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span>{p.full_name}</span>
+                              {p.hire_date && (
+                                <span className="text-[11px] text-gray-400 dark:text-gray-400">Vào làm {p.hire_date.split("-").reverse().join("/")}</span>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>{p.vehicle_group}</TableCell>
                           <TableCell>{p.months_full_count}</TableCell>
                           <TableCell>{fmt(p.seniority_bonus)}</TableCell>
