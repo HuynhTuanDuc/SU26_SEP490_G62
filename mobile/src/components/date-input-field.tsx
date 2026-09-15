@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { CalendarDays } from 'lucide-react-native';
 import { Input, Text, XStack, YStack } from 'tamagui';
 
@@ -59,8 +59,12 @@ export function DateInputField({ label, labelIcon, value, onChange, error }: Pro
     const [inputError, setInputError] = useState<string | null>(null);
     const [showPicker, setShowPicker] = useState(false);
 
-    // Giá trị Date để truyền vào picker
-    const pickerDate = parseDisplay(displayText) ?? new Date(2000, 0, 1);
+    // Giá trị Date để truyền vào picker — kẹp về hôm nay như maximumDate, để ngày spinner
+    // đang hiện cũng chính là ngày được ghi khi bấm Xác nhận (gõ tay ngày tương lai không lọt)
+    const typedDate = parseDisplay(displayText);
+    const pickerDate = typedDate
+        ? (typedDate > new Date() ? new Date() : typedDate)
+        : new Date(2000, 0, 1);
 
     const handleTextChange = (raw: string) => {
         const formatted = formatInput(raw);
@@ -85,13 +89,19 @@ export function DateInputField({ label, labelIcon, value, onChange, error }: Pro
         }
     };
 
-    const handlePickerChange = (_: unknown, selected?: Date) => {
-        setShowPicker(Platform.OS === 'ios');
-        if (!selected) return;
-        const iso = dateToIso(selected);
+    const commitDate = (date: Date) => {
+        const iso = dateToIso(date);
         setDisplayText(isoToDisplay(iso));
         setInputError(null);
         onChange(iso);
+    };
+
+    const handlePickerChange = (event: DateTimePickerEvent, selected?: Date) => {
+        setShowPicker(Platform.OS === 'ios');
+        // Android gọi onChange cả khi bấm Huỷ (type 'dismissed') và truyền lại chính `value`
+        // chứ không phải undefined — không lọc thì huỷ trên ô trống sẽ ghi luôn 01-01-2000.
+        if (event.type !== 'set' || !selected) return;
+        commitDate(selected);
     };
 
     const displayError = error ?? inputError;
@@ -127,6 +137,8 @@ export function DateInputField({ label, labelIcon, value, onChange, error }: Pro
                 {/* Nút mở picker */}
                 <Pressable
                     onPress={() => setShowPicker(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Chọn ngày"
                     hitSlop={8}
                     style={{
                         position: 'absolute',
@@ -175,8 +187,10 @@ export function DateInputField({ label, labelIcon, value, onChange, error }: Pro
                                 onChange={handlePickerChange}
                                 locale="vi"
                             />
+                            {/* Spinner iOS chỉ bắn onChange khi người dùng cuộn — mở ra rồi bấm
+                                Xác nhận ngay thì ngày đang hiện chưa được ghi, ô vẫn trống */}
                             <Pressable
-                                onPress={() => setShowPicker(false)}
+                                onPress={() => { commitDate(pickerDate); setShowPicker(false); }}
                                 style={{
                                     alignItems: 'center',
                                     paddingVertical: 12,

@@ -5,7 +5,7 @@ import {
     StyleSheet, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import {
     AlertTriangle, CalendarDays, CalendarOff, CheckCircle2,
     ChevronLeft, ChevronRight, PartyPopper, Trash2,
@@ -324,6 +324,18 @@ function RegisterLeaveOverlay({ onClose, onSuccess }: {
         return `${y}-${m}-${dd}`;
     };
 
+    const openAndroidPicker = () => {
+        DateTimePickerAndroid.open({
+            value: date,
+            mode: 'date',
+            minimumDate: new Date(),
+            // Bấm Huỷ cũng gọi onChange (type 'dismissed') kèm ngày cũ — chỉ nhận 'set'
+            onChange: (event, selected) => {
+                if (event.type === 'set' && selected) setDate(selected);
+            },
+        });
+    };
+
     const handleSubmit = async () => {
         const isoDate = dateToIso(date);
         const ok = await submit({
@@ -354,19 +366,34 @@ function RegisterLeaveOverlay({ onClose, onSuccess }: {
                         Đăng ký nghỉ
                     </Text>
 
-                    {/* Date picker — spinner inline trên cả iOS lẫn Android */}
+                    {/* iOS: spinner inline. Android KHÔNG có picker inline — <DateTimePicker> ở
+                        đó là dialog, tự mở lại mỗi khi prop onChange đổi (tức mỗi lần render:
+                        gõ lý do, chọn loại nghỉ, cả bấm Huỷ) nên kẹt vòng lặp dialog. Android
+                        dùng ô bấm + DateTimePickerAndroid.open(). */}
                     <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginBottom={4}>
                         Ngày nghỉ
                     </Text>
-                    <DateTimePicker
-                        value={date}
-                        mode="date"
-                        display="spinner"
-                        minimumDate={new Date()}
-                        locale="vi"
-                        onChange={(_, selected) => { if (selected) setDate(selected); }}
-                        style={{ marginHorizontal: -8 }}
-                    />
+                    {Platform.OS === 'ios' ? (
+                        <DateTimePicker
+                            value={date}
+                            mode="date"
+                            display="spinner"
+                            minimumDate={new Date()}
+                            locale="vi"
+                            onChange={(_, selected) => { if (selected) setDate(selected); }}
+                            style={{ marginHorizontal: -8 }}
+                        />
+                    ) : (
+                        <Pressable
+                            style={[s.input, s.dateField]}
+                            onPress={openAndroidPicker}
+                            accessibilityRole="button"
+                            accessibilityLabel="Chọn ngày nghỉ"
+                        >
+                            <Text fontSize={15} color={appTheme.colors.text}>{fmtDate(dateToIso(date))}</Text>
+                            <CalendarDays size={18} color={appTheme.colors.primary} />
+                        </Pressable>
+                    )}
 
                     {/* Leave type */}
                     <Text fontSize={13} fontWeight="700" color={appTheme.colors.text} marginTop={8} marginBottom={8}>
@@ -638,6 +665,9 @@ const s = StyleSheet.create({
         borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
         fontSize: 15, color: appTheme.colors.text,
         backgroundColor: appTheme.colors.surfaceSoft,
+    },
+    dateField: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     },
     actionBtn: {
         flex: 1, paddingVertical: 14, borderRadius: 16,

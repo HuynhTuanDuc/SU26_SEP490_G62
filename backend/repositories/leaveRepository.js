@@ -7,8 +7,10 @@ const getDriverLeaves = async (driverId, { month = null, year = null } = {}) => 
     if (year)  { params.push(year);  conditions.push(`EXTRACT(YEAR  FROM leave_date) = $${params.length}`); }
     if (month) { params.push(month); conditions.push(`EXTRACT(MONTH FROM leave_date) = $${params.length}`); }
 
+    // to_char: leave_date là DATE — trả thẳng thì JSON ra timestamp UTC ("…T17:00:00.000Z"
+    // khi máy chủ chạy giờ VN), app hiện "19T17:00:00.000Z/09/2026" và không huỷ được đơn.
     const result = await pool.query(
-        `SELECT id, leave_date, leave_type, reason, status, created_at
+        `SELECT id, to_char(leave_date, 'YYYY-MM-DD') AS leave_date, leave_type, reason, status, created_at
          FROM leave_requests
          WHERE ${conditions.join(' AND ')}
          ORDER BY leave_date DESC`,
@@ -130,7 +132,7 @@ const createLeave = async (driverId, { leaveDate, leaveType, reason }) => {
     const result = await pool.query(
         `INSERT INTO leave_requests (driver_id, leave_date, leave_type, reason, status)
          VALUES ($1, $2, $3, $4, 'approved')
-         RETURNING *`,
+         RETURNING id, driver_id, to_char(leave_date, 'YYYY-MM-DD') AS leave_date, leave_type, reason, status, created_at`,
         [driverId, leaveDate, leaveType, reason ?? null],
     );
     return result.rows[0];
