@@ -25,7 +25,7 @@ import { confirmDialog } from "../../../components/shared-ui/confirm";
 import { ManualDebtModal } from "../modals/ManualDebtModal";
 import { money } from "../../../utils/formatNumber";
 
-const VND = (n) => Number(n || money(0));
+const VND = (n) => money(n ?? 0);
 
 const STATUS_OPTIONS = [
   { key: "all",     label: "Tất cả" },

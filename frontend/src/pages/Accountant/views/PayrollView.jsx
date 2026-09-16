@@ -23,7 +23,7 @@ import { attendanceLine, phoneAllowanceOf, prorationNote } from "../../../utils/
 import TerminationSettlementPanel from "./TerminationSettlementPanel";
 import { money } from "../../../utils/formatNumber";
 
-const VND = (n) => Number(n || money(0));
+const VND = (n) => money(n ?? 0);
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => ({
   key: String(i + 1),

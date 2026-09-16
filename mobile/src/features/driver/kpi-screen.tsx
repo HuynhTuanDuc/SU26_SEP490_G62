@@ -17,7 +17,7 @@ import { KpiSkeleton } from '@/components/skeleton';
 import { appTheme }    from '@/theme/app-theme';
 import { useKpi }      from '@/hooks/use-kpi';
 import type { KpiRecord } from '@/services/kpi-service';
-import { moneyShort } from '@/lib/format-number';
+import { money } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -152,7 +152,7 @@ function KpiBonusCard({ record }: { record: KpiRecord }) {
                 <XStack justifyContent="space-between">
                     <Text fontSize={12} color={appTheme.colors.textMuted}>Doanh thu tháng này</Text>
                     <Text fontSize={12} fontWeight="700" color={color}>
-                        {moneyShort(revenue)} / {moneyShort(threshold)}
+                        {money(revenue)} / {money(threshold)}
                     </Text>
                 </XStack>
                 <View style={s.barTrack}>
@@ -161,11 +161,11 @@ function KpiBonusCard({ record }: { record: KpiRecord }) {
                 <XStack justifyContent="space-between" alignItems="center">
                     <Text fontSize={11} color={appTheme.colors.textMuted}>
                         {achieved
-                            ? `Vượt ngưỡng ${moneyShort(revenue - threshold)}`
-                            : `Còn thiếu ${moneyShort(remain)}`}
+                            ? `Vượt ngưỡng ${money(revenue - threshold)}`
+                            : `Còn thiếu ${money(remain)}`}
                     </Text>
                     <Text fontSize={13} fontWeight="900" color={color}>
-                        {moneyShort(reward)}
+                        {money(reward)}
                     </Text>
                 </XStack>
             </YStack>
@@ -227,7 +227,7 @@ function TopDriverCard({ record }: { record: KpiRecord }) {
                     <XStack alignItems="center" gap={4}>
                         <Star size={12} color={color} fill={color} />
                         <Text fontSize={12} fontWeight="700" color={color}>
-                            {moneyShort(reward)} cho driver #1
+                            {money(reward)} cho driver #1
                         </Text>
                     </XStack>
                 </YStack>
@@ -252,7 +252,7 @@ function KpiSection({ record }: { record: KpiRecord }) {
                 <StatCard
                     icon={<TrendingUp size={18} color={appTheme.colors.success} />}
                     label="Doanh thu thực tế"
-                    value={moneyShort(record.total_revenue)}
+                    value={money(record.total_revenue)}
                     sub="Chỉ tính giá thực tế"
                     color={appTheme.colors.success}
                 />

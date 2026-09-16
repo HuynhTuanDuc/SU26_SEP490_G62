@@ -5,7 +5,7 @@ import { notify } from "./Toast";
 import { confirmDialog } from "./confirm";
 import { money } from "../../utils/formatNumber";
 
-const fmt = (n) => Number(n || money(0));
+const fmt = (n) => money(n ?? 0);
 
 /**
  * Modal xác nhận / từ chối tiền khách trả trước — dùng chung cho Điều phối và Kế toán.

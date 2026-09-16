@@ -15,7 +15,7 @@ import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import ReceiptDetailModal from "../modals/ReceiptDetailModal";
 import { coordinatorService } from "../services/coordinator.service";
 import {
-  emptyReceiptForm, formatCurrency, formatNotificationTime,
+  emptyReceiptForm, formatNotificationTime,
   newReceiptExpense, normalizeStatus,
 } from "../utils";
 import { money } from "../../../utils/formatNumber";

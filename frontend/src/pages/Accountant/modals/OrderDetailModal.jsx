@@ -12,6 +12,7 @@ import {
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { accountantService } from "../services/accountant.service";
+import { money } from "../../../utils/formatNumber";
 
 const PAYMENT_LABELS = {
   cash:          "Tiền mặt",
@@ -65,7 +66,7 @@ function ShipmentCard({ s, index }) {
               <MoneyText amount={s.total_customer_due || s.actual_price} className="text-sm font-bold text-gray-800 dark:text-gray-100" />
               {Number(s.pass_through_total) > 0 && (
                 <span className="text-[10px] text-gray-400 dark:text-gray-400">
-                  cước {Number(s.actual_price).toLocaleString("vi-VN")} + PT {Number(s.pass_through_total).toLocaleString("vi-VN")}
+                  cước {money(s.actual_price)} + PT {money(s.pass_through_total)}
                 </span>
               )}
             </span>
@@ -233,7 +234,7 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
                   {order.actual_price == null && <span className="text-[9px] text-gray-400 dark:text-gray-400">ước tính</span>}
                   {totalPassThrough > 0 && (
                     <span className="text-[9px] text-gray-400 dark:text-gray-400">
-                      cước {Number(totalRevenue).toLocaleString("vi-VN")} + PT {totalPassThrough.toLocaleString("vi-VN")}
+                      cước {money(totalRevenue)} + PT {money(totalPassThrough)}
                     </span>
                   )}
                 </div>

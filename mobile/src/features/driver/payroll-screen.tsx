@@ -18,7 +18,7 @@ import { appTheme }    from '@/theme/app-theme';
 import { usePayroll, usePayrollEstimate, useSalaryAdvance } from '@/hooks/use-payroll';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import type { Payroll, PayrollEstimate, SalaryAdvance } from '@/services/payroll-service';
-import { money, moneyShort, num } from '@/lib/format-number';
+import { money, num } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -142,23 +142,23 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
 
                 <SalaryRow
                     label={`Lương cứng (${e.months_of_service >= 12 ? '≥12 tháng' : '<12 tháng'})`}
-                    value={moneyShort(e.pro_rated_base)}
-                    sub={`${moneyShort(e.base_salary)}/28 × ${e.actual_working_days} ngày`}
+                    value={money(e.pro_rated_base)}
+                    sub={`${money(e.base_salary)}/28 × ${e.actual_working_days} ngày`}
                     tone="normal"
                 />
                 <View style={s.divider} />
 
                 <SalaryRow
                     label="Thưởng doanh thu 15%"
-                    value={`+ ${moneyShort(e.revenue_bonus)}`}
-                    sub={`Doanh thu: ${moneyShort(e.total_revenue)}`}
+                    value={`+ ${money(e.revenue_bonus)}`}
+                    sub={`Doanh thu: ${money(e.total_revenue)}`}
                     tone="positive"
                 />
 
                 {Number(e.kpi_bonus) > 0 ? (
                     <SalaryRow
                         label="Thưởng vượt KPI"
-                        value={`+ ${moneyShort(e.kpi_bonus)}`}
+                        value={`+ ${money(e.kpi_bonus)}`}
                         tone="positive"
                     />
                 ) : null}
@@ -166,7 +166,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 {Number(e.top_driver_bonus) > 0 ? (
                     <SalaryRow
                         label="Thưởng lái xe xuất sắc"
-                        value={`+ ${moneyShort(e.top_driver_bonus)}`}
+                        value={`+ ${money(e.top_driver_bonus)}`}
                         tone="positive"
                     />
                 ) : null}
@@ -174,7 +174,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 {Number(e.holiday_bonus) > 0 ? (
                     <SalaryRow
                         label="Đi làm ngày lễ (200%)"
-                        value={`+ ${moneyShort(e.holiday_bonus)}`}
+                        value={`+ ${money(e.holiday_bonus)}`}
                         sub={`${e.holiday_days_worked} ngày lễ có chuyến hoàn thành`}
                         tone="positive"
                     />
@@ -183,7 +183,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 {Number(e.bonus_welfare_total) > 0 ? (
                     <SalaryRow
                         label="Thưởng & Phúc lợi"
-                        value={`+ ${moneyShort(e.bonus_welfare_total)}`}
+                        value={`+ ${money(e.bonus_welfare_total)}`}
                         sub="Tết, hiếu hỉ, thưởng đặc biệt..."
                         tone="positive"
                     />
@@ -191,7 +191,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
 
                 <SalaryRow
                     label="Phụ cấp điện thoại"
-                    value={`+ ${moneyShort(e.phone_allowance)}`}
+                    value={`+ ${money(e.phone_allowance)}`}
                     sub={prorateSub}
                     tone="positive"
                 />
@@ -200,14 +200,14 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
 
                 <SalaryRow
                     label="Tổng thu nhập"
-                    value={moneyShort(e.estimated_gross)}
+                    value={money(e.estimated_gross)}
                     bold
                 />
 
                 {Number(e.expense_reimbursement) > 0 ? (
                     <SalaryRow
                         label="Hoàn chi phí đã ứng"
-                        value={`+ ${moneyShort(e.expense_reimbursement)}`}
+                        value={`+ ${money(e.expense_reimbursement)}`}
                         sub="Tiền công ty trả lại khoản bạn đã ứng (không phải thưởng)"
                         tone="positive"
                     />
@@ -217,7 +217,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
 
                 <SalaryRow
                     label="BHXH người lao động (10.5%)"
-                    value={`- ${moneyShort(e.insurance_employee)}`}
+                    value={`- ${money(e.insurance_employee)}`}
                     sub={`Mức lương đóng: ${money(e.insurance_salary_base)}${partial ? ` (theo ${e.employed_days}/${e.days_in_month} ngày làm)` : ''}`}
                     tone="negative"
                 />
@@ -225,7 +225,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 {Number(e.driver_debt_deduction) > 0 ? (
                     <SalaryRow
                         label="Công nợ tài xế chưa nộp"
-                        value={`- ${moneyShort(e.driver_debt_deduction)}`}
+                        value={`- ${money(e.driver_debt_deduction)}`}
                         tone="negative"
                     />
                 ) : null}
@@ -233,7 +233,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 {Number(e.advance_total ?? e.advance_deduction) > 0 ? (
                     <SalaryRow
                         label="Đã ứng lương"
-                        value={`- ${moneyShort(e.advance_deduction)}`}
+                        value={`- ${money(e.advance_deduction)}`}
                         sub={Number(e.advance_carried_over ?? 0) > 0
                             ? `Lương kỳ này không đủ trừ hết — ${money(e.advance_carried_over)} còn lại chuyển thành công nợ khi chi lương`
                             : undefined}
@@ -317,7 +317,7 @@ function PayrollCard({ p }: { p: Payroll }) {
                     </YStack>
                     <YStack alignItems="flex-end" gap={2}>
                         <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
-                            {moneyShort(p.net_salary)}
+                            {money(p.net_salary)}
                         </Text>
                         <Text fontSize={10} color={appTheme.colors.textMuted}>thực nhận</Text>
                     </YStack>
@@ -329,59 +329,59 @@ function PayrollCard({ p }: { p: Payroll }) {
                     paddingHorizontal={16} paddingBottom={14} paddingTop={2}
                     borderTopWidth={1} borderTopColor={appTheme.colors.border}
                 >
-                    <SalaryRow label="Lương cứng" value={moneyShort(p.base_salary)} />
+                    <SalaryRow label="Lương cứng" value={money(p.base_salary)} />
                     <SalaryRow
                         label="Thưởng doanh thu"
-                        value={`+ ${moneyShort(p.revenue_bonus)}`}
-                        sub={`Doanh thu: ${moneyShort(p.total_revenue)}`}
+                        value={`+ ${money(p.revenue_bonus)}`}
+                        sub={`Doanh thu: ${money(p.total_revenue)}`}
                         tone="positive"
                     />
                     {Number(p.kpi_bonus) > 0 ? (
-                        <SalaryRow label="Thưởng vượt KPI" value={`+ ${moneyShort(p.kpi_bonus)}`} tone="positive" />
+                        <SalaryRow label="Thưởng vượt KPI" value={`+ ${money(p.kpi_bonus)}`} tone="positive" />
                     ) : null}
                     {Number(p.top_driver_bonus) > 0 ? (
-                        <SalaryRow label="Thưởng lái xe xuất sắc" value={`+ ${moneyShort(p.top_driver_bonus)}`} tone="positive" />
+                        <SalaryRow label="Thưởng lái xe xuất sắc" value={`+ ${money(p.top_driver_bonus)}`} tone="positive" />
                     ) : null}
                     {holidayBonus > 0 ? (
                         <SalaryRow
                             label="Đi làm ngày lễ (200%)"
-                            value={`+ ${moneyShort(holidayBonus)}`}
+                            value={`+ ${money(holidayBonus)}`}
                             tone="positive"
                         />
                     ) : null}
                     {welfareBonus > 0 ? (
                         <SalaryRow
                             label="Thưởng & Phúc lợi"
-                            value={`+ ${moneyShort(welfareBonus)}`}
+                            value={`+ ${money(welfareBonus)}`}
                             sub="Tết, hiếu hỉ, thưởng đặc biệt..."
                             tone="positive"
                         />
                     ) : null}
                     {phoneAllowance > 0 ? (
-                        <SalaryRow label="Phụ cấp điện thoại" value={`+ ${moneyShort(phoneAllowance)}`} tone="positive" />
+                        <SalaryRow label="Phụ cấp điện thoại" value={`+ ${money(phoneAllowance)}`} tone="positive" />
                     ) : null}
-                    <SalaryRow label="Tổng thu nhập" value={moneyShort(p.gross_salary)} bold />
+                    <SalaryRow label="Tổng thu nhập" value={money(p.gross_salary)} bold />
                     {Number(p.expense_reimbursement) > 0 ? (
                         <SalaryRow
                             label="Hoàn chi phí đã ứng"
-                            value={`+ ${moneyShort(p.expense_reimbursement)}`}
+                            value={`+ ${money(p.expense_reimbursement)}`}
                             sub="Tiền công ty trả lại khoản bạn đã ứng"
                             tone="positive"
                         />
                     ) : null}
-                    <SalaryRow label="BHXH người lao động" value={`- ${moneyShort(p.insurance_employee)}`} tone="negative" />
+                    <SalaryRow label="BHXH người lao động" value={`- ${money(p.insurance_employee)}`} tone="negative" />
                     {Number(p.driver_debt_deduction) > 0 ? (
-                        <SalaryRow label="Khấu trừ công nợ" value={`- ${moneyShort(p.driver_debt_deduction)}`} tone="negative" />
+                        <SalaryRow label="Khấu trừ công nợ" value={`- ${money(p.driver_debt_deduction)}`} tone="negative" />
                     ) : null}
                     {Number(p.advance_deduction) > 0 ? (
-                        <SalaryRow label="Hoàn ứng lương" value={`- ${moneyShort(p.advance_deduction)}`} tone="negative" />
+                        <SalaryRow label="Hoàn ứng lương" value={`- ${money(p.advance_deduction)}`} tone="negative" />
                     ) : null}
                     {Number(p.absence_penalty) > 0 ? (
                         // Tháng vào làm / nghỉ việc giữa chừng: phần trừ chủ yếu là các ngày ngoài
                         // thời gian làm việc — ghi "phạt nghỉ" là sai bản chất
                         <SalaryRow
                             label={isPartialPayroll(p) ? 'Trừ công (không làm trọn tháng)' : 'Phạt nghỉ không lương'}
-                            value={`- ${moneyShort(p.absence_penalty)}`}
+                            value={`- ${money(p.absence_penalty)}`}
                             sub={isPartialPayroll(p)
                                 ? `Tính ${Number(p.working_days ?? p.employed_days)}/${new Date(p.payroll_year, p.payroll_month, 0).getDate()} ngày công`
                                 : undefined}
@@ -389,7 +389,7 @@ function PayrollCard({ p }: { p: Payroll }) {
                         />
                     ) : null}
                     {Number(p.other_deduction) > 0 ? (
-                        <SalaryRow label="Khấu trừ khác" value={`- ${moneyShort(p.other_deduction)}`} tone="negative" />
+                        <SalaryRow label="Khấu trừ khác" value={`- ${money(p.other_deduction)}`} tone="negative" />
                     ) : null}
                     <SalaryRow label="Thực nhận" value={money(p.net_salary)} tone="positive" bold />
                 </YStack>
@@ -420,7 +420,7 @@ function AdvanceCard({ a }: { a: SalaryAdvance }) {
                 ) : null}
             </YStack>
             <Text fontSize={14} fontWeight="900" color={appTheme.colors.text}>
-                {moneyShort(a.amount)}
+                {money(a.amount)}
             </Text>
         </XStack>
     );
@@ -492,7 +492,7 @@ function AdvanceModal({ month, year, maxAmount, onClose, onSuccess }: {
                         value={amount}
                         onChangeText={onAmountChange}
                         keyboardType="numeric"
-                        placeholder={`Tối đa ${num(maxAmount)}`}
+                        placeholder={`Tối đa ${money(maxAmount)}`}
                         placeholderTextColor={appTheme.colors.textMuted}
                     />
 

@@ -9,8 +9,7 @@ import { notify } from "../../../components/shared-ui/Toast";
 import { confirmDialog } from "../../../components/shared-ui/confirm";
 import { money } from "../../../utils/formatNumber";
 
-const fmt = (v) =>
-  v == null ? "—" : money(Number(v));
+const fmt = (v) => money(v ?? 0);
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";

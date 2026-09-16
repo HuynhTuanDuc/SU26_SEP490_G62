@@ -7,6 +7,9 @@
  * NULL từ DB đi qua nó ra thẳng chuỗi "NaNđ" gửi tới người dùng.
  *
  * Đây không phải test cho vui: mọi con số tài xế đọc trên app đều đi qua đúng đường này.
+ *
+ * Hợp đồng chốt với người dùng: MỘT dạng duy nhất 1.500.000đ, không rút gọn bằng chữ,
+ * và ô tiền rỗng hiện 0đ.
  */
 const assert = require('node:assert');
 const f = require('../../utils/formatNumber');
@@ -27,21 +30,21 @@ describe('Hiển thị số tiền — dữ liệu thật từ Postgres', () => 
         assert.strictEqual(f.money('1500000.99'), '1.500.001đ');
     });
 
-    it('giá trị rỗng KHÔNG BAO GIỜ hiện thành 0đ', () => {
-        // "chưa có số liệu" và "bằng không" là hai khẳng định khác nhau. Hiện 0đ cho
-        // một khoản chưa khai là nói với người dùng một điều không đúng.
+    it('ô tiền rỗng hiện 0đ, và KHÔNG BAO GIỜ lọt chữ NaN ra màn hình', () => {
+        // Chữ "NaN" nằm đúng chỗ đáng lẽ là số tiền là thứ người dùng báo lỗi nhiều nhất:
+        // một phép tính hỏng ở trên không được phép hiện nguyên trạng cho người đọc.
         for (const v of [null, undefined, '', '   ', 'abc', NaN, Infinity, -Infinity]) {
             const out = f.money(v);
-            assert.strictEqual(out, '—', `money(${JSON.stringify(v)}) ra "${out}"`);
+            assert.strictEqual(out, '0đ', `money(${JSON.stringify(v)}) ra "${out}"`);
             assert.ok(!out.includes('NaN'), 'không được lọt chuỗi NaN tới người dùng');
-            assert.ok(!out.includes('0đ'), 'không được biến giá trị rỗng thành 0đ');
         }
     });
 
-    it('số 0 THẬT vẫn phải hiện là 0đ — khác hẳn với rỗng', () => {
+    it('số 0 và giá trị rỗng viết giống nhau — một dạng duy nhất cho ô tiền', () => {
         assert.strictEqual(f.money(0), '0đ');
         assert.strictEqual(f.money('0'), '0đ');
         assert.strictEqual(f.money('0.00'), '0đ');
+        assert.strictEqual(f.money(null), f.money(0));
     });
 
     it('số âm giữ nguyên dấu — khoản điều chỉnh giảm là chuyện có thật', () => {
@@ -49,57 +52,50 @@ describe('Hiển thị số tiền — dữ liệu thật từ Postgres', () => 
         assert.strictEqual(f.money('-250000.00'), '-250.000đ');
     });
 
-    it('dấu thập phân của bản rút gọn là DẤU PHẨY, không phải dấu chấm', () => {
-        // Bản cũ in "1.5 tr". Trong tiếng Việt dấu chấm phân cách hàng NGHÌN, nên
-        // "1.5" đọc ra là một nghìn năm trăm — sai hẳn ba bậc độ lớn.
-        assert.strictEqual(f.moneyShort(1_500_000), '1,5 tr');
-        assert.strictEqual(f.moneyShort(1_234_567_890), '1,2 tỷ');
-        assert.ok(!f.moneyShort(1_500_000).includes('1.5'), 'không được dùng dấu chấm làm dấu thập phân');
-    });
-
-    it('bản rút gọn bỏ đuôi ",0" ở số tròn nhưng KHÔNG làm tròn thô ở mốc nghìn', () => {
-        assert.strictEqual(f.moneyShort(2_000_000), '2 tr');
-        assert.strictEqual(f.moneyShort(15_000), '15k');
-        // 1.500 làm tròn thành "2k" là sai lệch một phần ba ngay trên màn hình,
-        // mà đây lại là mốc hay gặp nhất: phí cầu đường, phí đỗ xe.
-        assert.strictEqual(f.moneyShort(1_500), '1,5k');
-    });
-
-    it('bản rút gọn và bản đầy đủ không được mâu thuẫn nhau về độ lớn', () => {
-        // Người dùng thấy "1,5 tr" ở thẻ tổng quan rồi bấm vào xem chi tiết thấy
-        // "1.500.000đ" — hai con số phải cùng một độ lớn thì họ mới tin.
-        for (const v of [1_500_000, 850_000, 12_345, 999, 2_500_000_000]) {
-            const short = f.moneyShort(v);
-            const full = f.money(v);
-            assert.ok(short && full && short !== '—' && full !== '—');
-            // Chữ số đầu tiên của hai bản phải giống nhau
-            const d1 = short.match(/\d/)[0];
-            const d2 = full.match(/\d/)[0];
-            assert.strictEqual(d1, d2, `${v}: rút gọn "${short}" vs đầy đủ "${full}"`);
+    it('KHÔNG rút gọn bằng chữ — mọi khoản đều viết đủ chữ số', () => {
+        // Trước đây thẻ tổng quan in "1,5 tr" còn bảng chi tiết in "1.500.000đ" cho cùng
+        // một khoản. Người dùng không đối chiếu được hai cách viết, nên bỏ hẳn bản rút gọn.
+        assert.strictEqual(typeof f.moneyShort, 'undefined', 'moneyShort phải bị gỡ bỏ');
+        for (const v of [1_500, 15_000, 1_500_000, 2_000_000, 1_234_567_890]) {
+            const out = f.money(v);
+            for (const donVi of ['tr', 'tỷ', 'k', '₫', 'M', 'K']) {
+                assert.ok(!out.includes(donVi), `money(${v}) = "${out}" còn chứa đơn vị viết tắt "${donVi}"`);
+            }
+            assert.ok(/^-?[\d.]+đ$/.test(out), `money(${v}) = "${out}" phải đúng dạng xxx.xxx.xxxđ`);
         }
+    });
+
+    it('nhóm hàng nghìn bằng DẤU CHẤM, đủ ba chữ số một nhóm', () => {
+        assert.strictEqual(f.money(1_500_000), '1.500.000đ');
+        assert.strictEqual(f.money(999), '999đ');
+        assert.strictEqual(f.money(1_000), '1.000đ');
+        assert.strictEqual(f.money(1_234_567_890), '1.234.567.890đ');
+    });
+
+    it('tiền có dấu: số dương thêm "+" để nêu rõ chiều', () => {
+        assert.strictEqual(f.moneySigned(250000), '+250.000đ');
+        assert.strictEqual(f.moneySigned(-250000), '-250.000đ');
+        assert.strictEqual(f.moneySigned(null), '0đ');
     });
 
     it('số nguyên (km, số chuyến) dùng đúng dấu phân cách hàng nghìn của tiếng Việt', () => {
         assert.strictEqual(f.num(1234567), '1.234.567');
         assert.strictEqual(f.num('95'), '95');
+        // num() KHÔNG phải hàm tiền: nó vẫn giữ "—" cho ô chưa có số liệu
         assert.strictEqual(f.num(null), '—');
     });
 
     it('phần trăm dùng dấu phẩy thập phân', () => {
         assert.strictEqual(f.percent(12.5), '12,5%');
         assert.strictEqual(f.percent(0), '0,0%');
+    });
+
+    it('phần trăm rỗng vẫn là "—": num/percent không phải hàm tiền', () => {
         assert.strictEqual(f.percent(null), '—');
     });
 
-    it('tiền có dấu: số dương được thêm "+" để người đọc thấy ngay chiều', () => {
-        assert.strictEqual(f.moneySigned(500000), '+500.000đ');
-        assert.strictEqual(f.moneySigned(-500000), '-500.000đ');
-        assert.strictEqual(f.moneySigned(0), '0đ');
-        assert.strictEqual(f.moneySigned(null), '—');
-    });
-
     it('không sinh ra khoảng trắng lạ hay ký hiệu ₫ — cả hệ thống dùng đúng một ký hiệu', () => {
-        for (const v of [0, 1000, 1_500_000, -2_000_000, '123456.78']) {
+        for (const v of [0, 1000, 1_500_000, -2_000_000, '123456.78', null]) {
             const out = f.money(v);
             assert.ok(out.endsWith('đ'), `"${out}" phải kết thúc bằng đ`);
             assert.ok(!out.includes('₫'), `"${out}" không được dùng ký hiệu ₫`);

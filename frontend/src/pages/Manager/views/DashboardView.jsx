@@ -20,8 +20,9 @@ import {
 } from "../../../components/shared-ui/reportCharts";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import { managerService } from "../services/manager.service";
+import { money } from "../../../utils/formatNumber";
 
-const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
+const fmt = (v) => money(v ?? 0);
 
 const REPORT_MONTH_OPTIONS = [
   { key: "3",  label: "3 tháng gần nhất" },

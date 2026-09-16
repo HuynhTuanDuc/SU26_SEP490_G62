@@ -556,12 +556,12 @@ export function ImportExcelModal({ isOpen, onClose, onImported }) {
                                 display.settledFee >= display.cargoFee
                                   ? "text-emerald-600 dark:text-emerald-300"
                                   : "text-amber-600 dark:text-amber-300"}`}>
-                                báo {display.cargoFee.toLocaleString("vi-VN")} → chốt {display.settledFee.toLocaleString("vi-VN")}
+                                báo {money(display.cargoFee)} → chốt {money(display.settledFee)}
                               </div>
                             )}
                             {display.runs > 1 && (
                               <div className="text-[10px] font-normal text-gray-400 dark:text-gray-400">
-                                {display.effectiveFee.toLocaleString("vi-VN")} × {display.runs} lượt
+                                {money(display.effectiveFee)} × {display.runs} lượt
                               </div>
                             )}
                           </td>

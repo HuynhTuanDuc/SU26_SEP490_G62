@@ -8,7 +8,7 @@ import { accountantService } from "../services/accountant.service";
 import { notify } from "../../../components/shared-ui/Toast";
 import { money } from "../../../utils/formatNumber";
 
-const fmt = (v) => (v == null ? "—" : money(Number(v)));
+const fmt = (v) => money(v ?? 0);
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";

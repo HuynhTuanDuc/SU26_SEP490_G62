@@ -53,8 +53,7 @@ const RELATION_LABEL = {
   child:         "Con",
 };
 
-const fmt = (n) =>
-  n == null ? "—" : money(Number(n));
+const fmt = (n) => money(n ?? 0);
 
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => currentYear - i);

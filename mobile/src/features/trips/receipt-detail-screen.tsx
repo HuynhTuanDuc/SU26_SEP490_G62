@@ -22,7 +22,7 @@ import { appTheme }              from '@/theme/app-theme';
 import { tripService }           from '@/services/trip-service';
 import type { CompanyInfo, DriverReceiptDetail, ExpenseItem, OrderShipmentRow, PaymentType } from '@/types/trip';
 import { ExpenseFormModal } from './components/expense-form-modal';
-import { money, moneyShort, num } from '@/lib/format-number';
+import { money, num } from '@/lib/format-number';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -223,7 +223,7 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
                         </View>
                         {price ? (
                             <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
-                                {moneyShort(price)}{!s.actual_price ? ' *' : ''}
+                                {money(price)}{!s.actual_price ? ' *' : ''}
                             </Text>
                         ) : null}
                     </XStack>
@@ -284,7 +284,7 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
                                 </XStack>
                                 {expTotal > 0 ? (
                                     <Text fontSize={11} fontWeight="900" color={appTheme.colors.primary}>
-                                        +{moneyShort(expTotal)}
+                                        +{money(expTotal)}
                                     </Text>
                                 ) : null}
                             </XStack>
@@ -298,7 +298,7 @@ function ShipmentRow({ s, index }: { s: OrderShipmentRow; index: number }) {
                                             {exp.description ? ` — ${exp.description}` : ''}
                                         </Text>
                                         <Text fontSize={10} fontWeight="700" color={appTheme.colors.text}>
-                                            {moneyShort(exp.amount)}
+                                            {money(exp.amount)}
                                         </Text>
                                     </XStack>
                                 ))}
@@ -332,7 +332,7 @@ function ExpenseRow({ expense, onEdit, onDelete, canEdit, isDeleting }: {
                 </YStack>
                 <XStack alignItems="center" gap={8}>
                     <Text fontSize={13} fontWeight="900" color={appTheme.colors.primary}>
-                        {moneyShort(expense.amount)}
+                        {money(expense.amount)}
                     </Text>
                     {expense.receipt_urls.length > 0 ? (
                         <TouchableOpacity onPress={() => setShowPhotos(v => !v)} style={styles.photoBtn}>
@@ -736,7 +736,7 @@ export function ReceiptDetailScreen() {
     const handleDeleteExpense = (expense: ExpenseItem) => {
         Alert.alert(
             'Xoá chi phí?',
-            `Xoá khoản "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${moneyShort(expense.amount)}? Ảnh chứng từ đính kèm sẽ mất theo.`,
+            `Xoá khoản "${EXPENSE_TYPE_LABEL[expense.expense_type] ?? expense.expense_type}" — ${money(expense.amount)}? Ảnh chứng từ đính kèm sẽ mất theo.`,
             [
                 { text: 'Huỷ', style: 'cancel' },
                 {
@@ -913,7 +913,7 @@ export function ReceiptDetailScreen() {
                             TỔNG THU
                         </Text>
                         <Text fontSize={36} fontWeight="900" color={appTheme.colors.primary} marginTop={2}>
-                            {moneyShort(Number(receipt.amount))}
+                            {money(Number(receipt.amount))}
                         </Text>
                         <Text fontSize={10} color={appTheme.colors.textMuted}>
                             {nothingToCollect
@@ -928,7 +928,7 @@ export function ReceiptDetailScreen() {
                                     <Text fontSize={11} color={appTheme.colors.textMuted}>Khách đã trả trước</Text>
                                 </XStack>
                                 <Text fontSize={11} fontWeight="700" color={appTheme.colors.textMuted}>
-                                    −{moneyShort(receipt.prepaid_amount)}
+                                    −{money(receipt.prepaid_amount)}
                                 </Text>
                             </View>
                         ) : null}
@@ -1035,7 +1035,7 @@ export function ReceiptDetailScreen() {
                                                         Tổng cộng đơn hàng
                                                     </Text>
                                                     <Text fontSize={15} fontWeight="900" color={appTheme.colors.primary}>
-                                                        {moneyShort(grandTotal)}{!totalActual ? ' *' : ''}
+                                                        {money(grandTotal)}{!totalActual ? ' *' : ''}
                                                     </Text>
                                                 </XStack>
                                                 {totalExpAll > 0 ? (
@@ -1044,7 +1044,7 @@ export function ReceiptDetailScreen() {
                                                             Cước vận chuyển
                                                         </Text>
                                                         <Text fontSize={10} color={appTheme.colors.textMuted}>
-                                                            {moneyShort(baseTotal)}
+                                                            {money(baseTotal)}
                                                         </Text>
                                                     </XStack>
                                                 ) : null}
@@ -1054,7 +1054,7 @@ export function ReceiptDetailScreen() {
                                                             Chi hộ khách (cầu đường, đỗ xe, ETC)
                                                         </Text>
                                                         <Text fontSize={10} color={appTheme.colors.primary}>
-                                                            +{moneyShort(totalExpAll)}
+                                                            +{money(totalExpAll)}
                                                         </Text>
                                                     </XStack>
                                                 ) : null}
@@ -1078,9 +1078,9 @@ export function ReceiptDetailScreen() {
                                                 label="Quãng đường" value={kmDisplay} />
                                         ) : null}
                                         <Row icon={<CurrencyDollar size={13} color={appTheme.colors.primary} weight="fill" />}
-                                            label="Đơn giá thực" value={receipt.actual_price ? moneyShort(receipt.actual_price) : null} />
+                                            label="Đơn giá thực" value={receipt.actual_price ? money(receipt.actual_price) : null} />
                                         <Row icon={<CurrencyDollar size={13} color={appTheme.colors.textMuted} weight="fill" />}
-                                            label="Đơn giá ước" value={!receipt.actual_price && receipt.estimated_price ? moneyShort(receipt.estimated_price) : null} />
+                                            label="Đơn giá ước" value={!receipt.actual_price && receipt.estimated_price ? money(receipt.estimated_price) : null} />
 
                                         {/* Chi phí phát sinh */}
                                         <View style={styles.expenseBlock}>
@@ -1093,7 +1093,7 @@ export function ReceiptDetailScreen() {
                                                 </XStack>
                                                 {totalExpenses > 0 ? (
                                                     <Text fontSize={12} fontWeight="900" color={appTheme.colors.primary}>
-                                                        {moneyShort(totalExpenses)}
+                                                        {money(totalExpenses)}
                                                     </Text>
                                                 ) : null}
                                             </XStack>
@@ -1101,7 +1101,7 @@ export function ReceiptDetailScreen() {
                                                 để tài không tưởng hệ thống cộng sai. */}
                                             {totalExpensesOtherTrips > 0 ? (
                                                 <Text fontSize={11} color={appTheme.colors.textMuted} paddingBottom={6}>
-                                                    Các chuyến khác trong đơn còn {moneyShort(totalExpensesOtherTrips)} chi phí — do tài xế chuyến đó khai.
+                                                    Các chuyến khác trong đơn còn {money(totalExpensesOtherTrips)} chi phí — do tài xế chuyến đó khai.
                                                 </Text>
                                             ) : null}
 

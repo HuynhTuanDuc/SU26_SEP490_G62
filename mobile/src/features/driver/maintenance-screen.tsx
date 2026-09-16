@@ -19,7 +19,7 @@ import { useMaintenance } from '@/hooks/use-maintenance';
 import { maintenanceService } from '@/services/maintenance-service';
 import type { MaintenanceRecord, MaintenanceStatus, MaintenanceType } from '@/types/maintenance';
 import { MAINTENANCE_TYPE_LABEL, MAINTENANCE_STATUS_LABEL } from '@/types/maintenance';
-import { moneyShort } from '@/lib/format-number';
+import { money } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -225,7 +225,7 @@ function MaintenanceCard({
                                 />
                             ) : (
                                 <Text fontSize={15} fontWeight="900" color={appTheme.colors.text}>
-                                    {moneyShort(record.cost)}
+                                    {money(record.cost)}
                                 </Text>
                             )}
                         </YStack>

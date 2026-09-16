@@ -5,7 +5,7 @@ import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { ShipmentSubRows } from "./ShipmentSubRows";
-import { canCancelTrip, canEditTrip, formatCurrency } from "../utils";
+import { canCancelTrip, canEditTrip } from "../utils";
 import { money } from "../../../utils/formatNumber";
 
 function OrderRow({ trip, isExpanded, onToggle, onDetail, onEdit, onCancelOrder, onReassignShipment, onCancelShipment, onConfirmPrepaid }) {

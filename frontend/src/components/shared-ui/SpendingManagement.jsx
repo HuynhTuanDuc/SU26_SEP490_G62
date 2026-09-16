@@ -12,11 +12,12 @@ import {
 } from "react-icons/ri";
 import { StatCard } from "./StatCard";
 import { PaginationBar } from "./PaginationBar";
+import { money } from "../../utils/formatNumber";
 
 const NOW = new Date();
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2];
-const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
+const fmt = (v) => money(v ?? 0);
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString("vi-VN") : "—");
 
 const EXPENSE_TYPE_LABEL = {

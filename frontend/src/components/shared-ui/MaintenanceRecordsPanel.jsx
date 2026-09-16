@@ -29,10 +29,7 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("vi-VN");
 };
 
-const formatCost = (value) => {
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount > 0 ? `${money(amount)}` : "Chưa khai";
-};
+const formatCost = (value) => money(value ?? 0);
 
 const normalizeBillPics = (value) =>
   (Array.isArray(value) ? value : []).filter((item) => typeof item === "string" && item.trim());

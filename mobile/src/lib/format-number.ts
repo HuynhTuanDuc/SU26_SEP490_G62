@@ -1,32 +1,35 @@
 /**
  * Định dạng SỐ cho app tài xế — giữ ĐÚNG cùng quy tắc với web
- * (frontend/src/utils/formatNumber.js). Hai file phải đi đôi với nhau.
+ * (frontend/src/utils/formatNumber.js) và backend (backend/utils/formatNumber.js).
+ * Ba file phải đi cùng nhau.
  *
- * Vì sao quan trọng: tài xế xem lương trên app rồi mở web kiểm lại. Trước file này app
- * in "1.50M₫" còn web in "1.500.000đ" cho cùng một con số — trông như hai số khác nhau,
- * và người bị trừ lương sẽ không tin cái nào cả.
+ * Vì sao quan trọng: tài xế xem lương trên app rồi mở web kiểm lại. Trước đây app in
+ * "1.50M₫", chỗ khác in "1,5 tr", web in "1.500.000đ" cho cùng một con số — trông như
+ * ba số khác nhau, và người bị trừ lương sẽ không tin cái nào cả.
  *
- * Hai lỗi thật của bản cũ được sửa ở đây:
+ * HỢP ĐỒNG HIỂN THỊ TIỀN:
  *
- * 1. "1.5M₫" dùng dấu CHẤM làm dấu thập phân. Trong tiếng Việt dấu chấm phân cách hàng
- *    NGHÌN, nên "1.5" đọc ra là một nghìn năm trăm. Đúng phải là "1,5 tr".
- *
- * 2. Đơn vị viết bằng chữ cái tiếng Anh (M, K) trong một app hoàn toàn tiếng Việt.
- *    Nay dùng "tỷ / tr / k" như mọi phần mềm Việt khác.
- *
- * Ngoài ra: giá trị rỗng ra "—", KHÔNG ra "0đ". Với tiền, "chưa có số liệu" và "bằng
- * không" là hai chuyện khác hẳn nhau.
+ * 1. MỘT DẠNG DUY NHẤT: 1.500.000đ — nhóm hàng nghìn bằng dấu chấm, đuôi "đ" liền sau
+ *    số. Không rút gọn bằng chữ ("1,5 tr", "1,5 tỷ", "15k"), không dùng ký hiệu ₫,
+ *    không để số trần không đuôi.
+ * 2. KHÔNG CÓ SỐ LIỆU THÌ HIỆN 0đ — mọi ô tiền rỗng đều là 0đ.
+ * 3. Dấu thập phân (phần trăm) là DẤU PHẨY: trong tiếng Việt dấu chấm phân cách hàng
+ *    NGHÌN, nên "1.5" đọc ra là một nghìn năm trăm.
  */
 
 export const CURRENCY_SUFFIX = 'đ';
+
+/** Dùng cho số đếm và phần trăm, KHÔNG dùng cho tiền. */
 export const EMPTY = '—';
 
+/** Ô tiền rỗng hiện ra số không, xem hợp đồng hiển thị ở đầu file. */
+export const ZERO_MONEY = `0${CURRENCY_SUFFIX}`;
+
 const NF = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 });
-const NF1 = new Intl.NumberFormat('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 type Num = string | number | null | undefined;
 
-/** Chuỗi rỗng bị loại riêng: Number('') === 0, không chặn thì ô trống hiện ra "0đ". */
+/** Chuỗi rỗng bị loại riêng: Number('') === 0, không chặn thì ô trống lọt qua phép kiểm. */
 export const isNum = (v: Num): boolean => {
     if (v === null || v === undefined) return false;
     if (typeof v === 'string' && v.trim() === '') return false;
@@ -37,29 +40,15 @@ export const isNum = (v: Num): boolean => {
 export const num = (v: Num, empty = EMPTY): string =>
     (isNum(v) ? NF.format(Number(v)) : empty);
 
-/** Tiền đầy đủ: 1.500.000đ. Dạng mặc định — dùng nó trừ khi chỗ đó quá chật. */
-export const money = (v: Num, empty = EMPTY): string =>
+/**
+ * Tiền: 1.500.000đ. ĐÂY LÀ DẠNG DUY NHẤT để hiện một khoản tiền trên giao diện.
+ * Rỗng / NaN / Infinity đều ra "0đ" — không để chữ "NaN" lọt ra chỗ đáng lẽ là tiền.
+ */
+export const money = (v: Num, empty = ZERO_MONEY): string =>
     (isNum(v) ? NF.format(Math.round(Number(v))) + CURRENCY_SUFFIX : empty);
 
-/** Tiền rút gọn cho thẻ số liệu chật chỗ: 1,5 tỷ · 1,5 tr · 1,5k · 900đ. */
-export const moneyShort = (v: Num, empty = EMPTY): string => {
-    if (!isNum(v)) return empty;
-    const n = Number(v);
-    const abs = Math.abs(n);
-    const sign = n < 0 ? '-' : '';
-
-    const fmt = (x: number) => (Number.isInteger(x) ? NF.format(x) : NF1.format(x));
-
-    if (abs >= 1_000_000_000) return `${sign}${fmt(abs / 1_000_000_000)} tỷ`;
-    if (abs >= 1_000_000) return `${sign}${fmt(abs / 1_000_000)} tr`;
-    // Mốc "k" cũng giữ một chữ số thập phân: làm tròn 1.500 thành "2k" là sai lệch một
-    // phần ba, mà đây lại là mốc hay gặp nhất (phí cầu đường, phí đỗ xe).
-    if (abs >= 1_000) return `${sign}${fmt(abs / 1_000)}k`;
-    return money(n, empty);
-};
-
 /** Tiền có dấu — dùng ở chỗ chiều tăng/giảm mới là thông tin chính. */
-export const moneySigned = (v: Num, empty = EMPTY): string => {
+export const moneySigned = (v: Num, empty = ZERO_MONEY): string => {
     if (!isNum(v)) return empty;
     const n = Number(v);
     return (n > 0 ? '+' : '') + money(n);
