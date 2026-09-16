@@ -21,6 +21,9 @@ const STATUS_STYLE = {
   leave_unpaid:     { bg: "bg-amber-100 dark:bg-amber-500/15",  text: "text-amber-700 dark:text-amber-300",  dot: "bg-amber-500" },
   absent_unexcused: { bg: "bg-rose-100 dark:bg-rose-500/15",   text: "text-rose-700 dark:text-rose-300",   dot: "bg-rose-500" },
   half_day:         { bg: "bg-orange-100 dark:bg-orange-500/15", text: "text-orange-700 dark:text-orange-300", dot: "bg-orange-500" },
+  // Ngoài thời gian làm việc (trước ngày vào làm / sau ngày nghỉ việc) — không tính công, không chấm được
+  not_employed:     { bg: "bg-gray-50 dark:bg-white/5",          text: "text-gray-300 dark:text-gray-600",    dot: "bg-gray-300 dark:bg-gray-600" },
+  terminated:       { bg: "bg-gray-50 dark:bg-white/5",          text: "text-gray-300 dark:text-gray-600",    dot: "bg-gray-400 dark:bg-gray-500" },
 };
 
 // Trạng thái lạ (BE thêm mới mà FE chưa cập nhật) không được làm vỡ cả lưới
@@ -55,6 +58,8 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
             <span>{driver.full_name}</span>
             <span className="text-xs font-normal text-gray-400 dark:text-gray-400">
               {driver.plate_number || "Chưa gán xe"} · {driver.vehicle_group_name || "—"}
+              {driver.hire_date ? ` · Vào làm ${driver.hire_date.split("-").reverse().join("/")}` : ""}
+              {driver.termination_date ? ` · Làm tới ${driver.termination_date.split("-").reverse().join("/")}` : ""}
             </span>
           </ModalHeader>
           <ModalBody className="gap-4">
@@ -79,13 +84,17 @@ function DriverDetailModal({ driver, statusLabels, onClose, onMark, onClear, mar
                       if (!day) return <div key={di} className="h-16 bg-gray-50/40 dark:bg-white/5" />;
                       const style = styleOf(day.status);
                       const dayNum = new Date(day.work_date).getDate();
-                      const isHoliday = Boolean(day.holiday_name);
+                      // Trước ngày vào làm: không tính công, BE cũng chặn chấm — khoá ô luôn
+                      const locked = day.editable === false;
+                      const isHoliday = Boolean(day.holiday_name) && !locked;
                       return (
                         <button
                           key={di}
+                          disabled={locked}
                           onClick={() => setDayModal(day)}
-                          title={isHoliday ? day.holiday_name : undefined}
-                          className={`h-16 flex flex-col items-center justify-center gap-0.5 hover:brightness-95 transition-all ${style.bg}
+                          title={locked ? statusLabels[day.status] : isHoliday ? day.holiday_name : undefined}
+                          className={`h-16 flex flex-col items-center justify-center gap-0.5 transition-all ${style.bg}
+                                     ${locked ? "cursor-not-allowed" : "hover:brightness-95"}
                                      ${isHoliday ? "ring-1 ring-inset ring-violet-400/60" : ""}`}
                         >
                           <span className={`text-xs font-semibold ${style.text}`}>{dayNum}</span>

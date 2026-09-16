@@ -43,11 +43,15 @@ const LANGS = process.env.RECEIPT_OCR_LANGS || 'vie+eng';
 // (một cột) hoặc '6' (một khối) hơn, nên để chỉnh được qua env mà không phải deploy.
 const PSM = process.env.RECEIPT_OCR_PSM || '3';
 
-// Đo thực tế: một ảnh 2000px mất khoảng 4–12 giây. Cắt ở 25 giây là đủ rộng cho đuôi
-// phân phối mà vẫn không để tài xế đứng chờ vô hạn khi worker kẹt.
+// Đo trên bản in sạch 2000×2800, 6 dòng hàng: 2,7 giây lần đầu (gồm cả dựng worker)
+// và 2,0 giây các lần sau. Trần 25 giây rộng gấp nhiều lần mức đó là CỐ Ý: ảnh chụp
+// bằng điện thoại — nghiêng, loá, nhiễu nén — tốn hơn hẳn bản in sạch, và trần này chỉ
+// để cứu trường hợp worker kẹt hẳn chứ không phải để cắt những lần quét chậm nhưng
+// vẫn đang chạy đúng.
 const TIMEOUT_MS = Number(process.env.RECEIPT_OCR_TIMEOUT_MS || 25_000);
 
-// Worker Tesseract ngốn ~50MB RAM và mất 2–4 giây để dựng. Giữ lại dùng cho ảnh sau,
+// Dựng worker tốn khoảng 0,3–0,8 giây (đo: 281ms khi nạp vie+eng từ đĩa) và giữ vài
+// chục MB RAM. Giữ lại dùng cho ảnh sau — một đợt bảo dưỡng thường có nhiều hóa đơn —
 // nhưng thả ra khi vắng khách để container idle không phải gánh phần bộ nhớ đó.
 const IDLE_SHUTDOWN_MS = Number(process.env.RECEIPT_OCR_IDLE_MS || 120_000);
 

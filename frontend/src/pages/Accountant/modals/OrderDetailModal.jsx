@@ -1,21 +1,17 @@
 import { useEffect, useState } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Button, Chip, Spinner, Divider, Textarea,
+  Button, Chip, Spinner, Divider,
 } from "@heroui/react";
 import {
   RiFileList3Line,
   RiTruckLine, RiUserLine, RiPhoneLine, RiBuildingLine,
   RiCheckboxCircleLine, RiTimeLine, RiCalendarLine,
   RiMoneyDollarCircleLine, RiBox2Line, RiScalesLine,
-  RiBankCardLine, RiCheckLine, RiImageLine,
-  RiArrowUpLine, RiArrowDownLine,
 } from "react-icons/ri";
 import { MoneyText } from "../components/shared/MoneyText";
 import { RouteStops } from "../components/shared/RouteStops";
 import { accountantService } from "../services/accountant.service";
-import { notify } from "../../../components/shared-ui/Toast";
-import { confirmDialog } from "../../../components/shared-ui/confirm";
 
 const PAYMENT_LABELS = {
   cash:          "Tiền mặt",
@@ -46,22 +42,7 @@ function InfoRow({ icon: Icon, label, value, mono }) {
   );
 }
 
-// ── Lightbox ──────────────────────────────────────────────────────────────────
-function Lightbox({ url, onClose }) {
-  if (!url) return null;
-  return (
-    <div
-      className="fixed inset-0 bg-black/80 z-[999] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <img src={url} alt="Biên lai" className="max-w-full max-h-full rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} />
-    </div>
-  );
-}
-
-// ── Bank-transfer confirm panel (inside ShipmentCard) ─────────────────────────
-
-function ShipmentCard({ s, index, onBankConfirmed }) {
+function ShipmentCard({ s, index }) {
   const pickups   = s.pickup_addresses?.length ? s.pickup_addresses : (s.pickup_address ? [s.pickup_address] : []);
   const deliveries = s.delivery_addresses?.length ? s.delivery_addresses : (s.delivery_address ? [s.delivery_address] : []);
   const state    = DRIVER_STATE[s.driver_payment_state] ?? { label: "Không có nợ TX", color: "text-gray-400 dark:text-gray-400", bg: "bg-gray-50 dark:bg-white/5", icon: RiTimeLine };
@@ -173,9 +154,6 @@ function ShipmentCard({ s, index, onBankConfirmed }) {
             />
           </div>
         )}
-
-        {/* Bank transfer confirmation panel */}
-        <BankTransferPanel s={s} onConfirmed={onBankConfirmed} />
       </div>
     </div>
   );
@@ -310,7 +288,6 @@ export function OrderDetailModal({ isOpen, onClose, order }) {
                     key={s.id}
                     s={s}
                     index={s.shipment_index ?? i + 1}
-                    onBankConfirmed={loadShipments}
                   />
                 ))}
               </div>

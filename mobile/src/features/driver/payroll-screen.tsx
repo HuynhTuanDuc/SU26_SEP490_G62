@@ -26,6 +26,31 @@ const MONTH_NAMES = [
     '', 'T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12',
 ];
 
+// 'YYYY-MM-DD' → 'DD/MM/YYYY' — tách chuỗi, không qua Date để khỏi lệch múi giờ
+const fmtIsoDate = (iso: string) => {
+    const [y, m, d] = String(iso).slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+};
+
+// Phiếu lương tháng không làm trọn (vào làm / nghỉ việc giữa chừng): số ngày thuộc biên
+// chế ít hơn số ngày của tháng. Phiếu cũ không có employed_days (null) coi như đủ tháng.
+const isPartialPayroll = (p: Payroll) =>
+    p.employed_days != null && p.employed_days < new Date(p.payroll_year, p.payroll_month, 0).getDate();
+
+// Vì sao tháng đang xem không tính đủ công — ghi rõ mốc vào làm / nghỉ việc rơi vào tháng
+const employmentNote = (e: PayrollEstimate) => {
+    const monthKey = `${e.year}-${String(e.month).padStart(2, '0')}`;
+    if (e.employed_days === 0) {
+        return e.termination_date && e.termination_date.slice(0, 7) < monthKey
+            ? `Đã nghỉ việc (ngày làm cuối ${fmtIsoDate(e.termination_date)}) — không tính công tháng này`
+            : `Chưa vào làm trong tháng này (vào làm từ ${fmtIsoDate(e.hire_date)})`;
+    }
+    const parts: string[] = [];
+    if (e.hire_date.slice(0, 7) === monthKey) parts.push(`Vào làm từ ${fmtIsoDate(e.hire_date)}`);
+    if (e.termination_date?.slice(0, 7) === monthKey) parts.push(`làm tới ${fmtIsoDate(e.termination_date)}`);
+    return `${parts.join(', ')} — chỉ tính công trong thời gian làm việc`;
+};
+
 
 
 const PAYROLL_STATUS: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -71,6 +96,9 @@ function SalaryRow({ label, value, sub, tone = 'normal', bold = false }: {
 
 function EstimateCard({ e }: { e: PayrollEstimate }) {
     const net = Number(e.estimated_net);
+    // Vào làm giữa tháng → lương cứng, phụ cấp ĐT, BHXH đều chỉ tính theo số ngày làm
+    const partial = e.employed_days < e.days_in_month;
+    const prorateSub = partial ? `Theo ${e.employed_days}/${e.days_in_month} ngày làm` : undefined;
     return (
         <YStack gap={4}>
             {/* Hero */}
@@ -94,6 +122,11 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                     {e.actual_working_days}/28 ngày công
                     {e.unpaid_days > 0 ? ` (nghỉ ${e.unpaid_days} ngày không lương)` : ''}
                 </Text>
+                {partial ? (
+                    <Text fontSize={12} color="rgba(255,255,255,0.70)">
+                        {employmentNote(e)}
+                    </Text>
+                ) : null}
             </YStack>
 
             {/* Breakdown */}
@@ -159,6 +192,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 <SalaryRow
                     label="Phụ cấp điện thoại"
                     value={`+ ${moneyShort(e.phone_allowance)}`}
+                    sub={prorateSub}
                     tone="positive"
                 />
 
@@ -184,7 +218,7 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                 <SalaryRow
                     label="BHXH người lao động (10.5%)"
                     value={`- ${moneyShort(e.insurance_employee)}`}
-                    sub={`Mức lương đóng: ${money(e.insurance_salary_base)}`}
+                    sub={`Mức lương đóng: ${money(e.insurance_salary_base)}${partial ? ` (theo ${e.employed_days}/${e.days_in_month} ngày làm)` : ''}`}
                     tone="negative"
                 />
 
@@ -196,10 +230,13 @@ function EstimateCard({ e }: { e: PayrollEstimate }) {
                     />
                 ) : null}
 
-                {Number(e.advance_deduction) > 0 ? (
+                {Number(e.advance_total ?? e.advance_deduction) > 0 ? (
                     <SalaryRow
                         label="Đã ứng lương"
                         value={`- ${moneyShort(e.advance_deduction)}`}
+                        sub={Number(e.advance_carried_over ?? 0) > 0
+                            ? `Lương kỳ này không đủ trừ hết — ${money(e.advance_carried_over)} còn lại chuyển thành công nợ khi chi lương`
+                            : undefined}
                         tone="negative"
                     />
                 ) : null}
@@ -340,7 +377,16 @@ function PayrollCard({ p }: { p: Payroll }) {
                         <SalaryRow label="Hoàn ứng lương" value={`- ${moneyShort(p.advance_deduction)}`} tone="negative" />
                     ) : null}
                     {Number(p.absence_penalty) > 0 ? (
-                        <SalaryRow label="Phạt nghỉ không lương" value={`- ${moneyShort(p.absence_penalty)}`} tone="negative" />
+                        // Tháng vào làm / nghỉ việc giữa chừng: phần trừ chủ yếu là các ngày ngoài
+                        // thời gian làm việc — ghi "phạt nghỉ" là sai bản chất
+                        <SalaryRow
+                            label={isPartialPayroll(p) ? 'Trừ công (không làm trọn tháng)' : 'Phạt nghỉ không lương'}
+                            value={`- ${moneyShort(p.absence_penalty)}`}
+                            sub={isPartialPayroll(p)
+                                ? `Tính ${Number(p.working_days ?? p.employed_days)}/${new Date(p.payroll_year, p.payroll_month, 0).getDate()} ngày công`
+                                : undefined}
+                            tone="negative"
+                        />
                     ) : null}
                     {Number(p.other_deduction) > 0 ? (
                         <SalaryRow label="Khấu trừ khác" value={`- ${moneyShort(p.other_deduction)}`} tone="negative" />

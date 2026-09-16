@@ -12,7 +12,7 @@ const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400
 const EMPTY_FORM = {
   email: "", role: "driver", full_name: "", phone: "", gender: "", dob: "",
   city: "", country: "VN", address: "", national_id: "", tax_code: "",
-  emergency_contact_name: "", emergency_contact_phone: "", notes: "",
+  emergency_contact_name: "", emergency_contact_phone: "", notes: "", hire_date: "",
 };
 
 export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) {
@@ -30,6 +30,7 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
         address: editingUser.address || "", national_id: editingUser.national_id || "",
         tax_code: editingUser.tax_code || "", emergency_contact_name: editingUser.emergency_contact_name || "",
         emergency_contact_phone: editingUser.emergency_contact_phone || "", notes: editingUser.notes || "",
+        hire_date: editingUser.hire_date ? String(editingUser.hire_date).slice(0, 10) : "",
       });
     } else {
       setForm(EMPTY_FORM);
@@ -57,7 +58,8 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
       return showError("Số điện thoại khẩn cấp không hợp lệ.");
     }
     setError(null);
-    onSave({ ...form, dob: form.dob || null });
+    // Ngày vào làm chỉ có nghĩa với tài xế; bỏ trống thì BE giữ nguyên (tạo mới: ngày tạo)
+    onSave({ ...form, dob: form.dob || null, hire_date: form.role === "driver" ? (form.hire_date || null) : null });
   };
 
   return (
@@ -94,6 +96,20 @@ export default function UserFormModal({ isOpen, onClose, onSave, editingUser }) 
             </Select>
             <Input type="date" label="Ngày sinh" value={form.dob} onValueChange={update("dob")} variant="bordered" />
           </div>
+          {form.role === "driver" && (
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="date"
+                label="Ngày vào làm"
+                description={editingUser
+                  ? "Lương tháng vào làm chỉ tính công từ ngày này. Phiếu lương đã duyệt/đã chi không bị tính lại."
+                  : "Bỏ trống = hôm nay. Lương tháng đầu chỉ tính công từ ngày này."}
+                value={form.hire_date}
+                onValueChange={update("hire_date")}
+                variant="bordered"
+              />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Input label="Quê quán" value={form.city} onValueChange={update("city")} variant="bordered" startContent={ic(RiMapPin2Line)} />
             <Input label="Quốc gia" value={form.country} onValueChange={update("country")} variant="bordered" startContent={ic(RiFlag2Line)} />

@@ -96,10 +96,13 @@ export function useNotifications() {
               connect();
               return;
             }
+            // Bắt tay thất bại thì LUÔN giãn backoff, kể cả khi refresh thành công.
+            // Giãn riêng trong .catch là sai: khi WS hỏng vì phía server (nền serverless
+            // không nhận upgrade nên trả 404), refresh vẫn trả 200 nên delay kẹt vĩnh viễn
+            // ở 3s — mỗi socket bắn ~20 lần thử + 20 lần /auth/refresh mỗi phút.
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
             refreshAuthSession()
-              .catch(() => {
-                reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
-              })
+              .catch(() => {})
               .finally(connect);
           }, reconnectDelay);
         },

@@ -78,7 +78,10 @@ const getDriverForAssignment = async (driverId) => {
          JOIN profiles p ON p.id = d.profile_id
          JOIN accounts a ON a.id = d.profile_id AND a.is_active = TRUE
          LEFT JOIN vehicles v ON v.id = d.vehicle_id
-         WHERE d.profile_id = $1`,
+         WHERE d.profile_id = $1
+           -- Đã qua ngày làm việc cuối cùng thì không gán chuyến mới, dù quản lý chưa kịp
+           -- khoá tài khoản — chuyến đó sẽ không có ai chạy và cũng không có lương để trả
+           AND (d.termination_date IS NULL OR d.termination_date >= CURRENT_DATE)`,
         [driverId],
     );
     return row ?? null;

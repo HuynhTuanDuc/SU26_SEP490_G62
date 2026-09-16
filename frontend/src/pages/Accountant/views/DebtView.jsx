@@ -730,7 +730,7 @@ function DebtDetailRow({ d, onTransfer, onEditManual, onDeleteManual }) {
           <span className="text-[10px] text-orange-400 font-bold shrink-0 mt-0.5">#{d.id}</span>
           <div className="flex flex-col gap-0.5 overflow-hidden">
             <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">
-              {d.order_id ? `Đơn #${d.order_id}` : d.source === "manual" ? "Nợ khai tay" : "—"}
+              {d.order_id ? `Đơn #${d.order_id}` : d.source === "manual" ? "Nợ khai tay" : d.source === "payroll" ? "Ứng lương chưa hoàn" : "—"}
               {d.order_cargo_name ? ` · ${d.order_cargo_name}` : ""}
             </span>
             {d.notes && (

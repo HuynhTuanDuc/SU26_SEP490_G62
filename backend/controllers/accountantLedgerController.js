@@ -28,6 +28,9 @@ const EVENT_TYPE_LABEL = {
     // Test B10 đối chiếu bảng này với CHECK trong CSDL để không sót lần nữa.
     debt_transferred:      'Chuyển nợ khách sang tài xế',
     opening_balance:       'Số dư đầu kỳ',
+    // Tiền ứng lương vượt số lương kỳ đó (thường là kỳ lương cuối khi nghỉ việc giữa
+    // tháng) → chuyển thành công nợ tài xế để kế toán thu: Nợ 1388 | Có 141
+    advance_to_debt:       'Ứng lương chưa hoàn chuyển nợ tài xế',
 };
 
 // GET /api/accountant/ledger?event_type=&from=&to=&exported=&page=&pageSize=

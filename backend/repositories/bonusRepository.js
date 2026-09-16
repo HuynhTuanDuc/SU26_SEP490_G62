@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const { UNPAID_DAY_CASE_SQL } = require('../constants/payrollConstants');
 
 const BONUS_TYPES    = ['tet_annual', 'welfare_wedding', 'welfare_funeral', 'welfare_birthday', 'holiday_overtime', 'special'];
 const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
@@ -7,7 +8,7 @@ const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
 // ─── Tet bonus helpers ────────────────────────────────────────────────────────
 
 /**
- * Tính thưởng Tết cho 1 driver dựa trên hire_date và số ngày nghỉ không lương theo tháng.
+ * Tính thưởng Tết cho 1 driver dựa trên ngày vào làm và số công không lương theo tháng.
  * "Tháng đủ 28 công" dùng cùng định nghĩa với tính lương: vắng không vượt quá phần dư
  * ngày lịch so với quota 28 thì vẫn tính là đủ công (xem accountantPayrollRepository).
  *
@@ -16,31 +17,40 @@ const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
  *   months_incomplete 3-5  → 500.000   × months_in_range (max  6.000.000)
  *   months_incomplete ≥ 6  → 0
  *
- * Thưởng thâm niên: 2.000.000 nếu hire_date + 1 năm ≤ 31/12/year
+ * Tháng được xét chuyên cần (months_in_range) = các tháng làm TRỌN trong năm: tháng vào
+ * làm chỉ được xét nếu vào làm đúng mùng 1. Trước đây tháng vào làm luôn được xét và gần
+ * như luôn "đủ công" (không có ngày nghỉ nào được ghi trước ngày vào làm), nên tài vào làm
+ * 28/12 vẫn ăn 1.000.000 cho tháng 12. Tháng làm dở cũng KHÔNG bị tính là tháng thiếu
+ * công — vào làm giữa tháng không phải lỗi chuyên cần, không được đẩy tài xuống bậc 500.000.
+ * (Tài nghỉ việc trong năm không có thưởng Tết — đã loại ở previewTetBonuses.)
+ *
+ * Thưởng thâm niên: 2.000.000 nếu hire_date + 1 năm ≤ 31/12/year, tức vào làm từ năm trước.
+ *
+ * hireDate: chuỗi 'YYYY-MM-DD' (không qua Date để khỏi lệch múi giờ).
+ * unpaidByMonth: { [tháng 1-12]: số công không lương } — cùng quy tắc với bảng lương.
  */
 const _calcTet = (driverId, hireDate, year, unpaidByMonth) => {
-    const hire      = new Date(hireDate);
-    const fromMonth = hire.getFullYear() === year ? hire.getMonth() : 0; // 0-indexed
-    const toMonth   = 11;
-    const monthsInRange = toMonth - fromMonth + 1;
+    const [hy, hm, hd] = String(hireDate).slice(0, 10).split('-').map(Number);
+    let firstMonth;
+    if (hy < year)        firstMonth = 1;
+    else if (hy === year) firstMonth = hd === 1 ? hm : hm + 1;
+    else                  firstMonth = 13; // vào làm sau năm tính thưởng — không có tháng nào
+    const monthsInRange = Math.max(0, 12 - firstMonth + 1);
 
     let monthsFull = 0;
-    for (let m = fromMonth; m <= toMonth; m++) {
-        const monthNum     = m + 1; // unpaidByMonth is 1-indexed
+    for (let m = firstMonth; m <= 12; m++) {
         // "đủ 28 công" khớp đúng định nghĩa dùng trong tính lương: tháng dài hơn 28 ngày
         // lịch có phần dư được miễn trừ tự nhiên, chỉ vắng NHIỀU HƠN phần dư đó mới tính
         // là thiếu công (accountantPayrollRepository._calcDriverPayroll dùng cùng công thức).
-        const daysInMonth  = new Date(year, monthNum, 0).getDate();
+        const daysInMonth  = new Date(year, m, 0).getDate();
         const allowedSlack = Math.max(0, daysInMonth - 28);
-        const unpaidDays   = unpaidByMonth[monthNum] || 0;
+        const unpaidDays   = Number(unpaidByMonth[m] || 0);
         if (unpaidDays <= allowedSlack) monthsFull++;
     }
     const monthsIncomplete = monthsInRange - monthsFull;
 
     // Thưởng thâm niên: làm liên tục > 1 năm tính đến cuối năm
-    const oneYearMark = new Date(hire);
-    oneYearMark.setFullYear(oneYearMark.getFullYear() + 1);
-    const seniorityBonus = oneYearMark <= new Date(year, 11, 31) ? 2_000_000 : 0;
+    const seniorityBonus = hy < year ? 2_000_000 : 0;
 
     // Thưởng chuyên cần
     let attendanceBonus;
@@ -63,67 +73,89 @@ const _calcTet = (driverId, hireDate, year, unpaidByMonth) => {
 };
 
 const previewTetBonuses = async (year) => {
+    const y = Number(year);
+    // Chỉ xét tài xế CÒN LÀM tới hết năm tính thưởng (chính sách công ty):
+    //  • vào làm sau 31/12 → chưa làm ngày nào trong năm. Trước đây vẫn được xét đủ 12
+    //    tháng (không có ngày nghỉ nào được ghi) và ăn trọn 12.000.000;
+    //  • có ngày nghỉ việc trước 31/12 → không có thưởng Tết năm đó;
+    //  • tài khoản đã khoá mà không ghi ngày nghỉ việc → không biết còn làm tới đâu, loại ra
+    //    như mọi khoản phúc lợi khác (chỉ áp cho nhân viên đang hoạt động). Khoá sau khi
+    //    nghỉ việc từ 31/12 trở đi thì vẫn được xét.
     const { rows: drivers } = await pool.query(
-        `SELECT d.profile_id AS driver_id, d.hire_date,
+        `SELECT d.profile_id AS driver_id,
+                to_char(d.hire_date, 'YYYY-MM-DD') AS hire_date,
                 p.full_name, p.phone,
                 vg.name AS vehicle_group
          FROM drivers d
          JOIN profiles p ON p.id = d.profile_id
+         JOIN accounts a ON a.id = d.profile_id
          -- Nhóm CỐ ĐỊNH (biên chế), không phải nhóm của xe đang cầm — để nhãn nhóm
          -- ở màn Thưởng khớp với màn KPI và Bảng lương.
          LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
+         WHERE d.hire_date <= make_date($1::int, 12, 31)
+           AND (d.termination_date IS NULL OR d.termination_date >= make_date($1::int, 12, 31))
+           AND (a.is_active = TRUE OR d.termination_date IS NOT NULL)
          ORDER BY p.full_name`,
+        [y],
     );
     if (!drivers.length) return [];
 
     const driverIds = drivers.map((d) => d.driver_id);
 
-    // Một tháng bị coi là "thiếu công" (không đủ 28 công) nếu có ít nhất 1 ngày nghỉ
-    // không lương đã duyệt (trừ ngày đã bị Manager/Coordinator override thành 'present')
-    // HOẶC có ít nhất 1 ngày attendance_overrides đánh dấu 'absent_unexcused' — khớp với
-    // cách tính ngày công trong accountantPayrollRepository._calcDriverPayroll.
-    const { rows: leaveRows } = await pool.query(
-        `SELECT driver_id, month, COUNT(*) AS cnt
-         FROM (
-             SELECT lr.driver_id, EXTRACT(MONTH FROM lr.leave_date)::int AS month
-             FROM leave_requests lr
-             LEFT JOIN attendance_overrides ao
-                    ON ao.driver_id = lr.driver_id AND ao.work_date = lr.leave_date
-             WHERE lr.driver_id = ANY($1)
-               AND EXTRACT(YEAR FROM lr.leave_date) = $2
-               AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
-               AND COALESCE(ao.status, 'leave_unpaid') != 'present'
-             UNION ALL
-             SELECT ao2.driver_id, EXTRACT(MONTH FROM ao2.work_date)::int AS month
-             FROM attendance_overrides ao2
-             WHERE ao2.driver_id = ANY($1)
-               AND EXTRACT(YEAR FROM ao2.work_date) = $2
-               AND ao2.status = 'absent_unexcused'
-         ) x
-         GROUP BY driver_id, month`,
-        [driverIds, year],
+    // Công không lương theo tháng — CÙNG quy tắc với bảng lương (UNPAID_DAY_CASE_SQL):
+    // khử trùng theo ngày (đơn nghỉ + chấm vắng cùng ngày chỉ trừ 1 công), chấm công thắng
+    // đơn nghỉ, nửa công trừ 0.5, ngày lễ miễn trừ. Trước đây đếm riêng ở đây và lệch bảng
+    // lương ở cả bốn điểm đó — một tháng bảng lương coi là đủ công vẫn có thể bị thưởng Tết
+    // coi là thiếu công, và ngược lại.
+    const { rows: unpaidRows } = await pool.query(
+        `WITH cand AS (
+            SELECT ao2.driver_id, ao2.work_date AS d
+            FROM attendance_overrides ao2
+            WHERE ao2.driver_id = ANY($1)
+              AND ao2.status IN ('absent_unexcused', 'half_day')
+              AND ao2.work_date BETWEEN make_date($2::int, 1, 1) AND make_date($2::int, 12, 31)
+            UNION
+            SELECT lr2.driver_id, lr2.leave_date
+            FROM leave_requests lr2
+            WHERE lr2.driver_id = ANY($1)
+              AND lr2.leave_type = 'unpaid' AND lr2.status = 'approved'
+              AND lr2.leave_date BETWEEN make_date($2::int, 1, 1) AND make_date($2::int, 12, 31)
+        )
+        SELECT cand.driver_id,
+               EXTRACT(MONTH FROM cand.d)::int      AS month,
+               SUM(${UNPAID_DAY_CASE_SQL})::numeric AS unpaid_days
+        FROM cand
+        LEFT JOIN attendance_overrides ao
+               ON ao.driver_id = cand.driver_id AND ao.work_date = cand.d
+        LEFT JOIN leave_requests lr
+               ON lr.driver_id = cand.driver_id AND lr.leave_date = cand.d
+              AND lr.leave_type = 'unpaid' AND lr.status = 'approved'
+        WHERE NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = cand.d)
+        GROUP BY cand.driver_id, EXTRACT(MONTH FROM cand.d)`,
+        [driverIds, y],
     );
 
-    const leaveMap = {};
-    for (const r of leaveRows) {
-        if (!leaveMap[r.driver_id]) leaveMap[r.driver_id] = {};
-        leaveMap[r.driver_id][r.month] = Number(r.cnt);
+    const unpaidMap = {};
+    for (const r of unpaidRows) {
+        if (!unpaidMap[r.driver_id]) unpaidMap[r.driver_id] = {};
+        unpaidMap[r.driver_id][r.month] = Number(r.unpaid_days);
     }
 
     // Load existing tet records for this year (to flag already-generated)
     const { rows: existing } = await pool.query(
         `SELECT driver_id FROM driver_bonuses WHERE type = 'tet_annual' AND year = $1`,
-        [year],
+        [y],
     );
     const alreadyGenerated = new Set(existing.map((r) => r.driver_id));
 
     return drivers.map((d) => {
-        const calc = _calcTet(d.driver_id, d.hire_date, year, leaveMap[d.driver_id] || {});
+        const calc = _calcTet(d.driver_id, d.hire_date, y, unpaidMap[d.driver_id] || {});
         return {
             ...calc,
             full_name:       d.full_name,
             phone:           d.phone,
             vehicle_group:   d.vehicle_group,
+            hire_date:       d.hire_date,
             already_exists:  alreadyGenerated.has(d.driver_id),
         };
     });
@@ -384,6 +416,7 @@ module.exports = {
     BONUS_STATUSES,
     previewTetBonuses,
     generateTetBonuses,
+    _calcTet, // hàm thuần — xuất để unit test các quy tắc thưởng Tết
     getAll,
     getById,
     getByDriver,

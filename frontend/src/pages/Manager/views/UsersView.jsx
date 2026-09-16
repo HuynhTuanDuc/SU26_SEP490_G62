@@ -4,10 +4,12 @@ import {
   Button, Input, Chip, Spinner, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, Select, SelectItem,
 } from "@heroui/react";
-import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine, RiKeyLine } from "react-icons/ri";
+import { RiSearchLine, RiAddLine, RiDownloadLine, RiUploadLine, RiLockLine, RiLockUnlockLine, RiPencilLine, RiKeyLine, RiBriefcaseLine, RiUserUnfollowLine } from "react-icons/ri";
 import { useRoleRealtime } from "../../../hooks/useRoleRealtime";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import UserFormModal from "../modals/UserFormModal";
+import DriverEmploymentModal from "../modals/DriverEmploymentModal";
+import TerminateContractModal from "../modals/TerminateContractModal";
 import { managerService } from "../services/manager.service";
 import { APP_NAME } from "../../../constants/brand";
 
@@ -118,6 +120,10 @@ export default function UsersView({ user }) {
   const [toggleTarget, setToggleTarget] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetting, setResetting] = useState(false);
+  // Hồ sơ công việc (ngày vào làm / ngày nghỉ việc) của tài xế đang mở
+  const [employmentTarget, setEmploymentTarget] = useState(null);
+  // Tài xế đang được chấm dứt hợp đồng (thay cho nút Khóa ở dòng tài xế)
+  const [terminateTarget, setTerminateTarget] = useState(null);
   // Mật khẩu của tài khoản không có email — chỉ tồn tại đúng một lần trong response,
   // hiển thị riêng để quản lý chép lại trước khi đóng.
   const [passwordHandover, setPasswordHandover] = useState(null);
@@ -503,6 +509,7 @@ export default function UsersView({ user }) {
             <TableColumn>NGÀY SINH</TableColumn>
             <TableColumn>QUÊ QUÁN</TableColumn>
             <TableColumn>VAI TRÒ</TableColumn>
+            <TableColumn>VÀO LÀM / NGHỈ VIỆC</TableColumn>
             <TableColumn>TRẠNG THÁI</TableColumn>
             <TableColumn> </TableColumn>
           </TableHeader>
@@ -517,9 +524,27 @@ export default function UsersView({ user }) {
                 <TableCell>{formatDate(u.dob) || "-"}</TableCell>
                 <TableCell>{u.city || "-"}</TableCell>
                 <TableCell><Chip size="sm" variant="flat" color={ROLE_COLOR[u.role] || "default"}>{ROLE_LABEL[u.role] || (u.role || "").toUpperCase()}</Chip></TableCell>
-                <TableCell><Chip size="sm" variant="flat" color={u.is_active ? "success" : "danger"}>{u.is_active ? "Hoạt động" : "Đã khóa"}</Chip></TableCell>
+                {/* Ngày vào làm / ngày làm cuối chỉ có ở tài xế — hai mốc tính công của bảng lương */}
+                <TableCell>
+                  {u.role === "driver" ? (
+                    <div className="flex flex-col">
+                      <span className="text-sm">{u.hire_date ? u.hire_date.split("-").reverse().join("/") : "-"}</span>
+                      {u.termination_date && (
+                        <span className="text-xs text-rose-500">Làm tới {u.termination_date.split("-").reverse().join("/")}</span>
+                      )}
+                    </div>
+                  ) : "-"}
+                </TableCell>
+                <TableCell>
+                  <Chip size="sm" variant="flat" color={u.is_active ? "success" : "danger"}>
+                    {u.is_active ? "Hoạt động" : u.role === "driver" && u.termination_date ? "Đã nghỉ việc" : "Đã khóa"}
+                  </Chip>
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-1 justify-end">
+                    {u.role === "driver" && (
+                      <Button size="sm" variant="flat" color="secondary" startContent={<RiBriefcaseLine size={13} />} onPress={() => setEmploymentTarget(u)}>Hồ sơ</Button>
+                    )}
                     <Button size="sm" variant="flat" color="primary" startContent={<RiPencilLine size={13} />} isDisabled={u.role === "manager"} onPress={() => { setEditingUser(u); setModalOpen(true); }}>Sửa</Button>
                     <Button
                       size="sm"
@@ -531,16 +556,30 @@ export default function UsersView({ user }) {
                     >
                       Reset MK
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="flat"
-                      color={u.is_active ? "danger" : "success"}
-                      isDisabled={u.role === "manager"}
-                      startContent={u.is_active ? <RiLockLine size={13} /> : <RiLockUnlockLine size={13} />}
-                      onPress={() => setToggleTarget(u)}
-                    >
-                      {u.is_active ? "Khóa" : "Mở khóa"}
-                    </Button>
+                    {u.role === "driver" && u.is_active ? (
+                      // Tài xế không "khoá" trơn: chấm dứt HĐ ghi ngày làm việc cuối rồi khoá
+                      // luôn, để lương kỳ cuối vẫn tính đúng các ngày đã làm
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        color="danger"
+                        startContent={<RiUserUnfollowLine size={13} />}
+                        onPress={() => setTerminateTarget(u)}
+                      >
+                        Chấm dứt HĐ
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        color={u.is_active ? "danger" : "success"}
+                        isDisabled={u.role === "manager"}
+                        startContent={u.is_active ? <RiLockLine size={13} /> : <RiLockUnlockLine size={13} />}
+                        onPress={() => setToggleTarget(u)}
+                      >
+                        {u.is_active ? "Khóa" : "Mở khóa"}
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -555,6 +594,10 @@ export default function UsersView({ user }) {
 
       <UserFormModal isOpen={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSaveUser} editingUser={editingUser} />
 
+      <DriverEmploymentModal driver={employmentTarget} onClose={() => setEmploymentTarget(null)} onSaved={fetchUsers} />
+
+      <TerminateContractModal driver={terminateTarget} onClose={() => setTerminateTarget(null)} onDone={fetchUsers} />
+
       <Modal isOpen={!!toggleTarget} onOpenChange={(open) => !open && setToggleTarget(null)} size="sm">
         <ModalContent>
           <ModalHeader>Xác nhận</ModalHeader>
@@ -562,6 +605,13 @@ export default function UsersView({ user }) {
             <p className="text-sm text-gray-600 dark:text-gray-300">
               Bạn có chắc muốn {toggleTarget?.is_active ? "khóa" : "mở khóa"} tài khoản "{toggleTarget?.full_name || toggleTarget?.email}"?
             </p>
+            {/* Mở khoá tài xế đã nghỉ việc chỉ trả lại quyền đăng nhập — ngày nghỉ việc giữ nguyên */}
+            {!toggleTarget?.is_active && toggleTarget?.role === "driver" && toggleTarget?.termination_date && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Tài xế đã chấm dứt hợp đồng (làm tới {toggleTarget.termination_date.split("-").reverse().join("/")}). Mở khoá chỉ cho đăng nhập lại
+                (xem phiếu lương, công nợ) — vẫn không nhận chuyến và không tính công sau ngày đó. Nếu chấm dứt nhầm, xoá ngày nghỉ việc trong &quot;Hồ sơ&quot;.
+              </p>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button variant="flat" onPress={() => setToggleTarget(null)}>Hủy</Button>

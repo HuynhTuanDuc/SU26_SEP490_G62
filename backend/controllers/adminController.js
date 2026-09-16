@@ -28,11 +28,13 @@ const createUser = async (req, res) => {
             emergency_contact_name,
             emergency_contact_phone,
             notes,
+            hire_date,
         } = req.body;
         const created = await adminService.createUser(
             email, full_name, phone, role, gender, dob, city,
             address, country, national_id, tax_code,
             emergency_contact_name, emergency_contact_phone, notes, req.user?.userId ?? null,
+            { hireDate: hire_date },
         );
         // Nhân viên không có email: mật khẩu khởi tạo chỉ tồn tại trong response này,
         // client phải hiển thị để quản lý giao tận tay.
@@ -70,11 +72,13 @@ const updateUser = async (req, res) => {
             emergency_contact_phone,
             notes,
             email,
+            hire_date,
         } = req.body;
         await adminService.updateUser(
             userId, full_name, phone, role, gender, dob, city,
             address, country, national_id, tax_code,
             emergency_contact_name, emergency_contact_phone, notes, email, req.user?.userId ?? null,
+            { hireDate: hire_date },
         );
         res.json({ message: 'Cập nhật thành công.' });
     } catch (err) {
@@ -126,10 +130,57 @@ const resetUserPassword = async (req, res) => {
     }
 };
 
+// PATCH /api/admin/users/:id/employment — hồ sơ công việc của tài xế.
+// Body: { hire_date?, termination_date? }. termination_date: không gửi = giữ nguyên,
+// gửi null/'' = xoá (tài quay lại làm hoặc nhập nhầm).
+const updateDriverEmployment = async (req, res) => {
+    try {
+        const body = req.body ?? {};
+        const employment = await adminService.updateDriverEmployment(
+            req.params.id,
+            {
+                hireDate: body.hire_date,
+                terminationDate: Object.prototype.hasOwnProperty.call(body, 'termination_date')
+                    ? body.termination_date
+                    : undefined,
+            },
+            req.user?.userId ?? null,
+        );
+        res.json({ message: 'Đã cập nhật hồ sơ công việc.', employment });
+    } catch (err) {
+        console.error('Error updating driver employment:', err);
+        const status = err.status || 500;
+        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
+        res.status(status).json({ error: errorMsg, details: err.message });
+    }
+};
+
+// POST /api/admin/users/:id/terminate — chấm dứt hợp đồng tài xế.
+// Body: { termination_date, reason? }. termination_date = ngày làm việc cuối cùng; tài
+// khoản bị khoá ngay khi ghi nhận.
+const terminateDriverContract = async (req, res) => {
+    try {
+        const body = req.body ?? {};
+        const result = await adminService.terminateDriverContract(
+            req.params.id,
+            { terminationDate: body.termination_date, reason: body.reason },
+            req.user?.userId ?? null,
+        );
+        res.json({ message: 'Đã chấm dứt hợp đồng và khoá tài khoản.', ...result });
+    } catch (err) {
+        console.error('Error terminating driver contract:', err);
+        const status = err.status || 500;
+        const errorMsg = err.status ? err.message : 'Lỗi máy chủ.';
+        res.status(status).json({ error: errorMsg, details: err.message });
+    }
+};
+
 module.exports = {
     getAllUsers,
     createUser,
     updateUser,
+    updateDriverEmployment,
+    terminateDriverContract,
     resetUserPassword,
     toggleUserStatus,
 };

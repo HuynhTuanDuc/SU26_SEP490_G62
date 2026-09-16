@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { WORK_DAYS_SQL, WORKING_DAYS_PER_MONTH } = require('../constants/payrollConstants');
 
 const getDriverLeaves = async (driverId, { month = null, year = null } = {}) => {
     const conditions = ['driver_id = $1'];
@@ -6,8 +7,10 @@ const getDriverLeaves = async (driverId, { month = null, year = null } = {}) => 
     if (year)  { params.push(year);  conditions.push(`EXTRACT(YEAR  FROM leave_date) = $${params.length}`); }
     if (month) { params.push(month); conditions.push(`EXTRACT(MONTH FROM leave_date) = $${params.length}`); }
 
+    // to_char: leave_date là DATE — trả thẳng thì JSON ra timestamp UTC ("…T17:00:00.000Z"
+    // khi máy chủ chạy giờ VN), app hiện "19T17:00:00.000Z/09/2026" và không huỷ được đơn.
     const result = await pool.query(
-        `SELECT id, leave_date, leave_type, reason, status, created_at
+        `SELECT id, to_char(leave_date, 'YYYY-MM-DD') AS leave_date, leave_type, reason, status, created_at
          FROM leave_requests
          WHERE ${conditions.join(' AND ')}
          ORDER BY leave_date DESC`,
@@ -17,15 +20,23 @@ const getDriverLeaves = async (driverId, { month = null, year = null } = {}) => 
 };
 
 // Tổng hợp nghỉ/công trong tháng cho màn hình tài xế.
-// Phải khớp TỪNG NGUỒN TRỪ CÔNG với bảng lương chính thức (accountantPayrollRepository),
-// nếu không tài xế nhìn số công một đằng, lương tính một nẻo. Ba nguồn trừ công:
+// Số công (working_days) lấy từ CHÍNH câu WORK_DAYS_SQL của bảng lương — tài xế nhìn số
+// công một đằng, lương tính một nẻo là thứ phải tránh. Trước đây đếm lại riêng ở đây và
+// lệch bảng lương ở hai chỗ: không xét ngày vào làm (tài vào làm ngày 25 vẫn thấy đủ công)
+// và một ngày vừa có đơn nghỉ vừa bị chấm vắng thì bị trừ hai lần.
+// Các cột đếm còn lại chỉ để liệt kê LÝ DO trên màn hình, cũng chỉ đếm từ ngày vào làm:
 //   1. leave_requests 'unpaid' đã duyệt (trừ khi kế toán ghi đè 'present')
 //   2. attendance_overrides 'absent_unexcused'  — trừ 1 công
 //   3. attendance_overrides 'half_day'          — trừ 0.5 công
 // Ngày rơi đúng ngày lễ được loại khỏi cả ba (Điều V.1 — nghỉ lễ hưởng nguyên lương).
 const getAttendanceSummary = async (driverId, { month, year }) => {
     const result = await pool.query(
-        `WITH leaves AS (
+        `WITH emp AS (
+            SELECT GREATEST(make_date($3::int, $2::int, 1), d.hire_date) AS from_d,
+                   COALESCE(d.termination_date, 'infinity'::date)          AS to_d
+            FROM drivers d WHERE d.profile_id = $1
+        ),
+        leaves AS (
             SELECT lr.leave_type, lr.status,
                    EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = lr.leave_date) AS on_holiday,
                    COALESCE(ao.status, 'leave_unpaid') AS override_status
@@ -35,6 +46,7 @@ const getAttendanceSummary = async (driverId, { month, year }) => {
             WHERE lr.driver_id = $1
               AND EXTRACT(MONTH FROM lr.leave_date) = $2
               AND EXTRACT(YEAR  FROM lr.leave_date) = $3
+              AND lr.leave_date BETWEEN (SELECT from_d FROM emp) AND (SELECT to_d FROM emp)
         ),
         overrides AS (
             SELECT
@@ -44,6 +56,7 @@ const getAttendanceSummary = async (driverId, { month, year }) => {
             WHERE ao.driver_id = $1
               AND EXTRACT(MONTH FROM ao.work_date) = $2
               AND EXTRACT(YEAR  FROM ao.work_date) = $3
+              AND ao.work_date BETWEEN (SELECT from_d FROM emp) AND (SELECT to_d FROM emp)
               AND NOT EXISTS (SELECT 1 FROM company_holidays h WHERE h.holiday_date = ao.work_date)
         ),
         counted AS (
@@ -58,11 +71,6 @@ const getAttendanceSummary = async (driverId, { month, year }) => {
             total_leaves, unpaid_days, paid_days,
             o.unexcused_days::int AS unexcused_days,
             o.half_days::int      AS half_days,
-            LEAST(
-                28,
-                EXTRACT(DAY FROM (make_date($3::int, $2::int, 1) + INTERVAL '1 month - 1 day'))::int
-                    - unpaid_days - o.unexcused_days - o.half_days * 0.5
-            )::numeric AS working_days,
             (SELECT COUNT(*)::int FROM company_holidays h
              WHERE EXTRACT(MONTH FROM h.holiday_date) = $2
                AND EXTRACT(YEAR  FROM h.holiday_date) = $3) AS holiday_days,
@@ -82,7 +90,18 @@ const getAttendanceSummary = async (driverId, { month, year }) => {
         FROM counted, overrides o`,
         [driverId, month, year],
     );
-    return result.rows[0];
+
+    const { rows: [days] } = await pool.query(WORK_DAYS_SQL, [driverId, month, year]);
+    const employedDays = Number(days?.employed_days ?? 0);
+    const workingDays  = Math.max(0, employedDays - Number(days?.unpaid_days ?? 0));
+    return {
+        ...result.rows[0],
+        // Giữ trần 28 vì màn hình hiển thị "x / 28" — lương thì vẫn trả cả phần dư (flow15)
+        working_days:  Math.min(WORKING_DAYS_PER_MONTH, workingDays),
+        employed_days: employedDays,
+        days_in_month: Number(days?.days_in_month ?? 0),
+        hire_date:     days?.hire_date ?? null,
+    };
 };
 
 // Bảng lương kỳ đó đã chốt chưa — dùng để chặn đăng ký nghỉ lùi vào kỳ đã trả tiền
@@ -113,7 +132,7 @@ const createLeave = async (driverId, { leaveDate, leaveType, reason }) => {
     const result = await pool.query(
         `INSERT INTO leave_requests (driver_id, leave_date, leave_type, reason, status)
          VALUES ($1, $2, $3, $4, 'approved')
-         RETURNING *`,
+         RETURNING id, driver_id, to_char(leave_date, 'YYYY-MM-DD') AS leave_date, leave_type, reason, status, created_at`,
         [driverId, leaveDate, leaveType, reason ?? null],
     );
     return result.rows[0];

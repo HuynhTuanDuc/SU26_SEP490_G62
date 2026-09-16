@@ -50,10 +50,14 @@ export function useRoleRealtime(user, handlers = {}) {
               connect();
               return;
             }
+            // A failed handshake ALWAYS widens the backoff, even when the refresh succeeds.
+            // Widening only inside .catch is wrong: when the socket fails server-side (a
+            // serverless host that never sees the upgrade and answers 404), the refresh
+            // still returns 200, so the delay stayed at 3s forever — roughly 20 retries plus
+            // 20 /auth/refresh calls per minute, per socket.
+            reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
             refreshAuthSession()
-              .catch(() => {
-                reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
-              })
+              .catch(() => {})
               .finally(connect);
           }, reconnectDelay);
         },

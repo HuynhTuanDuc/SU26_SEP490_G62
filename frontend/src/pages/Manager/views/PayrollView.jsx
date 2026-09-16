@@ -13,6 +13,7 @@ import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 import { exportPayslipToPDF } from "../../../utils/exportPayslip";
+import { attendanceLine, phoneAllowanceOf, prorationNote } from "../../../utils/payrollDisplay";
 
 const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
 
@@ -24,32 +25,34 @@ const holidayDays = (r) => {
 };
 
 // Chi tiết từng khoản của phiếu lương — bám sát đúng bảng chi tiết bên Kế toán
-const buildDetail = (r) => [
-  { label: "Lương cứng",         value: fmt(r.base_salary) },
-  { label: "Doanh thu",          value: fmt(r.total_revenue) },
-  { label: "Thưởng DT (15%)",    value: fmt(r.revenue_bonus) },
-  { label: "Phụ cấp ĐT",         value: "200.000đ" },
-  { label: "Thưởng KPI",         value: fmt(r.kpi_bonus) },
-  { label: "Thưởng xuất sắc",    value: fmt(r.top_driver_bonus) },
-  ...(Number(r.holiday_bonus) > 0
-    ? [{ label: `Đi làm ngày lễ ×2 (${holidayDays(r)} ngày)`, value: fmt(r.holiday_bonus) }]
-    : []),
-  { label: "Thưởng & Phúc lợi",  value: fmt(r.overtime_bonus) },
-  ...(Number(r.manual_bonus) > 0 ? [{ label: "Điều chỉnh (+)", value: fmt(r.manual_bonus) }] : []),
-  { label: "Lương gộp",          value: fmt(r.gross_salary), bold: true },
-  { label: "Hoàn chi phí đã ứng", value: fmt(r.expense_reimbursement) },
-  { label: "BHXH (10.5%)",       value: `-${fmt(r.insurance_employee)}`, neg: true },
-  // absence_penalty = base_salary - proRatedBase: dương khi thiếu công (vắng/nghỉ không
-  // lương), ÂM khi đi làm dư ngày so với quota 28 công (tháng 29-31 ngày, đi đủ) — lúc đó
-  // là khoản được TRẢ THÊM, không phải bị trừ, nên phải đổi nhãn + dấu cho đúng bản chất.
-  Number(r.absence_penalty || 0) >= 0
-    ? { label: "Nghỉ không lương", value: `-${fmt(r.absence_penalty)}`, neg: true }
-    : { label: "Đi làm dư ngày công (>28)", value: `+${fmt(-r.absence_penalty)}` },
-  { label: "Trừ ứng lương",      value: `-${fmt(r.advance_deduction)}`, neg: true },
-  { label: "Trừ công nợ",        value: `-${fmt(r.driver_debt_deduction)}`, neg: true },
-  ...(Number(r.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${fmt(r.manual_deduction)}`, neg: true }] : []),
-  { label: "Lương thực nhận",    value: fmt(r.net_salary), bold: true, highlight: true },
-];
+const buildDetail = (r) => {
+  // Dòng trừ/cộng công: thiếu công (nghỉ không lương, vào làm giữa tháng) hoặc đi làm dư
+  // so với quota 28 công — nhãn + dấu theo đúng bản chất, xem utils/payrollDisplay
+  const att = attendanceLine(r);
+  return [
+    { label: "Lương cứng",         value: fmt(r.base_salary) },
+    { label: "Doanh thu",          value: fmt(r.total_revenue) },
+    { label: "Thưởng DT (15%)",    value: fmt(r.revenue_bonus) },
+    { label: `Phụ cấp ĐT${prorationNote(r)}`, value: fmt(phoneAllowanceOf(r)) },
+    { label: "Thưởng KPI",         value: fmt(r.kpi_bonus) },
+    { label: "Thưởng xuất sắc",    value: fmt(r.top_driver_bonus) },
+    ...(Number(r.holiday_bonus) > 0
+      ? [{ label: `Đi làm ngày lễ ×2 (${holidayDays(r)} ngày)`, value: fmt(r.holiday_bonus) }]
+      : []),
+    { label: "Thưởng & Phúc lợi",  value: fmt(r.overtime_bonus) },
+    ...(Number(r.manual_bonus) > 0 ? [{ label: "Điều chỉnh (+)", value: fmt(r.manual_bonus) }] : []),
+    { label: "Lương gộp",          value: fmt(r.gross_salary), bold: true },
+    { label: "Hoàn chi phí đã ứng", value: fmt(r.expense_reimbursement) },
+    { label: `BHXH (10.5%)${prorationNote(r)}`, value: `-${fmt(r.insurance_employee)}`, neg: true },
+    att.sign === "minus"
+      ? { label: att.label, value: `-${fmt(att.amount)}`, neg: true }
+      : { label: att.label, value: `+${fmt(att.amount)}` },
+    { label: "Trừ ứng lương",      value: `-${fmt(r.advance_deduction)}`, neg: true },
+    { label: "Trừ công nợ",        value: `-${fmt(r.driver_debt_deduction)}`, neg: true },
+    ...(Number(r.manual_deduction) > 0 ? [{ label: "Điều chỉnh (−)", value: `-${fmt(r.manual_deduction)}`, neg: true }] : []),
+    { label: "Lương thực nhận",    value: fmt(r.net_salary), bold: true, highlight: true },
+  ];
+};
 
 function PayslipDetailModal({ row, companyInfo, onRevert, onClose }) {
   if (!row) return null;

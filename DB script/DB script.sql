@@ -63,7 +63,10 @@ INSERT INTO schema_migrations (filename) VALUES
     ('20260902_reversal_requests.sql'),
     ('20260903_company_legal_identity.sql'),
     ('20260904_reject_nan_money.sql'),
-    ('20260907_receipt_ocr_pipeline.sql')
+    ('20260907_receipt_ocr_pipeline.sql'),
+    ('20260912_payroll_employment_days.sql'),
+    ('20260913_driver_termination_date.sql'),
+    ('20260914_driver_termination_settlement.sql')
 ON CONFLICT (filename) DO NOTHING;
 
 CREATE TABLE accounts (
@@ -150,10 +153,15 @@ CREATE TABLE drivers (
     license_number          TEXT NOT NULL,
     license_expiry_date     DATE,
     hire_date               DATE NOT NULL,
+    -- Ngày làm việc CUỐI CÙNG (20260913_driver_termination_date). NULL = đang làm. Bảng
+    -- lương, chấm công, thưởng Tết chỉ tính công trong [hire_date, termination_date].
+    termination_date        DATE,
     emergency_contact_name  TEXT,
     emergency_contact_phone TEXT,
     revenue_share_percent   NUMERIC(5,2) NOT NULL DEFAULT 15.00,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT drivers_termination_after_hire
+        CHECK (termination_date IS NULL OR termination_date >= hire_date)
 );
 
 CREATE TABLE customers (
@@ -571,8 +579,9 @@ CREATE TABLE debts (
     due_date        DATE,
     notes           TEXT,
     -- shipment = sinh tu chuyen; manual = ke toan khai tay (thuong la no cu truoc khi
-    -- dung phan mem). Phan biet de biet khoan nao duoc phep sua/xoa.
-    source          TEXT NOT NULL DEFAULT 'shipment' CHECK (source IN ('shipment','manual')),
+    -- dung phan mem); payroll = tien ung luong chua tru het vao luong ky do, chuyen thanh
+    -- no luc chi luong (20260914). Phan biet de biet khoan nao duoc phep sua/xoa.
+    source          TEXT NOT NULL DEFAULT 'shipment' CHECK (source IN ('shipment','manual','payroll')),
     -- Ngay khoan no THAT SU phat sinh — khac created_at la ngay khai vao he thong.
     incurred_on     DATE,
     created_by      INT REFERENCES profiles(id),
@@ -740,6 +749,12 @@ CREATE TABLE payrolls (
     manual_deduction        NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (manual_deduction >= 0),
 
     expense_reimbursement   NUMERIC(12,2) NOT NULL DEFAULT 0,
+
+    -- Số ngày của kỳ (20260912_payroll_employment_days): employed_days = số ngày thuộc
+    -- thời gian làm việc (từ ngày vào làm tới cuối tháng), working_days = số công tính
+    -- lương. NULL ở phiếu tạo trước khi có hai cột này — hiểu là đủ tháng.
+    employed_days           SMALLINT,
+    working_days            NUMERIC(4,1),
 
     gross_salary            NUMERIC(12,2) GENERATED ALWAYS AS (
                                 base_salary + revenue_bonus
@@ -1202,7 +1217,10 @@ CREATE TABLE financial_transactions (
                         'collect_on_behalf_held',
                         -- Đã trả tiền thu hộ lại cho người bán: Nợ 3388 | Có 1111/1121.
                         -- Cặp với dòng trên; thiếu nó thì 3388 chỉ phình mãi không đóng được.
-                        'collect_on_behalf_returned'
+                        'collect_on_behalf_returned',
+                        -- Ứng lương vượt số lương kỳ đó (kỳ cuối khi nghỉ việc giữa tháng) →
+                        -- chuyển thành công nợ tài xế để thu: Nợ 1388 | Có 141 (20260914).
+                        'advance_to_debt'
                     )),
 
     debit_account   TEXT NOT NULL,

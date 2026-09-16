@@ -2,6 +2,10 @@ const pool = require('../config/database');
 
 const ALLOWED_UPDATE_FIELDS = ['full_name', 'phone', 'dob', 'gender', 'address', 'city', 'country', 'national_id', 'tax_code', 'emergency_contact_name', 'emergency_contact_phone', 'notes'];
 
+// dob là cột DATE: để node-pg tự parse thì ra Date lúc 0h giờ máy chủ — TZ=Asia/Ho_Chi_Minh
+// thành 17h hôm trước theo UTC, JSON trả "1990-05-14T17:00:00.000Z" và client cắt 10 ký tự
+// là hụt 1 ngày (lưu lại thì ngày sinh lùi thêm 1 ngày mỗi lần). Luôn trả chuỗi YYYY-MM-DD.
+
 const getAccountByEmail = async (email) => {
     // Từ khi email thành tuỳ chọn, có tài khoản mang email NULL. Chuỗi rỗng/không phải
     // chuỗi thì không tra gì cả — tránh việc một ô email bỏ trống vô tình khớp phải
@@ -49,7 +53,7 @@ const getAccountById = async (accountId) => {
 
 const getProfileByAccountId = async (accountId) => {
     const result = await pool.query(
-        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, p.dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
+        `SELECT p.id, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, p.avatar_url, to_char(p.dob, 'YYYY-MM-DD') AS dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          LEFT JOIN roles r ON p.role_id = r.id
@@ -61,7 +65,7 @@ const getProfileByAccountId = async (accountId) => {
 
 const getProfileWithRole = async (profileId) => {
     const result = await pool.query(
-        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, a.must_change_password, p.avatar_url, p.dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
+        `SELECT p.id, a.email, p.full_name, p.phone, p.role_id, r.name AS role, a.is_active, a.must_change_password, p.avatar_url, to_char(p.dob, 'YYYY-MM-DD') AS dob, p.gender, p.city, p.national_id, p.tax_code, p.emergency_contact_name, p.emergency_contact_phone, p.notes
          FROM profiles p
          JOIN accounts a ON p.id = a.id
          JOIN roles r ON p.role_id = r.id
@@ -81,7 +85,7 @@ const getFullProfile = async (userId) => {
             p.role_id,
             r.name AS role,
             p.avatar_url,
-            p.dob,
+            to_char(p.dob, 'YYYY-MM-DD') AS dob,
             p.gender,
             p.national_id,
             p.tax_code,
@@ -114,7 +118,7 @@ const updateProfile = async (userId, data) => {
         `UPDATE profiles
          SET ${setClauses}, updated_at = NOW()
          WHERE id = $1
-         RETURNING id, full_name, phone, dob, gender, national_id, tax_code, address, city, country, emergency_contact_name, emergency_contact_phone, notes, avatar_url, updated_at`,
+         RETURNING id, full_name, phone, to_char(dob, 'YYYY-MM-DD') AS dob, gender, national_id, tax_code, address, city, country, emergency_contact_name, emergency_contact_phone, notes, avatar_url, updated_at`,
         [userId, ...values],
     );
     return result.rows[0];
@@ -153,10 +157,13 @@ const getProfileById = async (profileId) => {
 
 const getAllUsers = async () => {
     const result = await pool.query(
-        `SELECT a.id, a.email, p.full_name, p.phone, p.dob, p.gender, p.national_id, p.tax_code, p.address, p.city, p.country, p.emergency_contact_name, p.emergency_contact_phone, p.notes, r.name AS role, a.is_active, a.last_login_at
+        `SELECT a.id, a.email, p.full_name, p.phone, to_char(p.dob, 'YYYY-MM-DD') AS dob, p.gender, p.national_id, p.tax_code, p.address, p.city, p.country, p.emergency_contact_name, p.emergency_contact_phone, p.notes, r.name AS role, a.is_active, a.last_login_at,
+                to_char(d.hire_date, 'YYYY-MM-DD') AS hire_date,
+                to_char(d.termination_date, 'YYYY-MM-DD') AS termination_date
          FROM accounts a
          JOIN profiles p ON a.id = p.id
          JOIN roles r ON a.role_id = r.id
+         LEFT JOIN drivers d ON d.profile_id = a.id
          ORDER BY a.id ASC`,
     );
     return result.rows;
@@ -167,7 +174,7 @@ const getRoleIdByName = async (roleName) => {
     return result.rows[0]?.id;
 };
 
-const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes, isDriver = false) => {
+const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob, gender, city, address, country, nationalId, taxCode, emergencyContactName, emergencyContactPhone, notes, isDriver = false, hireDate = null) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -196,12 +203,14 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
         // Vai trò driver PHẢI có dòng trong bảng drivers ngay khi tạo — nếu không,
         // các nơi tìm tài xế theo tên/ID (import Excel, gán xe...) đều JOIN drivers
         // nên sẽ không thấy tài khoản này, coi như "chưa tồn tại" dù đã có profile.
+        // hire_date quyết định tháng đầu tiên được tính bao nhiêu công — không nhập thì
+        // lấy ngày tạo tài khoản, sửa lại được ở màn sửa người dùng.
         if (isDriver) {
             await client.query(
                 `INSERT INTO drivers (profile_id, license_number, hire_date)
-                 VALUES ($1, $2, CURRENT_DATE)
+                 VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE))
                  ON CONFLICT (profile_id) DO NOTHING`,
-                [accountId, `PENDING-${accountId}`],
+                [accountId, `PENDING-${accountId}`, hireDate],
             );
         }
 
@@ -217,12 +226,12 @@ const adminCreateUser = async (email, passwordHash, roleId, fullName, phone, dob
 
 // Đảm bảo tài khoản role=driver có dòng drivers — dùng khi đổi role sang driver
 // ở luồng cập nhật (adminUpdateUser), hoặc vá cho tài khoản driver cũ thiếu dòng này.
-const ensureDriverRow = async (profileId) => {
+const ensureDriverRow = async (profileId, hireDate = null) => {
     await pool.query(
         `INSERT INTO drivers (profile_id, license_number, hire_date)
-         VALUES ($1, $2, CURRENT_DATE)
+         VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE))
          ON CONFLICT (profile_id) DO NOTHING`,
-        [profileId, `PENDING-${profileId}`],
+        [profileId, `PENDING-${profileId}`, hireDate],
     );
 };
 
