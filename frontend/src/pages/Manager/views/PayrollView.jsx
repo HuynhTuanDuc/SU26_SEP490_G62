@@ -14,8 +14,9 @@ import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
 import { exportPayslipToPDF } from "../../../utils/exportPayslip";
 import { attendanceLine, phoneAllowanceOf, prorationNote } from "../../../utils/payrollDisplay";
+import { money } from "../../../utils/formatNumber";
 
-const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
+const fmt = (v) => money(v ?? 0);
 
 // Đi làm ngày lễ = 200% lương (Điều V.1). Số ngày suy ngược từ số tiền vì backend
 // tính đúng holiday_bonus = round(lương cứng / 28) × số ngày lễ đi làm.

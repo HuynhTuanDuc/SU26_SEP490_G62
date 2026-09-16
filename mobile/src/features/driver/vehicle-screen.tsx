@@ -16,7 +16,7 @@ import type { MaintenanceRecord, MaintenanceStatus } from '@/types/maintenance';
 import { MAINTENANCE_TYPE_LABEL, MAINTENANCE_STATUS_LABEL } from '@/types/maintenance';
 import type { VehicleStatus } from '@/types/vehicle';
 import { VEHICLE_STATUS_LABEL } from '@/types/vehicle';
-import { moneyShort, num } from '@/lib/format-number';
+import { money, num } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ function MaintenanceRow({ record }: { record: MaintenanceRecord }) {
                 </Text>
                 <Text fontSize={12} color={appTheme.colors.textMuted}>
                     {fmtDate(record.maintenance_date)}
-                    {record.cost ? ` · ${moneyShort(record.cost)}` : ''}
+                    {record.cost ? ` · ${money(record.cost)}` : ''}
                 </Text>
                 {record.description ? (
                     <Text fontSize={12} color={appTheme.colors.textMuted} numberOfLines={1}>

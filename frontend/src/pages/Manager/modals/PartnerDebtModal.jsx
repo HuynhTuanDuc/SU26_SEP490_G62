@@ -2,7 +2,7 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Spinn
 import { RiInformationLine } from "react-icons/ri";
 import { money } from "../../../utils/formatNumber";
 
-const fmt = (v) => Number(v || money(0));
+const fmt = (v) => money(v ?? 0);
 
 const DEBT_STATUS_LABEL = { paid: "Đã thu đủ", partial: "Thu một phần", unpaid: "Chưa thu", overdue: "Quá hạn" };
 const DEBT_STATUS_COLOR = { paid: "success", partial: "warning", unpaid: "danger", overdue: "danger" };

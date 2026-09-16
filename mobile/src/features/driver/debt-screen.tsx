@@ -20,7 +20,7 @@ import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }     from '@/theme/app-theme';
 import { useDebt, useDebtPayments, useSubmitRepayment } from '@/hooks/use-debt';
 import type { DriverDebt, DebtPayment, RepaymentStatus } from '@/services/debt-service';
-import { money, moneyShort } from '@/lib/format-number';
+import { money } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ function SummaryCard({ summary }: { summary: NonNullable<ReturnType<typeof useDe
                 >
                     <AlertTriangle size={13} color={appTheme.colors.danger} />
                     <Text fontSize={12} color={appTheme.colors.dangerText} fontWeight="700">
-                        Quá hạn: {moneyShort(summary.overdue_remaining)}
+                        Quá hạn: {money(summary.overdue_remaining)}
                     </Text>
                 </XStack>
             ) : null}
@@ -173,11 +173,11 @@ function RepayOverlay({ debt, receiptUri, onRequestCamera, onDeleteReceipt, onCl
                         <XStack gap={16}>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Tổng nợ</Text>
-                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.dangerText}>{moneyShort(debt.total_amount)}</Text>
+                                <Text fontSize={14} fontWeight="700" color={appTheme.colors.dangerText}>{money(debt.total_amount)}</Text>
                             </YStack>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Còn lại</Text>
-                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.dangerText}>{moneyShort(debt.remaining)}</Text>
+                                <Text fontSize={14} fontWeight="900" color={appTheme.colors.dangerText}>{money(debt.remaining)}</Text>
                             </YStack>
                         </XStack>
                     </YStack>
@@ -296,7 +296,7 @@ function PaymentRow({ p, onCancel }: { p: DebtPayment; onCancel?: () => void }) 
                 {p.status === 'rejected'  ? <XCircle    size={13} color={appTheme.colors.danger} /> : null}
                 <Text fontSize={12} fontWeight="700" color={badge.color}>{badge.label}</Text>
                 <Text fontSize={12} fontWeight="900" color={appTheme.colors.text} marginLeft="auto">
-                    {moneyShort(p.amount)}
+                    {money(p.amount)}
                 </Text>
             </XStack>
 
@@ -388,19 +388,19 @@ function DebtCard({
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Tổng nợ</Text>
                                 <Text fontSize={13} fontWeight="700" color={appTheme.colors.text}>
-                                    {moneyShort(debt.total_amount)}
+                                    {money(debt.total_amount)}
                                 </Text>
                             </YStack>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Đã xác nhận</Text>
                                 <Text fontSize={13} fontWeight="700" color={appTheme.colors.successText}>
-                                    {moneyShort(debt.paid_amount)}
+                                    {money(debt.paid_amount)}
                                 </Text>
                             </YStack>
                             <YStack>
                                 <Text fontSize={10} color={appTheme.colors.textMuted}>Còn lại</Text>
                                 <Text fontSize={13} fontWeight="900" color={appTheme.colors.dangerText}>
-                                    {moneyShort(debt.remaining)}
+                                    {money(debt.remaining)}
                                 </Text>
                             </YStack>
                         </XStack>

@@ -2,7 +2,6 @@ import { Button } from "@heroui/react";
 import { RiTruckLine, RiExchangeLine, RiCloseCircleLine } from "react-icons/ri";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
-import { formatCurrency } from "../utils";
 import { money } from "../../../utils/formatNumber";
 
 const SHIPMENT_CANCELLABLE = ["available", "claimed", "picking", "transit", "arrived", "returning", "failed"];

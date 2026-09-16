@@ -6,6 +6,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { appTheme } from '@/theme/app-theme';
 import type { Expense } from '@/types/trip';
 import { EXPENSE_TYPE_LABEL } from '@/types/trip';
+import { money } from '@/lib/format-number';
 
 type Props = {
     expenses: Expense[];
@@ -13,8 +14,7 @@ type Props = {
     onAdd: () => void;
 };
 
-const fmt = (v: string) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
+const fmt = (v: string) => money(v);
 
 export function ExpenseSection({ expenses, canAdd, onAdd }: Props) {
     const total = expenses.reduce((sum, e) => sum + Number(e.amount), 0);

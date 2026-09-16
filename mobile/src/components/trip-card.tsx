@@ -4,6 +4,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
 import type { TripPoolItem } from '@/types/trip';
+import { money } from '@/lib/format-number';
 
 type Props = {
     trip: TripPoolItem;
@@ -20,8 +21,7 @@ function formatWeight(kg: string | null): string {
 }
 
 function formatPrice(price: string | null): string {
-    if (!price) return '—';
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(price));
+    return money(price ?? 0);
 }
 
 export function TripCard({ trip, onPress, onClaim, isClaimLoading, claimDisabled }: Props) {

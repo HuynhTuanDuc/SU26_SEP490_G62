@@ -3,7 +3,7 @@ import { RiTimeLine } from "react-icons/ri";
 import { PrepaidConfirmModal } from "./PrepaidConfirmModal";
 import { money } from "../../utils/formatNumber";
 
-const fmt = (n) => Number(n || money(0));
+const fmt = (n) => money(n ?? 0);
 
 /**
  * Banner "Chờ xác nhận tiền trả trước" — dùng chung cho Điều phối và Kế toán.

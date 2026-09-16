@@ -62,7 +62,7 @@ describe('KpiScreen', () => {
         await render(<KpiScreen />);
 
         expect(screen.getByText('25')).toBeTruthy();
-        expect(screen.getByText('20.0M₫')).toBeTruthy();
+        expect(screen.getByText('20.000.000đ')).toBeTruthy();
     });
 
     it('G62-FE-85: KHÔNG hiển thị KpiBonusCard khi thiếu kpi_bonus_threshold/reward', async () => {

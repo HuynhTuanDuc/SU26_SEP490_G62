@@ -11,7 +11,7 @@ import {
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
 import { coordinatorService } from "../services/coordinator.service";
-import { expenseTypeOptions, formatCurrency, normalizeStatus } from "../utils";
+import { expenseTypeOptions, normalizeStatus } from "../utils";
 import { money } from "../../../utils/formatNumber";
 
 const EXPENSE_STATUS_CHIP = {

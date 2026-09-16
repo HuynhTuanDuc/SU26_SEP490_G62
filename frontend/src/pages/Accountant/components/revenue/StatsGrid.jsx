@@ -1,6 +1,7 @@
 import { Skeleton } from "@heroui/react";
 import { RiLineChartLine, RiAlertLine, RiTimeLine, RiHandCoinLine } from "react-icons/ri";
 import { MoneyText } from "../shared/MoneyText";
+import { money } from "../../../../utils/formatNumber";
 
 const CARDS = [
   {
@@ -87,7 +88,7 @@ export function StatsGrid({ stats, loading }) {
             )}
             {!loading && hintKey && Number(stats?.[hintKey]) > 0 && (
               <span className="text-[11px] text-gray-400 dark:text-gray-400 mt-0.5 leading-snug">
-                {hint(new Intl.NumberFormat("vi-VN").format(Number(stats[hintKey])) + "đ")}
+                {hint(money(stats[hintKey]))}
               </span>
             )}
           </div>

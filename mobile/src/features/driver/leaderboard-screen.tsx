@@ -17,7 +17,7 @@ import { LeaderboardSkeleton } from '@/components/skeleton';
 import { appTheme }            from '@/theme/app-theme';
 import { useLeaderboard }      from '@/hooks/use-leaderboard';
 import type { LeaderboardRow } from '@/services/kpi-service';
-import { moneyShort } from '@/lib/format-number';
+import { money } from '@/lib/format-number';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ function DriverRow({ row, sortMode, position }: {
             <YStack alignItems="flex-end" gap={2}>
                 <Text fontSize={13} fontWeight="900" color={appTheme.colors.text}>
                     {sortMode === 'revenue'
-                        ? moneyShort(row.total_revenue)
+                        ? money(row.total_revenue)
                         : `${row.completed_shipments} chuyến`}
                 </Text>
                 <Text fontSize={10} color={appTheme.colors.textMuted}>

@@ -15,10 +15,11 @@ const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400
 import { StatCard } from "../../../components/shared-ui/StatCard";
 import { PaginationBar } from "../../../components/shared-ui/PaginationBar";
 import { managerService } from "../services/manager.service";
+import { money } from "../../../utils/formatNumber";
 
 const NOW = new Date();
 const YEARS = [NOW.getFullYear(), NOW.getFullYear() - 1, NOW.getFullYear() - 2];
-const fmt = (v) => new Intl.NumberFormat("vi-VN").format(Number(v || 0)) + "đ";
+const fmt = (v) => money(v ?? 0);
 
 const TYPE_LABEL = {
   tet_annual: "Thưởng Tết",

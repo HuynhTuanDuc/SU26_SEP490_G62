@@ -56,7 +56,7 @@ describe('PayrollScreen', () => {
     it('G62-FE-110: hiển thị lương thực nhận ước tính đúng theo tháng hiện tại', async () => {
         await render(<PayrollScreen />);
 
-        expect(screen.getAllByText('15.935.714₫').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('15.935.714đ').length).toBeGreaterThan(0);
     });
 
     it('G62-FE-111: hiển thị banner lỗi khi tải ước tính thất bại', async () => {

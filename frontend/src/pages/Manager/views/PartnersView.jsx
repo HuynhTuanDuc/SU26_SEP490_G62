@@ -16,7 +16,7 @@ const EMPTY_FORM = {
   bank_name: "", bank_account_number: "", bank_account_name: "", notes: "",
 };
 
-const fmt = (v) => Number(v || money(0));
+const fmt = (v) => money(v ?? 0);
 
 export default function PartnersView({ user }) {
   const [partners, setPartners] = useState([]);

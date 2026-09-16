@@ -8,7 +8,7 @@ import { AppText }      from '@/components/app-text';
 import { SimpleListSkeleton } from '@/components/skeleton';
 import { appTheme }     from '@/theme/app-theme';
 import { bonusService, type DriverBonus, type BonusType, type BonusStatus } from '@/services/bonus-service';
-import { moneyShort } from '@/lib/format-number';
+import { money } from '@/lib/format-number';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ function BonusCard({ bonus }: { bonus: DriverBonus }) {
             {/* Amount */}
             <XStack alignItems="center" gap="$1.5" mb="$2">
                 <Banknote size={16} color={appTheme.colors.primary} />
-                <AppText style={styles.amount}>{moneyShort(bonus.amount)}</AppText>
+                <AppText style={styles.amount}>{money(bonus.amount)}</AppText>
             </XStack>
 
             {/* Tet detail */}
@@ -101,11 +101,11 @@ function BonusCard({ bonus }: { bonus: DriverBonus }) {
                     </XStack>
                     <XStack justifyContent="space-between" mb="$1">
                         <AppText style={styles.detailLabel}>Thưởng thâm niên</AppText>
-                        <AppText style={styles.detailValue}>{moneyShort(bonus.seniority_bonus)}</AppText>
+                        <AppText style={styles.detailValue}>{money(bonus.seniority_bonus)}</AppText>
                     </XStack>
                     <XStack justifyContent="space-between">
                         <AppText style={styles.detailLabel}>Thưởng chuyên cần</AppText>
-                        <AppText style={styles.detailValue}>{moneyShort(bonus.attendance_bonus)}</AppText>
+                        <AppText style={styles.detailValue}>{money(bonus.attendance_bonus)}</AppText>
                     </XStack>
                 </View>
             )}
@@ -210,7 +210,7 @@ export default function BonusScreen() {
                     <XStack gap="$3" mb="$4">
                         <View style={[styles.summaryCard, { flex: 1 }]}>
                             <AppText style={styles.summaryLabel}>Tổng đã nhận</AppText>
-                            <AppText style={styles.summaryValue}>{moneyShort(totalPaid)}</AppText>
+                            <AppText style={styles.summaryValue}>{money(totalPaid)}</AppText>
                         </View>
                         <View style={[styles.summaryCard, { flex: 1 }]}>
                             <AppText style={styles.summaryLabel}>Chờ duyệt</AppText>

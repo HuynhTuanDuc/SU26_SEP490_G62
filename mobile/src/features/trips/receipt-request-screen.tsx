@@ -14,6 +14,7 @@ import { appTheme }              from '@/theme/app-theme';
 import { useAppAlert }           from '@/providers/ui-provider';
 import { tripService }           from '@/services/trip-service';
 import type { OrderReceiptRequest } from '@/types/trip';
+import { money } from '@/lib/format-number';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ type Params = {
 
 const fmt = (v: string | number | null | undefined) => {
     if (!v) return null;
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
+    return money(v);
 };
 
 // ─── Existing request status banner (only shown to final driver) ──────────────

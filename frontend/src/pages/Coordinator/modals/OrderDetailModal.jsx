@@ -9,7 +9,6 @@ import {
 } from "react-icons/ri";
 import { RouteStops } from "../../../components/shared-ui/RouteStops";
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
-import { formatCurrency } from "../utils";
 import { money } from "../../../utils/formatNumber";
 
 const infoIcon = (Icon) => <Icon size={15} className="text-gray-400 dark:text-gray-400 shrink-0" />;

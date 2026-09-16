@@ -38,6 +38,7 @@ import { PhotoCaptureCard }  from './components/photo-capture-card';
 import { ReasonModal }      from './components/reason-modal';
 import { UndoBar }          from './components/undo-bar';
 import { StatusStepper, STATUS_ACCENT, STATUS_BANNER } from './components/status-stepper';
+import { money } from '@/lib/format-number';
 
 // Toast message shown after each lifecycle transition
 const STATUS_ADVANCE_TOAST: Partial<Record<TripStatus, string>> = {
@@ -54,8 +55,7 @@ const EXPENSE_ALLOWED_STATUSES: TripStatus[] = [
     'claimed', 'picking', 'transit', 'arrived', 'failed', 'returning',
 ];
 
-const fmt = (v: string | number) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(v));
+const fmt = (v: string | number) => money(v);
 
 // ─── Collapsible section ──────────────────────────────────────────────────────
 
