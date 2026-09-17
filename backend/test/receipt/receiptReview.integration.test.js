@@ -122,13 +122,24 @@ describe('getReceiptReview — dữ liệu cho người duyệt', () => {
 
         const review = await service.getReceiptReview('maintenance_record', 21);
 
-        assert.deepStrictEqual(review.summary, { total: 2, needs_review: 1, rejected: 0, unreviewed: 2 });
+        // low_confidence = 0: hai dòng chèn tay không có cột confidence (giống bản ghi có từ
+        // trước khi có lớp đối chiếu chéo), và NULL phải được hiểu là "chưa chấm" chứ không
+        // phải "đọc không chắc".
+        assert.deepStrictEqual({ ...review.summary }, {
+            total: 2, needs_review: 1, rejected: 0, unreviewed: 2, low_confidence: 0,
+            supporting: 0, unread: 0, rejected_uploads: 0,
+        });
     });
 
     it('trả rỗng gọn gàng khi khoản chưa có hóa đơn nào được đọc', async () => {
         const review = await service.getReceiptReview('maintenance_record', 999);
 
-        assert.deepStrictEqual(review.receipts, []);
+        assert.deepStrictEqual([...review.receipts], []);
+        assert.deepStrictEqual({ ...review.summary }, {
+            total: 0, needs_review: 0, rejected: 0, unreviewed: 0, low_confidence: 0,
+            supporting: 0, unread: 0, rejected_uploads: 0,
+        },
+            'nhánh rỗng phải cùng hình dạng với nhánh có dữ liệu');
     });
 });
 

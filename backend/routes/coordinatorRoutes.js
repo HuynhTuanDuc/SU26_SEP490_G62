@@ -34,7 +34,6 @@ router.get('/receipt-requests',          coordinatorController.getReceiptRequest
 router.get('/receipt-requests/:id',      coordinatorController.getReceiptRequestDetail);
 router.post('/receipt-requests/:id/approve',        coordinatorController.approveReceiptRequest);
 router.post('/receipt-requests/:id/reject',         coordinatorController.rejectReceiptRequest);
-router.get('/receipt-requests/:id/scan-expenses',   coordinatorController.scanReceiptExpenses);
 
 // Chi phí driver khai — coordinator là người duyệt/từ chối duy nhất (thay Manager)
 const spendingController = require('../controllers/spendingController');

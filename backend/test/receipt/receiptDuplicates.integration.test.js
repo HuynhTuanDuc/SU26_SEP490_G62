@@ -169,3 +169,105 @@ describe('findDuplicates — phân biệt cùng khoản với khoản khác', ()
         assert.match(reasons[0].message, /khoản chi phí #77/);
     });
 });
+
+describe('updateVerdict — hạ phán quyết dòng vừa ghi', () => {
+    it('ghi đè checks và verdict, và dòng rejected không còn bị tính là "đã dùng"', async () => {
+        const id = await insert({ imageSha256: 'hash-aaa', verdict: 'passed' });
+
+        const updated = await repository.updateVerdict(id, {
+            checks: [{ code: 'DUPLICATE_RECEIPT', severity: 'error', message: 'trùng' }],
+            verdict: 'rejected',
+        });
+
+        assert.strictEqual(updated.verdict, 'rejected');
+        const stored = (await pool.query('SELECT checks, verdict FROM receipt_extractions WHERE id = $1', [id])).rows[0];
+        assert.strictEqual(stored.checks[0].code, 'DUPLICATE_RECEIPT');
+        // Đây là lý do phải hạ xuống rejected: không thì lần nộp bị chặn vẫn chắn đường
+        // mọi lần dò trùng sau.
+        assert.strictEqual((await repository.findDuplicates({ imageSha256: 'hash-aaa' })).length, 0);
+    });
+
+    it('trả null khi không có dòng nào', async () => {
+        assert.strictEqual(await repository.updateVerdict(999_999, { checks: [], verdict: 'rejected' }), null);
+    });
+});
+
+describe('findLatestByImageUrl — đủ dữ liệu để chấm lại đúng như lần đầu', () => {
+    it('trả kèm kích thước ảnh và vết dây chuyền', async () => {
+        // Thiếu hai thứ này thì bước hoàn tất mất cảnh báo ảnh độ phân giải thấp và chấm lại
+        // OCR bằng độ tin cậy cả trang thay vì từng dòng.
+        await pool.query(
+            `INSERT INTO receipt_extractions
+                (entity_type, entity_id, image_url, verdict, raw_extraction, image_width, image_height, pipeline, ocr_text, ocr_confidence)
+             VALUES ('maintenance_record', 21, 'https://x/a.jpg', 'passed', '{"is_document": true}'::jsonb, 700, 800,
+                     '{"ocr": {"line_confidences": [90, 40]}}'::jsonb, 'Dong 1\nDong 2', 65)`,
+        );
+
+        const row = await repository.findLatestByImageUrl('https://x/a.jpg');
+
+        assert.strictEqual(row.image_width, 700);
+        assert.strictEqual(row.image_height, 800);
+        assert.deepStrictEqual([...row.pipeline.ocr.line_confidences], [90, 40]);
+    });
+});
+
+describe('Dò trùng song song — trên Postgres thật', () => {
+    it('hai lần nộp cùng một hóa đơn cho hai đợt khác nhau: chỉ một được qua', async () => {
+        // Khe hở giữa dò và ghi dài bằng thời gian model đọc ảnh. Mock riêng lời gọi model
+        // cho chậm như thật; phần dò, ghi, cấp id và hạ phán quyết đều chạy trên DB thật —
+        // chính thứ tự id do Postgres cấp là thứ lớp dò lần hai dựa vào.
+        const { mock } = require('../helpers/nodeTestMock');
+        const imagePipeline = require('../../services/receiptImagePipeline');
+        const ocrScanner = require('../../services/receiptOcrScanner');
+        const extractor = require('../../services/receiptVisionExtractor');
+        const service = require('../../services/receiptValidationService');
+
+        const bill = {
+            is_document: true, doc_type: 'invoice', vendor: { name: 'Garage Thành Công', tax_code: '0101234567' },
+            invoice_no: 'HD-00123', issued_date: null, vehicle_plate: null, currency: 'VND',
+            line_items: [{ raw_name: 'Thay nhớt động cơ', quantity: 1, unit: 'lần', unit_price: 450_000, line_total: 450_000, category: 'engine_oil' }],
+            subtotal: 450_000, discount: 0, vat_rate: null, vat_amount: null, total: 450_000, unreadable_fields: [],
+        };
+
+        mock.method(imagePipeline, 'loadImage', async (url) => ({
+            ok: true,
+            // Hai lần chụp khác nhau của cùng tờ giấy: băm KHÁC, khoá nội dung GIỐNG.
+            vision: { base64: 'x', mimeType: 'image/jpeg', sha256: `sha-${url}`, bytes: 100_000 },
+            ocr: null,
+            quality: { width: 1600, height: 2000, bytes: 100_000, reasons: [] },
+        }));
+        mock.method(ocrScanner, 'scanImage', async () => ({ ok: false, code: 'OCR_DISABLED' }));
+        mock.method(extractor, 'extractReceipt', async (url) => ({
+            ok: true, extraction: bill, raw: bill, meta: { provider: 'google', model: 't', prompt_version: 'v2', image_sha256: `sha-${url}` },
+        }));
+
+        // CỔNG CHẶN trước câu INSERT: cả hai lần nộp phải dò trùng xong rồi mới được ghi —
+        // đúng tình huống xảy ra ngoài đời khi model đọc ảnh mất vài giây. Chỉ làm model chậm
+        // thì không đủ: kết nối trong pool mở không đều, lần nộp thứ hai hay tới lượt dò SAU
+        // khi lần thứ nhất đã ghi, và test đạt kể cả khi tắt hẳn lớp dò lần hai (đã thử đột
+        // biến). Sau cổng, hai câu INSERT chạy LẦN LƯỢT trên DB thật: khe mili giây giữa
+        // cấp id và ghi xong không phải thứ test này nhắm tới, để nó vào thì test chập chờn.
+        const realSave = repository.saveExtraction;
+        const waiting = [];
+        mock.method(repository, 'saveExtraction', (row) => new Promise((resolve, reject) => {
+            waiting.push(() => realSave(row).then(resolve, reject));
+            if (waiting.length === 2) {
+                waiting[0]();
+                setTimeout(waiting[1], 50);
+            }
+        }));
+
+        try {
+            const [a, b] = await Promise.all([
+                service.validateReceipt('https://x/xe-1.jpg', { entityType: 'maintenance_record', entityId: 1, allowCache: false }),
+                service.validateReceipt('https://x/xe-2.jpg', { entityType: 'maintenance_record', entityId: 2, allowCache: false }),
+            ]);
+
+            assert.deepStrictEqual([a.blocked, b.blocked].sort(), [false, true]);
+            const stored = (await pool.query('SELECT verdict FROM receipt_extractions ORDER BY id')).rows.map((r) => r.verdict);
+            assert.deepStrictEqual([...stored], ['passed', 'rejected'], 'dòng ghi SAU phải là dòng nhường');
+        } finally {
+            mock.restoreAll();
+        }
+    });
+});

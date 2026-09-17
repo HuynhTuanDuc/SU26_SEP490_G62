@@ -192,7 +192,7 @@ describe('L2-FLOW-06 — Negative paths (validation, trạng thái không hợp 
         await vehicleManagementService.approveMaintenanceRequest(result.maintenanceRecordId, MGR_ID, {});
         await assert.rejects(
             () => driverService.completeMaintenance(DRIVER_A, vehicle.id, { cost: 100000 }),
-            /At least one maintenance bill image is required/,
+            /Cần ít nhất một ảnh hóa đơn/,
         );
         // dọn lại: upload ảnh rồi hoàn tất + xác minh để không ảnh hưởng case sau
         await driverService.uploadMaintenanceBill(DRIVER_A, vehicle.id, 'https://bill.test/cleanup.jpg');

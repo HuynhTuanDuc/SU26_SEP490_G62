@@ -68,13 +68,17 @@ const saveExtraction = async ({
  * Điều kiện `IS NOT NULL` trên tham số là bắt buộc chứ không phải phòng thủ thừa: hóa
  * đơn viết tay không có số hóa đơn, để lọt NULL vào thì mọi hóa đơn thiếu số sẽ khớp
  * lẫn nhau.
+ *
+ * Dòng đã THẢ RA (released_at) vẫn được trả về — lớp chấm chỉ cảnh báo với chúng chứ không
+ * chặn, xem receiptChecks.checkDuplicates. Xếp dòng chưa thả ra lên trước để LIMIT không
+ * bao giờ cắt mất một lần dùng thật sau một loạt lần nộp đã bị trả về.
  */
 const findDuplicates = async ({ imageSha256, vendorKey, invoiceNoKey, excludeId = null }) => {
     if (!imageSha256 && !(vendorKey && invoiceNoKey)) return [];
 
     const result = await pool.query(
         `SELECT id, entity_type, entity_id, image_url, image_sha256,
-                vendor_key, invoice_no_key, receipt_total::text, verdict, created_at
+                vendor_key, invoice_no_key, receipt_total::text, verdict, released_at, created_at
            FROM receipt_extractions
           WHERE verdict <> 'rejected'
             AND ($4::int IS NULL OR id <> $4)
@@ -83,7 +87,7 @@ const findDuplicates = async ({ imageSha256, vendorKey, invoiceNoKey, excludeId 
                OR ($2::text IS NOT NULL AND $3::text IS NOT NULL
                    AND vendor_key = $2 AND invoice_no_key = $3)
             )
-          ORDER BY created_at DESC
+          ORDER BY (released_at IS NULL) DESC, created_at DESC
           LIMIT 10`,
         [imageSha256 ?? null, vendorKey ?? null, invoiceNoKey ?? null, excludeId],
     );
@@ -102,8 +106,12 @@ const findLatestByImageUrl = async (imageUrl) => {
         `SELECT id, image_url, image_sha256, raw_extraction, verdict, receipt_total,
                 provider, model, prompt_version,
                 -- Lấy kèm text OCR để bước hoàn tất khỏi phải quét lại: quét lại tốn
-                -- khoảng 10 giây CPU mỗi tấm mà kết quả không thể khác đi, ảnh vẫn thế.
-                ocr_text, ocr_confidence, ocr_engine, confidence
+                -- vài giây CPU mỗi tấm mà kết quả không thể khác đi, ảnh vẫn thế.
+                ocr_text, ocr_confidence, ocr_engine, confidence,
+                -- Kích thước ảnh và vết dây chuyền (độ tin cậy TỪNG DÒNG OCR) để lần chấm
+                -- lại ra đúng phán quyết như lần đầu. Thiếu chúng thì bước hoàn tất mất
+                -- cảnh báo ảnh mờ và chấm lại OCR bằng độ tin cậy trung bình cả trang.
+                image_width, image_height, pipeline
            FROM receipt_extractions
           WHERE image_url = $1 AND raw_extraction IS NOT NULL
           ORDER BY created_at DESC
@@ -111,6 +119,44 @@ const findLatestByImageUrl = async (imageUrl) => {
         [imageUrl],
     );
     return result.rows[0] ?? null;
+};
+
+/**
+ * Sửa phán quyết của một dòng vết vừa ghi.
+ *
+ * Chỉ dùng cho lớp dò trùng chạy SAU khi ghi (xem receiptValidationService): hai lần
+ * nộp cùng một hóa đơn chạy song song thì cả hai đều dò trước khi bên kia kịp ghi, và
+ * phải có cách hạ phán quyết của bên ghi sau thành `rejected` — cả để chặn tài xế, cả
+ * để dòng đó không bị tính là "đã dùng" trong những lần dò sau.
+ */
+const updateVerdict = async (id, { checks, verdict }) => {
+    const result = await pool.query(
+        `UPDATE receipt_extractions
+            SET checks = $2, verdict = $3
+          WHERE id = $1
+      RETURNING id, verdict`,
+        [id, JSON.stringify(checks ?? []), verdict],
+    );
+    return result.rows[0] ?? null;
+};
+
+/**
+ * Thả các lần đọc của một khoản ra khỏi lớp dò trùng: tờ hóa đơn không còn thuộc khoản đó.
+ *
+ * Gọi khi quản lý trả về làm lại / huỷ đợt bảo dưỡng (trong cùng giao dịch, qua `db`), và
+ * khi một ảnh đã quét xong mà không vào được đợt. `imageUrl` giới hạn vào đúng một ảnh.
+ */
+const releaseByEntity = async (entityType, entityId, { imageUrl = null } = {}, db = pool) => {
+    const result = await db.query(
+        `UPDATE receipt_extractions
+            SET released_at = NOW()
+          WHERE entity_type = $1
+            AND entity_id = $2
+            AND released_at IS NULL
+            AND ($3::text IS NULL OR image_url = $3)`,
+        [entityType, entityId, imageUrl],
+    );
+    return result.rowCount;
 };
 
 /** Mọi lần đọc hóa đơn của một khoản, mới nhất trước — dùng cho màn hình duyệt. */
@@ -123,7 +169,7 @@ const listByEntity = async (entityType, entityId) => {
                 re.confidence::text, re.image_width, re.image_height, re.pipeline,
                 re.review_action, re.review_note, re.reviewed_at, re.reviewed_by,
                 p.full_name AS reviewed_by_name,
-                re.created_at
+                re.released_at, re.created_at
            FROM receipt_extractions re
            LEFT JOIN profiles p ON p.id = re.reviewed_by
           WHERE re.entity_type = $1 AND re.entity_id = $2
@@ -187,6 +233,8 @@ module.exports = {
     saveExtraction,
     findLatestByImageUrl,
     findDuplicates,
+    updateVerdict,
+    releaseByEntity,
     listByEntity,
     saveReview,
     addKeywords,

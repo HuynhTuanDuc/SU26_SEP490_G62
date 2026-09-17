@@ -3,6 +3,9 @@ const receiptValidationService = require('../services/receiptValidationService')
 const receiptChecks = require('../services/receiptChecks');
 const vehicleManagementRepository = require('../repositories/vehicleManagementRepository');
 
+// Lý do gắn với MỘT ảnh nhưng chỉ sinh ra ở bước gộp cả đợt — không có trên thẻ của tờ đó.
+const RECORD_LEVEL_RECEIPT_CODES = new Set(['SUPPORTING_DOCUMENT', 'DUPLICATE_IMAGE_SAME_RECORD']);
+
 const handleError = (res, err) => {
     const statusCode = err.statusCode || 500;
     if (statusCode >= 500) {
@@ -148,20 +151,31 @@ const getMaintenanceReceipts = async (req, res) => {
         if (!Number.isInteger(recordId) || recordId <= 0) {
             return res.status(400).json({ error: 'Mã đợt bảo dưỡng không hợp lệ' });
         }
-        const review = await receiptValidationService.getReceiptReview('maintenance_record', recordId, 'maintenance');
+        const record = await vehicleManagementRepository.getMaintenanceRecordById(recordId);
+        // Chỉ những ảnh ĐANG thuộc đợt. Không truyền thì màn duyệt hiện cả ảnh bị chặn lúc
+        // tải lẫn ảnh của lần nộp trước khi bị trả về làm lại.
+        const review = await receiptValidationService.getReceiptReview('maintenance_record', recordId, 'maintenance', {
+            imageUrls: Array.isArray(record?.bill_pics) ? record.bill_pics : null,
+        });
+
+        // Điểm bước hoàn tất đã nêu ở mức CẢ ĐỢT — tổng hóa đơn so với số khai, ảnh chứng từ
+        // bị gạt khỏi tổng, ảnh trùng trong đợt. Thông báo gửi quản lý đếm cả những điểm này
+        // ("Có N điểm cần kiểm tra") mà trước đây màn duyệt không chỉ ra được. Điểm của từng
+        // tờ đã hiện trên thẻ của tờ đó nên không lặp lại ở đây.
+        const completionReasons = Array.isArray(record?.receipt_check?.reasons) ? record.receipt_check.reasons : [];
+        let recordChecks = completionReasons.filter((r) => r.code !== 'COST_OUTLIER'
+            && (r.image_index === undefined || RECORD_LEVEL_RECEIPT_CODES.has(r.code)));
 
         // Cảnh báo ở mức CẢ ĐỢT, không thuộc tờ hóa đơn nào: chi phí có bất thường so
         // với lịch sử chính chiếc xe đó không. Tính tươi mỗi lần mở màn thay vì lưu sẵn
         // — lịch sử xe dài thêm theo thời gian nên kết luận cũ có thể đã lạc hậu.
-        const record = await vehicleManagementRepository.getMaintenanceRecordById(recordId);
-        let recordChecks = [];
         if (record?.cost) {
             try {
                 const history = await vehicleManagementRepository.getMaintenanceCostHistory(record.vehicle_id, {
                     excludeRecordId: recordId,
                 });
                 const { costs, scopeLabel } = receiptChecks.pickComparableCosts(history, record.maintenance_type);
-                recordChecks = receiptChecks.checkCostOutlier(record.cost, costs, { scopeLabel });
+                recordChecks = [...recordChecks, ...receiptChecks.checkCostOutlier(record.cost, costs, { scopeLabel })];
             } catch (err) {
                 console.warn('[vehicleManagement] Không tính được cảnh báo chi phí bất thường:', err.message);
             }

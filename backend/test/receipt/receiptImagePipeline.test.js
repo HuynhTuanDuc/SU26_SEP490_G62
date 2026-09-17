@@ -121,3 +121,35 @@ describe('receiptImagePipeline — chấm chất lượng ảnh', () => {
         assert.deepStrictEqual(pipeline.assessImage({ bytes: 500_000, width: null, height: null }), []);
     });
 });
+
+describe('receiptImagePipeline — không chặn oan vì đọc sai header', () => {
+    it('bỏ qua byte đệm 0xFF mà chuẩn JPEG cho phép chèn trước marker', () => {
+        // Không bỏ qua thì 0xFF bị hiểu là mã marker, hai byte sau bị hiểu là độ dài, và
+        // con trỏ nhảy lệch vào giữa dữ liệu ảnh.
+        const app0 = Buffer.from([0xff, 0xe0, 0x00, 0x04, 0x00, 0x00]);
+        const fill = Buffer.from([0xff, 0xff, 0xff]);
+        const sof = Buffer.alloc(11);
+        sof.writeUInt16BE(0xffc0, 0);
+        sof.writeUInt16BE(9, 2);
+        sof.writeUInt8(8, 4);
+        sof.writeUInt16BE(2400, 5);
+        sof.writeUInt16BE(1600, 7);
+        const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8]), app0, fill, sof, Buffer.alloc(64)]);
+
+        assert.deepStrictEqual({ ...pipeline.probeImage(jpeg) }, { format: 'jpeg', width: 1600, height: 2400 });
+    });
+
+    it('KHÔNG chặn khi kích thước đọc được mâu thuẫn với độ nặng của tệp', () => {
+        // IMAGE_TOO_SMALL là lỗi duy nhất ở giai đoạn này đủ quyền chặn tài xế, nên kích
+        // thước phải qua được phép thử vật lý: ảnh 300×400 không thể nặng 2MB. Nặng thế
+        // nghĩa là header bị đọc sai, và chặn oan tệ hơn bỏ sót một cảnh báo.
+        assert.deepStrictEqual(pipeline.assessImage({ bytes: 2_000_000, width: 300, height: 400 }), []);
+    });
+
+    it('vẫn chặn ảnh nhỏ thật', () => {
+        const reasons = pipeline.assessImage({ bytes: 40_000, width: 300, height: 400 });
+
+        assert.strictEqual(reasons[0].code, 'IMAGE_TOO_SMALL');
+        assert.strictEqual(reasons[0].severity, 'error');
+    });
+});

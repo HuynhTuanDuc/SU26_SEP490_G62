@@ -1,6 +1,7 @@
 /**
- * ĐIỀU PHỐI cả dây chuyền đọc hóa đơn. Đây là mặt tiền mà driverService và
- * coordinatorController gọi; các giai đoạn đứng riêng từng file:
+ * ĐIỀU PHỐI cả dây chuyền đọc hóa đơn BẢO DƯỠNG. Đây là mặt tiền mà driverService (tải
+ * ảnh, hoàn tất) và vehicleManagementController (màn duyệt) gọi. Chi phí chuyến không
+ * đi qua dây chuyền này. Các giai đoạn đứng riêng từng file:
  *
  *   1. receiptImagePipeline  — tải ảnh MỘT lần, sinh hai biến thể, chấm chất lượng ảnh
  *   2. receiptOcrScanner     — quét Tesseract lấy text thô (nhân chứng độc lập)
@@ -40,6 +41,39 @@ const taxonomy = require('./receiptTaxonomy');
 // Lượt đọc lại tốn thêm một lần gọi model. Tắt được qua env để khi hạn mức API căng
 // thì hạ chi phí mà không mất cả tính năng — hệ thống lùi về đúng hành vi một lượt đọc.
 const RECHECK_ENABLED = String(process.env.RECEIPT_VISION_RECHECK ?? 'true').toLowerCase() !== 'false';
+
+// Lượt đọc lại chỉ được chạy khi dây chuyền còn thời gian. Một lượt gọi model có thể mất
+// tới 45 giây; app tài xế cắt request tải ảnh ở 90 giây, và 90 giây đó còn gồm cả thời
+// gian đẩy ảnh qua mạng điện thoại yếu. Đọc lại khi đã tốn hơn mức này thì cái giá có thể
+// là tài xế nhận lỗi "hết thời gian" trong khi máy chủ vẫn lưu hóa đơn — tệ hơn nhiều so
+// với việc để hóa đơn đó cần người xem.
+const RECHECK_MAX_ELAPSED_MS = Number(process.env.RECEIPT_RECHECK_MAX_ELAPSED_MS || 20_000);
+
+// Trần độ dài text OCR khi LƯU. Hóa đơn A4 quét ra 2–4 nghìn ký tự; hơn nhiều lần mức đó
+// là nhiễu, lưu nguyên chỉ làm phình bảng và phình màn hình duyệt.
+const MAX_STORED_OCR_CHARS = 20_000;
+
+const VERDICT_RANK = { passed: 0, needs_review: 1, rejected: 2 };
+
+// Lý do cho thấy tấm ảnh KHÔNG DÙNG LÀM HÓA ĐƠN được — phân biệt với lý do cho thấy một
+// hóa đơn thật có vấn đề (lệch số, dùng lại, sai hạng mục). Xem validateMaintenanceBills.
+const NOT_AN_INVOICE_CODES = new Set([
+    'NOT_A_DOCUMENT',
+    'WRONG_DOC_TYPE',
+    'NO_LINE_ITEMS',
+    'IMAGE_TOO_SMALL',
+    'EXTRACTION_NOT_AN_IMAGE',
+    'EXTRACTION_IMAGE_TOO_LARGE',
+]);
+
+/**
+ * Bỏ ký tự NUL trước khi lưu.
+ *
+ * PostgreSQL từ chối U+0000 ở cả cột TEXT lẫn JSONB. Text OCR của một ảnh nhiễu có thể
+ * chứa nó, và một câu INSERT hỏng làm mất CẢ dòng vết — gồm cả khoá nhận dạng hóa đơn,
+ * tức là hóa đơn đó sau này dùng lại cho khoản khác sẽ không bị bắt.
+ */
+const sanitizeText = (value) => String(value ?? '').replace(/\u0000/g, '');
 
 // ─── Từ điển: nạp từ DB, giữ trong bộ nhớ ────────────────────────────────────
 
@@ -123,15 +157,69 @@ const failedResult = (code, message) => {
 const rehydrateOcr = (row) => {
     if (!row?.ocr_text) return { ok: false, code: 'OCR_NOT_STORED' };
     const confidence = Number(row.ocr_confidence ?? 0);
+    const lines = ocrScanner.extractLines({ text: row.ocr_text, confidence });
+
+    // Độ tin cậy TỪNG DÒNG được lưu trong vết dây chuyền. Dùng lại nó khi số dòng khớp
+    // đúng — đo được là khớp 1-1 với cách Tesseract chia dòng. Không khớp (bản ghi cũ, hay
+    // text đã bị cắt ngắn lúc lưu) thì rơi về độ tin cậy cả trang như trước.
+    //
+    // Vì sao đáng làm: hai phép kiểm OCR_OFF_TOPIC_TEXT và OCR_MISSING_LINE_ITEMS chỉ tin
+    // dòng nào tự nó đọc rõ (≥ 60). Chấm lại bằng con số cả trang thì ảnh có trang 70
+    // nhưng vài dòng 40 sẽ được tin CẢ những dòng mờ đó — phán quyết ở bước hoàn tất lệch
+    // với lúc tải ảnh, và số "điểm cần kiểm tra" báo cho quản lý không khớp với cái họ
+    // thấy trên màn hình duyệt.
+    const stored = row.pipeline?.ocr?.line_confidences;
+    if (Array.isArray(stored) && stored.length === lines.length) {
+        lines.forEach((line, i) => {
+            if (Number.isFinite(Number(stored[i]))) line.confidence = Number(stored[i]);
+        });
+    }
+
     return {
         ok: true,
         text: row.ocr_text,
         confidence,
-        lines: ocrScanner.extractLines({ text: row.ocr_text, confidence }),
+        lines,
         engine: row.ocr_engine ?? null,
         latency_ms: 0,
         rehydrated: true,
     };
+};
+
+/**
+ * Dựng lại kết quả chấm chất lượng ảnh từ kích thước đã lưu.
+ *
+ * Chấm lại chứ không lưu sẵn danh sách lý do: ngưỡng có thể đã đổi từ lúc tải ảnh, và
+ * phép chấm vốn thuần hàm, rẻ. Không có kích thước (bản ghi cũ) thì không có ý kiến.
+ */
+const rehydrateQuality = (row) => {
+    const width = Number(row?.image_width);
+    const height = Number(row?.image_height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    const bytes = Number(row.pipeline?.image?.bytes);
+    return {
+        width,
+        height,
+        bytes: Number.isFinite(bytes) ? bytes : null,
+        format: row.pipeline?.image?.format ?? null,
+        reasons: imagePipeline.assessImage({ bytes: Number.isFinite(bytes) ? bytes : undefined, width, height }),
+    };
+};
+
+/**
+ * Đối chiếu chéo, nhưng không bao giờ được làm hỏng luồng chính.
+ *
+ * Lớp này là lớp THÊM, chạy trên dữ liệu từ hai nguồn ngoài (model và OCR). Một hình
+ * dạng dữ liệu không lường trước mà làm nó ném lỗi thì cái giá không được là tài xế nhận
+ * lỗi 500 khi tải ảnh — mà chỉ là hóa đơn đó thiếu một lớp đối chiếu.
+ */
+const safeCorroborate = (extraction, ocr, options) => {
+    try {
+        return crossCheck.corroborate(extraction, ocr, options);
+    } catch (err) {
+        console.warn('[receipt] Lớp đối chiếu chéo lỗi, bỏ qua lớp này:', err.message);
+        return crossCheck.corroborate(extraction, { ok: false, code: 'CROSSCHECK_FAILED' }, options);
+    }
 };
 
 /**
@@ -140,7 +228,8 @@ const rehydrateOcr = (row) => {
  * @returns {{extraction: object|null, meta: object, ocr: object, corroboration: object|null,
  *            quality: object|null, error: {code: string, message: string}|null, cached: boolean}}
  */
-const runPipeline = async (imageUrl, { profile }) => {
+const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
+    const startedAt = Date.now();
     const loaded = await imagePipeline.loadImage(imageUrl);
     if (!loaded.ok) {
         return {
@@ -189,23 +278,36 @@ const runPipeline = async (imageUrl, { profile }) => {
     const keywordIndex = await getKeywordIndex();
     let best = {
         result: first,
-        corroboration: crossCheck.corroborate(first.extraction, ocr, { keywordIndex, profile }),
+        corroboration: safeCorroborate(first.extraction, ocr, { keywordIndex, profile }),
     };
 
     // Giai đoạn 3b — đọc lại có trợ giúp. Chỉ chạy khi kênh OCR đáng tin VÀ chỉ ra được
     // trường cụ thể đang lệch: đó là lúc duy nhất một lượt đọc nữa có cơ hội sửa được
     // cái gì. Lượt này thất bại thì im lặng giữ kết quả cũ — nó là phần THÊM.
+    const recheck = { ran: false, skipped: null, chosen: 'first' };
     if (RECHECK_ENABLED && crossCheck.shouldRecheck(best.corroboration)) {
-        const second = await extractor.extractReceipt(imageUrl, {
-            image: loaded.vision,
-            ocrText: ocr.text,
-            suspectFields: best.corroboration.suspect_fields,
-        });
-        if (second.ok) {
-            best = crossCheck.pickBetterRead(best, {
-                result: second,
-                corroboration: crossCheck.corroborate(second.extraction, ocr, { keywordIndex, profile }),
+        const elapsed = Date.now() - startedAt;
+        if (!allowRecheck) {
+            recheck.skipped = 'not_allowed';
+        } else if (elapsed > RECHECK_MAX_ELAPSED_MS) {
+            recheck.skipped = 'time_budget';
+        } else {
+            recheck.ran = true;
+            const second = await extractor.extractReceipt(imageUrl, {
+                image: loaded.vision,
+                ocrText: ocr.text,
+                suspectFields: best.corroboration.suspect_fields,
             });
+            if (second.ok) {
+                const candidate = {
+                    result: second,
+                    corroboration: safeCorroborate(second.extraction, ocr, { keywordIndex, profile }),
+                };
+                best = crossCheck.pickBetterRead(best, candidate);
+                if (best === candidate) recheck.chosen = 'second';
+            } else {
+                recheck.skipped = `failed:${second.code}`;
+            }
         }
     }
 
@@ -219,6 +321,8 @@ const runPipeline = async (imageUrl, { profile }) => {
         ocr,
         corroboration: best.corroboration,
         quality: loaded.quality,
+        recheck,
+        total_ms: Date.now() - startedAt,
         error: null,
         cached: false,
     };
@@ -227,7 +331,7 @@ const runPipeline = async (imageUrl, { profile }) => {
 /**
  * Lấy bản đọc của một ảnh: dùng lại bản đã lưu nếu có, không thì chạy cả dây chuyền.
  */
-const readReceipt = async (imageUrl, { allowCache = true, profile = 'maintenance' } = {}) => {
+const readReceipt = async (imageUrl, { allowCache = true, profile = 'maintenance', allowRecheck = true } = {}) => {
     if (allowCache) {
         try {
             const previous = await repository.findLatestByImageUrl(imageUrl);
@@ -244,11 +348,14 @@ const readReceipt = async (imageUrl, { allowCache = true, profile = 'maintenance
                         latency_ms: 0,
                     },
                     ocr,
-                    corroboration: crossCheck.corroborate(extraction, ocr, {
+                    corroboration: safeCorroborate(extraction, ocr, {
                         keywordIndex: await getKeywordIndex(),
                         profile,
                     }),
-                    quality: null,
+                    // Trước đây là null: bước hoàn tất mất hẳn cảnh báo ảnh độ phân giải
+                    // thấp đã có lúc tải ảnh, nên phán quyết cuối lệch với cái người duyệt
+                    // thấy trên màn hình.
+                    quality: rehydrateQuality(previous),
                     error: null,
                     cached: true,
                 };
@@ -258,7 +365,7 @@ const readReceipt = async (imageUrl, { allowCache = true, profile = 'maintenance
         }
     }
 
-    return runPipeline(imageUrl, { profile });
+    return runPipeline(imageUrl, { profile, allowRecheck });
 };
 
 const persist = async (row) => {
@@ -281,7 +388,26 @@ const persist = async (row) => {
  * Đây là dữ liệu để trả lời được câu "vì sao hóa đơn này bị đẩy sang cần người xem"
  * sau đó vài tuần, và để đo xem mỗi lớp kiểm tra thực sự bắt được bao nhiêu.
  */
-const buildPipelineTrace = ({ quality, ocr, corroboration, meta }) => ({
+/**
+ * Dựng vết dây chuyền nhưng không bao giờ ném lỗi.
+ *
+ * Lời gọi này nằm trong phần đối số của persist(), tức là NGOÀI try/catch của persist —
+ * một hình dạng dữ liệu lạ ở đây sẽ biến việc ghi vết thành lỗi 500 cho tài xế, trái
+ * nguyên tắc "lưu vết không được làm hỏng luồng chính". Đã bắt được đúng ca này bằng
+ * test: một dòng OCR null làm hỏng cả lần tải ảnh dù lớp đối chiếu đã được bọc an toàn.
+ */
+const safeTrace = (input) => {
+    try {
+        return buildPipelineTrace(input);
+    } catch (err) {
+        console.warn('[receipt] Không dựng được vết dây chuyền, lưu không có vết:', err.message);
+        return null;
+    }
+};
+
+const buildPipelineTrace = ({ quality, ocr, corroboration, meta, recheck = null, totalMs = null }) => ({
+    total_ms: totalMs,
+    recheck,
     image: quality ? {
         width: quality.width,
         height: quality.height,
@@ -296,6 +422,12 @@ const buildPipelineTrace = ({ quality, ocr, corroboration, meta }) => ({
         confidence: ocr?.ok ? ocr.confidence : null,
         chars: ocr?.ok ? String(ocr.text ?? '').length : 0,
         latency_ms: ocr?.latency_ms ?? null,
+        // Chỉ các con số, không lặp lại text — text đã nằm ở cột ocr_text. Cần để lần
+        // chấm lại ở bước hoàn tất ra đúng phán quyết như lần đầu (xem rehydrateOcr).
+        // Text bị cắt ngắn lúc lưu thì số dòng không còn khớp, nên không lưu mảng này.
+        line_confidences: ocr?.ok && Array.isArray(ocr.lines) && String(ocr.text ?? '').length <= MAX_STORED_OCR_CHARS
+            ? ocr.lines.map((line) => Math.round(Number(line?.confidence) || 0))
+            : null,
     },
     vision: {
         model: meta?.model ?? null,
@@ -326,14 +458,16 @@ const buildPipelineTrace = ({ quality, ocr, corroboration, meta }) => ({
  * Kiểm tra MỘT ảnh hóa đơn bảo dưỡng.
  *
  * @param {string} imageUrl
- * @param {object} context  { claimedAmount, plateNumber, windowStart, windowEnd, entityType, entityId }
+ * @param {object} context  { claimedAmount, plateNumber, windowStart, windowEnd, entityType, entityId,
+ *                            profile, allowCache, allowRecheck, checkDuplicates }
  */
 const validateReceipt = async (imageUrl, context = {}) => {
     const {
-        extraction, raw, meta, error, cached, ocr, corroboration, quality,
+        extraction, raw, meta, error, cached, ocr, corroboration, quality, recheck, total_ms: totalMs,
     } = await readReceipt(imageUrl, {
         allowCache: context.allowCache !== false,
         profile: context.profile ?? 'maintenance',
+        allowRecheck: context.allowRecheck !== false,
     });
 
     // Khoá nhận dạng tờ hóa đơn — lưu cùng bản đọc để lần sau dò trùng được.
@@ -360,20 +494,25 @@ const validateReceipt = async (imageUrl, context = {}) => {
         }
     }
 
-    const result = error
+    const keywordIndex = error ? null : await getKeywordIndex();
+    const evaluate = (matches) => checks.evaluateReceipt(extraction, {
+        ...context,
+        imageUrl,
+        keywordIndex,
+        duplicateMatches: matches,
+        imageQuality: quality,
+        corroboration,
+    });
+
+    let result = error
         ? failedResult(error.code, EXTRACTION_ERROR_MESSAGE[error.code])
-        : checks.evaluateReceipt(extraction, {
-            ...context,
-            keywordIndex: await getKeywordIndex(),
-            duplicateMatches,
-            imageQuality: quality,
-            corroboration,
-        });
+        : evaluate(duplicateMatches);
 
     // Bản đọc lấy từ cache thì đã có vết rồi, chỉ ghi thêm khi thực sự chạy dây chuyền
     // — nếu không mỗi lần đối chiếu lại sinh một dòng trùng lặp.
     if (!cached) {
-        await persist({
+        const storedOcrText = ocr?.ok ? sanitizeText(ocr.text).slice(0, MAX_STORED_OCR_CHARS) : null;
+        const saved = await persist({
             entityType: context.entityType ?? 'maintenance_record',
             entityId: context.entityId,
             imageUrl,
@@ -392,14 +531,51 @@ const validateReceipt = async (imageUrl, context = {}) => {
             // Vết của dây chuyền mới. Lưu text OCR NGUYÊN VĂN là có chủ đích: khi tranh
             // chấp "máy đọc sai", đây là bằng chứng độc lập với model, đọc được bằng
             // mắt và không cần gọi lại API nào để dựng lại.
-            ocrText: ocr?.ok ? ocr.text : null,
+            ocrText: storedOcrText,
             ocrConfidence: ocr?.ok ? ocr.confidence : null,
             ocrEngine: ocr?.ok ? ocr.engine : null,
             confidence: result.confidence,
             imageWidth: quality?.width ?? null,
             imageHeight: quality?.height ?? null,
-            pipeline: buildPipelineTrace({ quality, ocr, corroboration, meta }),
+            pipeline: safeTrace({ quality, ocr, corroboration, meta, recheck, totalMs }),
         });
+
+        // DÒ TRÙNG LẦN HAI, SAU KHI GHI. Lần dò trước ghi chạy xong từ lúc bắt đầu, còn
+        // ghi thì xảy ra sau cả lượt gọi model — khe hở giữa hai việc dài đúng bằng thời
+        // gian Gemini đọc ảnh, vài giây tới vài chục giây. Hai lần nộp cùng một tờ hóa đơn
+        // rơi vào khe đó (bấm hai lần, hoặc cố ý nộp cho hai đợt bảo dưỡng cùng lúc) thì
+        // cả hai đều dò không thấy bên kia và cả hai đều qua.
+        //
+        // Sau khi ghi, mỗi bên dò lại và chỉ NHƯỜNG cho dòng có id NHỎ HƠN — tức là dòng
+        // ghi trước. Bên ghi trước thấy bên ghi sau nhưng bỏ qua; bên ghi sau thấy bên ghi
+        // trước và tự hạ xuống rejected. Không cần khoá, vì id do DB cấp theo thứ tự.
+        //
+        // Khe còn lại chỉ là khoảng giữa lúc DB cấp id và lúc ghi xong một câu INSERT —
+        // cỡ mili giây, thay vì cỡ chục giây như trước.
+        // Đã rejected thì không còn mức nào để nâng lên — khỏi tốn thêm một lượt truy vấn.
+        if (saved?.id && !error && result.verdict !== 'rejected' && context.checkDuplicates !== false) {
+            try {
+                const earlier = (await repository.findDuplicates({
+                    imageSha256: meta?.image_sha256,
+                    vendorKey: identity.vendorKey,
+                    invoiceNoKey: identity.invoiceNoKey,
+                    excludeId: saved.id,
+                })).filter((row) => Number(row.id) < Number(saved.id));
+
+                const known = new Set(duplicateMatches.map((row) => Number(row.id)));
+                if (earlier.some((row) => !known.has(Number(row.id)))) {
+                    const rechecked = evaluate(earlier);
+                    // Chỉ được NÂNG mức phán quyết, không bao giờ hạ. Lớp này sinh ra để
+                    // bắt thêm, không phải để gỡ một phán quyết đã có lý do riêng.
+                    if (VERDICT_RANK[rechecked.verdict] > VERDICT_RANK[result.verdict]) {
+                        result = rechecked;
+                        await repository.updateVerdict(saved.id, { checks: result.reasons, verdict: result.verdict });
+                    }
+                }
+            } catch (err) {
+                console.warn('[receipt] Không dò lại được hóa đơn trùng sau khi ghi:', err.message);
+            }
+        }
     }
 
     return {
@@ -427,16 +603,67 @@ const validateMaintenanceBills = async (billUrls, context = {}) => {
     }
 
     // Từng ảnh kiểm tra độc lập, CHƯA đối chiếu số tiền (claimedAmount = null).
+    //
+    // Không đọc lại lượt 3b ở bước này. Phần lớn ảnh đã có vết từ lúc tải lên nên không
+    // chạy lại dây chuyền; số còn lại — ảnh gửi kèm yêu cầu, chưa từng được quét — chạy đủ
+    // dây chuyền song song, và app tài xế cắt request hoàn tất ở 30 giây. Một lượt gọi model
+    // nữa cho mỗi ảnh có thể đẩy cả request quá trần đó.
     const perImage = await Promise.all(urls.map((url) => validateReceipt(url, {
         ...context,
         claimedAmount: null,
+        allowRecheck: false,
     })));
 
-    const reasons = perImage.flatMap((item, index) => item.reasons.map((r) => ({
-        ...r,
-        image_index: index,
-        image_url: item.image_url,
-    })));
+    // `bill_pics` KHÔNG chỉ chứa hóa đơn. Lúc gửi yêu cầu bảo dưỡng, app tài xế mời chụp
+    // "chứng từ / báo giá", và những ảnh đó đi vào đúng cột này — không có cột nào tách
+    // chúng ra, cũng không có API nào gỡ chúng đi. Chấm chúng như hóa đơn thì tấm báo giá
+    // dính WRONG_DOC_TYPE, và đã tái hiện được: tài xế có hóa đơn thật khớp từng đồng vẫn
+    // bị CHẶN hoàn tất, và kẹt vĩnh viễn vì không gỡ được tấm báo giá ra.
+    //
+    // Nên ở bước tổng hợp này, ảnh KHÔNG DÙNG LÀM HÓA ĐƠN ĐƯỢC chỉ bị gạt khỏi phép cộng và
+    // báo cho người duyệt, không chặn. Không mở ra lỗ hổng nào: ảnh tải lên ở bước bảo
+    // dưỡng (open) đã bị quét và chặn ngay lúc tải nếu không phải hóa đơn, nên loại ảnh
+    // này chỉ còn đến từ bước yêu cầu. Còn lỗi của một tấm HÓA ĐƠN thật (lệch số học, dùng
+    // lại, sai hạng mục) vẫn chặn như cũ.
+    const supporting = perImage.map((item) => item.reasons.some(
+        (r) => r.severity === 'error' && NOT_AN_INVOICE_CODES.has(r.code),
+    ));
+
+    const reasons = perImage.flatMap((item, index) => item.reasons.map((r) => {
+        const located = { ...r, image_index: index, image_url: item.image_url };
+
+        // Trùng với một ảnh khác CỦA CHÍNH ĐỢT NÀY không phải gian lận — là cùng một hóa đơn
+        // chụp vài góc, đúng ca mà phép so "hóa đơn lớn nhất" bên dưới sinh ra để chấp nhận.
+        // Ở bước tải ảnh thì chặn là đúng (tài xế chọn ảnh khác được); ở bước hoàn tất thì
+        // ảnh đã nằm trong đợt rồi, không có cách nào gỡ ra — chặn là bế tắc. Dùng hóa đơn
+        // cho khoản KHÁC (DUPLICATE_RECEIPT) vẫn chặn như cũ.
+        if (r.code === 'DUPLICATE_IMAGE_SAME_RECORD' && r.severity === 'error') {
+            return {
+                ...located,
+                severity: 'warning',
+                message: `Ảnh thứ ${index + 1} trùng với một ảnh khác của chính đợt bảo dưỡng này — có thể là cùng một hóa đơn chụp nhiều lần.`,
+            };
+        }
+
+        if (!supporting[index] || r.severity !== 'error' || !NOT_AN_INVOICE_CODES.has(r.code)) return located;
+        return {
+            ...located,
+            code: 'SUPPORTING_DOCUMENT',
+            severity: 'warning',
+            message: `Ảnh thứ ${index + 1} không phải hóa đơn thanh toán nên không được tính vào tổng: ${r.message}`,
+            detail: { original_code: r.code, ...(r.detail ?? {}) },
+        };
+    }));
+
+    // Nhưng một đợt bảo dưỡng phải có ít nhất MỘT hóa đơn dùng được. Chặn ở đây là chặn
+    // đúng: tài xế sửa được ngay bằng cách chụp hóa đơn thanh toán.
+    if (supporting.every(Boolean)) {
+        reasons.push({
+            code: 'NO_VALID_INVOICE', severity: 'error',
+            message: 'Chưa có ảnh hóa đơn thanh toán nào dùng được cho đợt bảo dưỡng này. '
+                + 'Ảnh chứng từ hoặc báo giá gửi kèm yêu cầu không thay cho hóa đơn — vui lòng chụp hóa đơn/phiếu thu cuối cùng.',
+        });
+    }
 
     const totals = perImage.map((item) => item.receipt_total).filter((n) => Number.isFinite(n) && n > 0);
     const sum = totals.reduce((acc, n) => acc + n, 0);
@@ -476,7 +703,11 @@ const validateMaintenanceBills = async (billUrls, context = {}) => {
     // Độ tin cậy của cả đợt lấy theo ảnh THẤP NHẤT, không lấy trung bình: một hóa đơn
     // đọc chắc chắn không bù được cho một hóa đơn đọc mù mờ — người duyệt vẫn phải mở
     // đúng cái mù mờ đó ra xem, nên con số hiển thị phải chỉ về nó.
+    //
+    // Bỏ qua ảnh chứng từ/báo giá: chúng không được tính là hóa đơn, nên một tấm báo giá
+    // đọc hỏng (độ tin cậy 0) không được kéo cả đợt xuống "đọc không chắc".
     const confidences = perImage
+        .filter((_, index) => !supporting[index])
         .map((item) => item.confidence)
         .filter((value) => Number.isFinite(value));
     const confidence = confidences.length > 0 ? Math.min(...confidences) : null;
@@ -499,6 +730,36 @@ const validateMaintenanceBills = async (billUrls, context = {}) => {
 const REVIEW_ACTIONS = ['agree', 'override_accept', 'override_reject'];
 
 /**
+ * Chọn đúng những lần đọc người duyệt cần xem: mỗi ảnh ĐANG thuộc khoản một dòng.
+ *
+ * Trước đây màn duyệt liệt kê MỌI dòng vết của khoản. Đã tái hiện: ảnh bị chặn lúc tải
+ * (không hề vào đợt, và tệp đã bị xoá khỏi Cloudinary nên hiện ảnh vỡ) vẫn hiện ra và làm
+ * tổng kết báo "1 hóa đơn không đạt"; ảnh của lần nộp trước khi bị trả về làm lại cũng
+ * vậy. Người duyệt nhìn thấy một đợt có vấn đề trong khi đợt thật thì sạch.
+ *
+ * Một ảnh có thể có nhiều dòng (đọc lỗi rồi đọc lại) — lấy dòng mới nhất CÓ bản đọc.
+ */
+const pickAttachedRows = (rows, imageUrls) => {
+    const attached = new Set(imageUrls);
+    const byUrl = new Map();
+    for (const row of rows) { // listByEntity trả mới nhất trước
+        if (row.released_at || !attached.has(row.image_url)) continue;
+        const current = byUrl.get(row.image_url);
+        if (!current || (!current.raw_extraction && row.raw_extraction)) byUrl.set(row.image_url, row);
+    }
+
+    const rejectedUploads = new Set(rows
+        .filter((row) => !row.released_at && row.verdict === 'rejected' && !attached.has(row.image_url))
+        .map((row) => row.image_url));
+
+    return {
+        rows: [...attached].map((url) => byUrl.get(url)).filter(Boolean),
+        unread: [...attached].filter((url) => !byUrl.has(url)).length,
+        rejectedUploads: rejectedUploads.size,
+    };
+};
+
+/**
  * Dữ liệu để người duyệt nhìn thấy máy đã đọc được gì, thay vì phải căng mắt vào ảnh.
  *
  * Dòng hàng được DỰNG LẠI từ raw_extraction chứ không lưu sẵn dạng đã phân loại. Cố ý:
@@ -508,9 +769,17 @@ const REVIEW_ACTIONS = ['agree', 'override_accept', 'override_reject'];
  * @param {'maintenance_record'|'expense'} entityType
  * @param {number} entityId
  * @param {string} profileCode  loại chi phí, quyết định hạng mục nào là đúng chủ đề
+ * @param {{imageUrls?: string[]|null}} options  ảnh ĐANG thuộc khoản (bill_pics). Có thì chỉ
+ *        hiện đúng những ảnh đó; vắng thì hiện mọi dòng vết như trước.
  */
-const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance') => {
-    const rows = await repository.listByEntity(entityType, entityId);
+const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance', { imageUrls = null } = {}) => {
+    const allRows = await repository.listByEntity(entityType, entityId);
+    const attachedMode = Array.isArray(imageUrls);
+    const picked = attachedMode
+        ? pickAttachedRows(allRows, imageUrls.filter(Boolean))
+        : { rows: allRows, unread: 0, rejectedUploads: 0 };
+    const { rows } = picked;
+
     if (rows.length === 0) {
         return {
             entity_type: entityType,
@@ -519,7 +788,12 @@ const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance
             profile_label: taxonomy.getProfile(profileCode).label,
             categories: taxonomy.categoryOptions(profileCode),
             receipts: [],
-            summary: { total: 0, needs_review: 0, rejected: 0, unreviewed: 0 },
+            // Cùng hình dạng với nhánh có dữ liệu — thiếu một trường ở nhánh rỗng là giao
+            // diện phải tự đoán `undefined` nghĩa là gì.
+            summary: {
+                total: 0, needs_review: 0, rejected: 0, unreviewed: 0, low_confidence: 0,
+                supporting: 0, unread: picked.unread, rejected_uploads: picked.rejectedUploads,
+            },
         };
     }
 
@@ -538,6 +812,12 @@ const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance
             id: row.id,
             image_url: row.image_url,
             verdict: row.verdict,
+            // Ảnh không dùng làm hóa đơn được (báo giá, chứng từ gửi kèm yêu cầu) — bước hoàn
+            // tất đã gạt nó khỏi tổng, không chặn. Chỉ nói được điều này khi biết ảnh đang
+            // thuộc đợt: một ảnh cùng loại bị chặn lúc tải thì không hề nằm trong đợt.
+            supporting: attachedMode && reasons.some(
+                (r) => r.severity === 'error' && NOT_AN_INVOICE_CODES.has(r.code),
+            ),
             errors: reasons.filter((r) => r.severity === 'error'),
             warnings: reasons.filter((r) => r.severity === 'warning'),
             vendor: extraction?.vendor ?? null,
@@ -574,6 +854,7 @@ const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance
         };
     });
 
+    const invoices = receipts.filter((r) => !r.supporting);
     return {
         entity_type: entityType,
         entity_id: entityId,
@@ -583,19 +864,38 @@ const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance
         // người duyệt chọn được mã mà backend sẽ lặng lẽ loại bỏ.
         categories: taxonomy.categoryOptions(profileCode),
         receipts,
-        // Tổng kết nhanh để giao diện biết có cần bật cảnh báo hay không.
+        // Tổng kết nhanh để giao diện biết có cần bật cảnh báo hay không. Ảnh chứng từ
+        // không tính vào "không đạt"/"cần xem": nó không phải hóa đơn của đợt.
         summary: {
             total: receipts.length,
-            needs_review: receipts.filter((r) => r.verdict === 'needs_review').length,
-            rejected: receipts.filter((r) => r.verdict === 'rejected').length,
+            needs_review: invoices.filter((r) => r.verdict === 'needs_review').length,
+            rejected: invoices.filter((r) => r.verdict === 'rejected').length,
             unreviewed: receipts.filter((r) => !r.review).length,
             // Đếm riêng những tờ đọc không chắc: đây là danh sách việc thật sự cần mắt
             // người, tách khỏi những tờ bị gắn cảnh báo vì lý do nghiệp vụ (sai ngày,
             // lệch biển số) mà bản thân việc đọc thì không có vấn đề gì.
-            low_confidence: receipts.filter((r) => Number.isFinite(r.confidence)
+            low_confidence: invoices.filter((r) => Number.isFinite(r.confidence)
                 && r.confidence < crossCheck.CONFIDENCE.REVIEW).length,
+            supporting: receipts.length - invoices.length,
+            // Ảnh thuộc đợt mà máy chưa đọc được lần nào — phải xem bằng mắt.
+            unread: picked.unread,
+            // Số ảnh tài xế đã thử tải nhưng bị máy chặn. Không hiện từng tấm (tệp đã bị xoá),
+            // nhưng con số này là tín hiệu: thử năm tấm hóa đơn khác nhau là chuyện đáng hỏi.
+            rejected_uploads: picked.rejectedUploads,
         },
     };
+};
+
+/**
+ * Thả các lần đọc ảnh ra khỏi lớp dò trùng — xem receiptExtractionRepository.releaseByEntity.
+ * Không bao giờ ném lỗi: nó chạy trên đường báo lỗi cho tài xế, không được che lỗi thật.
+ */
+const releaseReceipts = async (entityType, entityId, { imageUrl = null } = {}) => {
+    try {
+        await repository.releaseByEntity(entityType, entityId, { imageUrl });
+    } catch (err) {
+        console.warn('[receipt] Không thả được lần đọc hóa đơn:', err.message);
+    }
 };
 
 /**
@@ -656,6 +956,7 @@ module.exports = {
     runPipeline,
     validateReceipt,
     validateMaintenanceBills,
+    releaseReceipts,
     getReceiptReview,
     submitReceiptReview,
     REVIEW_ACTIONS,

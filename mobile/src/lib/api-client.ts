@@ -6,6 +6,10 @@ import { tokenStorage } from '@/services/token-storage';
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | object | null;
+  // Ghi đè hạn giờ cho những request mà máy chủ CỐ Ý xử lý lâu (vd hoàn tất bảo dưỡng
+  // đọc lại mọi ảnh hóa đơn). Cắt sớm hơn thời gian xử lý thật thì tài xế thấy lỗi trong
+  // khi máy chủ vẫn làm xong — tệ hơn là chờ thêm.
+  timeoutMs?: number;
 };
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -211,7 +215,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
   let response: Response;
 
   const isUpload = body instanceof FormData;
-  const timeoutMs = isUpload ? TIMEOUT_UPLOAD_MS : DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? (isUpload ? TIMEOUT_UPLOAD_MS : DEFAULT_TIMEOUT_MS);
   const attemptNo = canRetry(options.method) ? MAX_RETRIES : 0;
 
   let lastError: unknown = null;
@@ -318,7 +322,8 @@ export async function getValidAccessToken(): Promise<string | null> {
 
 export const apiClient = {
   get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body: object) => request<T>(path, { method: 'POST', body }),
+  post: <T>(path: string, body: object, opts: { timeoutMs?: number } = {}) =>
+    request<T>(path, { method: 'POST', body, ...opts }),
   patch: <T>(path: string, body: object) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   postForm: <T>(path: string, formData: FormData) =>

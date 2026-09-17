@@ -90,6 +90,10 @@ const probeJpeg = (buffer) => {
     while (offset + 9 < buffer.length) {
         if (buffer[offset] !== 0xff) { offset += 1; continue; }
         const marker = buffer[offset + 1];
+        // Chuẩn JPEG cho phép chèn byte đệm 0xFF trước một marker. Không bỏ qua chúng
+        // thì 0xFF bị hiểu là mã marker, hai byte kế tiếp bị hiểu là độ dài khối, và con
+        // trỏ nhảy lệch vào giữa dữ liệu ảnh.
+        if (marker === 0xff) { offset += 1; continue; }
         if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { offset += 2; continue; }
         if (marker === 0xd9 || marker === 0xda) break;
 
@@ -171,6 +175,9 @@ const QUALITY = {
     // Ảnh vài KB gần như luôn là ảnh trắng, ảnh lỗi hoặc placeholder.
     MIN_BYTES: 6 * 1024,
     MAX_BYTES: 10 * 1024 * 1024,
+    // Phần dư cho metadata (EXIF, ICC profile, thumbnail nhúng) khi thử xem kích thước
+    // đọc từ header có khớp với độ nặng của tệp không.
+    HEADER_SLACK_BYTES: 256 * 1024,
 };
 
 const reason = (code, severity, message, detail) => ({ code, severity, message, ...(detail ? { detail } : {}) });
@@ -192,6 +199,15 @@ const assessImage = ({ bytes, width, height } = {}) => {
     }
 
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+        return reasons;
+    }
+
+    // Kích thước đo từ header là thứ duy nhất ở giai đoạn này đủ quyền CHẶN tài xế, nên
+    // nó phải qua được một phép thử vật lý trước: một tấm ảnh không thể nặng hơn dữ liệu
+    // điểm ảnh thô của chính nó. 8 byte/điểm là trần của PNG 16-bit RGBA không nén, cộng
+    // phần dư cho metadata. Header đọc ra 300×400 mà tệp nặng 2MB nghĩa là ĐỌC SAI HEADER
+    // chứ không phải ảnh nhỏ — khi đó im lặng, vì chặn oan tệ hơn bỏ sót một cảnh báo.
+    if (Number.isFinite(bytes) && bytes > width * height * 8 + QUALITY.HEADER_SLACK_BYTES) {
         return reasons;
     }
 
@@ -234,7 +250,18 @@ const fetchVariant = async (url) => {
     if (!response.ok) throw fail('FETCH_FAILED', `Không tải được ảnh (HTTP ${response.status})`);
 
     const mimeType = (response.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
-    if (!mimeType.startsWith('image/')) throw fail('NOT_AN_IMAGE', `Tệp tải về không phải ảnh (${mimeType})`);
+    if (!mimeType.startsWith('image/')) {
+        response.body?.cancel?.().catch?.(() => {});
+        throw fail('NOT_AN_IMAGE', `Tệp tải về không phải ảnh (${mimeType})`);
+    }
+
+    // Kiểm tra kích thước khai báo TRƯỚC khi đọc body. Kiểm sau `arrayBuffer()` thì cả
+    // tệp đã nằm trong bộ nhớ rồi mới bị chê là quá lớn.
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > QUALITY.MAX_BYTES) {
+        response.body?.cancel?.().catch?.(() => {});
+        throw fail('IMAGE_TOO_LARGE', 'Ảnh quá lớn');
+    }
 
     const buffer = Buffer.from(await response.arrayBuffer());
     if (buffer.length === 0) throw fail('FETCH_FAILED', 'Ảnh rỗng');

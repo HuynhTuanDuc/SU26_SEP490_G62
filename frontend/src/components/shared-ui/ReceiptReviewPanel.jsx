@@ -146,10 +146,17 @@ function LineItemRow({ item, onTeach, teachable, categories, profileLabel }) {
   );
 }
 
-function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel }) {
+// Ảnh gửi kèm yêu cầu không phải hóa đơn (báo giá, chứng từ): bước hoàn tất đã gạt nó
+// khỏi tổng. Gắn "Không đạt" cho nó là báo động giả cho người duyệt.
+const SUPPORTING = { label: "Chứng từ kèm theo — không tính vào tổng", color: "default", Icon: RiInformationLine };
+
+function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, showClaim, recordCost }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const verdict = VERDICT[receipt.verdict] ?? VERDICT.error;
+  const verdict = receipt.supporting ? SUPPORTING : (VERDICT[receipt.verdict] ?? VERDICT.error);
+  // Số khai CUỐI CÙNG của đợt nếu có; claimed_amount của dòng vết là số lúc tải ảnh, tài xế
+  // có thể đã sửa sau đó.
+  const claimed = Number.isFinite(recordCost) && recordCost > 0 ? recordCost : receipt.claimed_amount;
 
   const submit = async (action, learnKeywords) => {
     setBusy(true);
@@ -243,12 +250,14 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel }) 
                     <td className="text-right pt-1 tabular-nums font-bold text-gray-800 dark:text-gray-100">{vnd(receipt.receipt_total)}</td>
                     {!readOnly && <td />}
                   </tr>
-                  {receipt.claimed_amount != null && (
+                  {/* Số khai là của CẢ ĐỢT. Đặt cạnh tổng của từng tờ khi đợt có nhiều hóa
+                      đơn thì tờ nào cũng tô đỏ "lệch", dù cả đợt khớp từng đồng. */}
+                  {showClaim && claimed != null && (
                     <tr><td colSpan={3} className="text-right pr-2 text-gray-400">Tài xế khai</td>
                       <td className={`text-right tabular-nums ${
-                        Math.abs(receipt.claimed_amount - (receipt.receipt_total ?? 0)) > 1000
+                        Math.abs(claimed - (receipt.receipt_total ?? 0)) > 1000
                           ? "text-rose-600 dark:text-rose-400 font-bold" : "text-gray-600 dark:text-gray-300"}`}>
-                        {vnd(receipt.claimed_amount)}
+                        {vnd(claimed)}
                       </td>
                       {!readOnly && <td />}</tr>
                   )}
@@ -350,21 +359,37 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
   if (!recordId) return null;
   if (loading) return <div className="flex justify-center py-4"><Spinner size="sm" /></div>;
   if (error) return <p className="text-xs text-gray-400 dark:text-gray-400">{error}</p>;
-  if (!data || data.receipts.length === 0) {
-    return <p className="text-xs text-gray-400 dark:text-gray-400">Chưa có hóa đơn nào được máy đọc cho đợt này.</p>;
-  }
+  if (!data) return null;
 
   const { summary } = data;
   const recordChecks = data.record_checks ?? [];
+  const invoiceCount = data.receipts.filter((r) => !r.supporting).length;
+  if (data.receipts.length === 0 && recordChecks.length === 0 && !summary?.unread && !summary?.rejected_uploads) {
+    return <p className="text-xs text-gray-400 dark:text-gray-400">Chưa có hóa đơn nào được máy đọc cho đợt này.</p>;
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Cảnh báo ở mức cả đợt (chi phí bất thường so với lịch sử xe) — không thuộc
+      {/* Điểm ở mức cả đợt — bước hoàn tất đã nêu (tổng hóa đơn so với số khai, ảnh chứng
+          từ bị gạt khỏi tổng) và chi phí bất thường so với lịch sử xe. Không thuộc riêng
           tờ hóa đơn nào nên đứng riêng trên đầu. */}
       {recordChecks.map((check, i) => (
         <p key={`rc${i}`} className="text-xs text-amber-600 dark:text-amber-400 flex gap-1.5">
           <RiAlertLine size={14} className="shrink-0 mt-0.5" /><span>{check.message}</span>
         </p>
       ))}
+      {summary?.unread > 0 && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 flex gap-1.5">
+          <RiAlertLine size={14} className="shrink-0 mt-0.5" />
+          <span>{summary.unread} ảnh của đợt chưa được máy đọc — vui lòng xem ảnh gốc bằng mắt.</span>
+        </p>
+      )}
+      {summary?.rejected_uploads > 0 && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 flex gap-1.5">
+          <RiInformationLine size={14} className="shrink-0 mt-0.5" />
+          <span>Tài xế đã thử tải {summary.rejected_uploads} ảnh bị máy chặn (không thuộc đợt này).</span>
+        </p>
+      )}
       {(summary.rejected > 0 || summary.needs_review > 0 || summary.low_confidence > 0) && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           {summary.rejected > 0 && `${summary.rejected} hóa đơn không đạt. `}
@@ -384,6 +409,8 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
           readOnly={readOnly}
           categories={data.categories ?? []}
           profileLabel={data.profile_label ?? "loại chi phí này"}
+          showClaim={invoiceCount === 1 && !receipt.supporting}
+          recordCost={Number(data.record?.cost)}
         />
       ))}
     </div>

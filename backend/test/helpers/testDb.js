@@ -24,6 +24,12 @@ const schemaPath = path.join(__dirname, '../../../DB script/DB script.sql');
  *     TEST_DB_PASSWORD=... npx jest
  */
 async function setupTestDb() {
+    // BẮT BUỘC, TRƯỚC MỌI require pool. config/dbConfig.js ưu tiên DATABASE_URL hơn DB_*,
+    // còn helper này chỉ đặt DB_*. Schema nạp vào mở đầu bằng DROP SCHEMA public CASCADE.
+    // Chỉ cần DATABASE_URL của Supabase còn trong môi trường — export trong shell theo
+    // hướng dẫn của Supabase, hay CI có sẵn biến đó — là chạy test XOÁ SẠCH DB thật.
+    delete process.env.DATABASE_URL;
+
     const external = process.env.TEST_DB_HOST;
     if (external) return setupOnExistingServer();
 

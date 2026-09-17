@@ -515,6 +515,62 @@ describe('receiptChecks — nhận dạng và chống dùng lại hóa đơn', (
         assert.deepStrictEqual(checks.checkDuplicates(undefined, { entityType: 'maintenance_record', entityId: 21 }), []);
     });
 
+    it('KHÔNG coi việc đọc lại chính lần tải lên đó là nộp trùng', () => {
+        // Lỗi thật, đã tái hiện: Gemini lỗi lúc tải ảnh → vết không có bản đọc → bước hoàn
+        // tất phải đọc lại từ đầu → dò trùng khớp đúng dòng vết của CHÍNH lần tải đó → tài
+        // xế bị chặn "ảnh đã tải lên cho chính khoản này, vui lòng chọn ảnh khác", trong khi
+        // không làm gì sai và không có ảnh nào khác để chọn.
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 21, image_url: 'a.jpg', verdict: 'error' }];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'a.jpg' });
+
+        assert.deepStrictEqual(reasons, []);
+    });
+
+    it('vẫn bắt nộp lại cùng ảnh thành tệp MỚI cho chính khoản đó', () => {
+        // Mỗi lần tải lên là một tệp mới trên Cloudinary, tức URL mới — nên nộp lại thật
+        // sự không bao giờ trùng URL, và vẫn bị bắt qua băm ảnh.
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 21, image_url: 'a.jpg' }];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'b.jpg' });
+
+        assert.strictEqual(reasons[0].code, 'DUPLICATE_IMAGE_SAME_RECORD');
+    });
+
+    it('cùng URL nhưng ở khoản KHÁC vẫn là dùng lại hóa đơn', () => {
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 99, image_url: 'a.jpg' }];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'a.jpg' });
+
+        assert.strictEqual(reasons[0].code, 'DUPLICATE_RECEIPT');
+    });
+
+    it('lần nộp đã bị TRẢ VỀ LÀM LẠI không chặn nộp lại cho chính khoản đó, chỉ cảnh báo', () => {
+        // Đã tái hiện: trả về làm lại xoá bill_pics, app bảo "chụp lại hoá đơn", và tờ hóa
+        // đơn thật bị chặn "ảnh đã tải lên cho chính khoản này rồi" mãi mãi.
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 21, image_url: 'a.jpg', released_at: '2026-09-01' }];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'b.jpg' });
+
+        assert.deepStrictEqual(reasons.map((r) => [r.code, r.severity]), [['RECEIPT_PREVIOUSLY_RETURNED', 'warning']]);
+    });
+
+    it('hóa đơn của đợt đã bị HUỶ chỉ cảnh báo khi dùng cho đợt khác, và nói rõ đợt nào', () => {
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 99, image_url: 'a.jpg', released_at: '2026-09-01' }];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'b.jpg' });
+
+        assert.strictEqual(reasons[0].severity, 'warning');
+        assert.match(reasons[0].message, /đợt bảo dưỡng #99/);
+    });
+
+    it('một lần dùng THẬT vẫn chặn dù cùng hóa đơn đó có lần nộp khác đã bị trả về', () => {
+        const matches = [
+            { id: 5, entity_type: 'maintenance_record', entity_id: 99, image_url: 'a.jpg', released_at: '2026-09-01' },
+            { id: 6, entity_type: 'maintenance_record', entity_id: 42, image_url: 'c.jpg', released_at: null },
+        ];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'b.jpg' });
+
+        assert.deepStrictEqual(reasons.map((r) => [r.code, r.severity]), [['DUPLICATE_RECEIPT', 'error']]);
+        assert.match(reasons[0].message, /#42/);
+        assert.doesNotMatch(reasons[0].message, /#99/);
+    });
+
     it('chặn hóa đơn hợp lệ về mọi mặt khác nếu nó đã được dùng ở nơi khác', () => {
         const result = checks.evaluateReceipt(cleanInvoice(), baseContext({
             entityType: 'maintenance_record',

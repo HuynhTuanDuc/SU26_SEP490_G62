@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const financialLedgerRepository = require('./financialLedgerRepository');
+const receiptExtractionRepository = require('./receiptExtractionRepository');
 
 const VEHICLE_GROUP_DETAIL_SELECT = `
     SELECT
@@ -881,6 +882,15 @@ const moveBrokenVehicleToMaintenance = async ({
     }
 };
 
+/**
+ * `expectedBillPics` — danh sách ảnh ĐÃ được đối chiếu số tiền ở tầng service. Đối chiếu
+ * chạy trước giao dịch này và có thể mất cả chục giây (ảnh gửi kèm yêu cầu chưa từng được
+ * quét); tài xế tải thêm ảnh trong khoảng đó là có thật, vì app không khoá nút. Không so
+ * lại dưới khoá thì hoặc ghi đè mất ảnh vừa tải (tài xế đã được báo thành công), hoặc gửi
+ * duyệt một đợt có ảnh chưa qua đối chiếu. Lệch → MAINTENANCE_BILLS_CHANGED, không ghi gì.
+ *
+ * `receiptCheck` — kết quả đối chiếu cả đợt, lưu lại cho màn duyệt của quản lý.
+ */
 const completeMaintenanceRecordAndSetStatus = async ({
     vehicleId,
     maintenanceRecordId,
@@ -888,6 +898,8 @@ const completeMaintenanceRecordAndSetStatus = async ({
     billPics = [],
     performedBy = null,
     cost = null,
+    expectedBillPics = null,
+    receiptCheck = null,
 }) => {
     const client = await pool.connect();
     try {
@@ -914,7 +926,7 @@ const completeMaintenanceRecordAndSetStatus = async ({
         }
 
         const recordResult = await client.query(
-            `SELECT id, status
+            `SELECT id, status, bill_pics
              FROM maintenance_records
              WHERE vehicle_id = $1
                AND status = 'open'
@@ -931,6 +943,13 @@ const completeMaintenanceRecordAndSetStatus = async ({
             throw err;
         }
 
+        if (expectedBillPics
+            && JSON.stringify(record.bill_pics ?? []) !== JSON.stringify(expectedBillPics)) {
+            const err = new Error('Maintenance bills changed while they were being checked');
+            err.code = 'MAINTENANCE_BILLS_CHANGED';
+            throw err;
+        }
+
         await client.query(
             `UPDATE maintenance_records
              SET status = 'pending_verification',
@@ -939,9 +958,11 @@ const completeMaintenanceRecordAndSetStatus = async ({
                  completed_by = $3,
                  performed_by = COALESCE($4, performed_by),
                  cost = COALESCE($5, cost),
+                 receipt_check = $6::jsonb,
                  updated_at = NOW()
              WHERE id = $1`,
-            [record.id, JSON.stringify(billPics), driverId, performedBy, cost],
+            [record.id, JSON.stringify(billPics), driverId, performedBy, cost,
+                receiptCheck ? JSON.stringify(receiptCheck) : null],
         );
 
         await client.query(
@@ -1069,6 +1090,7 @@ const rejectPendingMaintenanceRecord = async ({
                      reject_reason = $2,
                      bill_pics = '[]'::jsonb,
                      cost = NULL,
+                     receipt_check = NULL,
                      completed_at = NULL,
                      completed_by = NULL,
                      updated_at = NOW()
@@ -1091,6 +1113,12 @@ const rejectPendingMaintenanceRecord = async ({
                 [vehicleId, vehicle.status, record.id, `Yêu cầu làm lại chứng từ bảo dưỡng: ${reason}`, managerId],
             );
         }
+
+        // Cả hai chế độ đều trả hóa đơn của đợt về trạng thái CHƯA DÙNG: làm lại thì
+        // bill_pics vừa bị xoá, huỷ thì đợt không bao giờ thành khoản chi. Không thả ra thì
+        // lớp dò trùng chặn tài xế nộp lại đúng tờ hóa đơn thật. Cùng giao dịch: trả về
+        // mà không thả (hoặc ngược lại) đều để lại một đợt kẹt.
+        await receiptExtractionRepository.releaseByEntity('maintenance_record', record.id, {}, client);
 
         await client.query('COMMIT');
         return {
@@ -1630,7 +1658,7 @@ const getMaintenanceCostHistory = async (vehicleId, { excludeRecordId = null, li
 const getMaintenanceRecordById = async (recordId, db = pool) => {
     const result = await db.query(
         `SELECT mr.id, mr.vehicle_id, mr.maintenance_type, mr.cost, mr.status,
-                mr.started_at, mr.completed_at, v.plate_number
+                mr.started_at, mr.completed_at, mr.bill_pics, mr.receipt_check, v.plate_number
            FROM maintenance_records mr
            JOIN vehicles v ON v.id = mr.vehicle_id
           WHERE mr.id = $1`,
@@ -1863,14 +1891,25 @@ const rejectMaintenanceRequest = async ({ maintenanceRecordId, managerId, reason
     return result.rows[0] ?? null;
 };
 
-const updateMaintenanceBillPics = async (maintenanceRecordId, billPics, db = pool) => {
+/**
+ * Thêm MỘT ảnh vào cuối bill_pics — nguyên tử, và chỉ khi đợt vẫn ở đúng trạng thái lúc
+ * quyết định có quét ảnh hay không.
+ *
+ * Thay cho kiểu cũ "đọc bill_pics → quét ảnh vài chục giây → ghi đè cả mảng": trong khoảng
+ * quét đó, đợt có thể đã được gửi duyệt (ảnh chưa qua đối chiếu số tiền lẻn vào đợt đang
+ * chờ duyệt), hoặc được quản lý duyệt từ 'requested' sang 'open' (ảnh không hề được quét
+ * lọt vào bước bảo dưỡng), hoặc bill_pics đã đổi (ghi đè làm mất ảnh khác). Trả null khi
+ * đợt không còn ở `expectedStatus` — không ghi gì.
+ */
+const appendMaintenanceBill = async (maintenanceRecordId, billUrl, { expectedStatus }, db = pool) => {
     const result = await db.query(
         `UPDATE maintenance_records
-         SET bill_pics = $2::jsonb,
+         SET bill_pics = bill_pics || jsonb_build_array($2::text),
              updated_at = NOW()
          WHERE id = $1
+           AND status = $3
          RETURNING id, bill_pics`,
-        [maintenanceRecordId, JSON.stringify(billPics)],
+        [maintenanceRecordId, billUrl, expectedStatus],
     );
     return result.rows[0] ?? null;
 };
@@ -1910,7 +1949,7 @@ module.exports = {
     getMaintenanceCostHistory,
     getMaintenanceRecordById,
     getMaintenanceRecordsForDriver,
-    updateMaintenanceBillPics,
+    appendMaintenanceBill,
     updateMaintenanceCost,
     createMaintenanceRequest,
     listMaintenanceRequests,
