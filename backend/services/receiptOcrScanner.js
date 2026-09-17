@@ -25,6 +25,7 @@
  * chỉ làm mất lớp đối chiếu, không được phép làm hỏng luồng duyệt hóa đơn.
  */
 
+const fs = require('fs');
 const path = require('path');
 const taxonomy = require('./receiptTaxonomy');
 
@@ -34,7 +35,7 @@ const taxonomy = require('./receiptTaxonomy');
 // `langPath` lẫn `cachePath` vào đó để Tesseract đọc thẳng từ đĩa: mặc định nó tải
 // từ CDN mỗi lần khởi động worker, tức là container không có Internet ra ngoài là
 // OCR chết, còn có Internet thì cũng tốn vài giây đầu tiên vô ích.
-const LANG_DIR = path.join(__dirname, '..');
+const LANG_DIR = process.env.RECEIPT_OCR_LANG_DIR || path.join(__dirname, '..');
 
 const LANGS = process.env.RECEIPT_OCR_LANGS || 'vie+eng';
 
@@ -92,17 +93,116 @@ const scheduleIdleShutdown = () => {
     if (typeof idleTimer.unref === 'function') idleTimer.unref();
 };
 
+// Dựng worker hỏng (thiếu hoặc hỏng tệp traineddata, sai tên ngôn ngữ) là lỗi CẤU HÌNH:
+// thử lại ở hóa đơn kế tiếp cũng hỏng y vậy, chỉ tốn thêm thời gian đọc 5MB từ đĩa và
+// thêm một dòng log. Tạm tắt kênh OCR trong một khoảng rồi mới thử lại.
+const INIT_RETRY_MS = Number(process.env.RECEIPT_OCR_RETRY_MS || 5 * 60_000);
+// Hỏng liên tiếp chừng này lần thì tắt hẳn tới khi khởi động lại tiến trình. Lý do có
+// trần cứng: một lần dựng hỏng có thể để lại một luồng worker mồ côi mà ta không có cách
+// nào chạm tới để giết (xem getWorker). Thử lại vô hạn là rò rỉ vô hạn; tệp traineddata
+// hỏng thì cũng không tự lành nếu không deploy lại — mà deploy lại là khởi động lại.
+const MAX_INIT_FAILURES = 3;
+let unavailableUntil = 0;
+let initFailures = 0;
+
+const recordInitFailure = (err) => {
+    initFailures += 1;
+    if (initFailures >= MAX_INIT_FAILURES) {
+        unavailableUntil = Number.POSITIVE_INFINITY;
+        console.error(`[receipt] Dựng worker OCR hỏng ${initFailures} lần liên tiếp — TẮT HẲN OCR tới khi khởi động lại. Lỗi cuối:`, err.message);
+    } else {
+        unavailableUntil = Date.now() + INIT_RETRY_MS;
+        console.warn(`[receipt] Không dựng được worker OCR (lần ${initFailures}), tạm tắt OCR ${Math.round(INIT_RETRY_MS / 1000)} giây:`, err.message);
+    }
+};
+
+/**
+ * Tệp traineddata nào đang thiếu hoặc rỗng.
+ *
+ * Kiểm tra TRƯỚC khi dựng worker chứ không để tesseract.js tự phát hiện, vì cách nó
+ * phát hiện là hỏng: thiếu tệp ở pha nạp ngôn ngữ thì lời hứa dựng worker không bao
+ * giờ xong (xem getWorker). Kiểm ở đây thì trường hợp hay gặp nhất — sai tên ngôn ngữ
+ * trong env, quên đưa tệp vào image Docker — báo lỗi ngay, không đẻ ra luồng nào.
+ */
+const missingLanguageFiles = () => LANGS.split('+').map((lang) => lang.trim()).filter(Boolean)
+    .filter((lang) => {
+        try {
+            return fs.statSync(path.join(LANG_DIR, `${lang}.traineddata`)).size === 0;
+        } catch {
+            return true;
+        }
+    });
+
+/**
+ * tesseract.js đẩy lỗi ra dưới dạng CHUỖI chứ không phải Error, nên `err.message` là
+ * undefined và mọi dòng log thành "OCR không quét được: undefined". Chuẩn hoá một chỗ.
+ */
+const toError = (value, code) => {
+    const err = value instanceof Error ? value : new Error(String(value ?? 'Lỗi không rõ'));
+    if (code && !err.code) err.code = code;
+    return err;
+};
+
 const getWorker = async () => {
     if (!workerPromise) {
+        const missing = missingLanguageFiles();
+        if (missing.length > 0) {
+            throw toError(`Thiếu tệp ngôn ngữ OCR trong ${LANG_DIR}: ${missing.map((l) => `${l}.traineddata`).join(', ')}`, 'OCR_INIT_FAILED');
+        }
+
         const { createWorker } = require('tesseract.js');
-        workerPromise = createWorker(LANGS, 1, {
+
+        // tesseract.js có lỗi ở pha khởi động: chuỗi nạp core → nạp ngôn ngữ → khởi tạo
+        // kết thúc bằng `.catch(() => {})`, còn lời hứa trả về chỉ bị reject khi riêng
+        // pha nạp core hỏng. Pha nạp ngôn ngữ hay khởi tạo hỏng (tệp traineddata hỏng)
+        // thì lỗi bị nuốt và lời hứa TREO VĨNH VIỄN. Cách duy nhất biết được là qua
+        // errorHandler — nên tự dựng một lời hứa thất bại song song và đua với nó.
+        let ready = false;
+        let failInit;
+        const initFailure = new Promise((_, reject) => { failInit = reject; });
+
+        const created = createWorker(LANGS, 1, {
             langPath: LANG_DIR,
             cachePath: LANG_DIR,
+            // BẮT BUỘC, KHÔNG ĐƯỢC BỎ. Mặc định, hễ khởi tạo thất bại là tesseract.js XOÁ
+            // tệp <lang>.traineddata trong cachePath (nó giả định tệp trong cache bị hỏng).
+            // cachePath ở đây là thư mục backend — nơi chứa chính hai tệp thật được git
+            // theo dõi và đóng vào image Docker. Đã chạy thử: một lần khởi tạo hỏng xoá
+            // sạch cả vie lẫn eng, sau đó OCR hỏng vĩnh viễn tới khi deploy lại, còn trên
+            // máy dev thì tệp biến mất khỏi working tree. 'readOnly' vẫn đọc từ đó nhưng
+            // không bao giờ ghi hay xoá.
+            cacheMethod: 'readOnly',
             gzip: false,
             // Tesseract log mỗi 1% tiến độ; để mặc định thì một ảnh sinh hàng trăm dòng
             // log không ai đọc, lấp hết log thật.
             logger: () => {},
-        }).then(async (worker) => {
+            // BẮT BUỘC, KHÔNG ĐƯỢC BỎ. Khi một việc thất bại (ảnh không giải mã được,
+            // thiếu traineddata), tesseract.js reject promise của việc đó RỒI còn `throw`
+            // thêm một lần bên trong event listener nếu không có errorHandler. Lần throw
+            // thứ hai đó không try/catch nào của ta bắt được — nó thành uncaughtException,
+            // và app.js bắt uncaughtException bằng process.exit(1).
+            //
+            // Đã chạy thử: một tệp JPEG bị cắt cụt hoặc vài KB bytes rác là đủ TẮT CẢ
+            // BACKEND, kéo theo mọi request đang chạy trên instance đó. Lỗi của một việc
+            // đang chạy vẫn tới được nơi gọi qua promise bị reject của chính việc đó; ở
+            // đây chỉ còn phải xử lý lỗi ở pha khởi động, pha mà thư viện tự nuốt mất.
+            errorHandler: (data) => {
+                if (!ready) failInit(toError(data, 'OCR_INIT_FAILED'));
+            },
+        });
+
+        const pending = Promise.race([created, initFailure]).then(async (worker) => {
+            ready = true;
+            // Worker của Node là EventEmitter. tesseract.js gán `worker.onerror` theo kiểu
+            // Web Worker của trình duyệt — trong Node thuộc tính đó KHÔNG BAO GIỜ được
+            // gọi. Luồng worker chết (WASM hết bộ nhớ, abort) sẽ phát sự kiện 'error' mà
+            // không ai nghe, và EventEmitter ném nó thành uncaughtException — lại tắt
+            // cả backend. Việc đang dở sẽ không bao giờ xong; hạn chót ở scanImage lo phần
+            // đó, còn ở đây chỉ cần đánh dấu worker đã chết để lượt sau dựng cái mới.
+            worker.worker?.on?.('error', (err) => {
+                console.warn('[receipt] Luồng worker OCR bị chết:', toError(err).message);
+                if (workerPromise === pending) workerPromise = null;
+            });
             await worker.setParameters({
                 tessedit_pageseg_mode: PSM,
                 // Giữ khoảng trắng giữa các cột. Không có nó, "Nhớt 1 450.000" bị ép
@@ -110,11 +210,13 @@ const getWorker = async () => {
                 // là manh mối duy nhất còn lại để tách con số ra khỏi tên hàng.
                 preserve_interword_spaces: '1',
             });
+            initFailures = 0;
             return worker;
         }).catch((err) => {
-            workerPromise = null;
-            throw err;
+            if (workerPromise === pending) workerPromise = null;
+            throw toError(err, 'OCR_INIT_FAILED');
         });
+        workerPromise = pending;
     }
     return workerPromise;
 };
@@ -207,41 +309,85 @@ const scanImage = async (buffer) => {
     if (!isOcrEnabled()) {
         return { ok: false, code: 'OCR_DISABLED', latency_ms: 0 };
     }
+    if (Date.now() < unavailableUntil) {
+        return { ok: false, code: 'OCR_UNAVAILABLE', latency_ms: 0 };
+    }
     if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
         return { ok: false, code: 'OCR_NO_IMAGE', latency_ms: 0 };
     }
 
-    return runExclusive(async () => {
+    // HẠN CHÓT TÍNH TỪ LÚC GỌI, không phải từ lúc tới lượt. Trước đây trần thời gian chỉ
+    // bọc quanh `recognize`, nên hai khoảng chờ nằm NGOÀI mọi giới hạn:
+    //   * xếp hàng sau các ảnh khác — đo được: 6 ảnh gọi cùng lúc thì ảnh cuối chờ gấp
+    //     6 lần một ảnh, và nhiều tài xế tải ảnh cùng lúc là chuyện thường ngày;
+    //   * dựng worker — kẹt ở đây thì cả hàng đợi kẹt theo, mọi lượt quét sau đó treo
+    //     vô hạn, và runPipeline treo theo vì nó chờ OCR bằng Promise.all.
+    // OCR chỉ là kênh đối chiếu THÊM: nó không bao giờ được phép làm tài xế chờ lâu hơn
+    // trần này, dù hàng đợi có dài tới đâu.
+    const deadline = startedAt + TIMEOUT_MS;
+    const remaining = () => Math.max(0, deadline - Date.now());
+    let started = false;
+
+    const job = runExclusive(async () => {
+        // Hết hạn trong lúc còn xếp hàng thì bỏ luôn — nơi gọi đã nhận "không có ý kiến"
+        // và đi tiếp rồi, quét tiếp chỉ tổ bắt những ảnh xếp sau chờ thêm vô ích.
+        if (remaining() === 0) {
+            return { ok: false, code: 'OCR_BUSY', latency_ms: Date.now() - startedAt };
+        }
+        started = true;
         clearIdleTimer();
         try {
-            const worker = await getWorker();
+            // Dựng worker quá hạn KHÔNG phải chuyện tải cao nhất thời: đo được ~0,3 giây,
+            // trần là 25 giây. Treo tới mức đó là dấu hiệu tệp ngôn ngữ hỏng (xem getWorker)
+            // nên được đếm như một lần dựng hỏng, không phải một lần quét chậm.
+            const worker = await withTimeout(getWorker(), remaining(), 'OCR_INIT_FAILED', 'Quá thời gian dựng worker OCR');
             const result = await withTimeout(
                 // Chỉ xin `text` và `blocks`; hocr/tsv là hai lần dựng chuỗi nữa cho
                 // định dạng không ai dùng tới.
                 worker.recognize(buffer, {}, { text: true, blocks: true }),
-                TIMEOUT_MS,
+                remaining(),
                 'OCR_TIMEOUT',
                 'Quá thời gian quét OCR',
             );
 
             const data = result?.data ?? {};
-            const lines = extractLines(data);
+            // Bỏ NUL ngay tại nguồn. PostgreSQL từ chối U+0000 ở cả TEXT lẫn JSONB, mà text
+            // OCR đi vào cả cột ocr_text lẫn phần chi tiết của lý do trong cột checks —
+            // một ký tự NUL từ ảnh nhiễu là đủ làm hỏng câu INSERT và mất cả dòng vết.
+            const lines = extractLines(data).map((line) => ({ ...line, text: line.text.replace(/\u0000/g, '') }));
             return {
                 ok: true,
-                text: String(data.text ?? ''),
+                text: String(data.text ?? '').replace(/\u0000/g, ''),
                 confidence: Number(data.confidence ?? 0),
                 lines,
                 engine: `tesseract.js/${LANGS}`,
                 latency_ms: Date.now() - startedAt,
             };
-        } catch (err) {
-            // Worker quá thời gian là worker đang kẹt giữa một trang: lần sau gọi lại
-            // nó vẫn kẹt. Giết hẳn để lượt sau dựng worker sạch.
-            if (err?.code === 'OCR_TIMEOUT') await shutdown();
-            console.warn('[receipt] OCR không quét được:', err.message);
+        } catch (rawErr) {
+            const err = toError(rawErr);
+            if (err.code === 'OCR_TIMEOUT') {
+                // Worker quá thời gian là worker đang kẹt giữa một trang: lần sau gọi lại
+                // nó vẫn kẹt. Giết hẳn để lượt sau dựng worker sạch.
+                //
+                // KHÔNG `await`. shutdown() gỡ worker khỏi vị trí dùng chung ngay lập tức
+                // (phần đồng bộ), còn việc chờ worker dừng hẳn thì chạy nền. Nếu worker kẹt
+                // ngay từ lúc dựng thì lời hứa dựng worker không bao giờ xong — await ở đây
+                // sẽ làm việc này không bao giờ kết thúc, và cả hàng đợi OCR kẹt vĩnh viễn
+                // sau nó.
+                shutdown().catch(() => {});
+            } else if (err.code === 'OCR_INIT_FAILED') {
+                // Gỡ lời hứa dựng hỏng khỏi vị trí dùng chung, kể cả khi nó đang treo —
+                // không thì lượt sau lại chờ đúng lời hứa đó tới hết hạn.
+                shutdown().catch(() => {});
+                recordInitFailure(err);
+            } else {
+                // Ảnh không giải mã được là lỗi của TẤM ẢNH, không phải của worker — worker
+                // vẫn dùng tiếp được cho ảnh sau, không cần dựng lại.
+                console.warn('[receipt] OCR không đọc được ảnh:', err.message);
+            }
             return {
                 ok: false,
-                code: err?.code === 'OCR_TIMEOUT' ? 'OCR_TIMEOUT' : 'OCR_FAILED',
+                code: err.code === 'OCR_TIMEOUT' || err.code === 'OCR_INIT_FAILED' ? err.code : 'OCR_FAILED',
                 error: err.message,
                 latency_ms: Date.now() - startedAt,
             };
@@ -249,6 +395,20 @@ const scanImage = async (buffer) => {
             scheduleIdleShutdown();
         }
     });
+
+    // Chốt chặn phía nơi gọi. Việc trong hàng đợi chỉ tự kiểm tra hạn chót KHI TỚI LƯỢT;
+    // nếu việc đứng trước đang chạy hết trần của nó thì việc xếp sau vẫn phải chờ. Đua
+    // với hạn chót ở đây bảo đảm nơi gọi luôn có câu trả lời đúng hạn — việc bên trong vẫn
+    // chạy tiếp tới khi tự dọn xong (giết worker kẹt), chỉ là không ai phải chờ nó nữa.
+    let timer;
+    const cutoff = new Promise((resolve) => {
+        timer = setTimeout(() => resolve({
+            ok: false,
+            code: started ? 'OCR_TIMEOUT' : 'OCR_BUSY',
+            latency_ms: Date.now() - startedAt,
+        }), remaining() + 50);
+    });
+    return Promise.race([job, cutoff]).finally(() => clearTimeout(timer));
 };
 
 // ─── Đọc con số từ text OCR (thuần hàm, test được) ───────────────────────────
@@ -336,33 +496,60 @@ const parseMoneyTokens = (text) => {
  */
 const amountAppearsIn = (tokens, value) => {
     if (!tokens || !Number.isFinite(value)) return 'unknown';
-    if (tokens.strict?.has(value)) return 'yes';
-    if (tokens.repaired?.has(value)) return 'likely';
+    // Tập token chỉ chứa số nguyên (VNĐ không có phần lẻ, và bộ tách số bỏ phần ",00").
+    // Model thì có thể trả 1826000.5 hay 450000.0000001 sau khi tự ép kiểu — so thẳng
+    // với Set thì không bao giờ khớp và sinh cảnh báo "không tìm thấy tổng tiền" oan.
+    const amount = Math.round(value);
+    if (tokens.strict?.has(amount)) return 'yes';
+    if (tokens.repaired?.has(amount)) return 'likely';
     return 'no';
 };
 
 // ─── Dấu hiệu loại chứng từ ──────────────────────────────────────────────────
 
-const DOC_SIGNAL_PHRASES = {
-    quote: ['bao gia', 'bang bao gia', 'du toan', 'phieu bao gia', 'quotation', 'quote', 'estimate'],
-    invoice: ['hoa don', 'hoa don gia tri gia tang', 'hoa don ban hang', 'phieu thu', 'bien nhan', 'invoice', 'receipt'],
-    vat: ['thue gtgt', 'thue suat', 'tien thue', 'vat'],
-    unpaid: ['chua thanh toan', 'con no', 'no lai'],
+/**
+ * Mẫu dò theo BIÊN TỪ trên text đã bỏ dấu.
+ *
+ * Bản trước dò bằng `includes`, tức chuỗi con tự do, và bị hai kiểu trùng giả:
+ *   * dính giữa từ: "vat" khớp vào "vat tu" (vật tư);
+ *   * bỏ dấu làm hai cụm khác nghĩa thành một: "đủ toàn bộ" → "du toan bo" chứa
+ *     "du toan" (dự toán). Đã chạy thử: một hóa đơn thật ghi "khách đã thanh toán đủ
+ *     toàn bộ" bị gắn OCR_QUOTE_SIGNAL, trừ 0,25 điểm, đẩy sang cần người xem và tốn
+ *     thêm một lượt gọi model.
+ * "dự toán bộ" không phải cụm có nghĩa trong tiếng Việt, nên loại riêng đuôi " bo".
+ */
+const DOC_SIGNAL_PATTERNS = {
+    quote: [/\bbao gia\b/, /\bdu toan\b(?! bo\b)/, /\bquotation\b/, /\bquote\b/, /\bestimate\b/],
+    invoice: [/\bhoa don\b/, /\bphieu thu\b/, /\bbien nhan\b/, /\binvoice\b/, /\breceipt\b/],
+    vat: [/\bthue gtgt\b/, /\bthue suat\b/, /\btien thue\b/, /\bvat\b(?! (?:tu|lieu|dung|pham)\b)/],
+    unpaid: [/\bchua thanh toan\b/, /\bcon no\b/, /\bno lai\b/],
 };
+
+// Những cụm CÓ DẤU mà bỏ dấu đi thì trùng mặt chữ với dấu hiệu báo giá. Khi OCR đọc
+// được dấu (bản in rõ thường đọc được), dấu chính là thứ phân biệt được hai nghĩa.
+const QUOTE_LOOKALIKES = ['đủ toàn', 'dù toàn'];
 
 /**
  * Dò các cụm từ quyết định loại chứng từ, trên text đã bỏ dấu.
  *
  * Bỏ dấu trước khi dò là bắt buộc: Tesseract đọc tiếng Việt có dấu sai rất thường
  * xuyên ("BÁO GIÁ" ra "BAO GIA", "BÁO GlÁ", "BÁO G!Á"), nhưng phần chữ cái không dấu
- * thì gần như luôn đúng.
+ * thì gần như luôn đúng. Cái giá của việc bỏ dấu là những cặp chữ trùng mặt khi mất
+ * dấu — nên với cụm nào mơ hồ, quay lại soi dấu trên text gốc trước khi kết luận.
  */
 const detectDocSignals = (text) => {
     const flat = taxonomy.normalize(text);
+    const accented = String(text ?? '').toLowerCase().normalize('NFC');
+
     const found = {};
-    for (const [signal, phrases] of Object.entries(DOC_SIGNAL_PHRASES)) {
-        const hit = phrases.find((phrase) => flat.includes(phrase));
-        found[signal] = hit ?? null;
+    for (const [signal, patterns] of Object.entries(DOC_SIGNAL_PATTERNS)) {
+        found[signal] = patterns.map((pattern) => flat.match(pattern)?.[0]).find(Boolean) ?? null;
+    }
+
+    if (found.quote === 'du toan'
+        && QUOTE_LOOKALIKES.some((phrase) => accented.includes(phrase))
+        && !accented.includes('dự toán')) {
+        found.quote = null;
     }
     return found;
 };

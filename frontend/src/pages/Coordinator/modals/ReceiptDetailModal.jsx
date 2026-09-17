@@ -1,16 +1,14 @@
-import { useEffect, useState } from "react";
 import {
   Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
   Button, Input, Select, SelectItem, Textarea, Chip, Spinner, Image,
 } from "@heroui/react";
 import {
-  RiAddLine, RiCloseLine, RiCheckLine, RiErrorWarningLine, RiImageLine, RiLoader4Line,
+  RiAddLine, RiCloseLine, RiImageLine,
   RiMoneyDollarCircleLine, RiTruckLine, RiPriceTag3Line, RiFileTextLine,
 } from "react-icons/ri";
 
 const ic = (Icon) => <Icon size={16} className="text-gray-400 dark:text-gray-400 shrink-0" />;
 import { StatusBadge } from "../../../components/shared-ui/StatusBadge";
-import { coordinatorService } from "../services/coordinator.service";
 import { expenseTypeOptions, normalizeStatus } from "../utils";
 import { money } from "../../../utils/formatNumber";
 
@@ -41,27 +39,6 @@ export default function ReceiptDetailModal({
   open, detail, loading, form, publishing, onClose, onPublish,
   updateField, addExpense, updateExpense, updateExpenseShipment, removeExpense,
 }) {
-  const [ocrResults, setOcrResults] = useState({});
-  const [ocrLoading, setOcrLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !detail?.request?.id) return;
-    const allExpenses = (detail.shipments || []).flatMap((s) => s.expenses || []);
-    const hasImages = allExpenses.some((e) => Array.isArray(e.receipt_urls) && e.receipt_urls.length > 0);
-    if (!hasImages) return;
-
-    setOcrResults({});
-    setOcrLoading(true);
-    coordinatorService.scanReceiptExpenses(detail.request.id)
-      .then((data) => {
-        const map = {};
-        (data.results || []).forEach((r) => { map[r.expense_id] = r; });
-        setOcrResults(map);
-      })
-      .catch(() => { })
-      .finally(() => setOcrLoading(false));
-  }, [open, detail?.request?.id]);
-
   const shipments = detail?.shipments || (detail?.shipment ? [detail.shipment] : []);
   const primaryShipment = detail?.shipment || shipments[0] || null;
   const status = normalizeStatus(detail?.request?.status);
@@ -202,17 +179,8 @@ export default function ReceiptDetailModal({
 
                 <div className="flex flex-col gap-2">
                   {(detail.expenses || []).map((expense) => {
-                    const ocr = ocrResults[expense.id];
                     const images = Array.isArray(expense.receipt_urls) ? expense.receipt_urls : [];
                     const hasImage = images.length > 0;
-                    // Ba trạng thái, không phải hai. Chi phí chuyến có những khoản không
-                    // xác thực được (vé giữ xe viết tay, phí không hóa đơn), nên gắn nhãn
-                    // "Hợp lệ" cho cả thứ máy không đọc nổi là nói quá điều hệ thống biết.
-                    // `valid` giữ lại làm đường lùi cho phản hồi kiểu cũ.
-                    const ocrVerdict = ocr?.verdict ?? (ocr?.valid === true ? "passed" : ocr?.valid === false ? "rejected" : null);
-                    const ocrHint = ocr?.reject_reason
-                      || (ocr?.warnings || []).map((w) => w.message).join(" ")
-                      || undefined;
                     return (
                       <div key={expense.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-3 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
@@ -223,19 +191,6 @@ export default function ReceiptDetailModal({
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {hasImage && (
-                              ocrLoading && !ocr ? (
-                                <Chip size="sm" variant="flat" color="primary" startContent={<RiLoader4Line size={12} className="animate-spin" />}>Đang quét</Chip>
-                              ) : ocrVerdict === "passed" ? (
-                                <Chip size="sm" variant="flat" color="success" startContent={<RiCheckLine size={12} />}>Hợp lệ</Chip>
-                              ) : ocrVerdict === "needs_review" ? (
-                                <Chip size="sm" variant="flat" color="warning" startContent={<RiErrorWarningLine size={12} />}
-                                  title={ocrHint}>Cần xem</Chip>
-                              ) : ocrVerdict === "rejected" ? (
-                                <Chip size="sm" variant="flat" color="danger" startContent={<RiErrorWarningLine size={12} />}
-                                  title={ocrHint}>Không khớp</Chip>
-                              ) : null
-                            )}
                             {!hasImage && (
                               <Chip size="sm" variant="flat" startContent={<RiImageLine size={12} />}>Chưa có ảnh</Chip>
                             )}

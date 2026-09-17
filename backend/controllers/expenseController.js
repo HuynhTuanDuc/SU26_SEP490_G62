@@ -2,8 +2,8 @@ const expenseService = require('../services/expenseService');
 const { deleteUploadedFile } = require('../services/uploadCleanup');
 
 // POST /api/expenses
-// Driver tạo chi phí: lưu thẳng (status = pending), KHÔNG chạy AI đọc bill ở bước này.
-// AI đọc bill chỉ chạy trên web coordinator khi duyệt phiếu thu (scanReceiptExpenses).
+// Driver tạo chi phí: lưu thẳng (status = pending). Chi phí chuyến KHÔNG qua AI đọc hóa
+// đơn — dây chuyền đó chỉ dành cho hóa đơn bảo dưỡng; ảnh ở đây để điều phối xem bằng mắt.
 const createExpense = async (req, res) => {
     const receiptUrl  = req.file?.path     ?? null;
     const filePublicId = req.file?.filename ?? null;

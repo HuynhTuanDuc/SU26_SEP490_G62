@@ -82,7 +82,6 @@ export const coordinatorService = {
   getReceiptRequestDetail: (id) => apiRequest(`${BASE}/receipt-requests/${id}`),
   approveReceiptRequest: (id, data) => apiRequest(`${BASE}/receipt-requests/${id}/approve`, { method: "POST", body: data }),
   rejectReceiptRequest: (id, notes) => apiRequest(`${BASE}/receipt-requests/${id}/reject`, { method: "POST", body: { notes } }),
-  scanReceiptExpenses: (id) => apiRequest(`${BASE}/receipt-requests/${id}/scan-expenses`),
 
   // ─── Chi phí tài xế (coordinator là người duyệt/từ chối duy nhất) ────────
   getSpendingExpenses: (params = {}) => apiRequest(`${BASE}/expenses?${new URLSearchParams(params)}`),

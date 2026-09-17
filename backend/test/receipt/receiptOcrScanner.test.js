@@ -174,3 +174,37 @@ describe('receiptOcrScanner — dựng lại dòng từ kết quả Tesseract', 
         ]);
     });
 });
+
+describe('receiptOcrScanner — không nhận nhầm do bỏ dấu và dính giữa từ', () => {
+    it('"đủ toàn bộ" KHÔNG phải "dự toán"', () => {
+        // Lỗi thật, đã tái hiện: bỏ dấu biến "đủ toàn bộ" thành "du toan bo", chứa "du
+        // toan". Hóa đơn thật ghi "khách đã thanh toán đủ toàn bộ" bị gắn OCR_QUOTE_SIGNAL,
+        // trừ 0,25 điểm, đẩy sang cần người xem và tốn thêm một lượt gọi model.
+        assert.strictEqual(scanner.detectDocSignals('HÓA ĐƠN BÁN HÀNG. Khách đã thanh toán đủ toàn bộ').quote, null);
+        // Cùng câu đó khi OCR làm rơi hết dấu.
+        assert.strictEqual(scanner.detectDocSignals('HOA DON BAN HANG. Khach da thanh toan du toan bo').quote, null);
+        assert.strictEqual(scanner.detectDocSignals('Đã nhận dù toàn phần hàng').quote, null);
+    });
+
+    it('vẫn nhận ra dự toán thật', () => {
+        assert.strictEqual(scanner.detectDocSignals('BẢNG DỰ TOÁN CHI PHÍ SỬA CHỮA').quote, 'du toan');
+        assert.strictEqual(scanner.detectDocSignals('BANG DU TOAN SUA CHUA').quote, 'du toan');
+    });
+
+    it('dò theo biên từ: "vật tư" không phải VAT', () => {
+        assert.strictEqual(scanner.detectDocSignals('Vật tư phụ tùng thay thế').vat, null);
+        assert.strictEqual(scanner.detectDocSignals('Thuế GTGT 10%').vat, 'thue gtgt');
+        assert.strictEqual(scanner.detectDocSignals('Cong: 450.000 VAT 10%').vat, 'vat');
+    });
+});
+
+describe('receiptOcrScanner — đối chiếu số tiền có phần lẻ', () => {
+    it('làm tròn trước khi so, vì VNĐ không có phần lẻ', () => {
+        // Model có thể trả 1826000.4 sau khi tự ép kiểu. So thẳng với tập số nguyên thì
+        // không bao giờ khớp và sinh cảnh báo "không tìm thấy tổng tiền" oan.
+        const tokens = scanner.parseMoneyTokens('TONG CONG 1.826.000');
+
+        assert.strictEqual(scanner.amountAppearsIn(tokens, 1826000.4), 'yes');
+        assert.strictEqual(scanner.amountAppearsIn(tokens, 1825999.6), 'yes');
+    });
+});

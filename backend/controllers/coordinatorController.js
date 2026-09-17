@@ -1,6 +1,5 @@
 const coordinatorService = require('../services/coordinatorService');
 const expenseRepository  = require('../repositories/expenseRepository');
-const receiptValidationService = require('../services/receiptValidationService');
 const { validDate, sendError } = require('../utils/accountantValidate');
 const { money } = require('../utils/formatNumber');
 
@@ -115,80 +114,6 @@ const rejectReceiptRequest = async (req, res) => {
             : err.message.includes('đã được') ? 409
             : 500;
         res.status(code).json({ error: err.message });
-    }
-};
-
-const scanReceiptExpenses = async (req, res) => {
-    try {
-        const requestId = Number(req.params.id);
-        if (!requestId) return res.status(400).json({ error: 'Request ID không hợp lệ' });
-
-        const detail = await coordinatorService.getReceiptRequestDetail(requestId);
-        if (!detail) return res.status(404).json({ error: 'Không tìm thấy yêu cầu phiếu thu' });
-
-        // Gom tất cả expenses từ các shipment
-        const allExpenses = (detail.shipments || []).flatMap((s) => s.expenses || []);
-
-        // Lọc expense có ảnh hóa đơn
-        const toScan = allExpenses.filter((e) => Array.isArray(e.receipt_urls) && e.receipt_urls.length > 0);
-
-        // Đọc song song. `profile` là loại chi phí đang khai — nó quyết định hạng mục
-        // nào được coi là đúng chủ đề, nên hóa đơn xăng hợp lệ khi khai vào 'fuel' và
-        // bị từ chối khi khai vào 'maintenance'. Trước đây expenseType được nhận vào
-        // rồi bỏ không dùng, tức không hề kiểm tra hóa đơn có đúng loại chi phí hay không.
-        const results = await Promise.all(
-            toScan.map(async (expense) => {
-                const imageUrl = expense.receipt_urls[0];
-                try {
-                    const result = await receiptValidationService.validateReceipt(imageUrl, {
-                        claimedAmount: expense.amount,
-                        profile: expense.expense_type,
-                        entityType: 'expense',
-                        entityId: expense.id,
-                    });
-                    return {
-                        expense_id:    expense.id,
-                        // `valid` giữ nguyên cho FE cũ: chỉ `rejected` mới là không hợp lệ.
-                        valid:         !result.blocked,
-                        verdict:       result.verdict,
-                        reject_reason: result.reject_reason,
-                        // Cảnh báo để người duyệt biết cần nhìn gì, không dùng để chặn.
-                        warnings:      result.reasons.filter((r) => r.severity === 'warning'),
-                        receipt_total: result.receipt_total,
-                        line_items:    result.items,
-                        // Mức khớp giữa bản đọc của model và văn bản OCR quét độc lập
-                        // từ cùng tấm ảnh. `verdict` nói hóa đơn có hợp lệ không, con
-                        // số này nói MÁY CÓ ĐỌC ĐÚNG KHÔNG — một khoản "hợp lệ" với độ
-                        // tin cậy thấp là khoản phải mở ảnh ra xem tận nơi.
-                        confidence:       result.confidence,
-                        confidence_label: result.confidence_label,
-                    };
-                } catch (err) {
-                    // Sự cố ở đây KHÔNG được thành "hợp lệ" một cách im lặng như trước:
-                    // đánh dấu cần người xem để khoản đó không lọt khỏi tầm mắt.
-                    console.warn('[coordinator] Không kiểm tra được hóa đơn:', err.message);
-                    return {
-                        expense_id: expense.id,
-                        valid: true,
-                        verdict: 'needs_review',
-                        reject_reason: null,
-                        warnings: [{
-                            code: 'EXTRACTION_FAILED', severity: 'warning',
-                            message: 'Không kiểm tra tự động được hóa đơn này. Vui lòng kiểm tra bằng mắt.',
-                        }],
-                    };
-                }
-            }),
-        );
-
-        // Expense không có ảnh → bỏ qua (không scan)
-        const noImageIds = allExpenses
-            .filter((e) => !Array.isArray(e.receipt_urls) || e.receipt_urls.length === 0)
-            .map((e) => ({ expense_id: e.id, valid: null, reject_reason: null }));
-
-        res.json({ results: [...results, ...noImageIds] });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
     }
 };
 
@@ -362,7 +287,6 @@ module.exports = {
     getReceiptRequestDetail,
     approveReceiptRequest,
     rejectReceiptRequest,
-    scanReceiptExpenses,
     approveExpense,
     rejectExpense,
     unapproveExpense,

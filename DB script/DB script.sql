@@ -66,7 +66,8 @@ INSERT INTO schema_migrations (filename) VALUES
     ('20260907_receipt_ocr_pipeline.sql'),
     ('20260912_payroll_employment_days.sql'),
     ('20260913_driver_termination_date.sql'),
-    ('20260914_driver_termination_settlement.sql')
+    ('20260914_driver_termination_settlement.sql'),
+    ('20260917_maintenance_receipt_release.sql')
 ON CONFLICT (filename) DO NOTHING;
 
 CREATE TABLE accounts (
@@ -450,6 +451,9 @@ CREATE TABLE maintenance_records (
     started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at        TIMESTAMPTZ,
     bill_pics           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Kết quả đối chiếu CẢ ĐỢT lúc tài xế hoàn tất (20260917_maintenance_receipt_release):
+    -- tổng hóa đơn so với số khai, ảnh chứng từ bị gạt khỏi tổng... để màn duyệt chỉ ra được.
+    receipt_check       JSONB,
     created_by          INT REFERENCES profiles(id),
     completed_by        INT REFERENCES profiles(id),
     verified_by         INT REFERENCES profiles(id),
@@ -519,6 +523,10 @@ CREATE TABLE receipt_extractions (
     review_action   TEXT CHECK (review_action IN ('agree', 'override_accept', 'override_reject')),
     review_note     TEXT,
     reviewed_at     TIMESTAMPTZ,
+    -- Lần đọc đã được THẢ RA (20260917_maintenance_receipt_release): đợt bảo dưỡng bị trả về
+    -- làm lại/huỷ, hoặc ảnh không vào được đợt. Dò trùng không coi là hóa đơn đã dùng nữa
+    -- — chặn thì tài xế không bao giờ nộp lại được chính tờ hóa đơn thật — chỉ cảnh báo.
+    released_at     TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

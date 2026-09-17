@@ -164,13 +164,22 @@ const listMaintenanceForDriver = async (driverId) => {
     return records;
 };
 
-const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
-    const parsedVehicleId = Number(vehicleId);
-    if (!Number.isInteger(parsedVehicleId) || parsedVehicleId <= 0) {
-        throw createError('vehicle_id must be a positive integer', 400);
+// Các câu dưới đây hiện NGUYÊN VĂN trên app tài xế (Alert) — phải là tiếng Việt.
+const MAINTENANCE_NOT_OPEN_MESSAGE = 'Không tìm thấy đợt bảo dưỡng đang mở của bạn cho xe này.';
+const MAINTENANCE_ALREADY_SUBMITTED_MESSAGE = 'Đợt bảo dưỡng này đã được gửi duyệt. Vui lòng tải lại màn hình.';
+
+const parseVehicleId = (vehicleId) => {
+    const parsed = Number(vehicleId);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw createError('Mã xe không hợp lệ', 400);
     }
+    return parsed;
+};
+
+const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
+    const parsedVehicleId = parseVehicleId(vehicleId);
     if (!billUrl) {
-        throw createError('Bill image is required', 400);
+        throw createError('Thiếu ảnh hóa đơn', 400);
     }
 
     // Cho phép thêm bill cả khi yêu cầu bảo dưỡng còn chờ duyệt (requested)
@@ -178,7 +187,7 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
         parsedVehicleId, driverId, undefined, ['requested', 'open'],
     );
     if (!record) {
-        throw createError('Open maintenance record for this driver and vehicle was not found', 404);
+        throw createError(MAINTENANCE_NOT_OPEN_MESSAGE, 404);
     }
 
     // Quét tự động NGAY khi upload — chỉ với ảnh hóa đơn ở bước bảo dưỡng (open),
@@ -209,9 +218,31 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
         }
     }
 
-    const currentBillPics = Array.isArray(record.bill_pics) ? record.bill_pics : [];
-    const nextBillPics = [...currentBillPics, billUrl];
-    await vehicleManagementRepository.updateMaintenanceBillPics(record.id, nextBillPics);
+    // Thêm NGUYÊN TỬ và chỉ khi đợt vẫn ở đúng trạng thái đã quyết định việc quét ở trên.
+    // Lượt quét vừa rồi có thể mất vài chục giây, và app không khoá nút "Hoàn thành" trong
+    // lúc đó. Đã tái hiện với kiểu cũ (đọc mảng → quét → ghi đè cả mảng): tài xế bấm hoàn
+    // tất giữa chừng → ảnh này lẻn vào đợt ĐÃ gửi duyệt mà chưa hề qua đối chiếu số tiền.
+    let appended = null;
+    try {
+        appended = await vehicleManagementRepository.appendMaintenanceBill(record.id, billUrl, {
+            expectedStatus: record.status,
+        });
+    } finally {
+        // Ảnh đã quét (có dòng vết) mà không vào được đợt: thả dòng vết ra. Không thả thì
+        // lần sau tài xế tải lại đúng tờ hóa đơn này sẽ bị chặn "ảnh đã tải lên rồi" — bởi
+        // chính lần tải không thành này. Controller xoá tệp trên Cloudinary.
+        if (!appended && record.status === 'open') {
+            await receiptValidationService.releaseReceipts('maintenance_record', record.id, { imageUrl: billUrl });
+        }
+    }
+    if (!appended) {
+        throw createError(
+            'Đợt bảo dưỡng vừa được gửi duyệt hoặc đổi trạng thái nên ảnh này chưa được thêm. '
+            + 'Vui lòng tải lại màn hình rồi thử lại.',
+            409,
+        );
+    }
+    const nextBillPics = appended.bill_pics;
 
     {
         const payload = {
@@ -235,52 +266,83 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     return { maintenanceRecordId: record.id, bill_pics: nextBillPics };
 };
 
+// Không còn đợt 'open' thường là vì chính tài xế vừa gửi duyệt (bấm hai lần, hoặc app hết
+// thời gian chờ trong khi máy chủ vẫn hoàn tất). Nói "không tìm thấy" lúc đó là sai sự thật.
+const notOpenError = async (vehicleId, driverId) => {
+    const submitted = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(
+        vehicleId, driverId, undefined, ['pending_verification'],
+    );
+    return submitted
+        ? createError(MAINTENANCE_ALREADY_SUBMITTED_MESSAGE, 409)
+        : createError(MAINTENANCE_NOT_OPEN_MESSAGE, 404);
+};
+
 const updateMaintenanceCost = async (driverId, vehicleId, cost) => {
-    const parsedVehicleId = Number(vehicleId);
-    if (!Number.isInteger(parsedVehicleId) || parsedVehicleId <= 0) {
-        throw createError('vehicle_id must be a positive integer', 400);
-    }
+    const parsedVehicleId = parseVehicleId(vehicleId);
     // allowZero: bảo dưỡng trong bảo hành thì chi phí bằng 0 là hợp lệ.
     const parsedCost = requireMoney(cost, { field: 'Chi phí bảo dưỡng', allowZero: true });
 
     const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
     if (!record) {
-        throw createError('Open maintenance record for this driver and vehicle was not found', 404);
+        throw await notOpenError(parsedVehicleId, driverId);
     }
 
     await vehicleManagementRepository.updateMaintenanceCost(record.id, parsedCost);
     return { maintenanceRecordId: record.id, cost: parsedCost };
 };
 
+/** Phần của kết quả đối chiếu cả đợt đáng lưu lại cho màn duyệt của quản lý. */
+const summarizeReceiptCheck = (result) => ({
+    verdict: result?.verdict ?? 'needs_review',
+    reasons: result?.reasons ?? [],
+    receipt_total: result?.receipt_total ?? null,
+    confidence: result?.confidence ?? null,
+    checked_at: new Date().toISOString(),
+});
+
 const completeMaintenance = async (driverId, vehicleId, payload) => {
-    const parsedVehicleId = Number(vehicleId);
-    if (!Number.isInteger(parsedVehicleId) || parsedVehicleId <= 0) {
-        throw createError('vehicle_id must be a positive integer', 400);
-    }
+    const parsedVehicleId = parseVehicleId(vehicleId);
 
     const cost = parsePositiveAmount(payload?.cost, 'Chi phí bảo dưỡng');
 
     const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(parsedVehicleId, driverId);
     if (!record) {
-        throw createError('Open maintenance record for this driver and vehicle was not found', 404);
+        throw await notOpenError(parsedVehicleId, driverId);
     }
 
     const billPics = Array.isArray(record.bill_pics) ? record.bill_pics : [];
     if (billPics.length === 0) {
-        throw createError('At least one maintenance bill image is required before completion', 400);
+        throw createError('Cần ít nhất một ảnh hóa đơn trước khi hoàn tất bảo dưỡng', 400);
     }
 
     const receiptCheck = await assertMaintenanceCostMatchesBills(cost, billPics, record);
     const reviewCount = (receiptCheck?.reasons ?? []).filter((r) => r.severity === 'warning').length;
 
-    await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
-        vehicleId: parsedVehicleId,
-        maintenanceRecordId: record.id,
-        driverId,
-        billPics,
-        performedBy: driverId,
-        cost,
-    });
+    try {
+        await vehicleManagementRepository.completeMaintenanceRecordAndSetStatus({
+            vehicleId: parsedVehicleId,
+            maintenanceRecordId: record.id,
+            driverId,
+            billPics,
+            performedBy: driverId,
+            cost,
+            // Đúng danh sách ảnh vừa được đối chiếu — repository so lại dưới khoá.
+            expectedBillPics: billPics,
+            receiptCheck: summarizeReceiptCheck(receiptCheck),
+        });
+    } catch (err) {
+        if (err.code === 'OPEN_MAINTENANCE_NOT_FOUND') {
+            throw createError(MAINTENANCE_ALREADY_SUBMITTED_MESSAGE, 409);
+        }
+        if (err.code === 'MAINTENANCE_BILLS_CHANGED') {
+            throw createError(
+                'Có ảnh hóa đơn vừa được thêm trong lúc hệ thống kiểm tra. '
+                + 'Vui lòng bấm "Hoàn thành bảo dưỡng" lại để kiểm tra đủ mọi ảnh.',
+                409,
+            );
+        }
+        throw err;
+    }
 
     const vehicle = await vehicleManagementRepository.getVehicleById(parsedVehicleId);
     const notificationMessage = buildMaintenanceVerificationMessage(vehicle, reviewCount);

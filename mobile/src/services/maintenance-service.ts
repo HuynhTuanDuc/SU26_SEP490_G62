@@ -46,6 +46,9 @@ export const maintenanceService = {
     saveCost: (vehicleId: number, cost: number): Promise<{ maintenanceRecordId: number; cost: number }> =>
         apiClient.patch(`/api/drivers/maintenance/${vehicleId}/cost`, { cost }),
 
+    // Hoàn tất đọc lại MỌI ảnh hóa đơn của đợt; ảnh gửi kèm yêu cầu chưa từng được quét nên
+    // chạy đủ dây chuyền (vài ảnh song song, mỗi ảnh tới vài chục giây). Hạn 30 giây mặc định
+    // cắt ngang trong khi máy chủ vẫn hoàn tất — tài xế thấy lỗi mà đợt đã gửi duyệt.
     complete: (vehicleId: number, cost: number): Promise<{ maintenanceRecordId: number }> =>
-        apiClient.post(`/api/drivers/maintenance/${vehicleId}/complete`, { cost }),
+        apiClient.post(`/api/drivers/maintenance/${vehicleId}/complete`, { cost }, { timeoutMs: 90_000 }),
 };

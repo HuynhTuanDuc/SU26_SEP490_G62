@@ -289,30 +289,6 @@
 
 /**
  * @swagger
- * /api/coordinator/receipt-requests/{id}/scan-expenses:
- *   get:
- *     tags: [Coordinator]
- *     summary: Quét OCR đối chiếu ảnh hóa đơn chi phí của các chuyến trong yêu cầu phiếu thu
- *     description: |
- *       Gom toàn bộ expenses của các shipment trong yêu cầu, chỉ scan các expense có ảnh hóa đơn
- *       (receipt_urls). Expense không có ảnh trả về valid = null (bỏ qua, không scan).
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *         description: order_receipt_requests.id
- *     responses:
- *       200:
- *         description: Mảng kết quả OCR theo từng expense_id (valid, reject_reason)
- *       404:
- *         description: Không tìm thấy yêu cầu phiếu thu
- */
-
-/**
- * @swagger
  * /api/coordinator/expenses/{id}/approve:
  *   patch:
  *     tags: [Coordinator]

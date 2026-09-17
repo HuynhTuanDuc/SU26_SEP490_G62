@@ -212,10 +212,9 @@ const MAINTENANCE_CATEGORIES = DEFAULT_TAXONOMY
 /**
  * Hạng mục nào được coi là ĐÚNG CHỦ ĐỀ cho từng loại chi phí.
  *
- * Cùng một bộ khung kiểm tra dùng lại được cho mọi loại chi phí, chỉ đổi danh sách này
- * — hóa đơn xăng là hợp lệ khi khai vào loại "Nhiên liệu" và không hợp lệ khi khai vào
- * "Bảo dưỡng". Nếu đóng cứng luật "phải thuộc bảo dưỡng" vào lõi thì mọi hóa đơn xăng
- * đều bị từ chối oan ở luồng chi phí chuyến.
+ * Hiện chỉ luồng BẢO DƯỠNG chạy dây chuyền đọc hóa đơn (chi phí chuyến không quét). Các
+ * hồ sơ còn lại vẫn giữ vì câu từ chối OFF_TOPIC_INVOICE dùng chúng để chỉ đúng loại chi
+ * phí phải khai — "hóa đơn xăng → khai vào Nhiên liệu" (receiptChecks.checkCategories).
  *
  * `accepted: null` nghĩa là KHÔNG kiểm tra hạng mục — với các loại chi phí không có
  * danh mục hàng hóa đặc trưng (khấu hao, khác) thì mọi tên hàng đều có thể đúng, và

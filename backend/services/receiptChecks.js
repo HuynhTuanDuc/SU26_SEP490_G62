@@ -639,6 +639,7 @@ const describeEntity = (entityType, entityId) => (entityType === 'expense'
  *   * cùng bản ghi  — tài xế bấm nộp hai lần, ảnh đã có rồi, chỉ cần bỏ qua
  *   * khác bản ghi  — một hóa đơn dùng cho hai đợt: đây là kiểu gian lận dễ làm nhất
  *                     và trước đây hệ thống không chặn gì cả
+ * Lần nộp đã bị trả về/huỷ (released_at) không chặn, chỉ cảnh báo — xem thân hàm.
  *
  * @param {Array} matches  các dòng receipt_extractions khớp khoá, KHÔNG gồm dòng hiện tại
  * @param {{entityType: string, entityId: number|null}} current
@@ -647,10 +648,35 @@ const checkDuplicates = (matches, current) => {
     const reasons = [];
     if (!Array.isArray(matches) || matches.length === 0) return reasons;
 
-    const sameEntity = matches.filter((row) => row.entity_type === current.entityType
-        && Number(row.entity_id) === Number(current.entityId));
-    const otherEntity = matches.filter((row) => !(row.entity_type === current.entityType
-        && Number(row.entity_id) === Number(current.entityId)));
+    const isSameEntity = (row) => row.entity_type === current.entityType
+        && Number(row.entity_id) === Number(current.entityId);
+
+    // Cùng khoản VÀ cùng URL ảnh không phải là nộp lại — đó là đọc lại ĐÚNG lần tải lên
+    // đó. Chuyện này xảy ra mỗi khi lần đọc đầu hỏng vì hạ tầng (Gemini 503/timeout):
+    // vết ghi lại không có bản đọc nên bước hoàn tất không dùng lại được, phải đọc lại
+    // từ đầu, và lần đọc lại tìm thấy đúng dòng vết của chính nó.
+    //
+    // Trước khi có dòng lọc này, đã tái hiện được: Gemini lỗi lúc tải ảnh → tài xế bấm
+    // hoàn tất → bị CHẶN với câu "ảnh đã tải lên cho chính khoản này rồi, vui lòng chọn
+    // ảnh khác" — không làm gì sai, và cũng không có ảnh nào khác để chọn.
+    //
+    // Nộp lại thật sự (bấm tải hai lần, chụp lại cùng tờ giấy) luôn sinh ra URL MỚI, vì
+    // mỗi lần tải lên là một tệp mới trên Cloudinary — nên vẫn bị bắt như cũ.
+    const relevant = current.imageUrl
+        ? matches.filter((row) => !(isSameEntity(row) && row.image_url === current.imageUrl))
+        : matches;
+    if (relevant.length === 0) return reasons;
+
+    // Lần đọc đã THẢ RA (released_at) — đợt bảo dưỡng bị quản lý trả về làm lại hoặc huỷ,
+    // hay ảnh không vào được đợt — là hóa đơn CHƯA được dùng vào đâu. Trả về làm lại xoá
+    // sạch bill_pics và app bảo tài xế "chụp lại hoá đơn"; tờ hóa đơn thật vẫn là tờ đó.
+    // Đã tái hiện: chặn ở đây thì tài xế không bao giờ nộp lại được. Nên chỉ cảnh báo, để
+    // người duyệt biết tờ này từng bị trả về và đối chiếu với lý do lần trước.
+    const active = relevant.filter((row) => !row.released_at);
+    const released = relevant.filter((row) => row.released_at);
+
+    const sameEntity = active.filter(isSameEntity);
+    const otherEntity = active.filter((row) => !isSameEntity(row));
 
     if (otherEntity.length > 0) {
         const where = [...new Set(otherEntity.map((row) => describeEntity(row.entity_type, row.entity_id)))];
@@ -661,9 +687,21 @@ const checkDuplicates = (matches, current) => {
         return reasons;
     }
 
-    reasons.push(reason('DUPLICATE_IMAGE_SAME_RECORD', 'error',
-        'Ảnh hóa đơn này đã được tải lên cho chính khoản này rồi. Vui lòng chọn ảnh khác.',
-        { matches: sameEntity.map((row) => ({ id: row.id, image_url: row.image_url })) }));
+    if (sameEntity.length > 0) {
+        reasons.push(reason('DUPLICATE_IMAGE_SAME_RECORD', 'error',
+            'Ảnh hóa đơn này đã được tải lên cho chính khoản này rồi. Vui lòng chọn ảnh khác.',
+            { matches: sameEntity.map((row) => ({ id: row.id, image_url: row.image_url })) }));
+        return reasons;
+    }
+
+    const elsewhere = [...new Set(released
+        .filter((row) => !isSameEntity(row))
+        .map((row) => describeEntity(row.entity_type, row.entity_id)))];
+    reasons.push(reason('RECEIPT_PREVIOUSLY_RETURNED', 'warning',
+        elsewhere.length > 0
+            ? `Hóa đơn này từng được nộp cho ${elsewhere.join(', ')} — lần nộp đó đã bị trả về hoặc huỷ. Người duyệt vui lòng kiểm tra lại.`
+            : 'Hóa đơn này đã được nộp cho chính khoản này trước khi bị trả về làm lại. Người duyệt đối chiếu với lý do lần trước.',
+        { matches: released.map((row) => ({ id: row.id, entity_type: row.entity_type, entity_id: row.entity_id, released_at: row.released_at })) }));
 
     return reasons;
 };
@@ -805,6 +843,7 @@ const evaluateReceipt = (extraction, context = {}) => {
     reasons.push(...checkDuplicates(context.duplicateMatches, {
         entityType: context.entityType ?? 'maintenance_record',
         entityId: context.entityId ?? null,
+        imageUrl: context.imageUrl ?? null,
     }));
 
     const unreadable = Array.isArray(extraction?.unreadable_fields) ? extraction.unreadable_fields : [];

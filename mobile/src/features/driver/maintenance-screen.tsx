@@ -240,9 +240,9 @@ function MaintenanceCard({
                                 </Text>
                                 {(isOpen || isRequested) && (
                                     <Pressable
-                                        style={[s.uploadBtn, (uploading || needsCostBeforeBill) && { opacity: 0.5 }]}
+                                        style={[s.uploadBtn, (uploading || completing || needsCostBeforeBill) && { opacity: 0.5 }]}
                                         onPress={() => setShowCamera(true)}
-                                        disabled={uploading || needsCostBeforeBill}
+                                        disabled={uploading || completing || needsCostBeforeBill}
                                     >
                                         {uploading
                                             ? <ActivityIndicator size="small" color={appTheme.colors.primary} />
@@ -294,11 +294,13 @@ function MaintenanceCard({
                             </XStack>
                         )}
 
+                        {/* Khoá trong lúc ảnh đang "Đang kiểm tra...": hoàn tất lúc đó thì ảnh
+                            đang quét không nằm trong lần đối chiếu số tiền (máy chủ sẽ từ chối). */}
                         {isOpen && (
                             <Pressable
-                                style={[s.completeBtn, completing && { opacity: 0.6 }]}
+                                style={[s.completeBtn, (completing || uploading) && { opacity: 0.6 }]}
                                 onPress={handleComplete}
-                                disabled={completing}
+                                disabled={completing || uploading}
                             >
                                 {completing
                                     ? <ActivityIndicator color="#fff" size="small" />
@@ -479,16 +481,23 @@ export function MaintenanceScreen() {
         setRefreshing(false);
     };
 
+    // 409 = trạng thái trên máy chủ đã khác màn hình (đợt vừa gửi duyệt, hoặc có ảnh mới
+    // trong lúc kiểm tra). Tải lại để tài xế nhìn thấy đúng trạng thái trước khi thử lại.
+    const reloadOnConflict = async (err: unknown) => {
+        if ((err as { status?: number })?.status === 409) await reload(false);
+        throw err;
+    };
+
     const handleBillUploaded = async (vehicleId: number, uri: string, cost: number | null) => {
         // Chốt chi phí lên server trước khi gửi ảnh để bước quét hóa đơn có số tiền
         // mà đối chiếu — thứ tự này là phần chống vượt rào, không chỉ để tiện tay.
         if (cost && cost > 0) await maintenanceService.saveCost(vehicleId, cost);
-        await maintenanceService.uploadBill(vehicleId, uri);
+        await maintenanceService.uploadBill(vehicleId, uri).catch(reloadOnConflict);
         await reload(false);
     };
 
     const handleCompleted = async (vehicleId: number, cost: number) => {
-        await maintenanceService.complete(vehicleId, cost);
+        await maintenanceService.complete(vehicleId, cost).catch(reloadOnConflict);
         await reload(false);
     };
 
