@@ -27,13 +27,13 @@ const MANAGER = 1;
 const DRIVER = 4;
 
 /** Hóa đơn bảo dưỡng tự khớp số học. `invoiceNo` là khoá nhận dạng tờ giấy. */
-const bill = (total, { invoiceNo = 'HD-1', docType = 'invoice' } = {}) => ({
+const bill = (total, { invoiceNo = 'HD-1', docType = 'invoice', plate = null } = {}) => ({
     is_document: true,
     doc_type: docType,
     vendor: { name: 'Garage Thành Công', tax_code: '0101234567', address: null, phone: null },
     invoice_no: invoiceNo,
     issued_date: null,
-    vehicle_plate: null,
+    vehicle_plate: plate,
     currency: 'VND',
     line_items: [
         { raw_name: 'Thay nhớt động cơ', quantity: 1, unit: 'lần', unit_price: total, line_total: total, category: 'engine_oil' },
@@ -61,7 +61,7 @@ const catchErr = async (promise) => {
 };
 
 let seq = 0;
-const newRecord = async ({ status = 'open', cost = 450_000, billPics = [] } = {}) => {
+const newRecord = async ({ status = 'open', cost = 450_000, billPics = [], requestPics = [] } = {}) => {
     seq += 1;
     const vehicleId = 500 + seq;
     await pool.query(
@@ -71,17 +71,19 @@ const newRecord = async ({ status = 'open', cost = 450_000, billPics = [] } = {}
     const { rows: [row] } = await pool.query(
         `INSERT INTO maintenance_records
             (vehicle_id, maintenance_type, description, cost, maintenance_date, performed_by,
-             status, bill_pics, created_by, started_at)
-         VALUES ($1, 'scheduled', 'Thay nhớt', $2, CURRENT_DATE, $3, $4, $5::jsonb, $6, NOW() - INTERVAL '1 day')
+             status, bill_pics, request_pics, created_by, started_at)
+         VALUES ($1, 'scheduled', 'Thay nhớt', $2, CURRENT_DATE, $3, $4, $5::jsonb, $7::jsonb, $6, NOW() - INTERVAL '1 day')
          RETURNING id`,
-        [vehicleId, cost, DRIVER, status, JSON.stringify(billPics), MANAGER],
+        [vehicleId, cost, DRIVER, status, JSON.stringify(billPics), MANAGER, JSON.stringify(requestPics)],
     );
     return { vehicleId, recordId: row.id };
 };
 
 const readRecord = async (recordId) => (await pool.query(
-    'SELECT status, bill_pics, cost FROM maintenance_records WHERE id = $1', [recordId],
+    'SELECT status, bill_pics, request_pics, cost FROM maintenance_records WHERE id = $1', [recordId],
 )).rows[0];
+
+const plateOf = async (vehicleId) => (await pool.query('SELECT plate_number FROM vehicles WHERE id = $1', [vehicleId])).rows[0].plate_number;
 
 beforeAll(async () => {
     ({ pool, teardown } = await setupTestDb());
@@ -315,20 +317,150 @@ describe('Màn duyệt của quản lý', () => {
         assert.strictEqual(review.summary.rejected_uploads, 1);
     });
 
-    it('hiện đúng những điểm bước hoàn tất đã nêu, kể cả điểm ở mức cả đợt', async () => {
-        // Báo giá gửi kèm yêu cầu: bước hoàn tất gạt ra khỏi tổng và gắn cảnh báo. Thông báo
-        // gửi quản lý nói "Có N điểm cần kiểm tra" — màn duyệt phải chỉ ra được điểm đó.
-        const { vehicleId, recordId } = await newRecord({ billPics: ['https://cdn/bao-gia-yc.jpg'] });
-        images['https://cdn/bao-gia-yc.jpg'] = { sha: 'sha-bgyc', bill: bill(480_000, { invoiceNo: 'BG-2', docType: 'quote' }) };
+    it('hiện đúng những điểm bước hoàn tất đã nêu ở mức cả đợt', async () => {
+        // Thông báo gửi quản lý nói "Có N điểm cần kiểm tra" — màn duyệt phải chỉ ra được
+        // điểm đó, kể cả điểm không thuộc riêng tờ nào (số khai lệch nhẹ so với tổng).
+        const { vehicleId, recordId } = await newRecord({ requestPics: ['https://cdn/bao-gia-yc.jpg'] });
         images['https://cdn/hd-cuoi.jpg'] = { sha: 'sha-hdc', bill: bill(450_000, { invoiceNo: 'HD-41' }) };
         await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/hd-cuoi.jpg');
-        await driverService.completeMaintenance(DRIVER, vehicleId, { cost: 450_000 });
+        await driverService.completeMaintenance(DRIVER, vehicleId, { cost: 455_000 });
 
         const review = await callReceipts(recordId);
 
-        assert.ok(review.record_checks.some((r) => r.code === 'SUPPORTING_DOCUMENT'), JSON.stringify(review.record_checks));
-        const quote = review.receipts.find((r) => r.image_url === 'https://cdn/bao-gia-yc.jpg');
-        assert.strictEqual(quote.supporting, true);
-        assert.strictEqual(review.summary.rejected, 0, 'báo giá gửi kèm không phải "hóa đơn không đạt"');
+        assert.ok(review.record_checks.some((r) => r.code === 'AMOUNT_MINOR_DIFF'), JSON.stringify(review.record_checks));
+        assert.deepStrictEqual(review.receipts.map((r) => r.image_url), ['https://cdn/hd-cuoi.jpg'],
+            'ảnh báo giá lúc yêu cầu không phải hóa đơn của đợt');
+    });
+});
+
+describe('Tài xế xoá ảnh chụp nhầm', () => {
+    it('xoá ảnh sai rồi tải lại đúng hóa đơn đó: không bị chặn, không bị gắn cảnh báo', async () => {
+        const { vehicleId, recordId } = await newRecord();
+        images['https://cdn/nham.jpg'] = { sha: 'sha-nham', bill: bill(450_000, { invoiceNo: 'HD-50' }) };
+        images['https://cdn/lai.jpg'] = { sha: 'sha-nham', bill: bill(450_000, { invoiceNo: 'HD-50' }) };
+
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/nham.jpg');
+        const removed = await driverService.removeMaintenancePhoto(DRIVER, vehicleId, 'https://cdn/nham.jpg');
+        assert.deepStrictEqual(removed.bill_pics, []);
+
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/lai.jpg');
+
+        const { rows: [row] } = await pool.query(
+            `SELECT verdict, checks FROM receipt_extractions WHERE image_url = 'https://cdn/lai.jpg'`,
+        );
+        assert.strictEqual(row.verdict, 'passed', JSON.stringify(row.checks));
+        const { rows: [old] } = await pool.query(
+            `SELECT release_reason FROM receipt_extractions WHERE image_url = 'https://cdn/nham.jpg'`,
+        );
+        assert.strictEqual(old.release_reason, 'removed');
+        assert.deepStrictEqual((await readRecord(recordId)).bill_pics, ['https://cdn/lai.jpg']);
+    });
+
+    it('nộp nhiều ảnh mà một ảnh không thuộc đợt thì KHÔNG hoàn tất được — xoá ảnh đó là xong', async () => {
+        // Người dùng báo: upload nhiều ảnh, một ảnh đúng thì các ảnh sai vẫn được chấp.
+        const { vehicleId, recordId } = await newRecord({ cost: 450_000 });
+        images['https://cdn/dung.jpg'] = { sha: 'sha-dung-2', bill: bill(450_000, { invoiceNo: 'HD-60' }) };
+        images['https://cdn/thua.jpg'] = { sha: 'sha-thua', bill: bill(200_000, { invoiceNo: 'HD-61' }) };
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/dung.jpg');
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/thua.jpg');
+
+        const err = await catchErr(driverService.completeMaintenance(DRIVER, vehicleId, { cost: 450_000 }));
+        assert.strictEqual(err?.statusCode, 422);
+        assert.match(err.message, /xoá bớt/);
+
+        await driverService.removeMaintenancePhoto(DRIVER, vehicleId, 'https://cdn/thua.jpg');
+        await driverService.completeMaintenance(DRIVER, vehicleId, { cost: 450_000 });
+        assert.strictEqual((await readRecord(recordId)).status, 'pending_verification');
+    });
+
+    it('không xoá được ảnh khi đợt đã gửi duyệt', async () => {
+        const { vehicleId } = await newRecord();
+        images['https://cdn/da-gui.jpg'] = { sha: 'sha-dg', bill: bill(450_000, { invoiceNo: 'HD-70' }) };
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/da-gui.jpg');
+        await driverService.completeMaintenance(DRIVER, vehicleId, { cost: 450_000 });
+
+        const err = await catchErr(driverService.removeMaintenancePhoto(DRIVER, vehicleId, 'https://cdn/da-gui.jpg'));
+        assert.strictEqual(err?.statusCode, 409);
+    });
+
+    it('xoá ảnh không có trong đợt báo 404 rõ ràng', async () => {
+        const { vehicleId } = await newRecord();
+        const err = await catchErr(driverService.removeMaintenancePhoto(DRIVER, vehicleId, 'https://cdn/khong-co.jpg'));
+        assert.strictEqual(err?.statusCode, 404);
+    });
+});
+
+describe('Ảnh chụp lúc gửi yêu cầu tách khỏi hóa đơn', () => {
+    it('ảnh tải lúc còn chờ duyệt vào request_pics, không bị chấm như hóa đơn ở bước hoàn tất', async () => {
+        const { vehicleId, recordId } = await newRecord({ status: 'requested' });
+        images['https://cdn/bao-gia.jpg'] = { sha: 'sha-bg-3', bill: bill(480_000, { invoiceNo: 'BG-3', docType: 'quote' }) };
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/bao-gia.jpg');
+        assert.deepStrictEqual((await readRecord(recordId)).request_pics, ['https://cdn/bao-gia.jpg']);
+
+        await pool.query(`UPDATE maintenance_records SET status = 'open' WHERE id = $1`, [recordId]);
+        images['https://cdn/hd-80.jpg'] = { sha: 'sha-80', bill: bill(450_000, { invoiceNo: 'HD-80' }) };
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/hd-80.jpg');
+        await driverService.completeMaintenance(DRIVER, vehicleId, { cost: 450_000 });
+
+        const after = await readRecord(recordId);
+        assert.strictEqual(after.status, 'pending_verification');
+        assert.deepStrictEqual(after.bill_pics, ['https://cdn/hd-80.jpg']);
+        assert.deepStrictEqual(after.request_pics, ['https://cdn/bao-gia.jpg']);
+    });
+
+    it('chỉ có ảnh lúc yêu cầu mà chưa có hóa đơn nào thì chưa hoàn tất được', async () => {
+        const { vehicleId } = await newRecord({ requestPics: ['https://cdn/chi-bao-gia.jpg'] });
+        const err = await catchErr(driverService.completeMaintenance(DRIVER, vehicleId, { cost: 450_000 }));
+        assert.strictEqual(err?.statusCode, 400);
+        assert.match(err.message, /hóa đơn thanh toán/);
+    });
+});
+
+describe('Biển số trên hóa đơn', () => {
+    it('hóa đơn ghi biển số xe khác bị chặn ngay lúc tải', async () => {
+        const { vehicleId } = await newRecord();
+        images['https://cdn/xe-khac.jpg'] = { sha: 'sha-xk', bill: bill(450_000, { invoiceNo: 'HD-90', plate: '29H-888.88' }) };
+
+        const err = await catchErr(driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/xe-khac.jpg'));
+
+        assert.strictEqual(err?.statusCode, 422);
+        assert.match(err.message, /không phải xe đang bảo dưỡng/);
+    });
+
+    it('hóa đơn ghi đúng biển số của xe thì qua', async () => {
+        const { vehicleId, recordId } = await newRecord();
+        images['https://cdn/dung-xe.jpg'] = { sha: 'sha-dx', bill: bill(450_000, { invoiceNo: 'HD-92', plate: await plateOf(vehicleId) }) };
+
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/dung-xe.jpg');
+
+        assert.deepStrictEqual((await readRecord(recordId)).bill_pics, ['https://cdn/dung-xe.jpg']);
+    });
+});
+
+describe('Số tiền tài xế khai giữ nguyên từng đồng', () => {
+    it('khai 1.234.567đ → lưu, tải ảnh, hoàn tất: DB và kết quả đối chiếu vẫn đúng 1.234.567đ', async () => {
+        const { vehicleId, recordId } = await newRecord({ cost: null });
+        images['https://cdn/le-dong.jpg'] = { sha: 'sha-le', bill: bill(1_234_567, { invoiceNo: 'HD-100' }) };
+
+        await driverService.updateMaintenanceCost(DRIVER, vehicleId, 1_234_567);
+        assert.strictEqual(Number((await readRecord(recordId)).cost), 1_234_567);
+
+        await driverService.uploadMaintenanceBill(DRIVER, vehicleId, 'https://cdn/le-dong.jpg');
+        assert.strictEqual(Number((await readRecord(recordId)).cost), 1_234_567, 'tải ảnh không được đổi số tiền đã khai');
+
+        await driverService.completeMaintenance(DRIVER, vehicleId, { cost: 1_234_567 });
+        const { rows: [row] } = await pool.query('SELECT cost::text, receipt_check FROM maintenance_records WHERE id = $1', [recordId]);
+        assert.strictEqual(row.cost, '1234567.00');
+        assert.strictEqual(row.receipt_check.receipt_total, 1_234_567);
+    });
+
+    it('khai số có phần lẻ bị từ chối rõ ràng — không lặng lẽ làm tròn', async () => {
+        const { vehicleId, recordId } = await newRecord({ cost: null });
+
+        const err = await catchErr(driverService.updateMaintenanceCost(DRIVER, vehicleId, '45.5'));
+
+        assert.strictEqual(err?.statusCode, 400);
+        assert.match(err.message, /không tự làm tròn/);
+        assert.strictEqual((await readRecord(recordId)).cost, null, 'không được lưu một con số khác với số đã khai');
     });
 });

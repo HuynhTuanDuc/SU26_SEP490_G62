@@ -163,6 +163,33 @@
  *         description: >
  *           Ảnh không đọc được số tiền, hoặc tổng hóa đơn không khớp chi phí đã lưu.
  *           Ảnh KHÔNG được lưu — driver phải chụp/chọn ảnh khác.
+ *       409:
+ *         description: Đợt bảo dưỡng vừa đổi trạng thái (đã gửi duyệt) trong lúc quét ảnh
+ *   delete:
+ *     tags: [Drivers]
+ *     summary: Xoá một ảnh đã tải khỏi đợt bảo dưỡng (Driver only)
+ *     description: >
+ *       Gỡ ảnh chụp nhầm — hóa đơn (bill_pics) hoặc ảnh gửi kèm yêu cầu (request_pics).
+ *       Chỉ khi đợt còn ở trạng thái requested/open. Tệp trên Cloudinary bị xoá theo.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: vehicleId
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: url
+ *         required: true
+ *         schema: { type: string }
+ *         description: URL ảnh đúng như trong bill_pics / request_pics
+ *     responses:
+ *       200:
+ *         description: Đã xoá — trả bill_pics và request_pics mới
+ *       404:
+ *         description: Không có ảnh này trong đợt đang mở
+ *       409:
+ *         description: Đợt đã gửi duyệt, không xoá được nữa
  */
 
 /**

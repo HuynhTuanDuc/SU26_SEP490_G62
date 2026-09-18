@@ -78,7 +78,7 @@ const findDuplicates = async ({ imageSha256, vendorKey, invoiceNoKey, excludeId 
 
     const result = await pool.query(
         `SELECT id, entity_type, entity_id, image_url, image_sha256,
-                vendor_key, invoice_no_key, receipt_total::text, verdict, released_at, created_at
+                vendor_key, invoice_no_key, receipt_total::text, verdict, released_at, release_reason, created_at
            FROM receipt_extractions
           WHERE verdict <> 'rejected'
             AND ($4::int IS NULL OR id <> $4)
@@ -143,18 +143,21 @@ const updateVerdict = async (id, { checks, verdict }) => {
 /**
  * Thả các lần đọc của một khoản ra khỏi lớp dò trùng: tờ hóa đơn không còn thuộc khoản đó.
  *
- * Gọi khi quản lý trả về làm lại / huỷ đợt bảo dưỡng (trong cùng giao dịch, qua `db`), và
- * khi một ảnh đã quét xong mà không vào được đợt. `imageUrl` giới hạn vào đúng một ảnh.
+ * Gọi khi quản lý trả về làm lại / huỷ đợt bảo dưỡng (trong cùng giao dịch, qua `db`), khi
+ * tài xế tự xoá một ảnh, và khi một ảnh đã quét xong mà không vào được đợt. `imageUrl` giới
+ * hạn vào đúng một ảnh. `reason`: returned | cancelled | removed | not_attached — lớp dò
+ * trùng dựa vào đó để biết có đáng nhắc người duyệt hay không.
  */
-const releaseByEntity = async (entityType, entityId, { imageUrl = null } = {}, db = pool) => {
+const releaseByEntity = async (entityType, entityId, { imageUrl = null, reason = 'returned' } = {}, db = pool) => {
     const result = await db.query(
         `UPDATE receipt_extractions
-            SET released_at = NOW()
+            SET released_at = NOW(),
+                release_reason = $4
           WHERE entity_type = $1
             AND entity_id = $2
             AND released_at IS NULL
             AND ($3::text IS NULL OR image_url = $3)`,
-        [entityType, entityId, imageUrl],
+        [entityType, entityId, imageUrl, reason],
     );
     return result.rowCount;
 };
@@ -169,7 +172,7 @@ const listByEntity = async (entityType, entityId) => {
                 re.confidence::text, re.image_width, re.image_height, re.pipeline,
                 re.review_action, re.review_note, re.reviewed_at, re.reviewed_by,
                 p.full_name AS reviewed_by_name,
-                re.released_at, re.created_at
+                re.released_at, re.release_reason, re.created_at
            FROM receipt_extractions re
            LEFT JOIN profiles p ON p.id = re.reviewed_by
           WHERE re.entity_type = $1 AND re.entity_id = $2

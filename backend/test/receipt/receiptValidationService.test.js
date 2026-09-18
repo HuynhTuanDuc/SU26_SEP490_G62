@@ -75,14 +75,15 @@ describe('receiptValidationService', () => {
         assert.strictEqual(result.blocked, false);
     });
 
-    it('chấp nhận khi số khai khớp hóa đơn LỚN NHẤT — tài xế chụp trùng nhiều góc', async () => {
-        // Chỉ so tổng thì ca này bị từ chối oan: cùng một hóa đơn 500k chụp hai lần
-        // sẽ cộng thành 1 triệu.
+    it('KHÔNG chấp nhận chỉ vì số khai khớp hóa đơn lớn nhất — mọi ảnh đều được cộng', async () => {
+        // Trước đây khớp hóa đơn lớn nhất là qua, nên một ảnh đúng kéo theo mọi ảnh sai
+        // tới bàn duyệt. Tài xế giờ xoá được ảnh chụp trùng, nên số khai phải khớp TỔNG.
         mock.method(extractor, 'extractReceipt', async () => okResult(500_000));
 
         const result = await service.validateMaintenanceBills(['a.jpg', 'b.jpg'], { claimedAmount: 500_000 });
 
-        assert.strictEqual(result.verdict, 'passed');
+        assert.strictEqual(result.verdict, 'rejected');
+        assert.match(result.reject_reason, /xoá bớt/);
     });
 
     it('từ chối khi số khai không khớp cả tổng lẫn hóa đơn lớn nhất', async () => {
@@ -443,29 +444,26 @@ describe('receiptValidationService — bước hoàn tất không được đẩ
         assert.strictEqual(result.verdict, 'passed');
     });
 
-    it('báo giá gửi kèm yêu cầu KHÔNG chặn hoàn tất, và không bị cộng vào tổng', async () => {
-        // Đã tái hiện: app mời chụp "chứng từ / báo giá" lúc gửi yêu cầu, ảnh đó vào đúng
-        // cột bill_pics, và bước hoàn tất chấm nó như hóa đơn → WRONG_DOC_TYPE → tài xế có
-        // hóa đơn thật khớp từng đồng vẫn bị chặn, và kẹt vĩnh viễn vì không có API gỡ ảnh.
+    it('một ảnh KHÔNG phải hóa đơn trong bill_pics chặn hoàn tất, kể cả khi ảnh kia đúng', async () => {
+        // Người dùng báo: nộp nhiều ảnh, một ảnh đúng là các ảnh sai vẫn được chấp. Ảnh gửi
+        // kèm yêu cầu giờ nằm ở request_pics; trong bill_pics chỉ được có hóa đơn.
         mock.method(extractor, 'extractReceipt', readsBy({ 'bao-gia.jpg': quote(), [URL]: billWithTotal(450_000) }));
 
         const result = await service.validateMaintenanceBills(['bao-gia.jpg', URL], ctx);
 
-        assert.strictEqual(result.blocked, false);
-        assert.strictEqual(result.receipt_total, 450_000, 'tổng không được gồm 480.000 của báo giá');
-        const note = result.reasons.find((r) => r.code === 'SUPPORTING_DOCUMENT');
-        assert.ok(note, 'người duyệt vẫn phải được báo có ảnh không phải hóa đơn');
-        assert.strictEqual(note.severity, 'warning');
+        assert.strictEqual(result.blocked, true);
+        const error = result.reasons.find((r) => r.severity === 'error');
+        assert.strictEqual(error.image_index, 0);
+        assert.match(error.message, /^Ảnh thứ 1: .*xoá ảnh này/);
     });
 
-    it('vẫn CHẶN khi cả đợt không có tấm hóa đơn nào dùng được', async () => {
-        // Chặn ở đây là đúng: tài xế sửa được ngay bằng cách chụp hóa đơn thanh toán.
+    it('chặn khi cả đợt chỉ có ảnh không phải hóa đơn', async () => {
         mock.method(extractor, 'extractReceipt', readsBy({ 'bao-gia.jpg': quote() }));
 
         const result = await service.validateMaintenanceBills(['bao-gia.jpg'], ctx);
 
         assert.strictEqual(result.blocked, true);
-        assert.ok(result.reasons.some((r) => r.code === 'NO_VALID_INVOICE'));
+        assert.ok(result.reasons.some((r) => r.code === 'WRONG_DOC_TYPE'));
     });
 
     it('vẫn CHẶN hóa đơn bị sửa số dù có báo giá đi kèm', async () => {
@@ -479,9 +477,8 @@ describe('receiptValidationService — bước hoàn tất không được đẩ
         assert.ok(result.reasons.some((r) => r.code === 'TOTAL_MISMATCH'));
     });
 
-    it('trùng với ảnh khác CỦA CHÍNH ĐỢT NÀY chỉ cảnh báo ở bước hoàn tất', async () => {
-        // Ảnh đã nằm trong đợt, không gỡ ra được — chặn là bế tắc. Cùng một hóa đơn chụp
-        // vài góc là đúng ca mà phép so "hóa đơn lớn nhất" sinh ra để chấp nhận.
+    it('trùng với ảnh khác CỦA CHÍNH ĐỢT NÀY chặn hoàn tất — tài xế xoá được ảnh trùng', async () => {
+        // Trước đây chỉ cảnh báo vì ảnh đã vào đợt thì không gỡ ra được. Giờ gỡ được.
         mock.method(repository, 'findDuplicates', async () => [
             { id: 1, entity_type: 'maintenance_record', entity_id: 21, image_url: 'goc-khac.jpg', verdict: 'passed' },
         ]);
@@ -489,8 +486,8 @@ describe('receiptValidationService — bước hoàn tất không được đẩ
 
         const result = await service.validateMaintenanceBills([URL], ctx);
 
-        assert.strictEqual(result.blocked, false);
-        assert.strictEqual(result.reasons.find((r) => r.code === 'DUPLICATE_IMAGE_SAME_RECORD').severity, 'warning');
+        assert.strictEqual(result.blocked, true);
+        assert.strictEqual(result.reasons.find((r) => r.code === 'DUPLICATE_IMAGE_SAME_RECORD').severity, 'error');
     });
 
     it('dùng hóa đơn cho khoản KHÁC vẫn chặn ở bước hoàn tất', async () => {

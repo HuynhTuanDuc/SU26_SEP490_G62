@@ -35,6 +35,13 @@ jest.mock('expo-location', () => ({
 
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 
+// lucide-react-native phát hành ESM (.mjs) mà Jest không biến đổi, nên mọi test màn hình
+// có icon lucide đều không chạy nổi ("Unexpected token export"). Icon chỉ là hình vẽ —
+// thay bằng thành phần rỗng mang đúng tên icon.
+jest.mock('lucide-react-native', () => new Proxy({}, {
+    get: (_, name) => (name === '__esModule' ? false : () => null),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
     useSafeAreaInsets: jest.fn(() => ({ top: 0, bottom: 0, left: 0, right: 0 })),
     SafeAreaProvider:  ({ children }) => children,

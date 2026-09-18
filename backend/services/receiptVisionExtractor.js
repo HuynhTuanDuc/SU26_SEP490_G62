@@ -56,6 +56,10 @@ const PROMPT_VERSION_OCR_ASSISTED = 'v2+ocr';
 // xem" — đẩy việc sang cho người duyệt một cách vô ích.
 const MODEL_TIMEOUT_MS = 45_000;
 
+// Dưới mức này thì không bắt đầu thêm một lần gọi: phản hồi thành công nhanh nhất đo được
+// cũng mất ~2 giây, gọi với hạn ngắn hơn chỉ tốn một lượt quota để nhận TIMEOUT.
+const MIN_ATTEMPT_MS = 4_000;
+
 // Text OCR đưa vào prompt phải có trần: một hóa đơn A4 quét ra ~2–4 nghìn ký tự, nhưng
 // một ảnh nhiễu có thể ra hàng chục nghìn ký tự rác. Cắt ở mức này để một bản quét
 // hỏng không kéo theo một lần gọi model đắt gấp mấy lần bình thường.
@@ -344,9 +348,15 @@ ${text}
  *                                          ở lượt đọc đầu — xem receiptCrossCheck về lý
  *                                          do hai kênh phải độc lập.
  * @param {Array}   [options.suspectFields] trường nào đang nghi ngờ, để model soi kỹ.
+ * @param {number}  [options.deadlineAt]    mốc thời gian (ms) phải xong, TÍNH CẢ các lần thử
+ *                                          lại. Mỗi lần thử chỉ được chờ phần còn lại, và
+ *                                          không thử lại khi phần còn lại quá ít. Thiếu nó
+ *                                          thì một lượt đọc có thể kéo dài 3 × 45 giây.
  * @returns {Promise<{ok: boolean, extraction?: object, error?: string, code?: string, meta: object}>}
  */
-const extractReceipt = async (imageUrl, { image: preloaded = null, ocrText = null, suspectFields = [] } = {}) => {
+const extractReceipt = async (imageUrl, {
+    image: preloaded = null, ocrText = null, suspectFields = [], deadlineAt = null,
+} = {}) => {
     const startedAt = Date.now();
     const ocrAssisted = Boolean(ocrText && String(ocrText).trim());
     const meta = {
@@ -392,12 +402,21 @@ const extractReceipt = async (imageUrl, { image: preloaded = null, ocrText = nul
 
     const request = { contents: [{ role: 'user', parts }] };
 
+    const remaining = () => (deadlineAt ? deadlineAt - Date.now() : Infinity);
+
     let last = null;
+    let attempts = 0;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+        const budget = Math.min(MODEL_TIMEOUT_MS, remaining());
+        if (budget < MIN_ATTEMPT_MS) {
+            last = last ?? { code: 'TIMEOUT', retryable: false, message: 'Hết thời gian dành cho việc đọc hóa đơn' };
+            break;
+        }
+        attempts = attempt + 1;
         try {
             const result = await withTimeout(
                 model.generateContent(request),
-                MODEL_TIMEOUT_MS,
+                budget,
                 'Quá thời gian đọc hóa đơn',
             );
             meta.latency_ms = Date.now() - startedAt;
@@ -413,12 +432,15 @@ const extractReceipt = async (imageUrl, { image: preloaded = null, ocrText = nul
         } catch (err) {
             last = { ...classifyError(err), message: err.message };
             if (!last.retryable || attempt === MAX_ATTEMPTS - 1) break;
-            await sleep(backoffDelay(attempt));
+            const delay = backoffDelay(attempt);
+            // Chờ xong mà không còn đủ thời gian cho một lần thử thì thôi, trả luôn.
+            if (remaining() - delay < MIN_ATTEMPT_MS) break;
+            await sleep(delay);
         }
     }
 
     meta.latency_ms = Date.now() - startedAt;
-    meta.attempts = MAX_ATTEMPTS;
+    meta.attempts = attempts;
     return { ok: false, code: last?.code ?? 'MODEL_ERROR', error: last?.message ?? 'Không đọc được hóa đơn', meta };
 };
 

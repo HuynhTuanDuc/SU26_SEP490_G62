@@ -49,6 +49,18 @@ const RECHECK_ENABLED = String(process.env.RECEIPT_VISION_RECHECK ?? 'true').toL
 // với việc để hóa đơn đó cần người xem.
 const RECHECK_MAX_ELAPSED_MS = Number(process.env.RECEIPT_RECHECK_MAX_ELAPSED_MS || 20_000);
 
+// Trần thời gian CẢ lượt đọc một ảnh (tải ảnh + model, tính cả lượt đọc lại và mọi lần thử
+// lại). Trước đây mỗi lần gọi model có hạn 45 giây nhưng được thử lại tới 3 lần, và lượt
+// đọc lại — chạy đúng với những hóa đơn LỆCH TRƯỜNG — lại thêm 3 × 45 giây nữa. Tài xế
+// đứng chờ trên màn hình "Đang kiểm tra..." có thể quá 90 giây app cho phép, và kết nối
+// di động treo lâu không có dữ liệu là kết nối hay bị cắt. Hết trần thì hóa đơn chỉ rơi
+// vào "cần người xem" — không bao giờ bị chặn vì hệ thống chậm.
+const SCAN_BUDGET_MS = Number(process.env.RECEIPT_SCAN_BUDGET_MS || 55_000);
+
+// Lượt đọc lại chỉ chạy khi còn ít nhất chừng này trong trần — ít hơn thì gần như chắc
+// chắn hết giờ giữa chừng, tốn quota mà không sửa được gì.
+const MIN_RECHECK_REMAINING_MS = 15_000;
+
 // Trần độ dài text OCR khi LƯU. Hóa đơn A4 quét ra 2–4 nghìn ký tự; hơn nhiều lần mức đó
 // là nhiễu, lưu nguyên chỉ làm phình bảng và phình màn hình duyệt.
 const MAX_STORED_OCR_CHARS = 20_000;
@@ -56,7 +68,9 @@ const MAX_STORED_OCR_CHARS = 20_000;
 const VERDICT_RANK = { passed: 0, needs_review: 1, rejected: 2 };
 
 // Lý do cho thấy tấm ảnh KHÔNG DÙNG LÀM HÓA ĐƠN được — phân biệt với lý do cho thấy một
-// hóa đơn thật có vấn đề (lệch số, dùng lại, sai hạng mục). Xem validateMaintenanceBills.
+// hóa đơn thật có vấn đề (lệch số, dùng lại, sai hạng mục). Chỉ còn dùng để gắn nhãn
+// "chứng từ kèm theo" trên màn duyệt cho những đợt cũ, từ trước khi ảnh lúc gửi yêu cầu
+// được tách sang request_pics; bước hoàn tất giờ chặn mọi ảnh loại này.
 const NOT_AN_INVOICE_CODES = new Set([
     'NOT_A_DOCUMENT',
     'WRONG_DOC_TYPE',
@@ -230,6 +244,7 @@ const safeCorroborate = (extraction, ocr, options) => {
  */
 const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
     const startedAt = Date.now();
+    const deadlineAt = startedAt + SCAN_BUDGET_MS;
     const loaded = await imagePipeline.loadImage(imageUrl);
     if (!loaded.ok) {
         return {
@@ -260,7 +275,7 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
 
     const [ocr, first] = await Promise.all([
         loaded.ocr ? ocrScanner.scanImage(loaded.ocr.buffer) : Promise.resolve({ ok: false, code: 'OCR_SKIPPED' }),
-        extractor.extractReceipt(imageUrl, { image: loaded.vision }),
+        extractor.extractReceipt(imageUrl, { image: loaded.vision, deadlineAt }),
     ]);
 
     if (!first.ok) {
@@ -289,7 +304,7 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
         const elapsed = Date.now() - startedAt;
         if (!allowRecheck) {
             recheck.skipped = 'not_allowed';
-        } else if (elapsed > RECHECK_MAX_ELAPSED_MS) {
+        } else if (elapsed > RECHECK_MAX_ELAPSED_MS || deadlineAt - Date.now() < MIN_RECHECK_REMAINING_MS) {
             recheck.skipped = 'time_budget';
         } else {
             recheck.ran = true;
@@ -297,6 +312,7 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
                 image: loaded.vision,
                 ocrText: ocr.text,
                 suspectFields: best.corroboration.suspect_fields,
+                deadlineAt,
             });
             if (second.ok) {
                 const candidate = {
@@ -591,10 +607,15 @@ const validateReceipt = async (imageUrl, context = {}) => {
 /**
  * Kiểm tra toàn bộ hóa đơn của một đợt bảo dưỡng và đối chiếu với số tiền khai.
  *
- * Việc đối chiếu số tiền phải làm ở ĐÂY chứ không phải ở từng ảnh: một đợt bảo dưỡng
- * có thể có nhiều hóa đơn rời, số khai phải khớp TỔNG các hóa đơn. Nhưng tài xế cũng
- * hay chụp cùng một hóa đơn từ vài góc, nên khớp với hóa đơn LỚN NHẤT cũng được chấp
- * nhận — chỉ so tổng thì ca thứ hai bị từ chối oan.
+ * NGHIÊM: mọi ảnh trong bill_pics đều phải là một hóa đơn hợp lệ của đợt này, và số khai
+ * phải khớp TỔNG các hóa đơn. Trước đây có hai chỗ nới:
+ *   * ảnh không phải hóa đơn chỉ bị gạt khỏi tổng — vì ảnh chụp lúc gửi yêu cầu (báo giá)
+ *     nằm lẫn trong bill_pics và tài xế không gỡ được;
+ *   * số khai khớp hóa đơn LỚN NHẤT cũng được — cho ca chụp một hóa đơn từ nhiều góc.
+ * Hệ quả người dùng đã báo: nộp nhiều ảnh, chỉ cần MỘT ảnh đúng là các ảnh sai vẫn lọt
+ * tới bàn duyệt. Giờ ảnh lúc yêu cầu nằm ở cột riêng (request_pics) và tài xế xoá được
+ * ảnh chụp nhầm, nên cả hai chỗ nới không còn lý do tồn tại: ảnh sai thì chặn, kèm số thứ
+ * tự ảnh để tài xế biết phải xoá tấm nào.
  */
 const validateMaintenanceBills = async (billUrls, context = {}) => {
     const urls = (billUrls ?? []).filter(Boolean);
@@ -604,70 +625,27 @@ const validateMaintenanceBills = async (billUrls, context = {}) => {
 
     // Từng ảnh kiểm tra độc lập, CHƯA đối chiếu số tiền (claimedAmount = null).
     //
-    // Không đọc lại lượt 3b ở bước này. Phần lớn ảnh đã có vết từ lúc tải lên nên không
-    // chạy lại dây chuyền; số còn lại — ảnh gửi kèm yêu cầu, chưa từng được quét — chạy đủ
-    // dây chuyền song song, và app tài xế cắt request hoàn tất ở 30 giây. Một lượt gọi model
-    // nữa cho mỗi ảnh có thể đẩy cả request quá trần đó.
+    // Không đọc lại lượt 3b ở bước này: ảnh trong bill_pics đều đã được quét lúc tải nên
+    // thường không chạy lại dây chuyền; ảnh nào chưa có bản đọc (model lỗi lúc tải) thì
+    // chạy song song, và thêm một lượt gọi model cho mỗi ảnh có thể đẩy request quá hạn chờ
+    // của app.
     const perImage = await Promise.all(urls.map((url) => validateReceipt(url, {
         ...context,
         claimedAmount: null,
         allowRecheck: false,
     })));
 
-    // `bill_pics` KHÔNG chỉ chứa hóa đơn. Lúc gửi yêu cầu bảo dưỡng, app tài xế mời chụp
-    // "chứng từ / báo giá", và những ảnh đó đi vào đúng cột này — không có cột nào tách
-    // chúng ra, cũng không có API nào gỡ chúng đi. Chấm chúng như hóa đơn thì tấm báo giá
-    // dính WRONG_DOC_TYPE, và đã tái hiện được: tài xế có hóa đơn thật khớp từng đồng vẫn
-    // bị CHẶN hoàn tất, và kẹt vĩnh viễn vì không gỡ được tấm báo giá ra.
-    //
-    // Nên ở bước tổng hợp này, ảnh KHÔNG DÙNG LÀM HÓA ĐƠN ĐƯỢC chỉ bị gạt khỏi phép cộng và
-    // báo cho người duyệt, không chặn. Không mở ra lỗ hổng nào: ảnh tải lên ở bước bảo
-    // dưỡng (open) đã bị quét và chặn ngay lúc tải nếu không phải hóa đơn, nên loại ảnh
-    // này chỉ còn đến từ bước yêu cầu. Còn lỗi của một tấm HÓA ĐƠN thật (lệch số học, dùng
-    // lại, sai hạng mục) vẫn chặn như cũ.
-    const supporting = perImage.map((item) => item.reasons.some(
-        (r) => r.severity === 'error' && NOT_AN_INVOICE_CODES.has(r.code),
-    ));
-
+    const many = urls.length > 1;
     const reasons = perImage.flatMap((item, index) => item.reasons.map((r) => {
         const located = { ...r, image_index: index, image_url: item.image_url };
-
-        // Trùng với một ảnh khác CỦA CHÍNH ĐỢT NÀY không phải gian lận — là cùng một hóa đơn
-        // chụp vài góc, đúng ca mà phép so "hóa đơn lớn nhất" bên dưới sinh ra để chấp nhận.
-        // Ở bước tải ảnh thì chặn là đúng (tài xế chọn ảnh khác được); ở bước hoàn tất thì
-        // ảnh đã nằm trong đợt rồi, không có cách nào gỡ ra — chặn là bế tắc. Dùng hóa đơn
-        // cho khoản KHÁC (DUPLICATE_RECEIPT) vẫn chặn như cũ.
-        if (r.code === 'DUPLICATE_IMAGE_SAME_RECORD' && r.severity === 'error') {
-            return {
-                ...located,
-                severity: 'warning',
-                message: `Ảnh thứ ${index + 1} trùng với một ảnh khác của chính đợt bảo dưỡng này — có thể là cùng một hóa đơn chụp nhiều lần.`,
-            };
-        }
-
-        if (!supporting[index] || r.severity !== 'error' || !NOT_AN_INVOICE_CODES.has(r.code)) return located;
-        return {
-            ...located,
-            code: 'SUPPORTING_DOCUMENT',
-            severity: 'warning',
-            message: `Ảnh thứ ${index + 1} không phải hóa đơn thanh toán nên không được tính vào tổng: ${r.message}`,
-            detail: { original_code: r.code, ...(r.detail ?? {}) },
-        };
+        // Nhiều ảnh thì phải nói ẢNH NÀO — tài xế cần biết xoá tấm nào.
+        if (!many) return located;
+        const hint = r.severity === 'error' ? ' Nếu đây là ảnh chụp nhầm, hãy xoá ảnh này.' : '';
+        return { ...located, message: `Ảnh thứ ${index + 1}: ${r.message}${hint}` };
     }));
-
-    // Nhưng một đợt bảo dưỡng phải có ít nhất MỘT hóa đơn dùng được. Chặn ở đây là chặn
-    // đúng: tài xế sửa được ngay bằng cách chụp hóa đơn thanh toán.
-    if (supporting.every(Boolean)) {
-        reasons.push({
-            code: 'NO_VALID_INVOICE', severity: 'error',
-            message: 'Chưa có ảnh hóa đơn thanh toán nào dùng được cho đợt bảo dưỡng này. '
-                + 'Ảnh chứng từ hoặc báo giá gửi kèm yêu cầu không thay cho hóa đơn — vui lòng chụp hóa đơn/phiếu thu cuối cùng.',
-        });
-    }
 
     const totals = perImage.map((item) => item.receipt_total).filter((n) => Number.isFinite(n) && n > 0);
     const sum = totals.reduce((acc, n) => acc + n, 0);
-    const max = totals.length > 0 ? Math.max(...totals) : null;
 
     const claimed = Number(context.claimedAmount);
     if (Number.isFinite(claimed) && claimed > 0) {
@@ -677,16 +655,14 @@ const validateMaintenanceBills = async (billUrls, context = {}) => {
                 message: 'Không đọc được tổng tiền trên hóa đơn nào nên chưa đối chiếu được với số đã khai.',
             });
         } else {
-            // Chấm số khai với cả hai cách hiểu, lấy cách nào gần hơn để báo lỗi cho
-            // đúng — nói "lệch so với tổng" khi tài xế chụp trùng ảnh là gây hiểu nhầm.
             const bySum = checks.checkClaimedAmount(claimed, sum, { subtotal: null, vat_amount: null });
-            const byMax = checks.checkClaimedAmount(claimed, max, { subtotal: null, vat_amount: null });
-
-            if (bySum.length === 0 || byMax.length === 0) {
-                // khớp một trong hai cách → không thêm lý do nào
-            } else {
-                reasons.push(...(Math.abs(claimed - sum) <= Math.abs(claimed - max) ? bySum : byMax));
-            }
+            reasons.push(...bySum.map((r) => (many && r.severity === 'error'
+                ? {
+                    ...r,
+                    message: `${r.message} Tổng được cộng từ ${totals.length} ảnh hóa đơn — nếu có ảnh chụp trùng `
+                        + 'một hóa đơn hoặc ảnh không thuộc đợt này, hãy xoá bớt.',
+                }
+                : r)));
         }
     }
 
@@ -703,13 +679,7 @@ const validateMaintenanceBills = async (billUrls, context = {}) => {
     // Độ tin cậy của cả đợt lấy theo ảnh THẤP NHẤT, không lấy trung bình: một hóa đơn
     // đọc chắc chắn không bù được cho một hóa đơn đọc mù mờ — người duyệt vẫn phải mở
     // đúng cái mù mờ đó ra xem, nên con số hiển thị phải chỉ về nó.
-    //
-    // Bỏ qua ảnh chứng từ/báo giá: chúng không được tính là hóa đơn, nên một tấm báo giá
-    // đọc hỏng (độ tin cậy 0) không được kéo cả đợt xuống "đọc không chắc".
-    const confidences = perImage
-        .filter((_, index) => !supporting[index])
-        .map((item) => item.confidence)
-        .filter((value) => Number.isFinite(value));
+    const confidences = perImage.map((item) => item.confidence).filter((value) => Number.isFinite(value));
     const confidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
     return {
@@ -890,9 +860,9 @@ const getReceiptReview = async (entityType, entityId, profileCode = 'maintenance
  * Thả các lần đọc ảnh ra khỏi lớp dò trùng — xem receiptExtractionRepository.releaseByEntity.
  * Không bao giờ ném lỗi: nó chạy trên đường báo lỗi cho tài xế, không được che lỗi thật.
  */
-const releaseReceipts = async (entityType, entityId, { imageUrl = null } = {}) => {
+const releaseReceipts = async (entityType, entityId, { imageUrl = null, reason = 'returned' } = {}) => {
     try {
-        await repository.releaseByEntity(entityType, entityId, { imageUrl });
+        await repository.releaseByEntity(entityType, entityId, { imageUrl, reason });
     } catch (err) {
         console.warn('[receipt] Không thả được lần đọc hóa đơn:', err.message);
     }

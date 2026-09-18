@@ -418,7 +418,20 @@ export default function VehiclesView({ user }) {
                   </TableCell>
                   <TableCell>{r.requested_by_name || "—"}</TableCell>
                   <TableCell><Chip size="sm" variant="flat" color="primary">{MAINTENANCE_TYPE_LABEL[r.maintenance_type] || r.maintenance_type}</Chip></TableCell>
-                  <TableCell>{r.request_reason}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      <span>{r.request_reason}</span>
+                      {Array.isArray(r.request_pics) && r.request_pics.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap">
+                          {r.request_pics.map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer" title="Chứng từ tài xế gửi kèm — bấm để xem ảnh gốc">
+                              <img src={url} alt="" className="w-10 h-10 object-cover rounded-md border border-gray-100 dark:border-white/10" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{formatDateTime(r.created_at)}</TableCell>
                   <TableCell>
                     <div className="flex gap-1 justify-end">

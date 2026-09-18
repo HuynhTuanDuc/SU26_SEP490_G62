@@ -112,7 +112,9 @@ const requestMaintenance = async (driverId, payload, billUrls = []) => {
             driverId,
             maintenanceType,
             reason,
-            billPics: billUrls,
+            // Ảnh chụp lúc yêu cầu là chứng từ/báo giá, KHÔNG phải hóa đơn — cột riêng, không
+            // bao giờ bị chấm như hóa đơn ở bước hoàn tất.
+            requestPics: billUrls,
         });
     } catch (err) {
         if (err.code === 'OPEN_MAINTENANCE_EXISTS') {
@@ -222,17 +224,23 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
     // Lượt quét vừa rồi có thể mất vài chục giây, và app không khoá nút "Hoàn thành" trong
     // lúc đó. Đã tái hiện với kiểu cũ (đọc mảng → quét → ghi đè cả mảng): tài xế bấm hoàn
     // tất giữa chừng → ảnh này lẻn vào đợt ĐÃ gửi duyệt mà chưa hề qua đối chiếu số tiền.
+    //
+    // Lúc còn chờ duyệt (requested) ảnh là chứng từ/báo giá → request_pics; ở bước bảo dưỡng
+    // (open) ảnh là hóa đơn đã qua quét → bill_pics.
     let appended = null;
     try {
         appended = await vehicleManagementRepository.appendMaintenanceBill(record.id, billUrl, {
             expectedStatus: record.status,
+            column: record.status === 'open' ? 'bill_pics' : 'request_pics',
         });
     } finally {
         // Ảnh đã quét (có dòng vết) mà không vào được đợt: thả dòng vết ra. Không thả thì
         // lần sau tài xế tải lại đúng tờ hóa đơn này sẽ bị chặn "ảnh đã tải lên rồi" — bởi
         // chính lần tải không thành này. Controller xoá tệp trên Cloudinary.
         if (!appended && record.status === 'open') {
-            await receiptValidationService.releaseReceipts('maintenance_record', record.id, { imageUrl: billUrl });
+            await receiptValidationService.releaseReceipts('maintenance_record', record.id, {
+                imageUrl: billUrl, reason: 'not_attached',
+            });
         }
     }
     if (!appended) {
@@ -242,7 +250,6 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
             409,
         );
     }
-    const nextBillPics = appended.bill_pics;
 
     {
         const payload = {
@@ -263,7 +270,52 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
         entityId: record.id,
     }, { displayMode: 'toast', excludeUserId: driverId });
 
-    return { maintenanceRecordId: record.id, bill_pics: nextBillPics };
+    return { maintenanceRecordId: record.id, bill_pics: appended.bill_pics, request_pics: appended.request_pics };
+};
+
+/**
+ * Tài xế xoá MỘT ảnh đã tải — chụp nhầm, chọn nhầm, hoặc muốn thay bằng ảnh khác.
+ *
+ * Trước đây không có đường nào gỡ ảnh: chụp nhầm là ảnh đó nằm lại trong đợt, và bước hoàn
+ * tất buộc phải nới lỏng để khỏi đẩy tài xế vào bế tắc — nên ảnh sai vẫn lọt tới bàn duyệt.
+ *
+ * Chỉ xoá được khi đợt chưa gửi duyệt. Ảnh hóa đơn đã quét thì dòng vết được thả ra với lý
+ * do 'removed': tài xế tải lại đúng tờ đó (chụp rõ hơn) không bị chặn "đã tải lên rồi", mà
+ * cũng không bị gắn cảnh báo vô cớ.
+ */
+const removeMaintenancePhoto = async (driverId, vehicleId, photoUrl) => {
+    const parsedVehicleId = parseVehicleId(vehicleId);
+    if (!photoUrl) {
+        throw createError('Thiếu đường dẫn ảnh cần xoá', 400);
+    }
+
+    const record = await vehicleManagementRepository.getActiveMaintenanceRecordForDriver(
+        parsedVehicleId, driverId, undefined, ['requested', 'open'],
+    );
+    if (!record) {
+        throw await notOpenError(parsedVehicleId, driverId);
+    }
+
+    const removed = await vehicleManagementRepository.removeMaintenancePhoto(record.id, photoUrl, {
+        statuses: ['requested', 'open'],
+    });
+    if (!removed) {
+        throw createError('Không tìm thấy ảnh này trong đợt bảo dưỡng — có thể đã được xoá. Vui lòng tải lại màn hình.', 404);
+    }
+    if (removed.was_bill) {
+        await receiptValidationService.releaseReceipts('maintenance_record', record.id, {
+            imageUrl: photoUrl, reason: 'removed',
+        });
+    }
+
+    notificationGateway.broadcastToRole('manager', {
+        type: 'manager.vehicles.changed',
+        action: 'maintenance_bill_removed',
+        vehicleId: parsedVehicleId,
+        maintenanceRecordId: record.id,
+    });
+
+    return { maintenanceRecordId: record.id, bill_pics: removed.bill_pics, request_pics: removed.request_pics };
 };
 
 // Không còn đợt 'open' thường là vì chính tài xế vừa gửi duyệt (bấm hai lần, hoặc app hết
@@ -312,7 +364,8 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
 
     const billPics = Array.isArray(record.bill_pics) ? record.bill_pics : [];
     if (billPics.length === 0) {
-        throw createError('Cần ít nhất một ảnh hóa đơn trước khi hoàn tất bảo dưỡng', 400);
+        // Ảnh gửi kèm yêu cầu (request_pics) là chứng từ/báo giá, không thay cho hóa đơn.
+        throw createError('Cần ít nhất một ảnh hóa đơn thanh toán (chụp ở bước bảo dưỡng) trước khi hoàn tất', 400);
     }
 
     const receiptCheck = await assertMaintenanceCostMatchesBills(cost, billPics, record);
@@ -404,6 +457,7 @@ module.exports = {
     requestMaintenance,
     listMaintenanceForDriver,
     uploadMaintenanceBill,
+    removeMaintenancePhoto,
     updateMaintenanceCost,
     completeMaintenance,
 };

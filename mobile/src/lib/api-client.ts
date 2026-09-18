@@ -49,6 +49,21 @@ async function fetchCoTimeout(url: string, init: RequestInit, timeoutMs: number)
   }
 }
 
+// Phản hồi lỗi KHÔNG phải JSON không đến từ mã backend (backend luôn trả JSON) mà từ tầng
+// hạ tầng phía trước nó: Cloud Run trả trang 500/503 khi instance chết giữa chừng (hết bộ
+// nhớ, khởi động lại), 504 khi quá hạn request. Trước đây mọi trường hợp này đều hiện
+// "Không thể kết nối đến máy chủ." — giống hệt mất sóng, nên không ai biết lỗi thật nằm ở
+// đâu. Kèm mã HTTP để khi tài xế chụp màn hình báo lỗi, người sửa biết ngay phải xem log nào.
+function nonJsonErrorMessage(status: number): string {
+  if (status === 502 || status === 503) {
+    return `Máy chủ đang quá tải hoặc vừa khởi động lại (mã ${status}). Vui lòng thử lại sau ít phút.`;
+  }
+  if (status === 504) return 'Máy chủ xử lý quá lâu (mã 504). Vui lòng thử lại.';
+  if (status === 413) return 'Ảnh quá lớn để gửi lên. Vui lòng chụp lại.';
+  if (status >= 500) return `Máy chủ gặp lỗi (mã ${status}). Vui lòng thử lại sau.`;
+  return `${ERROR_MESSAGES.network} (mã ${status})`;
+}
+
 function canBootstrapCsrf(path: string): boolean {
   return ![
     '/auth/login',
@@ -297,7 +312,7 @@ async function request<T>(path: string, options: RequestOptions = {}, isRetry = 
         url: `${apiBaseUrl}${path}`, method: options.method, status: response.status,
       });
     }
-    throw new ApiError(payload?.error ?? payload?.message ?? ERROR_MESSAGES.network, response.status);
+    throw new ApiError(payload?.error ?? payload?.message ?? nonJsonErrorMessage(response.status), response.status);
   }
 
   if (path === '/auth/logout') await tokenStorage.removeCsrfToken();

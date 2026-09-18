@@ -323,11 +323,34 @@ describe('receiptChecks — đối chiếu số tiền khai', () => {
 });
 
 describe('receiptChecks — đối chiếu ngữ cảnh hệ thống', () => {
-    it('cảnh báo khi biển số trên hóa đơn khác xe đang bảo dưỡng', () => {
+    it('CHẶN hóa đơn ghi biển số của xe khác', () => {
+        // Người dùng báo: hóa đơn khác biển số vẫn được chấp nhận. Trước đây chỉ cảnh báo.
         const result = checks.evaluateReceipt(cleanInvoice(), baseContext({ plateNumber: '51C-99999' }));
 
+        assert.strictEqual(result.verdict, 'rejected');
+        assert.match(result.reasons.find((r) => r.code === 'PLATE_MISMATCH').message, /không phải xe đang bảo dưỡng/);
+    });
+
+    it('chỉ cảnh báo khi biển số lệch đúng một ký tự — có thể do ảnh mờ', () => {
+        const result = checks.evaluateReceipt(cleanInvoice(), baseContext({ plateNumber: '51C-12346' }));
+
         assert.strictEqual(result.verdict, 'needs_review');
-        assert.ok(codesOf(result).includes('PLATE_MISMATCH'));
+        assert.strictEqual(result.reasons.find((r) => r.code === 'PLATE_MISMATCH').severity, 'warning');
+    });
+
+    it('chỉ cảnh báo khi model đọc lệch biển nhưng văn bản OCR thấy đúng biển của xe', () => {
+        const result = checks.evaluateReceipt(cleanInvoice(), baseContext({
+            plateNumber: '51C-99999',
+            corroboration: { reasons: [], signals: { plates: ['51C99999'] } },
+        }));
+
+        assert.strictEqual(result.reasons.find((r) => r.code === 'PLATE_MISMATCH').severity, 'warning');
+    });
+
+    it('hóa đơn không in biển số nào thì không có gì để đối chiếu', () => {
+        const result = checks.evaluateReceipt({ ...cleanInvoice(), vehicle_plate: null }, baseContext({ plateNumber: '51C-99999' }));
+
+        assert.ok(!codesOf(result).includes('PLATE_MISMATCH'));
     });
 
     it('bỏ qua khác biệt định dạng biển số', () => {
@@ -557,6 +580,19 @@ describe('receiptChecks — nhận dạng và chống dùng lại hóa đơn', (
 
         assert.strictEqual(reasons[0].severity, 'warning');
         assert.match(reasons[0].message, /đợt bảo dưỡng #99/);
+    });
+
+    it('tài xế tự XOÁ ảnh rồi tải lại cùng hóa đơn cho chính đợt đó: không chặn, không cảnh báo', () => {
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 21, image_url: 'a.jpg', released_at: '2026-09-01', release_reason: 'removed' }];
+        assert.deepStrictEqual(checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'b.jpg' }), []);
+    });
+
+    it('hóa đơn tài xế đã xoá khỏi đợt KHÁC vẫn được nhắc cho người duyệt, đúng lý do', () => {
+        const matches = [{ id: 5, entity_type: 'maintenance_record', entity_id: 99, image_url: 'a.jpg', released_at: '2026-09-01', release_reason: 'removed' }];
+        const reasons = checks.checkDuplicates(matches, { entityType: 'maintenance_record', entityId: 21, imageUrl: 'b.jpg' });
+
+        assert.strictEqual(reasons[0].severity, 'warning');
+        assert.match(reasons[0].message, /#99 \(tài xế đã xoá khỏi đợt đó\)/);
     });
 
     it('một lần dùng THẬT vẫn chặn dù cùng hóa đơn đó có lần nộp khác đã bị trả về', () => {

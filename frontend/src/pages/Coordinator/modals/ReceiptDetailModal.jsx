@@ -250,7 +250,7 @@ export default function ReceiptDetailModal({
                           label="Số tiền"
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="1"
                           value={expense.amount}
                           onValueChange={(v) => updateExpense(index, "amount", v)}
                           variant="bordered"
