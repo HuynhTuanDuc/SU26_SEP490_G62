@@ -1,5 +1,5 @@
 const driverService = require('../services/driverService');
-const { deleteUploadedFile } = require('../services/uploadCleanup');
+const { deleteUploadedFile, deleteUploadedUrl } = require('../services/uploadCleanup');
 
 const getMyVehicle = async (req, res) => {
     try {
@@ -65,6 +65,21 @@ const uploadMaintenanceBill = async (req, res) => {
     }
 };
 
+// DELETE /api/drivers/maintenance/:vehicleId/bills?url=<url ảnh>
+// Tài xế gỡ một ảnh chụp nhầm khỏi đợt bảo dưỡng (hóa đơn hoặc ảnh gửi kèm yêu cầu).
+const removeMaintenanceBill = async (req, res) => {
+    try {
+        const url = typeof req.query?.url === 'string' ? req.query.url : null;
+        const result = await driverService.removeMaintenancePhoto(req.user.userId, req.params.vehicleId, url);
+        // Ảnh đã ra khỏi đợt thì tệp không còn ai tham chiếu. await: Cloud Run bóp CPU ngay
+        // khi response đi ra, bắn-rồi-quên thì tệp rác ở lại.
+        await deleteUploadedUrl(url);
+        res.json({ message: 'Đã xoá ảnh', ...result });
+    } catch (err) {
+        res.status(err.statusCode || 500).json({ error: err.message });
+    }
+};
+
 // PATCH /api/drivers/maintenance/:vehicleId/cost
 // Lưu chi phí TRƯỚC khi tải hóa đơn để bước quét lúc upload có số tiền mà đối chiếu
 // (nếu không, ảnh nào cũng qua rồi tài xế khai số tuỳ ý sau).
@@ -88,4 +103,4 @@ const completeMaintenance = async (req, res) => {
     }
 };
 
-module.exports = { getAllDrivers, getMyVehicle, getMyAssignmentHistory, requestMaintenance, listMaintenance, uploadMaintenanceBill, updateMaintenanceCost, completeMaintenance };
+module.exports = { getAllDrivers, getMyVehicle, getMyAssignmentHistory, requestMaintenance, listMaintenance, uploadMaintenanceBill, removeMaintenanceBill, updateMaintenanceCost, completeMaintenance };

@@ -21,6 +21,10 @@ const posAmount = (val, label = 'Số tiền') => requireMoney(val, { field: lab
 
 const nonNegAmount = (val, label = 'Số tiền') => optionalMoney(val, { field: label, allowZero: true }) ?? 0;
 
+// Số không âm nhưng KHÔNG phải tiền (khối lượng hàng, quãng đường): cùng cách hiểu số
+// "1.500" như ô tiền, nhưng được phép có phần lẻ — 12,5 km là số thật, không phải nhập sai.
+const nonNegNumber = (val, label) => optionalMoney(val, { field: label, allowZero: true, wholeDong: false }) ?? 0;
+
 const enumVal = (val, allowed, label) => {
     if (val !== undefined && val !== null && val !== '' && !allowed.includes(val))
         throw err400(`${label} không hợp lệ.`);
@@ -87,7 +91,7 @@ const sendError = (res, err) => {
 };
 
 module.exports = {
-    posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN,
+    posInt, posAmount, nonNegAmount, nonNegNumber, enumVal, pageParams, phoneVN,
     validMonth, validYear, validDate, validMonthsBack, optMonth, optYear,
     sendError, err400,
 };

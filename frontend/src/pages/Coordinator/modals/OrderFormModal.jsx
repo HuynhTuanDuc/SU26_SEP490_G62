@@ -163,7 +163,7 @@ export default function OrderFormModal({
             label="Khách trả trước"
             type="number"
             min="0"
-            step="0.01"
+            step="1"
             placeholder="VD: 500000"
             value={form.prepaid_amount}
             onValueChange={(v) => updateField("prepaid_amount", v)}

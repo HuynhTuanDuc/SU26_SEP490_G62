@@ -18,4 +18,20 @@ const deleteUploadedFile = async (publicId) => {
     }
 };
 
-module.exports = { deleteUploadedFile };
+/**
+ * public_id của một ảnh Cloudinary từ URL giao hàng của nó.
+ *
+ * multer-storage-cloudinary chỉ trả public_id ngay lúc tải lên; về sau trong DB chỉ còn URL
+ * (vd bill_pics). Dạng URL: .../image/upload/[biến đổi/]v<số>/<public_id>.<đuôi>. URL không
+ * đúng dạng đó (không phải Cloudinary, không có số phiên bản) → null, và nơi gọi bỏ qua việc
+ * xoá — thà để sót một tệp còn hơn đoán sai public_id rồi xoá nhầm tệp khác.
+ */
+const publicIdFromUrl = (url) => {
+    const match = /\/image\/upload\/(?:[^?#]*?\/)?v\d+\/([^?#]+?)(?:\.[a-z0-9]+)?(?:[?#].*)?$/i.exec(String(url ?? ''));
+    return match ? decodeURIComponent(match[1]) : null;
+};
+
+/** Xoá tệp Cloudinary theo URL. Không bao giờ ném lỗi, cùng lý do với deleteUploadedFile. */
+const deleteUploadedUrl = async (url) => deleteUploadedFile(publicIdFromUrl(url));
+
+module.exports = { deleteUploadedFile, deleteUploadedUrl, publicIdFromUrl };

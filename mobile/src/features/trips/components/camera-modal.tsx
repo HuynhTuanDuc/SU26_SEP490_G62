@@ -1,9 +1,10 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { Image } from 'expo-image';
 import { CameraView } from 'expo-camera';
 import { launchImageLibraryAsync, MediaTypeOptions, requestMediaLibraryPermissionsAsync } from 'expo-image-picker';
-import { Camera, Images, X } from 'lucide-react-native';
+import { Camera, Check, Images, RotateCcw, X } from 'lucide-react-native';
 import { Text, XStack } from 'tamagui';
 
 import { appTheme } from '@/theme/app-theme';
@@ -13,19 +14,34 @@ type Props = {
     label: string;
     onCapture: (uri: string) => void;
     onClose: () => void;
+    /**
+     * Cho xem lại ảnh vừa chụp/chọn trước khi dùng. Với ảnh hóa đơn thì bắt buộc nên bật:
+     * ảnh được gửi lên và máy kiểm tra ngay khi rời camera — không có bước xem lại thì một
+     * lần chụp nhầm là một lần tải nhầm.
+     */
+    confirmBeforeUse?: boolean;
 };
 
 const C  = 28;
 const CT = 3;
 
-export function CameraModal({ visible, label, onCapture, onClose }: Props) {
+export function CameraModal({ visible, label, onCapture, onClose, confirmBeforeUse = false }: Props) {
     const cameraRef = useRef<CameraView>(null);
+    const [preview, setPreview] = useState<string | null>(null);
+
+    // Đóng camera thì bỏ ảnh đang xem dở — mở lại phải bắt đầu từ khung chụp.
+    useEffect(() => { if (!visible) setPreview(null); }, [visible]);
+
+    const deliver = (uri: string) => {
+        if (confirmBeforeUse) setPreview(uri);
+        else onCapture(uri);
+    };
 
     const handleShutter = async () => {
         if (!cameraRef.current) return;
         try {
             const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-            if (photo?.uri) onCapture(photo.uri);
+            if (photo?.uri) deliver(photo.uri);
         } catch {
             Alert.alert('Lỗi', 'Không thể chụp ảnh, vui lòng thử lại.');
         }
@@ -40,11 +56,43 @@ export function CameraModal({ visible, label, onCapture, onClose }: Props) {
                 return;
             }
             const result = await launchImageLibraryAsync({ mediaTypes: MediaTypeOptions.Images, quality: 0.85 });
-            if (!result.canceled && result.assets?.[0]?.uri) onCapture(result.assets[0].uri);
+            if (!result.canceled && result.assets?.[0]?.uri) deliver(result.assets[0].uri);
         } catch {
             Alert.alert('Lỗi', 'Không thể mở thư viện ảnh, vui lòng thử lại.');
         }
     };
+
+    if (preview) {
+        return (
+            <Modal visible={visible} animationType="fade" statusBarTranslucent onRequestClose={() => setPreview(null)}>
+                <View style={s.container}>
+                    <StatusBar style="light" />
+                    <Image source={{ uri: preview }} style={StyleSheet.absoluteFill} contentFit="contain" />
+                    <View style={s.topBar}>
+                        <XStack paddingHorizontal={20} paddingTop={56} paddingBottom={14} alignItems="center" gap={12}>
+                            <Text fontSize={15} fontWeight="900" color="#fff">Kiểm tra lại ảnh trước khi gửi</Text>
+                        </XStack>
+                    </View>
+                    <View style={s.shutterBar}>
+                        <Text style={s.guide}>Ảnh phải rõ số tiền, tên cửa hàng và biển số xe (nếu có)</Text>
+                        <XStack alignItems="center" justifyContent="center" gap={16}>
+                            <Pressable onPress={() => setPreview(null)} style={s.previewBtn}>
+                                <RotateCcw size={18} color="#fff" />
+                                <Text fontSize={14} fontWeight="800" color="#fff">Chụp lại</Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={() => { const uri = preview; setPreview(null); onCapture(uri); }}
+                                style={[s.previewBtn, s.previewBtnPrimary]}
+                            >
+                                <Check size={18} color="#fff" />
+                                <Text fontSize={14} fontWeight="800" color="#fff">Dùng ảnh này</Text>
+                            </Pressable>
+                        </XStack>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }
 
     return (
         <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -123,6 +171,12 @@ const s = StyleSheet.create({
         alignItems: 'center', justifyContent: 'center',
         borderWidth: 2, borderColor: appTheme.colors.primaryMuted,
     },
+    previewBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        paddingHorizontal: 20, height: 48, borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.18)',
+    },
+    previewBtnPrimary: { backgroundColor: appTheme.colors.primary },
     galleryBtn: {
         width: 52, height: 52, borderRadius: 16,
         backgroundColor: 'rgba(255,255,255,0.18)',

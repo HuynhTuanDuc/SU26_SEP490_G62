@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { useConfirm } from '@/providers/ui-provider';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { StatusBar } from 'expo-status-bar';
-import { CheckCircle2, Wrench, Clock, ImagePlus, Trash2 } from 'lucide-react-native';
+import { CheckCircle2, Wrench, Clock, ImagePlus, Trash2, X } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }     from '@/components/app-text';
@@ -39,19 +39,68 @@ const STATUS_STYLE: Record<MaintenanceStatus, { bg: string; text: string; border
 
 // ─── Maintenance card ─────────────────────────────────────────────────────────
 
+// Lỗi không có mã HTTP (mất kết nối, hết thời gian chờ) xảy ra SAU khi ảnh đã gửi đi: máy
+// chủ có thể vẫn kiểm tra xong và lưu ảnh. Đã tái hiện: app báo lỗi, tài xế tưởng ảnh hỏng
+// nên chụp lại, và cả hai ảnh cùng lên bàn duyệt. Nên sau lỗi kiểu này phải tải lại danh
+// sách và nói rõ để tài xế nhìn trước khi chụp lại.
+const isLostResponse = (err: unknown) => {
+    const status = (err as { status?: number })?.status;
+    return !status || status >= 500;
+};
+
+function PhotoStrip({
+    title, photos, removable, busy, onRemove,
+}: {
+    title: string;
+    photos: string[];
+    removable: boolean;
+    busy: boolean;
+    onRemove: (url: string) => void;
+}) {
+    if (photos.length === 0) return null;
+    return (
+        <YStack gap={6}>
+            <Text fontSize={12} color={appTheme.colors.textMuted}>{title} ({photos.length} ảnh)</Text>
+            <XStack flexWrap="wrap" gap={8}>
+                {photos.map((uri) => (
+                    <View key={uri}>
+                        <Image source={{ uri }} style={s.billThumb} />
+                        {removable && (
+                            <Pressable
+                                style={[s.removeBtn, busy && { opacity: 0.4 }]}
+                                onPress={() => onRemove(uri)}
+                                disabled={busy}
+                                hitSlop={8}
+                                accessibilityLabel="Xoá ảnh này"
+                            >
+                                <X size={12} color="#fff" />
+                            </Pressable>
+                        )}
+                    </View>
+                ))}
+            </XStack>
+        </YStack>
+    );
+}
+
 function MaintenanceCard({
     record,
     onBillUploaded,
+    onPhotoRemoved,
     onCompleted,
 }: {
     record: MaintenanceRecord;
     onBillUploaded: (vehicleId: number, uri: string, cost: number | null) => Promise<void>;
+    onPhotoRemoved: (vehicleId: number, url: string) => Promise<void>;
     onCompleted:    (vehicleId: number, cost: number) => Promise<void>;
 }) {
     const [expanded,    setExpanded]    = useState(record.status === 'open' || record.status === 'requested' || record.status === 'rejected');
     const [showCamera,  setShowCamera]  = useState(false);
     const [uploading,   setUploading]   = useState(false);
     const [completing,  setCompleting]  = useState(false);
+    const [removing,    setRemoving]    = useState(false);
+    const busy = uploading || completing || removing;
+    const requestPics = record.request_pics ?? [];
 
     const { displayValue: cost, rawValue: costRaw, onChangeText: onCostChange } = useMoneyInput(record.cost ?? '');
     const { showConfirm } = useConfirm();
@@ -81,11 +130,33 @@ function MaintenanceCard({
                     { text: 'Chụp/chọn lại', onPress: () => setShowCamera(true) },
                     { text: 'Để sau', style: 'cancel' },
                 ]);
+            } else if (isLostResponse(err)) {
+                Alert.alert(
+                    'Chưa nhận được kết quả',
+                    `${msg}\n\nẢnh có thể đã được lưu. Danh sách ảnh vừa được tải lại — nếu ảnh vừa chụp đã có trong danh sách thì KHÔNG cần chụp lại.`,
+                );
             } else {
                 Alert.alert('Lỗi', msg);
             }
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleRemove = async (url: string) => {
+        const ok = await showConfirm({
+            title: 'Xoá ảnh này?',
+            message: 'Ảnh sẽ bị gỡ khỏi đợt bảo dưỡng. Nếu chụp nhầm, bạn có thể chụp lại ảnh khác.',
+            confirmLabel: 'Xoá ảnh',
+        });
+        if (!ok) return;
+        setRemoving(true);
+        try {
+            await onPhotoRemoved(record.vehicle_id, url);
+        } catch (err) {
+            Alert.alert('Không xoá được ảnh', err instanceof Error ? err.message : 'Vui lòng thử lại');
+        } finally {
+            setRemoving(false);
         }
     };
 
@@ -95,7 +166,9 @@ function MaintenanceCard({
             return;
         }
         if (record.bill_pics.length === 0) {
-            Alert.alert('Thiếu hóa đơn', 'Vui lòng chụp ít nhất một ảnh hóa đơn');
+            Alert.alert('Thiếu hóa đơn', requestPics.length > 0
+                ? 'Ảnh chứng từ gửi kèm yêu cầu không thay cho hóa đơn. Vui lòng chụp hóa đơn thanh toán.'
+                : 'Vui lòng chụp ít nhất một ảnh hóa đơn');
             return;
         }
         const ok = await showConfirm({
@@ -236,13 +309,13 @@ function MaintenanceCard({
                         <YStack gap={8}>
                             <XStack justifyContent="space-between" alignItems="center">
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    {isRequested ? 'Chứng từ' : 'Hóa đơn'} ({record.bill_pics.length} ảnh)
+                                    {isRequested ? 'Chứng từ / báo giá' : 'Hóa đơn thanh toán'}
                                 </Text>
                                 {(isOpen || isRequested) && (
                                     <Pressable
-                                        style={[s.uploadBtn, (uploading || completing || needsCostBeforeBill) && { opacity: 0.5 }]}
+                                        style={[s.uploadBtn, (busy || needsCostBeforeBill) && { opacity: 0.5 }]}
                                         onPress={() => setShowCamera(true)}
-                                        disabled={uploading || completing || needsCostBeforeBill}
+                                        disabled={busy || needsCostBeforeBill}
                                     >
                                         {uploading
                                             ? <ActivityIndicator size="small" color={appTheme.colors.primary} />
@@ -260,19 +333,30 @@ function MaintenanceCard({
                                 </Text>
                             )}
 
-                            {record.bill_pics.length > 0 && (
-                                <XStack flexWrap="wrap" gap={8}>
-                                    {record.bill_pics.map((uri, i) => (
-                                        <Image
-                                            key={i}
-                                            source={{ uri }}
-                                            style={s.billThumb}
-                                        />
-                                    ))}
-                                </XStack>
-                            )}
+                            {/* Ảnh chụp lúc gửi yêu cầu (báo giá...) và hóa đơn thanh toán là hai
+                                thứ khác nhau — chỉ hóa đơn được đối chiếu với chi phí. Chạm dấu ×
+                                để gỡ ảnh chụp nhầm khi đợt chưa gửi duyệt. */}
+                            <PhotoStrip
+                                title="Chứng từ gửi kèm yêu cầu"
+                                photos={requestPics}
+                                removable={isOpen || isRequested}
+                                busy={busy}
+                                onRemove={handleRemove}
+                            />
+                            <PhotoStrip
+                                title="Hóa đơn thanh toán"
+                                photos={record.bill_pics}
+                                removable={isOpen}
+                                busy={busy}
+                                onRemove={handleRemove}
+                            />
 
-                            {(isOpen || isRequested) && record.bill_pics.length === 0 && (
+                            {isOpen && record.bill_pics.length === 0 && (
+                                <Text fontSize={12} color={appTheme.colors.textMuted} style={{ fontStyle: 'italic' }}>
+                                    Chưa có ảnh hóa đơn thanh toán
+                                </Text>
+                            )}
+                            {isRequested && requestPics.length === 0 && (
                                 <Text fontSize={12} color={appTheme.colors.textMuted} style={{ fontStyle: 'italic' }}>
                                     Chưa có ảnh chứng từ
                                 </Text>
@@ -298,9 +382,9 @@ function MaintenanceCard({
                             đang quét không nằm trong lần đối chiếu số tiền (máy chủ sẽ từ chối). */}
                         {isOpen && (
                             <Pressable
-                                style={[s.completeBtn, (completing || uploading) && { opacity: 0.6 }]}
+                                style={[s.completeBtn, busy && { opacity: 0.6 }]}
                                 onPress={handleComplete}
-                                disabled={completing || uploading}
+                                disabled={busy}
                             >
                                 {completing
                                     ? <ActivityIndicator color="#fff" size="small" />
@@ -316,9 +400,10 @@ function MaintenanceCard({
 
             <CameraModal
                 visible={showCamera}
-                label="Chụp hóa đơn bảo dưỡng"
+                label={isRequested ? 'Chụp chứng từ / báo giá' : 'Chụp hóa đơn bảo dưỡng'}
                 onCapture={handleCapture}
                 onClose={() => setShowCamera(false)}
+                confirmBeforeUse
             />
         </>
     );
@@ -365,6 +450,7 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
                 label="Chụp chứng từ / báo giá"
                 onCapture={(uri) => { setBillUris((prev) => [...prev, uri]); setShowCamera(false); }}
                 onClose={() => setShowCamera(false)}
+                confirmBeforeUse
             />
         );
     }
@@ -430,12 +516,17 @@ function RequestMaintenanceModal({ onClose, onSuccess }: {
                     {billUris.length > 0 ? (
                         <XStack flexWrap="wrap" gap={8}>
                             {billUris.map((uri, i) => (
-                                <Pressable
-                                    key={i}
-                                    onLongPress={() => setBillUris((prev) => prev.filter((_, j) => j !== i))}
-                                >
+                                <View key={uri}>
                                     <Image source={{ uri }} style={s2.billThumb} />
-                                </Pressable>
+                                    <Pressable
+                                        style={s.removeBtn}
+                                        onPress={() => setBillUris((prev) => prev.filter((_, j) => j !== i))}
+                                        hitSlop={8}
+                                        accessibilityLabel="Bỏ ảnh này"
+                                    >
+                                        <X size={12} color="#fff" />
+                                    </Pressable>
+                                </View>
                             ))}
                         </XStack>
                     ) : null}
@@ -483,8 +574,10 @@ export function MaintenanceScreen() {
 
     // 409 = trạng thái trên máy chủ đã khác màn hình (đợt vừa gửi duyệt, hoặc có ảnh mới
     // trong lúc kiểm tra). Tải lại để tài xế nhìn thấy đúng trạng thái trước khi thử lại.
+    //
+    // Mất phản hồi (không có mã / 5xx) cũng tải lại: máy chủ có thể đã xử lý xong.
     const reloadOnConflict = async (err: unknown) => {
-        if ((err as { status?: number })?.status === 409) await reload(false);
+        if ((err as { status?: number })?.status === 409 || isLostResponse(err)) await reload(false);
         throw err;
     };
 
@@ -493,6 +586,11 @@ export function MaintenanceScreen() {
         // mà đối chiếu — thứ tự này là phần chống vượt rào, không chỉ để tiện tay.
         if (cost && cost > 0) await maintenanceService.saveCost(vehicleId, cost);
         await maintenanceService.uploadBill(vehicleId, uri).catch(reloadOnConflict);
+        await reload(false);
+    };
+
+    const handlePhotoRemoved = async (vehicleId: number, url: string) => {
+        await maintenanceService.removePhoto(vehicleId, url).catch(reloadOnConflict);
         await reload(false);
     };
 
@@ -553,6 +651,7 @@ export function MaintenanceScreen() {
                         key={record.id}
                         record={record}
                         onBillUploaded={handleBillUploaded}
+                        onPhotoRemoved={handlePhotoRemoved}
                         onCompleted={handleCompleted}
                     />
                 ))}
@@ -602,6 +701,17 @@ const s = StyleSheet.create({
         height: 72,
         borderRadius: 10,
         backgroundColor: appTheme.colors.border,
+    },
+    removeBtn: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: appTheme.colors.danger,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     completeBtn: {
         flexDirection: 'row',

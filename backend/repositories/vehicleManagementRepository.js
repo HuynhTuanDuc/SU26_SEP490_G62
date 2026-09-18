@@ -51,6 +51,7 @@ const VEHICLE_DETAIL_SELECT = `
         lm.description AS active_maintenance_description,
         lm.maintenance_date AS active_maintenance_date,
         lm.bill_pics AS active_maintenance_bill_pics,
+        lm.request_pics AS active_maintenance_request_pics,
         lm.completed_at AS active_maintenance_completed_at,
         lm.performed_by AS active_maintenance_performed_by,
         mp.full_name AS active_maintenance_performed_by_name,
@@ -72,6 +73,7 @@ const VEHICLE_DETAIL_SELECT = `
             mr.description,
             mr.maintenance_date,
             mr.bill_pics,
+            mr.request_pics,
             mr.completed_at,
             mr.status,
             mr.performed_by,
@@ -1118,7 +1120,9 @@ const rejectPendingMaintenanceRecord = async ({
         // bill_pics vừa bị xoá, huỷ thì đợt không bao giờ thành khoản chi. Không thả ra thì
         // lớp dò trùng chặn tài xế nộp lại đúng tờ hóa đơn thật. Cùng giao dịch: trả về
         // mà không thả (hoặc ngược lại) đều để lại một đợt kẹt.
-        await receiptExtractionRepository.releaseByEntity('maintenance_record', record.id, {}, client);
+        await receiptExtractionRepository.releaseByEntity('maintenance_record', record.id, {
+            reason: mode === 'cancel' ? 'cancelled' : 'returned',
+        }, client);
 
         await client.query('COMMIT');
         return {
@@ -1611,6 +1615,7 @@ const listVehicleMaintenanceRecords = async (vehicleId, db = pool) => {
             mr.next_due_date,
             mr.status,
             mr.bill_pics,
+            mr.request_pics,
             mr.request_reason,
             mr.reject_reason,
             mr.started_at,
@@ -1658,7 +1663,7 @@ const getMaintenanceCostHistory = async (vehicleId, { excludeRecordId = null, li
 const getMaintenanceRecordById = async (recordId, db = pool) => {
     const result = await db.query(
         `SELECT mr.id, mr.vehicle_id, mr.maintenance_type, mr.cost, mr.status,
-                mr.started_at, mr.completed_at, mr.bill_pics, mr.receipt_check, v.plate_number
+                mr.started_at, mr.completed_at, mr.bill_pics, mr.request_pics, mr.receipt_check, v.plate_number
            FROM maintenance_records mr
            JOIN vehicles v ON v.id = mr.vehicle_id
           WHERE mr.id = $1`,
@@ -1671,7 +1676,7 @@ const getMaintenanceRecordsForDriver = async (driverId, db = pool) => {
     const result = await db.query(
         `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
                 mr.maintenance_type, mr.description, mr.cost, mr.maintenance_date,
-                mr.next_due_date, mr.status, mr.bill_pics, mr.started_at, mr.completed_at,
+                mr.next_due_date, mr.status, mr.bill_pics, mr.request_pics, mr.started_at, mr.completed_at,
                 mr.created_by, mr.request_reason, mr.reject_reason
          FROM maintenance_records mr
          JOIN vehicles v ON v.id = mr.vehicle_id
@@ -1702,7 +1707,7 @@ const getActiveMaintenanceRecordForDriver = async (vehicleId, driverId, db = poo
         // started_at + plate_number phục vụ lớp đối chiếu ngữ cảnh của kiểm tra hóa đơn:
         // biển số in trên hóa đơn phải là xe đang bảo dưỡng, và ngày hóa đơn phải nằm
         // trong khoảng thời gian của đợt này.
-        `SELECT mr.id, mr.vehicle_id, mr.performed_by, mr.status, mr.bill_pics, mr.cost,
+        `SELECT mr.id, mr.vehicle_id, mr.performed_by, mr.status, mr.bill_pics, mr.request_pics, mr.cost,
                 mr.created_by, mr.started_at, v.plate_number
          FROM maintenance_records mr
          JOIN vehicles v ON v.id = mr.vehicle_id
@@ -1766,7 +1771,7 @@ const getDriverAssignmentHistory = async (driverId, db = pool) => {
 
 // ─── Maintenance request (driver gửi yêu cầu, manager duyệt) ─────────────────
 
-const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, reason, billPics = [] }) => {
+const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, reason, requestPics = [] }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1783,12 +1788,12 @@ const createMaintenanceRequest = async ({ vehicleId, driverId, maintenanceType, 
         const result = await client.query(
             `INSERT INTO maintenance_records (
                 vehicle_id, maintenance_type, description, maintenance_date,
-                performed_by, status, requested_by, request_reason, bill_pics,
+                performed_by, status, requested_by, request_reason, request_pics,
                 started_at, created_at, updated_at
             )
             VALUES ($1, $2, $3, CURRENT_DATE, $4, 'requested', $4, $5, $6::jsonb, NOW(), NOW(), NOW())
             RETURNING id`,
-            [vehicleId, maintenanceType, reason, driverId, reason, JSON.stringify(billPics ?? [])],
+            [vehicleId, maintenanceType, reason, driverId, reason, JSON.stringify(requestPics ?? [])],
         );
 
         await client.query('COMMIT');
@@ -1805,7 +1810,7 @@ const listMaintenanceRequests = async (db = pool) => {
     const result = await db.query(
         `SELECT mr.id, mr.vehicle_id, v.plate_number, v.brand, v.model,
                 mr.maintenance_type, mr.request_reason, mr.maintenance_date,
-                mr.status, mr.created_at,
+                mr.status, mr.created_at, mr.request_pics,
                 mr.requested_by, p.full_name AS requested_by_name
          FROM maintenance_records mr
          JOIN vehicles v ON v.id = mr.vehicle_id
@@ -1891,9 +1896,12 @@ const rejectMaintenanceRequest = async ({ maintenanceRecordId, managerId, reason
     return result.rows[0] ?? null;
 };
 
+// Hai cột ảnh của một đợt. Tên cột đi thẳng vào SQL nên chỉ nhận đúng hai giá trị này.
+const MAINTENANCE_PHOTO_COLUMNS = new Set(['bill_pics', 'request_pics']);
+
 /**
- * Thêm MỘT ảnh vào cuối bill_pics — nguyên tử, và chỉ khi đợt vẫn ở đúng trạng thái lúc
- * quyết định có quét ảnh hay không.
+ * Thêm MỘT ảnh vào cuối bill_pics (hoặc request_pics — ảnh chụp lúc yêu cầu) — nguyên tử,
+ * và chỉ khi đợt vẫn ở đúng trạng thái lúc quyết định có quét ảnh hay không.
  *
  * Thay cho kiểu cũ "đọc bill_pics → quét ảnh vài chục giây → ghi đè cả mảng": trong khoảng
  * quét đó, đợt có thể đã được gửi duyệt (ảnh chưa qua đối chiếu số tiền lẻn vào đợt đang
@@ -1901,15 +1909,48 @@ const rejectMaintenanceRequest = async ({ maintenanceRecordId, managerId, reason
  * lọt vào bước bảo dưỡng), hoặc bill_pics đã đổi (ghi đè làm mất ảnh khác). Trả null khi
  * đợt không còn ở `expectedStatus` — không ghi gì.
  */
-const appendMaintenanceBill = async (maintenanceRecordId, billUrl, { expectedStatus }, db = pool) => {
+const appendMaintenanceBill = async (maintenanceRecordId, billUrl, { expectedStatus, column = 'bill_pics' }, db = pool) => {
+    if (!MAINTENANCE_PHOTO_COLUMNS.has(column)) throw new Error(`Cột ảnh không hợp lệ: ${column}`);
     const result = await db.query(
         `UPDATE maintenance_records
-         SET bill_pics = bill_pics || jsonb_build_array($2::text),
+         SET ${column} = ${column} || jsonb_build_array($2::text),
              updated_at = NOW()
          WHERE id = $1
            AND status = $3
-         RETURNING id, bill_pics`,
+         RETURNING id, bill_pics, request_pics`,
         [maintenanceRecordId, billUrl, expectedStatus],
+    );
+    return result.rows[0] ?? null;
+};
+
+/**
+ * Gỡ MỘT ảnh khỏi đợt — tài xế chụp nhầm, hoặc muốn thay bằng ảnh khác.
+ *
+ * Nguyên tử và có điều kiện trạng thái, cùng lý do với appendMaintenanceBill: chỉ gỡ được
+ * khi đợt còn ở `statuses` (chưa gửi duyệt). Đợt đang được đối chiếu ở bước hoàn tất thì
+ * bước đó tự phát hiện bill_pics đã đổi (MAINTENANCE_BILLS_CHANGED) và không gửi duyệt.
+ *
+ * Trả `{ bill_pics, request_pics, was_bill }` — `was_bill` cho biết ảnh nằm ở cột hóa đơn
+ * (đã được quét, có dòng vết cần thả ra) hay cột ảnh lúc yêu cầu. null nếu không có ảnh đó.
+ */
+const removeMaintenancePhoto = async (maintenanceRecordId, photoUrl, { statuses }, db = pool) => {
+    const result = await db.query(
+        `WITH target AS (
+            SELECT id, bill_pics ? $2 AS was_bill
+              FROM maintenance_records
+             WHERE id = $1
+               AND status = ANY($3)
+               AND (bill_pics ? $2 OR request_pics ? $2)
+             FOR UPDATE
+         )
+         UPDATE maintenance_records mr
+            SET bill_pics = mr.bill_pics - $2::text,
+                request_pics = mr.request_pics - $2::text,
+                updated_at = NOW()
+           FROM target
+          WHERE mr.id = target.id
+      RETURNING mr.id, mr.bill_pics, mr.request_pics, target.was_bill`,
+        [maintenanceRecordId, photoUrl, statuses],
     );
     return result.rows[0] ?? null;
 };
@@ -1950,6 +1991,7 @@ module.exports = {
     getMaintenanceRecordById,
     getMaintenanceRecordsForDriver,
     appendMaintenanceBill,
+    removeMaintenancePhoto,
     updateMaintenanceCost,
     createMaintenanceRequest,
     listMaintenanceRequests,

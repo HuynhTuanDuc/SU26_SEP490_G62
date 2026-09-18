@@ -101,10 +101,12 @@ describe('L2-FLOW-06 — Vòng đời xe: tạo nhóm xe/xe → driver yêu cầ
         const result = await driverService.completeMaintenance(DRIVER_A, vehicle.id, { cost: 850000 });
         assert.ok(result.maintenanceRecordId);
 
-        const { rows: [record] } = await pool.query('SELECT status, cost, bill_pics FROM maintenance_records WHERE id = $1', [result.maintenanceRecordId]);
+        const { rows: [record] } = await pool.query('SELECT status, cost, bill_pics, request_pics FROM maintenance_records WHERE id = $1', [result.maintenanceRecordId]);
         assert.strictEqual(record.status, 'pending_verification');
         assert.strictEqual(Number(record.cost), 850000);
-        assert.strictEqual(record.bill_pics.length, 2, 'phải gồm cả ảnh nháp lúc yêu cầu + ảnh upload thêm');
+        // Ảnh nháp lúc yêu cầu là chứng từ/báo giá — nằm riêng, không bị chấm như hóa đơn.
+        assert.deepStrictEqual(record.bill_pics, ['https://bill.test/final.jpg']);
+        assert.deepStrictEqual(record.request_pics, ['https://bill.test/draft1.jpg']);
     });
 
     it('B5 — Manager xác minh → hoàn tất, xe trở về ACTIVE', async () => {

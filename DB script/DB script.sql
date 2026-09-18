@@ -67,7 +67,8 @@ INSERT INTO schema_migrations (filename) VALUES
     ('20260912_payroll_employment_days.sql'),
     ('20260913_driver_termination_date.sql'),
     ('20260914_driver_termination_settlement.sql'),
-    ('20260917_maintenance_receipt_release.sql')
+    ('20260917_maintenance_receipt_release.sql'),
+    ('20260918_maintenance_request_pics.sql')
 ON CONFLICT (filename) DO NOTHING;
 
 CREATE TABLE accounts (
@@ -450,7 +451,11 @@ CREATE TABLE maintenance_records (
     reject_reason       TEXT,
     started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at        TIMESTAMPTZ,
+    -- CHỈ hóa đơn thanh toán tải ở bước bảo dưỡng (open) — mỗi tấm được quét lúc tải.
     bill_pics           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Ảnh chứng từ/báo giá chụp lúc GỬI YÊU CẦU (20260918_maintenance_request_pics). Tách
+    -- khỏi bill_pics để bước hoàn tất chặn được mọi ảnh không phải hóa đơn.
+    request_pics        JSONB NOT NULL DEFAULT '[]'::jsonb,
     -- Kết quả đối chiếu CẢ ĐỢT lúc tài xế hoàn tất (20260917_maintenance_receipt_release):
     -- tổng hóa đơn so với số khai, ảnh chứng từ bị gạt khỏi tổng... để màn duyệt chỉ ra được.
     receipt_check       JSONB,
@@ -527,6 +532,9 @@ CREATE TABLE receipt_extractions (
     -- làm lại/huỷ, hoặc ảnh không vào được đợt. Dò trùng không coi là hóa đơn đã dùng nữa
     -- — chặn thì tài xế không bao giờ nộp lại được chính tờ hóa đơn thật — chỉ cảnh báo.
     released_at     TIMESTAMPTZ,
+    -- Vì sao được thả ra (20260918_maintenance_request_pics): tài xế tự xoá ảnh chụp nhầm thì
+    -- tải lại không đáng cảnh báo; quản lý trả về/huỷ thì đáng.
+    release_reason  TEXT CHECK (release_reason IS NULL OR release_reason IN ('returned', 'cancelled', 'removed', 'not_attached')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

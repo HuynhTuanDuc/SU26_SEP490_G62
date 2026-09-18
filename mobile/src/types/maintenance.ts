@@ -29,7 +29,10 @@ export type MaintenanceRecord = {
     maintenance_date: string;
     next_due_date: string | null;
     status: MaintenanceStatus;
+    // Hóa đơn thanh toán tải ở bước bảo dưỡng — mỗi tấm được máy kiểm tra lúc tải.
     bill_pics: string[];
+    // Ảnh chứng từ/báo giá chụp lúc gửi yêu cầu. Không thay cho hóa đơn.
+    request_pics: string[];
     started_at: string;
     completed_at: string | null;
     created_by: number | null;

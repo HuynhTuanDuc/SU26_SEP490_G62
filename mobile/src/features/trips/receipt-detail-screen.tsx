@@ -342,7 +342,7 @@ function ExpenseRow({ expense, onEdit, onDelete, canEdit, isDeleting }: {
                             </Text>
                         </TouchableOpacity>
                     ) : null}
-                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip} disabled={isDeleting}>
+                    {canEdit ? <TouchableOpacity onPress={onEdit} style={styles.editChip} disabled={isDeleting} accessibilityLabel="Sửa chi phí">
                         <PencilSimple size={12} color={appTheme.colors.primary} weight="fill" />
                     </TouchableOpacity> : null}
                     {canEdit ? <TouchableOpacity onPress={onDelete} style={styles.deleteChip} disabled={isDeleting}>
@@ -374,14 +374,17 @@ function ExpenseEditModal({
     onClose: () => void;
     onSaved: () => void;
 }) {
-    const [amount,      setAmount]      = useState('');
+    // Cùng ô nhập tiền với mọi chỗ khác trong app: chỉ nhận chữ số, hiện 1.500.000. Trước đây
+    // đây là ô chữ tự do nhận nguyên văn "150000.00" từ API — tài xế gõ "45.5" (ý 45,5 nghìn)
+    // là máy chủ hiểu thành 45,5 đồng.
+    const { displayValue: amount, rawValue: amountRaw, onChangeText: onAmountChange, setValue: setAmountValue } = useMoneyInput();
     const [description, setDescription] = useState('');
     const [photoUri,    setPhotoUri]    = useState<string | null>(null);
     const [saving,      setSaving]      = useState(false);
 
     useEffect(() => {
         if (expense) {
-            setAmount(expense.amount);
+            setAmountValue(Number(expense.amount));
             setDescription(expense.description ?? '');
             setPhotoUri(null);
         }
@@ -396,11 +399,11 @@ function ExpenseEditModal({
 
     const save = async () => {
         if (!expense) return;
-        if (!amount || Number(amount) <= 0) { Alert.alert('Lỗi', 'Số tiền phải lớn hơn 0'); return; }
+        if (!amountRaw || amountRaw <= 0) { Alert.alert('Lỗi', 'Số tiền phải lớn hơn 0'); return; }
         setSaving(true);
         try {
             const fd = new FormData();
-            fd.append('amount', amount);
+            fd.append('amount', String(amountRaw));
             if (description) fd.append('description', description);
             if (photoUri) {
                 const name = photoUri.split('/').pop() ?? 'receipt.jpg';
@@ -436,7 +439,7 @@ function ExpenseEditModal({
 
                         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                             <Text fontSize={12} color={appTheme.colors.textMuted} marginBottom={6}>Số tiền (VNĐ)</Text>
-                            <TextInput style={styles.textInput} value={amount} onChangeText={setAmount}
+                            <TextInput style={styles.textInput} value={amount} onChangeText={onAmountChange}
                                 keyboardType="numeric" placeholder="Nhập số tiền" />
 
                             <Text fontSize={12} color={appTheme.colors.textMuted} marginTop={12} marginBottom={6}>Ghi chú</Text>

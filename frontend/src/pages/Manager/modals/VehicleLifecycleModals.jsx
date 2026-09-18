@@ -146,6 +146,9 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
   };
 
   const images = normalizeBillPics(vehicle?.active_maintenance_bill_pics);
+  // Ảnh chụp lúc gửi yêu cầu (báo giá...) — chứng từ tham khảo, KHÔNG phải hóa đơn được
+  // đối chiếu với chi phí. Để lẫn vào "Ảnh hóa đơn" là người duyệt tưởng đó là hóa đơn.
+  const requestImages = normalizeBillPics(vehicle?.active_maintenance_request_pics);
   const cost = Number(vehicle?.active_maintenance_cost);
 
   return (
@@ -170,6 +173,20 @@ export function VerifyMaintenanceModal({ open, vehicle, onClose, onSubmit, onRej
               <p className="text-xs text-gray-400 dark:text-gray-400">Chưa có ảnh hóa đơn.</p>
             )}
           </div>
+          {requestImages.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-2">
+                Chứng từ tài xế gửi kèm yêu cầu — không tính là hóa đơn
+              </div>
+              <div className="flex gap-3 flex-wrap">
+                {requestImages.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer">
+                    <Image src={url} width={72} height={72} className="object-cover rounded-lg opacity-80" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <div className="text-xs font-bold text-gray-400 dark:text-gray-400 uppercase tracking-wider mb-1">Chi phí tài xế khai</div>
             <p className="text-sm font-bold text-gray-800 dark:text-gray-100">

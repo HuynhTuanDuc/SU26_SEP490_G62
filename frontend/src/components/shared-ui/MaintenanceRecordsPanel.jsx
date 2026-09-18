@@ -43,6 +43,7 @@ export function MaintenanceRecordsPanel({ records, emptyText = "Chưa có đợt
     <div className="flex flex-col gap-3">
       {records.map((record) => {
         const images = normalizeBillPics(record.bill_pics);
+        const requestImages = normalizeBillPics(record.request_pics);
         const chip = STATUS_CHIP[record.status] || { label: record.status, color: "default" };
         return (
           <div key={record.id} className="rounded-xl border border-gray-100 dark:border-white/10 p-3 flex flex-col gap-2">
@@ -73,6 +74,20 @@ export function MaintenanceRecordsPanel({ records, emptyText = "Chưa có đợt
               <p className="text-xs text-rose-500">Lý do từ chối / huỷ: {record.reject_reason}</p>
             )}
 
+            {requestImages.length > 0 && (
+              <div>
+                <div className="text-[11px] text-gray-400 dark:text-gray-400 mb-1">
+                  Chứng từ gửi kèm yêu cầu ({requestImages.length}) — không tính là hóa đơn
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {requestImages.map((url, idx) => (
+                    <a key={idx} href={url} target="_blank" rel="noreferrer">
+                      <img src={url} alt="" className="w-14 h-14 object-cover rounded-lg border border-gray-100 dark:border-white/10 opacity-80" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
             {images.length > 0 ? (
               <div>
                 <div className="text-[11px] text-gray-400 dark:text-gray-400 mb-1">

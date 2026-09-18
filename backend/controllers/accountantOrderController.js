@@ -1,5 +1,5 @@
 ﻿const accountantOrderService = require('../services/accountantOrderService');
-const { posInt, posAmount, nonNegAmount, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
+const { posInt, posAmount, nonNegAmount, nonNegNumber, enumVal, pageParams, phoneVN, validDate, sendError, err400 } = require('../utils/accountantValidate');
 const { ALLOWED_EXPENSE_TYPES: EXPENSE_TYPES } = require('../constants/expenseConstants');
 const { buildImportFingerprint } = require('../utils/importFingerprint');
 const { money } = require('../utils/formatNumber');
@@ -127,7 +127,7 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
             nonNegAmount(s.cargo_fee   ?? 0, `${idx}: Cước xe`);
             if (s.settled_fee != null) nonNegAmount(s.settled_fee, `${idx}: Giá chốt`);
             nonNegAmount(s.ticket_fee  ?? 0, `${idx}: Vé/phí`);
-            nonNegAmount(s.cargo_weight ?? 0, `${idx}: Khối lượng hàng`);
+            nonNegNumber(s.cargo_weight ?? 0, `${idx}: Khối lượng hàng`);
 
             enumVal(s.payment_type, PAYMENT_TYPES, `${idx}: Hình thức thanh toán`);
 
@@ -138,7 +138,7 @@ const validateOrderBody = (body, { requirePhone = true, requireName = true } = {
                 throw err400(`${idx}: Ghi nợ khách không thể kết hợp với trạng thái tài xế giữ/nộp tiền.`);
 
             if (s.driver_holding_amount != null) nonNegAmount(s.driver_holding_amount, `${idx}: Tiền tài đang giữ`);
-            if (s.distance_km != null)           nonNegAmount(s.distance_km,           `${idx}: Quãng đường`);
+            if (s.distance_km != null)           nonNegNumber(s.distance_km,           `${idx}: Quãng đường`);
             // Thu hộ (COD): tiền của khách công ty đang giữ — không phải doanh thu, không
             // cấn vào công nợ cước; ở đây chỉ chặn số âm như mọi cột tiền khác.
             if (s.collect_on_behalf != null)     nonNegAmount(s.collect_on_behalf,     `${idx}: Thu hộ`);

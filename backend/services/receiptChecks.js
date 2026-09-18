@@ -628,6 +628,13 @@ const checkCostOutlier = (cost, costs, { scopeLabel = 'đợt bảo dưỡng tr�
 
 // ─── Chống dùng lại hóa đơn ──────────────────────────────────────────────────
 
+// Lý do một lần nộp được thả ra, nói theo cách người duyệt hiểu (xem releaseByEntity).
+const RELEASE_LABEL = {
+    returned: 'đã bị trả về làm lại',
+    cancelled: 'đợt đó đã bị huỷ',
+    removed: 'tài xế đã xoá khỏi đợt đó',
+};
+
 const describeEntity = (entityType, entityId) => (entityType === 'expense'
     ? `khoản chi phí #${entityId}`
     : `đợt bảo dưỡng #${entityId}`);
@@ -672,8 +679,14 @@ const checkDuplicates = (matches, current) => {
     // sạch bill_pics và app bảo tài xế "chụp lại hoá đơn"; tờ hóa đơn thật vẫn là tờ đó.
     // Đã tái hiện: chặn ở đây thì tài xế không bao giờ nộp lại được. Nên chỉ cảnh báo, để
     // người duyệt biết tờ này từng bị trả về và đối chiếu với lý do lần trước.
+    //
+    // Lý do thả ra quyết định có đáng nhắc hay không. Tài xế tự xoá một ảnh rồi tải lại
+    // (chụp nhầm góc, chọn nhầm ảnh) ở CHÍNH đợt đó là thao tác bình thường — cảnh báo ở
+    // đây chỉ làm đợt sạch rơi vào "cần xem". Ảnh chưa từng vào được đợt nào
+    // (not_attached) thì không có gì để nói.
     const active = relevant.filter((row) => !row.released_at);
-    const released = relevant.filter((row) => row.released_at);
+    const released = relevant.filter((row) => row.released_at && row.release_reason !== 'not_attached'
+        && (!isSameEntity(row) || (row.release_reason ?? 'returned') === 'returned'));
 
     const sameEntity = active.filter(isSameEntity);
     const otherEntity = active.filter((row) => !isSameEntity(row));
@@ -694,14 +707,16 @@ const checkDuplicates = (matches, current) => {
         return reasons;
     }
 
+    if (released.length === 0) return reasons;
+
     const elsewhere = [...new Set(released
         .filter((row) => !isSameEntity(row))
-        .map((row) => describeEntity(row.entity_type, row.entity_id)))];
+        .map((row) => `${describeEntity(row.entity_type, row.entity_id)} (${RELEASE_LABEL[row.release_reason] ?? RELEASE_LABEL.returned})`))];
     reasons.push(reason('RECEIPT_PREVIOUSLY_RETURNED', 'warning',
         elsewhere.length > 0
-            ? `Hóa đơn này từng được nộp cho ${elsewhere.join(', ')} — lần nộp đó đã bị trả về hoặc huỷ. Người duyệt vui lòng kiểm tra lại.`
+            ? `Hóa đơn này từng được nộp cho ${elsewhere.join(', ')}. Người duyệt vui lòng kiểm tra lại.`
             : 'Hóa đơn này đã được nộp cho chính khoản này trước khi bị trả về làm lại. Người duyệt đối chiếu với lý do lần trước.',
-        { matches: released.map((row) => ({ id: row.id, entity_type: row.entity_type, entity_id: row.entity_id, released_at: row.released_at })) }));
+        { matches: released.map((row) => ({ id: row.id, entity_type: row.entity_type, entity_id: row.entity_id, released_at: row.released_at, release_reason: row.release_reason ?? null })) }));
 
     return reasons;
 };
@@ -714,20 +729,84 @@ const checkDuplicates = (matches, current) => {
  * Đây là phần không phần mềm OCR ngoài kia làm được, vì nó cần chứng từ và dữ liệu
  * vận hành nằm cùng một chỗ.
  */
+/** Số phép sửa một ký tự để biến biển này thành biển kia (Levenshtein). */
+const plateDistance = (a, b) => {
+    const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i += 1) {
+        let diagonal = prev[0];
+        prev[0] = i;
+        for (let j = 1; j <= b.length; j += 1) {
+            const above = prev[j];
+            prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+            diagonal = above;
+        }
+    }
+    return prev[b.length];
+};
+
+// Lệch đúng một ký tự là vùng "có thể đọc nhầm" (8↔B, 0↔D, 5↔S). Hai biển số khác xe
+// trong thực tế gần như luôn khác nhau từ hai ký tự trở lên.
+const PLATE_MISREAD_DISTANCE = 1;
+
+/**
+ * Biển số in trên hóa đơn phải là xe đang bảo dưỡng.
+ *
+ * Trước đây lệch biển số chỉ CẢNH BÁO — lo đọc nhầm — nên hóa đơn của xe khác vẫn được
+ * nhận và đi tới bàn duyệt như một khoản bình thường. Giờ phân biệt ba ca:
+ *   * văn bản OCR (quét độc lập, không qua model) THẤY biển số của xe → model đọc nhầm,
+ *     chỉ cảnh báo
+ *   * lệch đúng một ký tự → có thể là đọc nhầm, chỉ cảnh báo
+ *   * còn lại → hóa đơn của xe khác, CHẶN
+ * Chỉ OCR thấy biển khác (model không đọc ra biển nào) thì cảnh báo chứ không chặn: mẫu
+ * biển số trên text thô có thể khớp nhầm một mã khác in trên hóa đơn. Hóa đơn không in
+ * biển số nào thì không có gì để đối chiếu.
+ */
+const checkPlate = (extraction, context) => {
+    const expected = normalizePlate(context?.plateNumber);
+    if (!expected) return [];
+
+    const ocrPlates = (context?.corroboration?.signals?.plates ?? []).map(normalizePlate).filter(Boolean);
+    if (ocrPlates.includes(expected)) {
+        const onBill = normalizePlate(extraction?.vehicle_plate);
+        return onBill && onBill !== expected
+            ? [reason('PLATE_MISMATCH', 'warning',
+                `Máy đọc biển số trên hóa đơn là ${extraction.vehicle_plate}, nhưng văn bản quét được từ ảnh có biển `
+                + `${context.plateNumber} của xe đang bảo dưỡng. Người duyệt vui lòng đối chiếu.`,
+                { on_bill: extraction.vehicle_plate, expected: context.plateNumber, ocr_plates: ocrPlates })]
+            : [];
+    }
+
+    const printed = normalizePlate(extraction?.vehicle_plate);
+    if (!printed) {
+        const other = ocrPlates.find((plate) => plateDistance(plate, expected) > PLATE_MISREAD_DISTANCE);
+        return other
+            ? [reason('PLATE_MISMATCH', 'warning',
+                `Văn bản quét từ ảnh có biển số ${other}, khác xe đang bảo dưỡng (${context.plateNumber}). `
+                + 'Người duyệt vui lòng đối chiếu.',
+                { expected: context.plateNumber, ocr_plates: ocrPlates })]
+            : [];
+    }
+    if (printed === expected) return [];
+
+    const shown = extraction.vehicle_plate;
+    if (plateDistance(printed, expected) <= PLATE_MISREAD_DISTANCE) {
+        return [reason('PLATE_MISMATCH', 'warning',
+            `Biển số trên hóa đơn (${shown}) lệch một ký tự so với xe đang bảo dưỡng (${context.plateNumber}) `
+            + '— có thể do ảnh mờ. Người duyệt vui lòng đối chiếu.',
+            { on_bill: shown, expected: context.plateNumber })];
+    }
+
+    return [reason('PLATE_MISMATCH', 'error',
+        `Hóa đơn ghi biển số ${shown}, không phải xe đang bảo dưỡng (${context.plateNumber}). `
+        + 'Vui lòng tải hóa đơn của đúng xe này.',
+        { on_bill: shown, expected: context.plateNumber, ocr_plates: ocrPlates })];
+};
+
 const checkContext = (extraction, context) => {
     const reasons = [];
 
     // ── Biển số ──
-    const onBill = normalizePlate(extraction?.vehicle_plate);
-    const expected = normalizePlate(context?.plateNumber);
-    if (onBill && expected && onBill !== expected) {
-        // Cảnh báo chứ không chặn: biển số là chuỗi dễ đọc nhầm nhất trên hóa đơn
-        // (dấu chấm, gạch nối, chữ giống số). Chặn cứng ở đây sẽ từ chối oan nhiều.
-        reasons.push(reason('PLATE_MISMATCH', 'warning',
-            `Biển số trên hóa đơn (${extraction.vehicle_plate}) khác xe đang bảo dưỡng `
-            + `(${context.plateNumber}). Người duyệt vui lòng đối chiếu.`,
-            { on_bill: extraction.vehicle_plate, expected: context.plateNumber }));
-    }
+    reasons.push(...checkPlate(extraction, context));
 
     // ── Ngày ──
     const issued = toDay(extraction?.issued_date);

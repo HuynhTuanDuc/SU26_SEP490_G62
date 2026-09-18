@@ -26,7 +26,12 @@ const MAX_MONEY = 9_999_999_999;
 /**
  * @returns {{ok: true, value: number} | {ok: false, error: string}}
  */
-const parseMoneyInput = (raw, { field = 'Số tiền', min = 0, max = MAX_MONEY, allowZero = false } = {}) => {
+const parseMoneyInput = (raw, {
+    field = 'Số tiền', min = 0, max = MAX_MONEY, allowZero = false,
+    // Tiền Việt tính tới đồng: có phần lẻ là nhập sai, phải hỏi lại. Chỉ tắt cho những ô
+    // KHÔNG phải tiền nhưng dùng chung bộ kiểm này (khối lượng hàng, quãng đường).
+    wholeDong = true,
+} = {}) => {
     if (raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '')) {
         return { ok: false, error: `${field} là bắt buộc` };
     }
@@ -79,9 +84,21 @@ const parseMoneyInput = (raw, { field = 'Số tiền', min = 0, max = MAX_MONEY,
         return { ok: false, error: `${field} vượt quá mức cho phép (tối đa ${money(max)}) — kiểm tra lại xem có thừa số 0 không` };
     }
 
-    // Làm tròn về ĐỒNG chẵn. Tiền Việt không tiêu tới phần lẻ, và để phần lẻ trôi vào
-    // DB thì tổng của nhiều dòng sẽ lệch với tổng người dùng tự cộng trên màn hình.
-    return { ok: true, value: Math.round(n) };
+    // KHÔNG làm tròn — hỏi lại. Trước đây phần lẻ bị lặng lẽ làm tròn về đồng chẵn, và
+    // chính điều đó đổi số tiền người khai mà không ai biết: tài xế gõ "45.5" (ý là 45,5
+    // nghìn) thành 46đ, gõ "1.50" thành 2đ. Số tiền đã khai phải được lưu ĐÚNG như người
+    // khai nhìn thấy, hoặc bị từ chối kèm lý do — không có lựa chọn thứ ba.
+    //
+    // "150000.00" (đúng dạng DB trả ra, client gửi lại nguyên văn) có phần lẻ bằng 0 nên
+    // vẫn là số nguyên và vẫn qua.
+    if (wholeDong && !Number.isInteger(n)) {
+        return {
+            ok: false,
+            error: `${field} không có phần lẻ — tiền Việt tính tới đồng, nhập 1500000 hoặc 1.500.000. `
+                + 'Hệ thống không tự làm tròn số tiền bạn khai.',
+        };
+    }
+    return { ok: true, value: n };
 };
 
 /**

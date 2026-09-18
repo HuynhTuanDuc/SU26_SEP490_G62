@@ -269,4 +269,29 @@ describe('ReceiptDetailScreen', () => {
 
         await waitFor(() => expect(screen.getByText('QR chuyển khoản công ty')).toBeTruthy());
     });
+    it('sửa chi phí: ô số tiền hiện đúng số đã khai và gửi lên đúng từng đồng, không làm tròn', async () => {
+        // API trả số tiền dạng NUMERIC ("150000.00"). Trước đây ô sửa hiện nguyên chuỗi đó
+        // và gửi nguyên văn thứ tài xế gõ — gõ "45.5" (ý 45,5 nghìn) thì máy chủ làm tròn 46đ.
+        mockTripService.getDriverReceiptDetail.mockResolvedValue({
+            receipt: makeReceipt({
+                request_status: 'rejected', rejection_reason: 'Sai số tiền',
+                expenses: [{ id: 9, expense_type: 'toll', amount: '150000.00', status: 'pending', description: null, expense_date: '', created_at: '', receipt_urls: [] }],
+            }),
+        } as any);
+        mockTripService.updateExpense.mockResolvedValue({} as any);
+
+        await render(<ReceiptDetailScreen />);
+        await waitFor(() => screen.getByLabelText('Sửa chi phí'));
+        await fireEvent.press(screen.getByLabelText('Sửa chi phí'));
+
+        const input = screen.getByPlaceholderText('Nhập số tiền');
+        expect(input.props.value).toBe('150.000');
+
+        await fireEvent.changeText(input, '155.555');
+        await fireEvent.press(screen.getByText('Lưu thay đổi'));
+
+        await waitFor(() => expect(mockTripService.updateExpense).toHaveBeenCalledTimes(1));
+        const [, formData] = mockTripService.updateExpense.mock.calls[0];
+        expect((formData as FormData).get('amount')).toBe('155555');
+    });
 });
