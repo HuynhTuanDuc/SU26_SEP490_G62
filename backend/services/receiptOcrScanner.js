@@ -65,6 +65,12 @@ const INIT_TIMEOUT_MS = Number(process.env.RECEIPT_OCR_INIT_TIMEOUT_MS || 8_000)
 // hơn việc bắt tài xế chờ đúng ngần ấy giây ở hóa đơn kế tiếp.
 const KEEP_ALIVE_BUILD_MS = Number(process.env.RECEIPT_OCR_KEEP_ALIVE_BUILD_MS || 2_000);
 
+// Trần cho lượt dựng SẴN lúc khởi động — rộng hơn hẳn trần trong request, vì ở đây
+// KHÔNG AI ĐỨNG CHỜ. Đo trên máy chủ thật: 6,1 giây. Dùng chung trần 8 giây của request
+// là để một lúc máy bận (deploy trùng giờ cao điểm) tự tay tắt OCR của cả tiến trình,
+// đổi lại chẳng tiết kiệm được gì cho ai.
+const WARMUP_TIMEOUT_MS = Number(process.env.RECEIPT_OCR_WARMUP_TIMEOUT_MS || 30_000);
+
 // Dựng worker tốn khoảng 0,3–0,8 giây (đo: 281ms khi nạp vie+eng từ đĩa) và giữ vài
 // chục MB RAM. Giữ lại dùng cho ảnh sau — một đợt bảo dưỡng thường có nhiều hóa đơn —
 // nhưng thả ra khi vắng khách để container idle không phải gánh phần bộ nhớ đó.
@@ -285,9 +291,20 @@ const warmUp = async () => {
 
     const startedAt = Date.now();
     try {
-        await withTimeout(getWorker(), INIT_TIMEOUT_MS, 'OCR_INIT_FAILED', 'Quá thời gian dựng worker OCR lúc khởi động');
-        console.log(`[receipt] Worker OCR sẵn sàng sau ${Date.now() - startedAt}ms.`);
-        return { ok: true, latency_ms: Date.now() - startedAt };
+        await withTimeout(getWorker(), WARMUP_TIMEOUT_MS, 'OCR_INIT_FAILED', 'Quá thời gian dựng worker OCR lúc khởi động');
+        const latencyMs = Date.now() - startedAt;
+        console.log(`[receipt] Worker OCR sẵn sàng sau ${latencyMs}ms.`);
+        // Dựng lâu hơn trần trong request nghĩa là: nếu worker này bị thả ra, lượt quét
+        // sau sẽ KHÔNG dựng lại kịp. Nói ra ngay lúc khởi động thay vì để người trực tự
+        // suy từ những dòng OCR_INIT_FAILED lẻ tẻ sau này.
+        if (latencyMs >= INIT_TIMEOUT_MS) {
+            console.warn(
+                `[receipt] Dựng worker OCR (${latencyMs}ms) lâu hơn trần trong request (${INIT_TIMEOUT_MS}ms): `
+                + 'worker này sẽ được giữ tới khi tiến trình dừng. Nếu máy chủ hay bị khởi động lại '
+                + 'vì hết bộ nhớ, cân nhắc RECEIPT_OCR_ENABLED=false.',
+            );
+        }
+        return { ok: true, latency_ms: latencyMs };
     } catch (rawErr) {
         const err = toError(rawErr, 'OCR_INIT_FAILED');
         // Cùng cách xử lý như khi dựng hỏng giữa một lượt quét: gỡ lời hứa hỏng khỏi vị trí
@@ -696,6 +713,7 @@ module.exports = {
     LANGS,
     TIMEOUT_MS,
     INIT_TIMEOUT_MS,
+    WARMUP_TIMEOUT_MS,
     isOcrEnabled,
     isOcrAvailable,
     warmUp,

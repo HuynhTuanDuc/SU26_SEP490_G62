@@ -241,7 +241,7 @@ describe('receiptOcrScanner — dựng worker không được ăn vào thời gi
 
     it('dựng sẵn lúc khởi động thất bại → lượt quét sau bỏ qua OCR ngay, không chờ lần nữa', async () => {
         const scanner = loadScanner(
-            { RECEIPT_OCR_INIT_TIMEOUT_MS: '200', RECEIPT_OCR_RETRY_MS: '300000' },
+            { RECEIPT_OCR_INIT_TIMEOUT_MS: '200', RECEIPT_OCR_WARMUP_TIMEOUT_MS: '200', RECEIPT_OCR_RETRY_MS: '300000' },
             { 'tesseract.js': hangingTesseract },
         );
 
@@ -292,5 +292,102 @@ describe('receiptOcrScanner — dựng worker không được ăn vào thời gi
             if (saved === undefined) delete process.env.RECEIPT_OCR_ENABLED;
             else process.env.RECEIPT_OCR_ENABLED = saved;
         }
+    });
+});
+
+/**
+ * Thả worker ra khi rảnh chỉ đáng khi dựng lại nó RẺ.
+ *
+ * Log máy chủ thật: worker bị thả sau 120 giây rảnh, rồi lượt quét kế tiếp dựng lại không
+ * kịp và hỏng — tài xế trả cái giá đó bằng thời gian đứng chờ. Vài chục MB RAM rẻ hơn.
+ */
+describe('receiptOcrScanner — giữ worker lại trên máy dựng chậm', () => {
+    const workerGia = (stats, buildMs) => () => ({
+        createWorker: async () => {
+            await new Promise((resolve) => { setTimeout(resolve, buildMs); });
+            stats.created += 1;
+            return {
+                setParameters: async () => {},
+                recognize: async () => ({ data: { text: 'HOA DON', confidence: 90 } }),
+                terminate: async () => { stats.terminated += 1; },
+            };
+        },
+    });
+
+    it('dựng nhanh → vẫn thả worker ra khi rảnh để trả RAM', async () => {
+        const stats = { created: 0, terminated: 0 };
+        const scanner = loadScanner(
+            { RECEIPT_OCR_IDLE_MS: '60', RECEIPT_OCR_KEEP_ALIVE_BUILD_MS: '10000' },
+            { 'tesseract.js': workerGia(stats, 1) },
+        );
+
+        await scanner.scanImage(Buffer.from('anh'));
+        await new Promise((resolve) => { setTimeout(resolve, 200); });
+
+        assert.strictEqual(stats.terminated, 1, 'máy nhanh thì thả worker như cũ');
+    });
+
+    it('dựng chậm → giữ worker lại, hóa đơn sau không phải chờ dựng lần nữa', async () => {
+        const stats = { created: 0, terminated: 0 };
+        const scanner = loadScanner(
+            { RECEIPT_OCR_IDLE_MS: '60', RECEIPT_OCR_KEEP_ALIVE_BUILD_MS: '30' },
+            { 'tesseract.js': workerGia(stats, 80) },
+        );
+
+        await scanner.scanImage(Buffer.from('anh'));
+        await new Promise((resolve) => { setTimeout(resolve, 200); });
+        await scanner.scanImage(Buffer.from('anh'));
+
+        assert.strictEqual(stats.terminated, 0, 'không được thả worker đắt tiền');
+        assert.strictEqual(stats.created, 1, 'hóa đơn sau dùng lại đúng worker đó');
+        await scanner.shutdown();
+    });
+});
+
+/**
+ * Lượt dựng SẴN lúc khởi động có trần riêng, rộng hơn trần trong request.
+ *
+ * Số đo trên máy chủ thật: 6106ms. Trần trong request là 8 giây — đủ cho lần này, nhưng
+ * một lần deploy trùng giờ máy bận là vượt, và khi đó cả tiến trình mất OCR dù chẳng ai
+ * phải chờ lượt dựng đó.
+ */
+describe('receiptOcrScanner — trần của lượt dựng sẵn', () => {
+    const workerCham = (buildMs) => () => ({
+        createWorker: async () => {
+            await new Promise((resolve) => { setTimeout(resolve, buildMs); });
+            return {
+                setParameters: async () => {},
+                recognize: async () => ({ data: { text: 'HOA DON', confidence: 90 } }),
+                terminate: async () => {},
+            };
+        },
+    });
+
+    it('dựng lâu hơn trần trong request vẫn được, vì không ai đứng chờ lúc khởi động', async () => {
+        const scanner = loadScanner(
+            { RECEIPT_OCR_INIT_TIMEOUT_MS: '60', RECEIPT_OCR_WARMUP_TIMEOUT_MS: '3000' },
+            { 'tesseract.js': workerCham(200) },
+        );
+
+        const warm = await scanner.warmUp();
+
+        assert.strictEqual(warm.ok, true, 'không được cắt theo trần của request');
+        assert.ok(warm.latency_ms >= 200);
+        // Và worker đó dùng được ngay: lượt quét sau không phải dựng lại (nên không dính
+        // trần 60ms của request).
+        assert.strictEqual((await scanner.scanImage(Buffer.from('anh'))).ok, true);
+        await scanner.shutdown();
+    });
+
+    it('quá cả trần của lượt dựng sẵn thì mới tính là hỏng', async () => {
+        const scanner = loadScanner(
+            { RECEIPT_OCR_WARMUP_TIMEOUT_MS: '100' },
+            { 'tesseract.js': workerCham(5000) },
+        );
+
+        const warm = await scanner.warmUp();
+
+        assert.strictEqual(warm.ok, false);
+        assert.strictEqual(warm.code, 'OCR_INIT_FAILED');
     });
 });
