@@ -213,3 +213,71 @@ describe('Driver Service — cảnh báo chi phí bất thường tới tay ngư
         assert.strictEqual(vehicleManagementRepository.completeMaintenanceRecordAndSetStatus.mock.calls.length, 1);
     });
 });
+
+/**
+ * Hạn trả lời phải đếm từ lúc request TỚI máy chủ, không phải từ lúc bắt đầu quét.
+ *
+ * Đoạn đẩy ảnh lên Cloudinary nằm TRƯỚC controller và là đoạn co giãn nhất khi tài xế
+ * đứng chỗ sóng yếu. Đếm sau đoạn đó thì tổng thời gian chờ = (tải ảnh) + (trần quét),
+ * vượt hạn chờ của app trong khi máy chủ vẫn trả lời bình thường — app báo "hết thời
+ * gian chờ" mà log máy chủ không có lỗi nào.
+ */
+describe('Driver Service — hạn trả lời của request quét hóa đơn', () => {
+    const RESPONSE_BUDGET_MS = receiptValidationService.RESPONSE_BUDGET_MS;
+
+    beforeEach(() => {
+        mock.method(notificationGateway, 'broadcastToRole', () => {});
+        mock.method(notificationService, 'getUserIdsByRole', async () => []);
+        mock.method(notificationService, 'createForUsers', async () => []);
+        mock.method(vehicleManagementRepository, 'getMaintenanceCostHistory', async () => []);
+    });
+
+    afterEach(() => mock.restoreAll());
+
+    const setupOpenRecord = () => {
+        mock.method(vehicleManagementRepository, 'getActiveMaintenanceRecordForDriver', async () => ({
+            id: 21, vehicle_id: 11, status: 'open', cost: '450000.00',
+            plate_number: '51C-12345', started_at: new Date().toISOString(),
+        }));
+        mock.method(vehicleManagementRepository, 'appendMaintenanceBill', async () => ({
+            bill_pics: ['https://example.com/bill.jpg'], request_pics: [],
+        }));
+    };
+
+    it('tải ảnh: hạn quét = lúc request tới + trần trả lời', async () => {
+        setupOpenRecord();
+        const spy = mock.method(receiptValidationService, 'validateReceipt', async () => ({ blocked: false, reasons: [] }));
+        const receivedAt = Date.now() - 40_000; // 40 giây đã tiêu vào việc đẩy ảnh lên
+
+        await driverService.uploadMaintenanceBill(7, 11, 'https://example.com/bill.jpg', { receivedAt });
+
+        assert.strictEqual(spy.mock.calls[0].arguments[1].deadlineAt, receivedAt + RESPONSE_BUDGET_MS);
+    });
+
+    it('không có mốc nhận request (luồng cũ) thì đếm từ bây giờ, không phải bỏ hạn', async () => {
+        setupOpenRecord();
+        const spy = mock.method(receiptValidationService, 'validateReceipt', async () => ({ blocked: false, reasons: [] }));
+        const now = Date.now();
+
+        await driverService.uploadMaintenanceBill(7, 11, 'https://example.com/bill.jpg');
+
+        const deadline = spy.mock.calls[0].arguments[1].deadlineAt;
+        assert.ok(Math.abs(deadline - (now + RESPONSE_BUDGET_MS)) < 1_000, `nhận ${deadline}`);
+    });
+
+    it('bước hoàn tất cũng chịu chung hạn — nó đọc lại MỌI ảnh của đợt', async () => {
+        mock.method(vehicleManagementRepository, 'getActiveMaintenanceRecordForDriver', async () => ({
+            id: 21, vehicle_id: 11, bill_pics: ['https://example.com/bill.jpg'],
+        }));
+        mock.method(vehicleManagementRepository, 'completeMaintenanceRecordAndSetStatus', async () => ({}));
+        mock.method(vehicleManagementRepository, 'getVehicleById', async () => ({ id: 11, status: 'maintenance' }));
+        const spy = mock.method(receiptValidationService, 'validateMaintenanceBills', async () => ({
+            verdict: 'passed', blocked: false, reject_reason: null, reasons: [],
+        }));
+        const receivedAt = Date.now() - 10_000;
+
+        await driverService.completeMaintenance(7, 11, { cost: 450_000 }, { receivedAt });
+
+        assert.strictEqual(spy.mock.calls[0].arguments[1].deadlineAt, receivedAt + RESPONSE_BUDGET_MS);
+    });
+});

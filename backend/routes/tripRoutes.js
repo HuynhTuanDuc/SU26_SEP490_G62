@@ -5,17 +5,9 @@ const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const { uploadProof, uploadPaymentReceipt, uploadTripComplete, uploadReceiptCollectionProof } = require('../middleware/uploadMiddleware');
 const tripController    = require('../controllers/tripController');
 const paymentController = require('../controllers/paymentController');
+const { handleUpload } = require('../middleware/handleUpload');
 
 const driverOnly = [verifyToken, requireRole('driver')];
-
-function handleUpload(middleware) {
-    return (req, res, next) => {
-        middleware(req, res, (err) => {
-            if (err) return res.status(422).json({ error: err.message });
-            next();
-        });
-    };
-}
 
 router.get('/stats',   driverOnly, tripController.getDriverStats);
 router.get('/history', driverOnly, tripController.getOrderHistory);

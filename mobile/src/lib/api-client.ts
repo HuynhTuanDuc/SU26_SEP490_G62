@@ -28,6 +28,12 @@ function isUnsafeMethod(method?: string): boolean {
 
 const DEFAULT_TIMEOUT_MS = 30_000;   // request JSON bình thường
 const TIMEOUT_UPLOAD_MS = 90_000;   // gửi kèm ảnh, mạng yếu cần lâu hơn
+
+// Hạn cho request mà máy chủ vừa nhận ảnh vừa ĐỌC ảnh (hóa đơn bảo dưỡng). Máy chủ tự
+// chốt trả lời trong 55 giây tính từ lúc request tới (RECEIPT_RESPONSE_BUDGET_MS), nên
+// phần còn lại của hạn này là dành cho việc đẩy ảnh qua mạng di động. Cắt sớm hơn thì
+// tài xế nhận "hết thời gian chờ" đúng vào lúc máy chủ sắp nói cho họ biết ảnh sai ở đâu.
+export const TIMEOUT_SCAN_UPLOAD_MS = 120_000;
 const MAX_RETRIES    = 2;        // số lần thử THÊM, ngoài lần đầu
 
 // CHỈ tự thử lại request ĐỌC. Request ghi mà tự gửi lại thì có nguy cơ trùng dữ
@@ -50,8 +56,9 @@ async function fetchCoTimeout(url: string, init: RequestInit, timeoutMs: number)
 }
 
 // Phản hồi lỗi KHÔNG phải JSON không đến từ mã backend (backend luôn trả JSON) mà từ tầng
-// hạ tầng phía trước nó: Cloud Run trả trang 500/503 khi instance chết giữa chừng (hết bộ
-// nhớ, khởi động lại), 504 khi quá hạn request. Trước đây mọi trường hợp này đều hiện
+// hạ tầng phía trước nó: proxy của nền tảng chạy container trả trang 502/503 khi instance
+// chết giữa chừng (hết bộ nhớ, khởi động lại, kết nối keep-alive lệch nhịp), 504 khi quá
+// hạn request. Những lỗi này KHÔNG có trong log ứng dụng — chúng do proxy sinh ra. Trước đây mọi trường hợp này đều hiện
 // "Không thể kết nối đến máy chủ." — giống hệt mất sóng, nên không ai biết lỗi thật nằm ở
 // đâu. Kèm mã HTTP để khi tài xế chụp màn hình báo lỗi, người sửa biết ngay phải xem log nào.
 function nonJsonErrorMessage(status: number): string {
@@ -341,8 +348,8 @@ export const apiClient = {
     request<T>(path, { method: 'POST', body, ...opts }),
   patch: <T>(path: string, body: object) => request<T>(path, { method: 'PATCH', body }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-  postForm: <T>(path: string, formData: FormData) =>
-    request<T>(path, { method: 'POST', body: formData }),
-  patchForm: <T>(path: string, formData: FormData) =>
-    request<T>(path, { method: 'PATCH', body: formData }),
+  postForm: <T>(path: string, formData: FormData, opts: { timeoutMs?: number } = {}) =>
+    request<T>(path, { method: 'POST', body: formData, ...opts }),
+  patchForm: <T>(path: string, formData: FormData, opts: { timeoutMs?: number } = {}) =>
+    request<T>(path, { method: 'PATCH', body: formData, ...opts }),
 };

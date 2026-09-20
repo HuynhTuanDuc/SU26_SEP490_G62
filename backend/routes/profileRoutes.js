@@ -4,15 +4,7 @@ const router = express.Router();
 const { verifyToken } = require('../middleware/authMiddleware');
 const { uploadAvatar } = require('../middleware/uploadMiddleware');
 const profileController = require('../controllers/profileController');
-
-function handleUpload(middleware) {
-    return (req, res, next) => {
-        middleware(req, res, (err) => {
-            if (err) return res.status(422).json({ error: err.message });
-            next();
-        });
-    };
-}
+const { handleUpload } = require('../middleware/handleUpload');
 
 router.use(verifyToken);
 

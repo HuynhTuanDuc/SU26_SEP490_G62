@@ -4,19 +4,11 @@ const router = express.Router();
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const { uploadIncident } = require('../middleware/uploadMiddleware');
 const incidentController = require('../controllers/incidentController');
+const { handleUpload } = require('../middleware/handleUpload');
 
 const driverOnly      = [verifyToken, requireRole('driver')];
 const coordinatorOnly = [verifyToken, requireRole('coordinator')];
 const staffOnly       = [verifyToken, requireRole('coordinator', 'manager')];
-
-function handleUpload(middleware) {
-    return (req, res, next) => {
-        middleware(req, res, (err) => {
-            if (err) return res.status(422).json({ error: err.message });
-            next();
-        });
-    };
-}
 
 router.post('/',                         driverOnly,      handleUpload(uploadIncident.array('images', 3)), incidentController.createIncident);
 router.get('/my/counts',                 driverOnly,      incidentController.getMyCounts);

@@ -4,15 +4,7 @@ const router = express.Router();
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 const { uploadMaintenanceBill } = require('../middleware/uploadMiddleware');
 const driverController = require('../controllers/driverController');
-
-function handleUpload(middleware) {
-    return (req, res, next) => {
-        middleware(req, res, (err) => {
-            if (err) return res.status(422).json({ error: err.message });
-            next();
-        });
-    };
-}
+const { handleUpload } = require('../middleware/handleUpload');
 
 router.get('/', verifyToken, requireRole('coordinator', 'manager', 'admin'), driverController.getAllDrivers);
 

@@ -52,7 +52,9 @@ const uploadMaintenanceBill = async (req, res) => {
     const billUrl = req.file?.path ?? null;
     const filePublicId = req.file?.filename ?? null;
     try {
-        const result = await driverService.uploadMaintenanceBill(req.user.userId, req.params.vehicleId, billUrl);
+        const result = await driverService.uploadMaintenanceBill(
+            req.user.userId, req.params.vehicleId, billUrl, { receivedAt: req.receivedAt },
+        );
         res.json({ message: 'Maintenance bill uploaded successfully', ...result });
     } catch (err) {
         // Ảnh không hợp lệ hoặc lưu lỗi → xoá ảnh vừa upload, tránh rác trên Cloudinary.
@@ -96,7 +98,9 @@ const updateMaintenanceCost = async (req, res) => {
 
 const completeMaintenance = async (req, res) => {
     try {
-        const result = await driverService.completeMaintenance(req.user.userId, req.params.vehicleId, req.body);
+        const result = await driverService.completeMaintenance(
+            req.user.userId, req.params.vehicleId, req.body, { receivedAt: req.receivedAt },
+        );
         res.json({ message: 'Maintenance marked ready for verification', ...result });
     } catch (err) {
         res.status(err.statusCode || 500).json({ error: err.message });

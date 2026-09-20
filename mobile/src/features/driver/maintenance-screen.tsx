@@ -133,7 +133,10 @@ function MaintenanceCard({
             } else if (isLostResponse(err)) {
                 Alert.alert(
                     'Chưa nhận được kết quả',
-                    `${msg}\n\nẢnh có thể đã được lưu. Danh sách ảnh vừa được tải lại — nếu ảnh vừa chụp đã có trong danh sách thì KHÔNG cần chụp lại.`,
+                    // Không tự khẳng định ảnh đã lưu hay chưa: câu của máy chủ nói rõ điều
+                    // đó rồi (vd hết thời gian đẩy ảnh lên = chưa lưu), nói ngược lại ngay bên
+                    // dưới thì tài xế không biết tin câu nào.
+                    `${msg}\n\nDanh sách ảnh vừa được tải lại — nếu ảnh vừa chụp đã có trong đó thì KHÔNG cần chụp lại.`,
                 );
             } else {
                 Alert.alert('Lỗi', msg);

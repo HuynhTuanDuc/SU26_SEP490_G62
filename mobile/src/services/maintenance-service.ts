@@ -1,5 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, TIMEOUT_SCAN_UPLOAD_MS } from '@/lib/api-client';
 import type { MaintenanceRecord, MaintenanceType } from '@/types/maintenance';
 import type { Vehicle } from '@/types/vehicle';
 
@@ -58,7 +58,10 @@ export const maintenanceService = {
         const uri = await shrinkPhoto(imageUri);
         const form = new FormData();
         form.append('bill', { uri, name: 'bill.jpg', type: 'image/jpeg' } as unknown as Blob);
-        return apiClient.postForm(`/api/drivers/maintenance/${vehicleId}/bills`, form);
+        // Request này CHỜ máy chủ đọc xong hóa đơn rồi mới trả lời — xem TIMEOUT_SCAN_UPLOAD_MS.
+        return apiClient.postForm(`/api/drivers/maintenance/${vehicleId}/bills`, form, {
+            timeoutMs: TIMEOUT_SCAN_UPLOAD_MS,
+        });
     },
 
     // Gỡ một ảnh chụp nhầm (hóa đơn hoặc ảnh gửi kèm yêu cầu) khi đợt chưa gửi duyệt.
@@ -74,5 +77,7 @@ export const maintenanceService = {
     // chạy đủ dây chuyền (vài ảnh song song, mỗi ảnh tới vài chục giây). Hạn 30 giây mặc định
     // cắt ngang trong khi máy chủ vẫn hoàn tất — tài xế thấy lỗi mà đợt đã gửi duyệt.
     complete: (vehicleId: number, cost: number): Promise<{ maintenanceRecordId: number }> =>
-        apiClient.post(`/api/drivers/maintenance/${vehicleId}/complete`, { cost }, { timeoutMs: 90_000 }),
+        apiClient.post(`/api/drivers/maintenance/${vehicleId}/complete`, { cost }, {
+            timeoutMs: TIMEOUT_SCAN_UPLOAD_MS,
+        }),
 };
