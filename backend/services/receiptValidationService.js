@@ -43,7 +43,7 @@ const taxonomy = require('./receiptTaxonomy');
 const RECHECK_ENABLED = String(process.env.RECEIPT_VISION_RECHECK ?? 'true').toLowerCase() !== 'false';
 
 // Lượt đọc lại chỉ được chạy khi dây chuyền còn thời gian. Một lượt gọi model có thể mất
-// tới 45 giây; app tài xế cắt request tải ảnh ở 90 giây, và 90 giây đó còn gồm cả thời
+// tới 45 giây; app tài xế cắt request tải ảnh ở 120 giây, và 120 giây đó còn gồm cả thời
 // gian đẩy ảnh qua mạng điện thoại yếu. Đọc lại khi đã tốn hơn mức này thì cái giá có thể
 // là tài xế nhận lỗi "hết thời gian" trong khi máy chủ vẫn lưu hóa đơn — tệ hơn nhiều so
 // với việc để hóa đơn đó cần người xem.
@@ -52,7 +52,7 @@ const RECHECK_MAX_ELAPSED_MS = Number(process.env.RECEIPT_RECHECK_MAX_ELAPSED_MS
 // Trần thời gian CẢ lượt đọc một ảnh (tải ảnh + model, tính cả lượt đọc lại và mọi lần thử
 // lại). Trước đây mỗi lần gọi model có hạn 45 giây nhưng được thử lại tới 3 lần, và lượt
 // đọc lại — chạy đúng với những hóa đơn LỆCH TRƯỜNG — lại thêm 3 × 45 giây nữa. Tài xế
-// đứng chờ trên màn hình "Đang kiểm tra..." có thể quá 90 giây app cho phép, và kết nối
+// đứng chờ trên màn hình "Đang kiểm tra..." có thể quá hạn chờ app cho phép, và kết nối
 // di động treo lâu không có dữ liệu là kết nối hay bị cắt. Hết trần thì hóa đơn chỉ rơi
 // vào "cần người xem" — không bao giờ bị chặn vì hệ thống chậm.
 const SCAN_BUDGET_MS = Number(process.env.RECEIPT_SCAN_BUDGET_MS || 55_000);
@@ -60,6 +60,21 @@ const SCAN_BUDGET_MS = Number(process.env.RECEIPT_SCAN_BUDGET_MS || 55_000);
 // Lượt đọc lại chỉ chạy khi còn ít nhất chừng này trong trần — ít hơn thì gần như chắc
 // chắn hết giờ giữa chừng, tốn quota mà không sửa được gì.
 const MIN_RECHECK_REMAINING_MS = 15_000;
+
+// Sàn của trần thời gian quét. Trần thật là phần CÒN LẠI của hạn trả lời (xem
+// RESPONSE_BUDGET_MS), mà phần còn lại đó có thể đã bị đoạn tải ảnh ăn gần hết khi tài xế
+// đứng chỗ sóng yếu. Không có sàn thì đúng những hóa đơn gửi từ nơi sóng yếu lại là những
+// hóa đơn không được đọc lần nào — tính năng tự đọc tắt đúng lúc cần nhất.
+const MIN_SCAN_BUDGET_MS = Number(process.env.RECEIPT_MIN_SCAN_BUDGET_MS || 20_000);
+
+// Hạn TRẢ LỜI cho một request có quét hóa đơn, đếm từ lúc request tới máy chủ (req.receivedAt).
+// Khác với SCAN_BUDGET_MS ở chỗ nó tính cả những đoạn nằm NGOÀI dây chuyền quét: thân
+// request đi qua mạng di động, rồi ảnh đẩy tiếp lên Cloudinary. Trước đây hai đoạn đó là
+// thời gian "miễn phí" — trần 55 giây của lượt quét bắt đầu đếm SAU chúng, nên tổng thời
+// gian tài xế phải chờ là (tải ảnh) + 55 giây, còn app thì cắt request. Ảnh sai lại
+// đúng là ảnh đi hết trần (lệch trường → đọc lại → thử lại), nên "ảnh sai" và "app báo
+// hết thời gian chờ" gần như luôn đi cùng nhau.
+const RESPONSE_BUDGET_MS = Number(process.env.RECEIPT_RESPONSE_BUDGET_MS || 55_000);
 
 // Trần độ dài text OCR khi LƯU. Hóa đơn A4 quét ra 2–4 nghìn ký tự; hơn nhiều lần mức đó
 // là nhiễu, lưu nguyên chỉ làm phình bảng và phình màn hình duyệt.
@@ -242,9 +257,14 @@ const safeCorroborate = (extraction, ocr, options) => {
  * @returns {{extraction: object|null, meta: object, ocr: object, corroboration: object|null,
  *            quality: object|null, error: {code: string, message: string}|null, cached: boolean}}
  */
-const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
+const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt: responseDeadline = null }) => {
     const startedAt = Date.now();
-    const deadlineAt = startedAt + SCAN_BUDGET_MS;
+    // Trần của lượt quét = phần còn lại của hạn trả lời, nhưng không bao giờ quá
+    // SCAN_BUDGET_MS và không bao giờ dưới MIN_SCAN_BUDGET_MS.
+    const deadlineAt = Math.max(
+        startedAt + MIN_SCAN_BUDGET_MS,
+        Math.min(startedAt + SCAN_BUDGET_MS, responseDeadline ?? Infinity),
+    );
     const loaded = await imagePipeline.loadImage(imageUrl);
     if (!loaded.ok) {
         return {
@@ -274,7 +294,7 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
     }
 
     const [ocr, first] = await Promise.all([
-        loaded.ocr ? ocrScanner.scanImage(loaded.ocr.buffer) : Promise.resolve({ ok: false, code: 'OCR_SKIPPED' }),
+        loaded.ocr ? ocrScanner.scanImage(loaded.ocr.buffer, { deadlineAt }) : Promise.resolve({ ok: false, code: 'OCR_SKIPPED' }),
         extractor.extractReceipt(imageUrl, { image: loaded.vision, deadlineAt }),
     ]);
 
@@ -347,7 +367,9 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true }) => {
 /**
  * Lấy bản đọc của một ảnh: dùng lại bản đã lưu nếu có, không thì chạy cả dây chuyền.
  */
-const readReceipt = async (imageUrl, { allowCache = true, profile = 'maintenance', allowRecheck = true } = {}) => {
+const readReceipt = async (imageUrl, {
+    allowCache = true, profile = 'maintenance', allowRecheck = true, deadlineAt = null,
+} = {}) => {
     if (allowCache) {
         try {
             const previous = await repository.findLatestByImageUrl(imageUrl);
@@ -381,7 +403,7 @@ const readReceipt = async (imageUrl, { allowCache = true, profile = 'maintenance
         }
     }
 
-    return runPipeline(imageUrl, { profile, allowRecheck });
+    return runPipeline(imageUrl, { profile, allowRecheck, deadlineAt });
 };
 
 const persist = async (row) => {
@@ -484,6 +506,8 @@ const validateReceipt = async (imageUrl, context = {}) => {
         allowCache: context.allowCache !== false,
         profile: context.profile ?? 'maintenance',
         allowRecheck: context.allowRecheck !== false,
+        // Hạn trả lời của CẢ request, do tầng controller tính từ lúc request tới.
+        deadlineAt: context.deadlineAt ?? null,
     });
 
     // Khoá nhận dạng tờ hóa đơn — lưu cùng bản đọc để lần sau dò trùng được.
@@ -919,6 +943,8 @@ const submitReceiptReview = async (extractionId, userId, { action, note, learnKe
 };
 
 module.exports = {
+    RESPONSE_BUDGET_MS,
+    MIN_SCAN_BUDGET_MS,
     getKeywordIndex,
     invalidateTaxonomyCache,
     buildPipelineTrace,

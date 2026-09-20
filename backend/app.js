@@ -10,6 +10,7 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
 const routes = require('./routes');
+const { trackRequestTiming } = require('./middleware/requestTiming');
 const pool = require('./config/database');
 const logger = require('./config/logger');
 const authService = require('./services/authService');
@@ -96,6 +97,10 @@ const csrfProtection = (req, res, next) => {
 app.set('trust proxy', 1);
 
 // Middleware
+// Đặt TRƯỚC mọi middleware khác: mốc giờ phải tính từ lúc request vào, và request bị chặn
+// ở tầng bảo mật cũng cần được ghi nhận nếu client bỏ cuộc giữa chừng.
+app.use(trackRequestTiming);
+
 // CSP mặc định của helmet sẽ chặn inline script của Swagger UI (chỉ bật ở non-production) —
 // tắt CSP riêng ở non-production, các header bảo mật khác (HSTS, X-Frame-Options...) vẫn giữ.
 app.use(helmet({ contentSecurityPolicy: isProduction }));
@@ -103,7 +108,11 @@ app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 app.use(cors(corsOptions));
 app.use(csrfProtection);
-app.use(morgan(isProduction ? 'combined' : 'dev', {
+// :response-time LÀ PHẦN QUAN TRỌNG. Format 'combined' không có nó, nên khi tài xế báo
+// "app hiện lỗi hết thời gian chờ" thì log máy chủ chỉ có một dòng 200 trông hoàn toàn
+// bình thường — không thể biết request đó mất 8 giây hay 80 giây, tức là không thể biết
+// lỗi nằm ở app hay ở máy chủ.
+app.use(morgan(isProduction ? ':remote-addr :method :url :status :res[content-length] :response-time ms ":user-agent"' : 'dev', {
     stream: { write: (message) => logger.info(message.trim()) },
 }));
 
@@ -188,6 +197,17 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // cột chưa tồn tại → lỗi 500 hàng loạt, khó lần ra nguyên nhân hơn nhiều so với việc
 // container chết ngay ở đây kèm log rõ ràng.
 const { runMigrations } = require('./migrate');
+
+// Node mặc định đóng kết nối keep-alive nhàn rỗi sau 5 GIÂY, trong khi proxy đứng trước
+// container (Render, và mọi load balancer khác) giữ kết nối lại để dùng cho request sau.
+// Hai bên lệch nhau: proxy gửi request vào đúng kết nối mà Node vừa quyết định đóng, và
+// người dùng nhận 502 — do PROXY sinh ra, nên trong log của ứng dụng không hề có 500 hay
+// stack nào. Đây là cấu hình Render tự khuyến nghị cho Node.
+//
+// headersTimeout PHẢI lớn hơn keepAliveTimeout, nếu không Node cắt kết nối ngay trước khi
+// nó kịp đọc xong dòng đầu của request kế tiếp.
+server.keepAliveTimeout = Number(process.env.SERVER_KEEPALIVE_TIMEOUT_MS || 120_000);
+server.headersTimeout = server.keepAliveTimeout + 5_000;
 
 runMigrations()
     .then(() => {

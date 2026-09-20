@@ -57,12 +57,7 @@ router.post('/receipts/:receiptId/confirm-bank-transfer',           accountantBa
 // (Accountant tạo → Manager duyệt → Accountant xác nhận chi), tổng hợp chi
 const spendingController = require('../controllers/spendingController');
 const { uploadPaymentVoucher } = require('../middleware/uploadMiddleware');
-const handleUpload = (middleware) => (req, res, next) => {
-    middleware(req, res, (err) => {
-        if (err) return res.status(422).json({ error: err.message });
-        next();
-    });
-};
+const { handleUpload } = require('../middleware/handleUpload');
 router.get  ('/expenses',          spendingController.listExpenses);
 router.get  ('/vouchers',          spendingController.listVouchers);
 router.post ('/vouchers',          handleUpload(uploadPaymentVoucher.single('proof')), spendingController.createVoucher);

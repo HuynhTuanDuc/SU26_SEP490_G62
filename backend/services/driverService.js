@@ -32,7 +32,7 @@ const parsePositiveAmount = (value, fieldName) => requireMoney(value, { field: f
 // Chỉ CHẶN khi verdict là `rejected`. Còn `needs_review` (ảnh mờ một phần, dòng chưa
 // phân loại được, model lỗi/timeout) thì cho đi tiếp và trả về để báo cho người duyệt —
 // không chặn cứng tài xế vì sự cố hạ tầng, nhưng cũng không để khoản đó lọt khỏi tầm mắt.
-const assertMaintenanceCostMatchesBills = async (cost, billPics, record) => {
+const assertMaintenanceCostMatchesBills = async (cost, billPics, record, { deadlineAt = null } = {}) => {
     // Lịch sử chi phí của chính chiếc xe. Lỗi tra cứu chỉ làm mất một lớp CẢNH BÁO,
     // không được làm hỏng cả bước hoàn tất.
     let costHistory = [];
@@ -53,6 +53,7 @@ const assertMaintenanceCostMatchesBills = async (cost, billPics, record) => {
         profile: 'maintenance',
         costHistory,
         maintenanceType: record?.maintenance_type ?? null,
+        deadlineAt,
     });
 
     if (result.blocked) {
@@ -178,7 +179,12 @@ const parseVehicleId = (vehicleId) => {
     return parsed;
 };
 
-const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
+// Hạn trả lời cho request đang chạy. `receivedAt` là lúc request TỚI máy chủ (app.js),
+// nên hạn này bao luôn đoạn đẩy ảnh lên Cloudinary — đoạn dài nhất và co giãn nhất khi
+// sóng yếu. Không có nó thì tài xế chờ (tải ảnh) + (trần quét), vượt hạn chờ của app.
+const scanDeadline = (receivedAt) => (receivedAt ?? Date.now()) + receiptValidationService.RESPONSE_BUDGET_MS;
+
+const uploadMaintenanceBill = async (driverId, vehicleId, billUrl, { receivedAt = null } = {}) => {
     const parsedVehicleId = parseVehicleId(vehicleId);
     if (!billUrl) {
         throw createError('Thiếu ảnh hóa đơn', 400);
@@ -210,6 +216,7 @@ const uploadMaintenanceBill = async (driverId, vehicleId, billUrl) => {
             entityId: record.id,
             profile: 'maintenance',
             allowCache: false,
+            deadlineAt: scanDeadline(receivedAt),
         });
         if (scan.blocked) {
             const err = createError(scan.reject_reason || 'Ảnh hóa đơn không hợp lệ', 422);
@@ -352,7 +359,7 @@ const summarizeReceiptCheck = (result) => ({
     checked_at: new Date().toISOString(),
 });
 
-const completeMaintenance = async (driverId, vehicleId, payload) => {
+const completeMaintenance = async (driverId, vehicleId, payload, { receivedAt = null } = {}) => {
     const parsedVehicleId = parseVehicleId(vehicleId);
 
     const cost = parsePositiveAmount(payload?.cost, 'Chi phí bảo dưỡng');
@@ -368,7 +375,9 @@ const completeMaintenance = async (driverId, vehicleId, payload) => {
         throw createError('Cần ít nhất một ảnh hóa đơn thanh toán (chụp ở bước bảo dưỡng) trước khi hoàn tất', 400);
     }
 
-    const receiptCheck = await assertMaintenanceCostMatchesBills(cost, billPics, record);
+    const receiptCheck = await assertMaintenanceCostMatchesBills(cost, billPics, record, {
+        deadlineAt: scanDeadline(receivedAt),
+    });
     const reviewCount = (receiptCheck?.reasons ?? []).filter((r) => r.severity === 'warning').length;
 
     try {

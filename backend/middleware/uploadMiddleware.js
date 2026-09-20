@@ -3,6 +3,12 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinary');
 const { UPLOAD } = require('../constants/uploadConstants');
 
+// Tệp không phải ảnh là lỗi của NGƯỜI GỬI — phân biệt với sự cố của kho ảnh hay đường
+// truyền, vốn cũng đi ra qua cùng một đường callback này. handleUpload đọc cờ này để
+// trả 422 (chụp lại đi) thay vì 5xx (thử lại đi); thiếu cờ thì mọi lỗi lạ đều bị đoán
+// là lỗi tấm ảnh, đúng cái sai đã làm tài xế chụp lại vô ích hàng chục lần.
+const notAnImage = () => Object.assign(new Error('Chỉ chấp nhận file ảnh'), { uploadRejected: true });
+
 function makeCloudinaryStorage(folder) {
     return new CloudinaryStorage({
         cloudinary,
@@ -22,7 +28,7 @@ function makeUploader(folder) {
         limits: { fileSize: UPLOAD.MAX_FILE_SIZE_BYTES },
         fileFilter: (_req, file, cb) => {
             if (!file.mimetype.startsWith('image/')) {
-                return cb(new Error('Chỉ chấp nhận file ảnh'));
+                return cb(notAnImage());
             }
             cb(null, true);
         },
@@ -58,7 +64,7 @@ const uploadTripComplete = multer({
     storage: tripCompleteStorage,
     limits: { fileSize: UPLOAD.MAX_FILE_SIZE_BYTES },
     fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) return cb(new Error('Chỉ chấp nhận file ảnh'));
+        if (!file.mimetype.startsWith('image/')) return cb(notAnImage());
         cb(null, true);
     },
 });

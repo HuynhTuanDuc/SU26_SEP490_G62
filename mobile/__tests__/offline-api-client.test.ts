@@ -84,6 +84,37 @@ describe('MỨC 1 — api-client chịu lỗi mạng', () => {
         expect(init.signal).toBeDefined();
     });
 
+    // Máy chủ vừa NHẬN ảnh vừa ĐỌC ảnh trong cùng một request (hóa đơn bảo dưỡng), nên nó
+    // trả lời chậm hơn hẳn mọi request khác — cố ý. Cắt theo hạn chung thì tài xế nhận
+    // "hết thời gian chờ" đúng vào lúc máy chủ sắp nói cho họ biết ảnh sai ở đâu, và trong
+    // log máy chủ không có lỗi nào cả vì nó vẫn trả lời bình thường vài giây sau đó.
+    it('G62-NET-08: request có hạn riêng thì không bị cắt theo hạn tải ảnh mặc định', async () => {
+        jest.useFakeTimers();
+        try {
+            (global.fetch as jest.Mock).mockImplementation((_url, init: RequestInit) => new Promise((_resolve, reject) => {
+                init.signal?.addEventListener('abort', () => {
+                    const loiHuy = new Error('Aborted');
+                    loiHuy.name = 'AbortError';
+                    reject(loiHuy);
+                });
+            }));
+
+            const daBaoLoi = jest.fn();
+            const dangGui = apiClient
+                .postForm('/api/drivers/maintenance/3/bills', new FormData(), { timeoutMs: 120_000 })
+                .catch(daBaoLoi);
+
+            await jest.advanceTimersByTimeAsync(95_000);
+            expect(daBaoLoi).not.toHaveBeenCalled();   // hạn mặc định 90 giây đã qua mà vẫn chờ
+
+            await jest.advanceTimersByTimeAsync(30_000);
+            await dangGui;
+            expect(daBaoLoi).toHaveBeenCalled();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('G62-NET-07: lỗi 4xx từ server KHÔNG bị thử lại (server đã trả lời, gửi lại vô ích)', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(dapUng(422, { error: 'Dữ liệu không hợp lệ' }));
 

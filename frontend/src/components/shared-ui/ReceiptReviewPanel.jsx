@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Button, Image, Chip, Textarea, Spinner, Select, SelectItem } from "@heroui/react";
 import {
   RiCheckLine, RiErrorWarningFill, RiAlertLine, RiInformationLine,
-  RiRobot2Line, RiPriceTag3Line,
+  RiRobot2Line, RiPriceTag3Line, RiEyeLine, RiEyeOffLine,
 } from "react-icons/ri";
 import { money } from "../../utils/formatNumber";
 
@@ -27,6 +27,11 @@ const VERDICT = {
 
 const vnd = (n) => (Number.isFinite(Number(n)) ? `${money(Number(n))}` : "—");
 
+// Ngưỡng "máy đọc không chắc" — phải giữ ĐÚNG bằng crossCheck.CONFIDENCE.REVIEW bên
+// backend. Lệch nhau thì dòng tổng kết ở đầu panel đếm một kiểu, chip trên từng tờ báo
+// một kiểu, và không ai biết bên nào đúng.
+const CONFIDENCE_REVIEW = 0.6;
+
 /**
  * Màu của độ tin cậy suy từ CHÍNH con số, không tra theo nhãn chữ.
  *
@@ -35,34 +40,37 @@ const vnd = (n) => (Number.isFinite(Number(n)) ? `${money(Number(n))}` : "—");
  */
 const confidenceColor = (value) => {
   if (value >= 0.8) return "success";
-  if (value >= 0.6) return "warning";
+  if (value >= CONFIDENCE_REVIEW) return "warning";
   return "danger";
 };
 
 /**
- * Độ tin cậy của lần đọc, chấm bằng cách đối chiếu bản đọc của AI với văn bản OCR quét
- * độc lập từ cùng tấm ảnh.
+ * Cảnh báo đọc-không-chắc, bản dành cho người duyệt KHÔNG làm kỹ thuật.
  *
- * Vì sao đáng bày ra: phán quyết "Đạt/Cần xem" nói hóa đơn có hợp lệ không, còn con số
- * này nói MÁY CÓ ĐỌC ĐÚNG KHÔNG — hai chuyện khác nhau. Một hóa đơn "Đạt" với độ tin
- * cậy thấp là tờ người duyệt phải mở ảnh ra xem tận nơi.
+ * Chỗ này trước đây là chip "Đọc cao · 87%". Con số đó không trả lời được câu hỏi duy
+ * nhất người duyệt cần trả lời — "tôi có phải mở ảnh gốc ra xem không?" — mà lại đứng
+ * ngay cạnh phán quyết Đạt/Không đạt nên rất dễ bị đọc nhầm thành mức độ hợp lệ của tờ
+ * hóa đơn. Giờ chip chỉ hiện khi câu trả lời là CÓ, và hiện bằng đúng câu đó.
+ *
+ * Con số gốc không mất: nó nằm trong khối "Thông tin kỹ thuật" bật/tắt ở đầu panel.
  */
-function ConfidenceChip({ value, label }) {
-  if (!Number.isFinite(value)) return null;
+function ReadWarningChip({ value }) {
+  if (!Number.isFinite(value) || value >= CONFIDENCE_REVIEW) return null;
   return (
     <Chip
       size="sm"
-      variant="dot"
-      color={confidenceColor(value)}
-      title="Mức khớp giữa bản đọc của AI và văn bản quét được từ ảnh"
+      variant="flat"
+      color="warning"
+      startContent={<RiAlertLine size={13} />}
+      title="Máy đọc tờ này không chắc chắn — cần mở ảnh gốc đối chiếu"
     >
-      Đọc {label ?? ""} · {Math.round(value * 100)}%
+      Nên mở ảnh đối chiếu
     </Chip>
   );
 }
 
 /** Một dòng hàng trên hóa đơn, kèm ô sửa phân loại khi người duyệt bấm vào. */
-function LineItemRow({ item, onTeach, teachable, categories, profileLabel }) {
+function LineItemRow({ item, onTeach, teachable, categories, profileLabel, showTechnical }) {
   const [editing, setEditing] = useState(false);
   const [category, setCategory] = useState(item.category ?? "");
 
@@ -90,10 +98,13 @@ function LineItemRow({ item, onTeach, teachable, categories, profileLabel }) {
             {item.category_label
               ? <span className="text-[11px] text-gray-400 dark:text-gray-400">{item.category_label}</span>
               : <span className="text-[11px] text-amber-600 dark:text-amber-400">Chưa phân loại</span>}
-            {item.matched_by === "model" && (
+            {/* Phân loại này đến từ đâu (AI tự đoán / từ điển và AI lệch nhau) là chuyện
+                bên trong máy: nó không đổi được việc người duyệt phải làm — xem hóa đơn
+                có thật và đúng xe không. Chỉ hiện khi bật thông tin kỹ thuật. */}
+            {showTechnical && item.matched_by === "model" && (
               <RiRobot2Line size={11} className="text-gray-300" title="AI đoán, từ điển chưa có" />
             )}
-            {item.matched_by === "conflict" && (
+            {showTechnical && item.matched_by === "conflict" && (
               <span className="text-[11px] text-amber-600 dark:text-amber-400">· từ điển và AI khác nhau</span>
             )}
           </div>
@@ -150,7 +161,7 @@ function LineItemRow({ item, onTeach, teachable, categories, profileLabel }) {
 // khỏi tổng. Gắn "Không đạt" cho nó là báo động giả cho người duyệt.
 const SUPPORTING = { label: "Chứng từ kèm theo — không tính vào tổng", color: "default", Icon: RiInformationLine };
 
-function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, showClaim, recordCost }) {
+function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, showClaim, recordCost, showTechnical }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const verdict = receipt.supporting ? SUPPORTING : (VERDICT[receipt.verdict] ?? VERDICT.error);
@@ -179,7 +190,7 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, sh
           <Chip size="sm" color={verdict.color} variant="flat" startContent={<verdict.Icon size={13} />}>
             {verdict.label}
           </Chip>
-          <ConfidenceChip value={receipt.confidence} label={receipt.confidence_label} />
+          <ReadWarningChip value={receipt.confidence} />
           {receipt.invoice_no && (
             <span className="text-xs text-gray-400 dark:text-gray-400 truncate">
               Số {receipt.invoice_no}
@@ -228,6 +239,7 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, sh
                       item={item}
                       teachable={!readOnly}
                       onTeach={teach}
+                      showTechnical={showTechnical}
                       categories={categories}
                       profileLabel={profileLabel}
                     />
@@ -285,22 +297,40 @@ function ReceiptCard({ receipt, onReview, readOnly, categories, profileLabel, sh
         </div>
       )}
 
-      {/* Văn bản OCR — mặc định gập lại vì phần lớn lần duyệt không cần tới.
-          Khi cần thì nó là thứ quan trọng nhất trên màn này: bảng dòng hàng ở trên là
-          lời khai của AI, còn đây là chữ quét thẳng từ ảnh, không đi qua AI nào. Tranh
-          chấp "máy đọc sai số tiền" chỉ phân xử được bằng cách so hai thứ đó với nhau. */}
-      {receipt.ocr?.text && (
-        <details className="mt-3">
-          <summary className="text-xs text-gray-400 dark:text-gray-400 cursor-pointer select-none">
-            Văn bản quét thẳng từ ảnh (không qua AI)
-            {Number.isFinite(Number(receipt.ocr.confidence))
-              ? ` · độ rõ ${Math.round(Number(receipt.ocr.confidence))}%`
-              : ""}
-          </summary>
-          <pre className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 dark:bg-gray-900/50 p-2 text-[11px] leading-snug text-gray-600 dark:text-gray-300">
-            {receipt.ocr.text}
-          </pre>
-        </details>
+      {/* Số liệu của máy (độ tin cậy dạng %, văn bản OCR thô) — mặc định ẨN HẲN, chỉ
+          hiện khi người duyệt tự bật công tắc "Thông tin kỹ thuật" ở đầu panel.
+          Ẩn chứ KHÔNG bỏ: bảng dòng hàng ở trên là lời khai của AI, còn văn bản dưới
+          đây là chữ quét thẳng từ ảnh, không đi qua AI nào. Tranh chấp "máy đọc sai số
+          tiền" chỉ phân xử được bằng cách so hai thứ đó với nhau — bỏ đi là mất luôn
+          đường phân xử. */}
+      {showTechnical && (receipt.ocr?.text || Number.isFinite(receipt.confidence)) && (
+        <div className="mt-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-800 p-2 flex flex-col gap-2">
+          {Number.isFinite(receipt.confidence) && (
+            <div>
+              <Chip
+                size="sm"
+                variant="dot"
+                color={confidenceColor(receipt.confidence)}
+                title="Mức khớp giữa bản đọc của AI và văn bản quét được từ ảnh"
+              >
+                Đọc {receipt.confidence_label ?? ""} · {Math.round(receipt.confidence * 100)}%
+              </Chip>
+            </div>
+          )}
+          {receipt.ocr?.text && (
+            <details>
+              <summary className="text-xs text-gray-400 dark:text-gray-400 cursor-pointer select-none">
+                Văn bản quét thẳng từ ảnh (không qua AI)
+                {Number.isFinite(Number(receipt.ocr.confidence))
+                  ? ` · độ rõ ${Math.round(Number(receipt.ocr.confidence))}%`
+                  : ""}
+              </summary>
+              <pre className="mt-1.5 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-50 dark:bg-gray-900/50 p-2 text-[11px] leading-snug text-gray-600 dark:text-gray-300">
+                {receipt.ocr.text}
+              </pre>
+            </details>
+          )}
+        </div>
       )}
 
       {!readOnly && (
@@ -333,6 +363,9 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Mặc định TẮT: màn này bày ra cho người duyệt chi phí, không phải cho người vận hành
+  // mô hình đọc hóa đơn. Ai cần số liệu máy thì tự bật.
+  const [showTechnical, setShowTechnical] = useState(false);
 
   const load = useCallback(async () => {
     if (!recordId) return;
@@ -370,6 +403,19 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Một công tắc duy nhất cho cả panel thay vì mỗi tờ một chỗ gập: người duyệt bật
+          một lần là thấy hết số liệu máy của cả đợt, tắt đi là màn sạch trở lại. */}
+      <div className="flex justify-end -mb-1">
+        <Button
+          size="sm"
+          variant="light"
+          className="h-6 min-w-0 px-2 text-[11px] text-gray-400 dark:text-gray-400"
+          startContent={showTechnical ? <RiEyeOffLine size={13} /> : <RiEyeLine size={13} />}
+          onPress={() => setShowTechnical((v) => !v)}
+        >
+          {showTechnical ? "Ẩn thông tin kỹ thuật" : "Thông tin kỹ thuật"}
+        </Button>
+      </div>
       {/* Điểm ở mức cả đợt — bước hoàn tất đã nêu (tổng hóa đơn so với số khai, ảnh chứng
           từ bị gạt khỏi tổng) và chi phí bất thường so với lịch sử xe. Không thuộc riêng
           tờ hóa đơn nào nên đứng riêng trên đầu. */}
@@ -397,7 +443,7 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
           {/* Tách riêng khỏi "cần người xem": đây là những tờ máy ĐỌC KHÔNG CHẮC, tức
               là phải mở ảnh ra đối chiếu tận nơi — khác với tờ bị gắn cảnh báo vì lý do
               nghiệp vụ (lệch ngày, lệch biển số) mà việc đọc thì không có vấn đề gì. */}
-          {summary.low_confidence > 0 && `${summary.low_confidence} hóa đơn máy đọc không chắc, cần mở ảnh đối chiếu. `}
+          {summary.low_confidence > 0 && `${summary.low_confidence} hóa đơn cần mở ảnh đối chiếu. `}
           Vui lòng đối chiếu trước khi xác nhận.
         </p>
       )}
@@ -411,6 +457,7 @@ export default function ReceiptReviewPanel({ recordId, fetchReview, submitReview
           profileLabel={data.profile_label ?? "loại chi phí này"}
           showClaim={invoiceCount === 1 && !receipt.supporting}
           recordCost={Number(data.record?.cost)}
+          showTechnical={showTechnical}
         />
       ))}
     </div>

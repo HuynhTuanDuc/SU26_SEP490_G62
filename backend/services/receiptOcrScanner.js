@@ -303,7 +303,7 @@ const extractLines = (data) => {
  * @returns {Promise<{ok: boolean, code?: string, text?: string, confidence?: number,
  *                    lines?: Array<{text: string, confidence: number}>, latency_ms: number, engine?: string}>}
  */
-const scanImage = async (buffer) => {
+const scanImage = async (buffer, { deadlineAt = null } = {}) => {
     const startedAt = Date.now();
 
     if (!isOcrEnabled()) {
@@ -324,7 +324,9 @@ const scanImage = async (buffer) => {
     //     vô hạn, và runPipeline treo theo vì nó chờ OCR bằng Promise.all.
     // OCR chỉ là kênh đối chiếu THÊM: nó không bao giờ được phép làm tài xế chờ lâu hơn
     // trần này, dù hàng đợi có dài tới đâu.
-    const deadline = startedAt + TIMEOUT_MS;
+    // Trần riêng của OCR, nhưng không được vượt hạn trả lời của cả request: nơi gọi chờ
+    // OCR bằng Promise.all, nên OCR chạy quá hạn là cả request chạy quá hạn.
+    const deadline = Math.min(startedAt + TIMEOUT_MS, deadlineAt ?? Infinity);
     const remaining = () => Math.max(0, deadline - Date.now());
     let started = false;
 
