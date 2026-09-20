@@ -268,7 +268,12 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt:
         startedAt + MIN_SCAN_BUDGET_MS,
         Math.min(startedAt + SCAN_BUDGET_MS, responseDeadline ?? Infinity),
     );
-    const loaded = await imagePipeline.loadImage(imageUrl);
+    // Không tải biến thể ảnh dành riêng cho OCR khi kênh OCR đang không dùng được (tắt
+    // bằng env, hoặc đang tạm tắt vì dựng worker hỏng). Đó là một lượt tải ảnh nữa qua
+    // mạng cho một tấm ảnh sẽ không ai đọc.
+    const loaded = await imagePipeline.loadImage(imageUrl, {
+        withOcrVariant: ocrScanner.isOcrAvailable(),
+    });
     if (!loaded.ok) {
         return {
             extraction: null,

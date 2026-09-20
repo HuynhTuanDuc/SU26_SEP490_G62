@@ -282,6 +282,21 @@ const fetchVariant = async (url) => {
  * @returns {Promise<{ok: boolean, code?: string, error?: string, vision?: object, ocr?: object, quality?: object}>}
  */
 const loadImage = async (imageUrl, { withOcrVariant = true } = {}) => {
+    // Hai biến thể tải SONG SONG. Trước đây tải nối đuôi nhau: biến thể cho model xong
+    // mới tới biến thể cho OCR, tức là mỗi lượt quét gánh HAI vòng mạng cộng lại, trong
+    // khi hai ảnh chẳng liên quan gì tới nhau. Trên mạng của máy chủ mỗi vòng vài trăm
+    // ms tới vài giây (Cloudinary còn phải sinh ảnh dẫn xuất ở lần đầu), và cả khoản đó
+    // nằm trong thời gian tài xế đứng chờ.
+    //
+    // Lỗi của biến thể OCR được nuốt ngay tại đây: nó là lớp THÊM, và bắt lỗi tại chỗ
+    // cũng để không sinh unhandled rejection khi nhánh dưới bỏ nó đi.
+    const ocrPending = withOcrVariant && hasOcrVariant(imageUrl)
+        ? fetchVariant(ocrUrl(imageUrl)).catch((err) => {
+            console.warn('[receipt] Không tải được biến thể ảnh cho OCR, dùng ảnh thường:', err.message);
+            return null;
+        })
+        : null;
+
     let vision;
     try {
         vision = await fetchVariant(visionUrl(imageUrl));
@@ -308,21 +323,16 @@ const loadImage = async (imageUrl, { withOcrVariant = true } = {}) => {
         bytes: vision.buffer.length,
     };
 
-    // Ảnh đã bị chặn vì quá nhỏ thì OCR cũng vô vọng — đừng tốn thêm một lượt tải.
+    // Ảnh đã bị chặn vì quá nhỏ thì OCR cũng vô vọng: bỏ luôn biến thể đang tải dở (nó đã
+    // có sẵn catch nên không sinh lỗi treo), thay vì chờ nó về rồi mới vứt.
     const blocked = quality.reasons.some((r) => r.severity === 'error');
     if (!withOcrVariant || blocked) {
         return { ok: true, vision: visionPart, ocr: null, quality };
     }
 
     let ocrPart = null;
-    if (hasOcrVariant(imageUrl)) {
-        try {
-            const enhanced = await fetchVariant(ocrUrl(imageUrl));
-            ocrPart = { buffer: enhanced.buffer, mimeType: enhanced.mimeType, enhanced: true };
-        } catch (err) {
-            console.warn('[receipt] Không tải được biến thể ảnh cho OCR, dùng ảnh thường:', err.message);
-        }
-    }
+    const enhanced = ocrPending ? await ocrPending : null;
+    if (enhanced) ocrPart = { buffer: enhanced.buffer, mimeType: enhanced.mimeType, enhanced: true };
     // Không có biến thể tăng cường thì OCR chạy trên chính ảnh đã tải — kém hơn nhưng
     // vẫn hơn hẳn việc không có kênh đối chiếu nào.
     if (!ocrPart) ocrPart = { buffer: vision.buffer, mimeType: vision.mimeType, enhanced: false };
