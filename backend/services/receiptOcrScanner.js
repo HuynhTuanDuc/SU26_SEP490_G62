@@ -51,6 +51,20 @@ const PSM = process.env.RECEIPT_OCR_PSM || '3';
 // vẫn đang chạy đúng.
 const TIMEOUT_MS = Number(process.env.RECEIPT_OCR_TIMEOUT_MS || 25_000);
 
+// Trần RIÊNG cho pha dựng worker, tách khỏi trần quét ở trên. Đo được 0,3 giây trên máy
+// dev; đo trên máy chủ thật (log 20/9) là QUÁ 25 GIÂY rồi hỏng — vCPU bị bóp không đủ nạp
+// WASM và hai tệp traineddata. Cả 25 giây đó nằm trong request của tài xế, và cuối cùng
+// vẫn không có OCR: app bỏ cuộc ở giây thứ 30 trong khi máy chủ còn đang dựng worker.
+//
+// Dựng worker mà quá chừng này thì có chờ thêm cũng không kịp cho ai: thà bỏ lớp đối
+// chiếu OCR của tấm này (hóa đơn vẫn được Gemini đọc, chỉ hạ độ tin cậy) còn hơn bắt tài
+// xế đứng chờ một thứ sắp hỏng.
+const INIT_TIMEOUT_MS = Number(process.env.RECEIPT_OCR_INIT_TIMEOUT_MS || 8_000);
+
+// Dựng worker lâu hơn mức này thì KHÔNG thả worker ra khi rảnh nữa: vài chục MB RAM rẻ
+// hơn việc bắt tài xế chờ đúng ngần ấy giây ở hóa đơn kế tiếp.
+const KEEP_ALIVE_BUILD_MS = Number(process.env.RECEIPT_OCR_KEEP_ALIVE_BUILD_MS || 2_000);
+
 // Dựng worker tốn khoảng 0,3–0,8 giây (đo: 281ms khi nạp vie+eng từ đĩa) và giữ vài
 // chục MB RAM. Giữ lại dùng cho ảnh sau — một đợt bảo dưỡng thường có nhiều hóa đơn —
 // nhưng thả ra khi vắng khách để container idle không phải gánh phần bộ nhớ đó.
@@ -63,6 +77,15 @@ const IDLE_SHUTDOWN_MS = Number(process.env.RECEIPT_OCR_IDLE_MS || 120_000);
  * chạy sát hạn mức CPU, đánh đổi một lớp đối chiếu để lấy thời gian phản hồi là một
  * quyết định vận hành hợp lệ — và phải tắt được mà không cần sửa code.
  */
+/**
+ * Kênh OCR có dùng được NGAY BÂY GIỜ không.
+ *
+ * Khác isOcrEnabled ở chỗ tính cả khoảng tạm tắt sau khi dựng worker hỏng. Nơi gọi dùng
+ * nó để khỏi tải biến thể ảnh dành riêng cho OCR — một lượt tải ảnh nữa qua mạng, hoàn
+ * toàn vô ích khi không có ai đọc nó.
+ */
+const isOcrAvailable = () => isOcrEnabled() && Date.now() >= unavailableUntil;
+
 const isOcrEnabled = () => {
     if (String(process.env.RECEIPT_OCR_ENABLED ?? 'true').toLowerCase() === 'false') return false;
     try {
@@ -77,6 +100,10 @@ const isOcrEnabled = () => {
 
 let workerPromise = null;
 let idleTimer = null;
+// Lần dựng worker gần nhất tốn bao lâu. Đây là số đo của CHÍNH máy đang chạy, và là
+// căn cứ để quyết định có nên thả worker ra khi rảnh hay không (xem scheduleIdleShutdown).
+let lastBuildMs = 0;
+let keepAliveLogged = false;
 // Tesseract chỉ nhận MỘT việc một lúc. Hai ảnh gọi song song (validateMaintenanceBills
 // chạy Promise.all trên nhiều hóa đơn) mà cùng đẩy vào một worker thì kết quả trộn vào
 // nhau. Xếp hàng bằng một dây promise là cách rẻ nhất để bảo đảm tuần tự.
@@ -89,6 +116,21 @@ const clearIdleTimer = () => {
 const scheduleIdleShutdown = () => {
     clearIdleTimer();
     if (IDLE_SHUTDOWN_MS <= 0) return;
+
+    // Thả worker ra để tiết kiệm RAM chỉ đáng khi dựng lại nó RẺ. Trên máy dev dựng mất
+    // 0,2-0,3 giây nên thả là đúng. Trên máy chủ thiếu CPU, dựng lại mất hàng giây tới
+    // hàng chục giây — và cái giá đó tài xế trả bằng thời gian đứng chờ, mỗi lần hai đợt
+    // bảo dưỡng cách nhau quá thời gian rảnh. Máy nào chậm thì giữ worker lại.
+    if (lastBuildMs >= KEEP_ALIVE_BUILD_MS) {
+        if (!keepAliveLogged) {
+            keepAliveLogged = true;
+            console.log(
+                `[receipt] Dựng worker OCR mất ${lastBuildMs}ms trên máy này — giữ worker lại thay vì `
+                + `thả ra khi rảnh, để hóa đơn sau không phải chờ dựng lại.`,
+            );
+        }
+        return;
+    }
     idleTimer = setTimeout(() => { shutdown().catch(() => {}); }, IDLE_SHUTDOWN_MS);
     if (typeof idleTimer.unref === 'function') idleTimer.unref();
 };
@@ -191,6 +233,7 @@ const getWorker = async () => {
             },
         });
 
+        const buildStartedAt = Date.now();
         const pending = Promise.race([created, initFailure]).then(async (worker) => {
             ready = true;
             // Worker của Node là EventEmitter. tesseract.js gán `worker.onerror` theo kiểu
@@ -211,6 +254,7 @@ const getWorker = async () => {
                 preserve_interword_spaces: '1',
             });
             initFailures = 0;
+            lastBuildMs = Date.now() - buildStartedAt;
             return worker;
         }).catch((err) => {
             if (workerPromise === pending) workerPromise = null;
@@ -219,6 +263,44 @@ const getWorker = async () => {
         workerPromise = pending;
     }
     return workerPromise;
+};
+
+/**
+ * Dựng sẵn worker lúc khởi động, NGOÀI đường đi của request.
+ *
+ * Trước đây worker chỉ được dựng khi có hóa đơn đầu tiên cần quét, tức là tài xế trả tiền
+ * cho việc đó bằng thời gian chờ của mình — và trên máy chủ thật, hoá đơn đó không bao giờ
+ * được quét vì việc dựng worker quá lâu. Dựng ở đây thì câu trả lời "máy này quét OCR được
+ * hay không" có ngay lúc khởi động: được thì worker đã sẵn sàng cho hóa đơn đầu tiên,
+ * không được thì kênh OCR tự tắt và mọi lượt quét bỏ qua nó NGAY LẬP TỨC thay vì chờ.
+ *
+ * Không bao giờ ném lỗi: không có OCR thì hệ thống lùi về một kênh đọc, không hóa đơn nào
+ * bị chặn thêm.
+ */
+const warmUp = async () => {
+    if (!isOcrEnabled()) {
+        console.log('[receipt] OCR đang tắt — bỏ qua bước dựng sẵn worker.');
+        return { ok: false, code: 'OCR_DISABLED' };
+    }
+
+    const startedAt = Date.now();
+    try {
+        await withTimeout(getWorker(), INIT_TIMEOUT_MS, 'OCR_INIT_FAILED', 'Quá thời gian dựng worker OCR lúc khởi động');
+        console.log(`[receipt] Worker OCR sẵn sàng sau ${Date.now() - startedAt}ms.`);
+        return { ok: true, latency_ms: Date.now() - startedAt };
+    } catch (rawErr) {
+        const err = toError(rawErr, 'OCR_INIT_FAILED');
+        // Cùng cách xử lý như khi dựng hỏng giữa một lượt quét: gỡ lời hứa hỏng khỏi vị trí
+        // dùng chung (kể cả khi nó đang treo) và tạm tắt kênh OCR.
+        shutdown().catch(() => {});
+        recordInitFailure(err);
+        console.warn(
+            `[receipt] Không dựng được worker OCR lúc khởi động sau ${Date.now() - startedAt}ms. `
+            + 'Hóa đơn vẫn được đọc bằng Gemini, chỉ mất lớp đối chiếu OCR. '
+            + 'Nếu máy chủ thiếu CPU/RAM, đặt RECEIPT_OCR_ENABLED=false để khỏi thử lại.',
+        );
+        return { ok: false, code: 'OCR_INIT_FAILED' };
+    }
 };
 
 /** Dừng worker và trả bộ nhớ. Gọi khi rảnh lâu, khi worker kẹt, và cuối mỗi test. */
@@ -339,10 +421,19 @@ const scanImage = async (buffer, { deadlineAt = null } = {}) => {
         started = true;
         clearIdleTimer();
         try {
-            // Dựng worker quá hạn KHÔNG phải chuyện tải cao nhất thời: đo được ~0,3 giây,
-            // trần là 25 giây. Treo tới mức đó là dấu hiệu tệp ngôn ngữ hỏng (xem getWorker)
-            // nên được đếm như một lần dựng hỏng, không phải một lần quét chậm.
-            const worker = await withTimeout(getWorker(), remaining(), 'OCR_INIT_FAILED', 'Quá thời gian dựng worker OCR');
+            // Dựng worker quá hạn KHÔNG phải chuyện tải cao nhất thời: đo được ~0,3 giây.
+            // Treo tới hết trần là dấu hiệu tệp ngôn ngữ hỏng, hoặc máy chủ không đủ sức nạp
+            // WASM — cả hai đều được đếm như một lần dựng hỏng, không phải một lần quét chậm.
+            //
+            // Trần ở đây là INIT_TIMEOUT_MS chứ không phải cả phần thời gian còn lại: pha
+            // dựng worker hỏng thì phần thời gian còn lại phải dành cho việc QUÉT, hoặc trả
+            // lại cho tài xế, chứ không đổ hết vào việc chờ một worker sắp hỏng.
+            const worker = await withTimeout(
+                getWorker(),
+                Math.min(remaining(), INIT_TIMEOUT_MS),
+                'OCR_INIT_FAILED',
+                'Quá thời gian dựng worker OCR',
+            );
             const result = await withTimeout(
                 // Chỉ xin `text` và `blocks`; hocr/tsv là hai lần dựng chuỗi nữa cho
                 // định dạng không ai dùng tới.
@@ -604,7 +695,10 @@ const dictionaryHits = (lines, keywordIndex) => {
 module.exports = {
     LANGS,
     TIMEOUT_MS,
+    INIT_TIMEOUT_MS,
     isOcrEnabled,
+    isOcrAvailable,
+    warmUp,
     scanImage,
     shutdown,
     extractLines,

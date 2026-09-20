@@ -212,3 +212,85 @@ describe('receiptOcrScanner — hạn chót tính từ lúc gọi, gồm cả th
         assert.deepStrictEqual([...codes], ['OCR_INIT_FAILED', 'OCR_INIT_FAILED', 'OCR_INIT_FAILED', 'OCR_UNAVAILABLE', 'OCR_UNAVAILABLE']);
     });
 });
+
+/**
+ * Pha DỰNG worker có trần riêng, và được dựng sẵn lúc khởi động.
+ *
+ * Log máy chủ thật ngày 20/9 cho thấy pha này mất quá 25 giây rồi hỏng — cả 25 giây đó
+ * nằm trong request "Hoàn thành bảo dưỡng" của tài xế, và app bỏ cuộc ở giây thứ 30 trong
+ * khi máy chủ vẫn đang dựng worker. Quét OCR là lớp đối chiếu THÊM: nó không bao giờ được
+ * phép là lý do tài xế phải chờ.
+ */
+describe('receiptOcrScanner — dựng worker không được ăn vào thời gian của tài xế', () => {
+    /** createWorker treo mãi, mô phỏng máy chủ không đủ sức nạp WASM + traineddata. */
+    const hangingTesseract = () => ({ createWorker: () => new Promise(() => {}) });
+
+    it('trần dựng worker ngắn hơn hẳn trần quét — không chờ hết cả trần quét', async () => {
+        const scanner = loadScanner(
+            { RECEIPT_OCR_TIMEOUT_MS: '5000', RECEIPT_OCR_INIT_TIMEOUT_MS: '200' },
+            { 'tesseract.js': hangingTesseract },
+        );
+        const startedAt = Date.now();
+
+        const result = await scanner.scanImage(Buffer.from('anh'));
+        const elapsed = Date.now() - startedAt;
+
+        assert.strictEqual(result.code, 'OCR_INIT_FAILED');
+        assert.ok(elapsed < 1_500, `phải bỏ cuộc quanh mức 200ms, thực tế ${elapsed}ms`);
+    });
+
+    it('dựng sẵn lúc khởi động thất bại → lượt quét sau bỏ qua OCR ngay, không chờ lần nữa', async () => {
+        const scanner = loadScanner(
+            { RECEIPT_OCR_INIT_TIMEOUT_MS: '200', RECEIPT_OCR_RETRY_MS: '300000' },
+            { 'tesseract.js': hangingTesseract },
+        );
+
+        const warm = await scanner.warmUp();
+        const startedAt = Date.now();
+        const result = await scanner.scanImage(Buffer.from('anh'));
+
+        assert.strictEqual(warm.ok, false);
+        assert.strictEqual(warm.code, 'OCR_INIT_FAILED');
+        // Tài xế đầu tiên KHÔNG trả tiền cho việc này lần nữa: câu trả lời đã có từ lúc
+        // khởi động, lượt quét trả về tức thì.
+        assert.strictEqual(result.code, 'OCR_UNAVAILABLE');
+        assert.ok(Date.now() - startedAt < 100, `phải trả về tức thì, thực tế ${Date.now() - startedAt}ms`);
+    });
+
+    it('dựng sẵn thành công → worker đã sẵn sàng cho hóa đơn đầu tiên', async () => {
+        let created = 0;
+        const scanner = loadScanner({}, {
+            'tesseract.js': () => ({
+                createWorker: async () => {
+                    created += 1;
+                    return {
+                        setParameters: async () => {},
+                        recognize: async () => ({ data: { text: 'HOA DON', confidence: 90 } }),
+                        terminate: async () => {},
+                    };
+                },
+            }),
+        });
+
+        const warm = await scanner.warmUp();
+        const result = await scanner.scanImage(Buffer.from('anh'));
+
+        assert.strictEqual(warm.ok, true);
+        assert.strictEqual(result.ok, true);
+        assert.strictEqual(created, 1, 'hóa đơn đầu tiên dùng lại worker đã dựng sẵn');
+        await scanner.shutdown();
+    });
+
+    it('OCR tắt bằng env thì không dựng gì cả', async () => {
+        const scanner = loadScanner({}, { 'tesseract.js': hangingTesseract });
+        const saved = process.env.RECEIPT_OCR_ENABLED;
+        process.env.RECEIPT_OCR_ENABLED = 'false';
+
+        try {
+            assert.deepStrictEqual(await scanner.warmUp(), { ok: false, code: 'OCR_DISABLED' });
+        } finally {
+            if (saved === undefined) delete process.env.RECEIPT_OCR_ENABLED;
+            else process.env.RECEIPT_OCR_ENABLED = saved;
+        }
+    });
+});

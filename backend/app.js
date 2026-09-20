@@ -213,6 +213,11 @@ runMigrations()
     .then(() => {
         server.listen(port, () => {
             logger.info(`Server listening on port ${port}`);
+            // SAU listen, và KHÔNG await: dựng worker OCR tốn CPU, không được giữ cổng
+            // đóng thêm giây nào. Thất bại chỉ làm mất lớp đối chiếu OCR (xem warmUp).
+            if (String(process.env.RECEIPT_OCR_WARMUP ?? 'true').toLowerCase() !== 'false') {
+                require('./services/receiptOcrScanner').warmUp().catch(() => {});
+            }
         });
     })
     .catch((err) => {
