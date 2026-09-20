@@ -82,6 +82,9 @@ const MAX_STORED_OCR_CHARS = 20_000;
 
 const VERDICT_RANK = { passed: 0, needs_review: 1, rejected: 2 };
 
+// URL Cloudinary dài cả trăm ký tự mà chỉ phần đuôi là phân biệt được ảnh nào.
+const shortUrl = (url) => String(url ?? '').split('/').pop().slice(0, 40);
+
 // Lý do cho thấy tấm ảnh KHÔNG DÙNG LÀM HÓA ĐƠN được — phân biệt với lý do cho thấy một
 // hóa đơn thật có vấn đề (lệch số, dùng lại, sai hạng mục). Chỉ còn dùng để gắn nhãn
 // "chứng từ kèm theo" trên màn duyệt cho những đợt cũ, từ trước khi ảnh lúc gửi yêu cầu
@@ -347,6 +350,15 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt:
         }
     }
 
+    // Một dòng cho mỗi lượt quét THẬT. Đây là thứ trả lời câu "vì sao request này lâu":
+    // tách riêng thời gian của model và của OCR, thay vì chỉ thấy tổng thời gian request
+    // rồi phải đoán. Lượt dùng lại bản đọc cũ không tốn gì nên không cần một dòng log.
+    console.log(
+        `[receipt] Quét xong ${shortUrl(imageUrl)}: tổng ${Date.now() - startedAt}ms `
+        + `(model ${best.result.meta?.latency_ms ?? '-'}ms, OCR ${ocr?.latency_ms ?? '-'}ms/${ocr?.ok ? 'ok' : ocr?.code}`
+        + `${recheck.ran ? ', có đọc lại' : ''})`,
+    );
+
     return {
         extraction: best.result.extraction,
         raw: best.result.raw,
@@ -401,6 +413,12 @@ const readReceipt = async (imageUrl, {
         } catch (err) {
             console.warn('[receipt] Không đọc được bản trích xuất cũ:', err.message);
         }
+
+        // Tới được đây nghĩa là CÓ xin bản đọc cũ nhưng không dùng được: hoặc ảnh này chưa
+        // từng được quét, hoặc lần quét trước hỏng nên không lưu được nội dung đọc. Bước
+        // hoàn tất rơi vào đây là phải chạy lại cả dây chuyền cho từng ảnh — đúng chỗ khác
+        // nhau giữa một request vài giây và một request vài chục giây.
+        console.warn(`[receipt] Không dùng lại được bản đọc cũ của ${shortUrl(imageUrl)} — chạy lại cả dây chuyền.`);
     }
 
     return runPipeline(imageUrl, { profile, allowRecheck, deadlineAt });
