@@ -5,6 +5,38 @@ const { UNPAID_DAY_CASE_SQL } = require('../constants/payrollConstants');
 const BONUS_TYPES    = ['tet_annual', 'welfare_wedding', 'welfare_funeral', 'welfare_birthday', 'holiday_overtime', 'special'];
 const BONUS_STATUSES = ['pending', 'approved', 'rejected', 'paid'];
 
+// ─── Ai còn được nhận thưởng ──────────────────────────────────────────────────
+//
+// Kiểm ở CẢ bước tạo lẫn bước duyệt. Trước đây chỉ kiểm lúc tạo, nên phiếu tạo khi tài
+// khoản còn hoạt động (kế toán tạo chờ duyệt, hay thưởng Tết sinh hàng loạt) vẫn duyệt
+// được sau khi tài khoản đã bị khoá / tài xế đã nghỉ việc.
+//
+// Thưởng Tết năm Y (alias `a` = accounts, `d` = drivers): chỉ tài xế CÒN LÀM tới hết năm:
+//  • vào làm sau 31/12 → chưa làm ngày nào trong năm. Trước đây vẫn được xét đủ 12
+//    tháng (không có ngày nghỉ nào được ghi) và ăn trọn 12.000.000;
+//  • có ngày nghỉ việc trước 31/12 → không có thưởng Tết năm đó;
+//  • tài khoản đã khoá mà không ghi ngày nghỉ việc → không biết còn làm tới đâu, loại ra
+//    như mọi khoản phúc lợi khác (chỉ áp cho nhân viên đang hoạt động). Khoá sau khi
+//    nghỉ việc từ 31/12 trở đi thì vẫn được xét.
+const TET_ELIGIBLE_SQL = (yearSql) => `(
+    d.hire_date <= make_date(${yearSql}, 12, 31)
+    AND (d.termination_date IS NULL OR d.termination_date >= make_date(${yearSql}, 12, 31))
+    AND (a.is_active = TRUE OR d.termination_date IS NOT NULL)
+)`;
+
+// Người nhận của phiếu `alias` còn đủ điều kiện: thưởng Tết theo quy tắc trên, mọi khoản
+// khác (hiếu hỉ, sinh nhật, đặc biệt...) thì tài khoản phải đang hoạt động.
+const RECIPIENT_ELIGIBLE_SQL = (alias) => `EXISTS (
+    SELECT 1
+    FROM accounts a
+    LEFT JOIN drivers d ON d.profile_id = a.id
+    WHERE a.id = ${alias}.driver_id
+      AND (
+            (${alias}.type <> 'tet_annual' AND a.is_active = TRUE)
+         OR (${alias}.type =  'tet_annual' AND ${TET_ELIGIBLE_SQL(`${alias}.year`)})
+      )
+)`;
+
 // ─── Tet bonus helpers ────────────────────────────────────────────────────────
 
 /**
@@ -74,13 +106,8 @@ const _calcTet = (driverId, hireDate, year, unpaidByMonth) => {
 
 const previewTetBonuses = async (year) => {
     const y = Number(year);
-    // Chỉ xét tài xế CÒN LÀM tới hết năm tính thưởng (chính sách công ty):
-    //  • vào làm sau 31/12 → chưa làm ngày nào trong năm. Trước đây vẫn được xét đủ 12
-    //    tháng (không có ngày nghỉ nào được ghi) và ăn trọn 12.000.000;
-    //  • có ngày nghỉ việc trước 31/12 → không có thưởng Tết năm đó;
-    //  • tài khoản đã khoá mà không ghi ngày nghỉ việc → không biết còn làm tới đâu, loại ra
-    //    như mọi khoản phúc lợi khác (chỉ áp cho nhân viên đang hoạt động). Khoá sau khi
-    //    nghỉ việc từ 31/12 trở đi thì vẫn được xét.
+    // Chỉ xét tài xế CÒN LÀM tới hết năm tính thưởng — cùng quy tắc bước duyệt dùng lại
+    // (TET_ELIGIBLE_SQL), để phiếu đã sinh không duyệt được khi tài xế hết đủ điều kiện.
     const { rows: drivers } = await pool.query(
         `SELECT d.profile_id AS driver_id,
                 to_char(d.hire_date, 'YYYY-MM-DD') AS hire_date,
@@ -92,9 +119,7 @@ const previewTetBonuses = async (year) => {
          -- Nhóm CỐ ĐỊNH (biên chế), không phải nhóm của xe đang cầm — để nhãn nhóm
          -- ở màn Thưởng khớp với màn KPI và Bảng lương.
          LEFT JOIN vehicle_groups vg ON vg.id = d.default_vehicle_group_id
-         WHERE d.hire_date <= make_date($1::int, 12, 31)
-           AND (d.termination_date IS NULL OR d.termination_date >= make_date($1::int, 12, 31))
-           AND (a.is_active = TRUE OR d.termination_date IS NOT NULL)
+         WHERE ${TET_ELIGIBLE_SQL('$1::int')}
          ORDER BY p.full_name`,
         [y],
     );
@@ -315,15 +340,38 @@ const approve = async (id, approvedBy, adjustedAmount) => {
         params.push(Number(adjustedAmount));
         amountClause = `, amount = $${params.length}`;
     }
+    // Điều kiện người nhận nằm NGAY trong câu UPDATE: kiểm riêng rồi mới ghi thì tài khoản
+    // vẫn có thể bị khoá xen vào giữa hai câu.
     const { rows: [row] } = await pool.query(
-        `UPDATE driver_bonuses
+        `UPDATE driver_bonuses db
          SET status = 'approved', approved_by = $2, approved_at = NOW(), updated_at = NOW()${amountClause}
-         WHERE id = $1 AND status = 'pending'
-         RETURNING id`,
+         WHERE db.id = $1 AND db.status = 'pending'
+           AND ${RECIPIENT_ELIGIBLE_SQL('db')}
+         RETURNING db.id`,
         params,
     );
-    if (!row) throw new Error('Không tìm thấy hoặc trạng thái không hợp lệ (cần pending)');
+    if (!row) throw await _approveBlockedError(id);
     return getById(id);
+};
+
+// Không duyệt được thì nói rõ vì sao: phiếu không còn chờ duyệt, hay người nhận đã hết đủ
+// điều kiện (manager cần biết để bấm Từ chối thay vì thử lại).
+const _approveBlockedError = async (id) => {
+    const { rows: [cur] } = await pool.query(
+        `SELECT db.status, db.type, db.year, p.full_name
+         FROM driver_bonuses db
+         JOIN profiles p ON p.id = db.driver_id
+         WHERE db.id = $1`,
+        [id],
+    );
+    if (!cur || cur.status !== 'pending') {
+        return new Error('Không tìm thấy hoặc trạng thái không hợp lệ (cần pending)');
+    }
+    const message = cur.type === 'tet_annual'
+        ? `${cur.full_name} không còn đủ điều kiện nhận thưởng Tết ${cur.year} `
+          + '(tài khoản đã bị khoá hoặc đã nghỉ việc trước 31/12). Hãy từ chối phiếu này.'
+        : `Tài khoản của ${cur.full_name} đã bị khoá — không thể duyệt thưởng. Hãy từ chối phiếu này.`;
+    return Object.assign(new Error(message), { status: 409 });
 };
 
 const reject = async (id, rejectedBy, reason) => {

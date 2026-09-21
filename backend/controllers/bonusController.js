@@ -111,9 +111,13 @@ const create = async (req, res) => {
         if (!type)      return res.status(400).json({ error: 'type là bắt buộc' });
         if (!bonusRepository.BONUS_TYPES.includes(type))
             return res.status(400).json({ error: 'Loại thưởng không hợp lệ' });
+        // Number() chứ không parseInt: "12abc" phải bị chặn, không được hiểu thành #12.
+        const driverId = Number(driver_id);
+        if (!Number.isInteger(driverId) || driverId <= 0)
+            return res.status(400).json({ error: 'Nhân viên nhận thưởng không hợp lệ' });
 
         const bonus = await bonusService.createWelfare({
-            driver_id: Number(driver_id),
+            driver_id: driverId,
             type,
             // Nguyên chuỗi — bonusService.createWelfare kiểm bằng requireMoney.
             amount:    (amount === undefined || amount === null || amount === '') ? null : amount,

@@ -59,7 +59,8 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 // ─── Maintenance row ──────────────────────────────────────────────────────────
 
 function MaintenanceRow({ record }: { record: MaintenanceRecord }) {
-    const style = MAINTENANCE_STATUS_STYLE[record.status];
+    // Trạng thái lạ → màu trung tính, không để `style.border` làm sập màn hình.
+    const style = MAINTENANCE_STATUS_STYLE[record.status] ?? MAINTENANCE_STATUS_STYLE.requested;
     const StatusIcon = record.status === 'completed' ? CheckCircle2
         : record.status === 'pending_verification' ? Clock : Wrench;
 
@@ -93,7 +94,7 @@ function MaintenanceRow({ record }: { record: MaintenanceRecord }) {
             <XStack paddingHorizontal={8} paddingVertical={3} borderRadius={appTheme.radius.pill}
                 backgroundColor={style.bg} borderWidth={1} borderColor={style.border}>
                 <Text fontSize={11} fontWeight="700" color={style.text}>
-                    {MAINTENANCE_STATUS_LABEL[record.status]}
+                    {MAINTENANCE_STATUS_LABEL[record.status] ?? record.status}
                 </Text>
             </XStack>
         </XStack>
