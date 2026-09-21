@@ -40,6 +40,20 @@ const MODEL = process.env.RECEIPT_VISION_MODEL || 'gemini-3.6-flash';
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_MS = 700;
 
+// Hết hạn mức (429) thì NGHỈ HẲN một lúc thay vì tiếp tục gọi.
+//
+// Hạn mức của Google tính theo PHÚT và theo NGÀY. Khi đã chạm trần, mọi lời gọi tiếp
+// theo đều bị từ chối và vẫn bị tính vào hạn mức — tức là càng gọi càng lún. Trước đây
+// mỗi hóa đơn còn thử lại tới 3 lần, nhiều tài xế nộp cùng lúc thì hàng chục lời gọi
+// vô ích bắn đi trong vài giây, và hạn mức không bao giờ kịp hồi.
+//
+// Trong khoảng nghỉ, hóa đơn KHÔNG bị chặn: nó rơi vào "cần người xem" ngay lập tức,
+// tài xế không phải chờ thêm giây nào.
+const RATE_LIMIT_COOLDOWN_MS = Number(process.env.RECEIPT_VISION_RATE_LIMIT_COOLDOWN_MS || 60_000);
+
+// Mốc thời gian được phép gọi model trở lại. Dùng chung cho cả tiến trình.
+let rateLimitedUntil = 0;
+
 // Đổi số này mỗi khi sửa prompt. Lưu vào receipt_extractions để so được độ chính xác
 // giữa các phiên bản prompt — không có nó thì không biết một thay đổi làm tốt lên hay
 // tệ đi.
@@ -274,7 +288,10 @@ const classifyError = (err) => {
     const message = String(err?.message ?? '');
 
     if (status === 429 || /\b429\b|quota|resource_exhausted|too many requests/i.test(message)) {
-        return { code: 'RATE_LIMIT', retryable: true };
+        // KHÔNG thử lại. Lùi của ta là 0,7-2,8 giây, còn cửa sổ hạn mức của Google là một
+        // PHÚT hoặc một NGÀY: thử lại trong vài giây không bao giờ kịp hồi, chỉ tốn thêm hai
+        // lời gọi nữa vào đúng cái hạn mức đang cạn, và bắt tài xế chờ thêm.
+        return { code: 'RATE_LIMIT', retryable: false };
     }
     if (status === 503 || status === 500 || /\b50[03]\b|unavailable|high demand|overloaded/i.test(message)) {
         return { code: 'SERVICE_UNAVAILABLE', retryable: true };
@@ -404,6 +421,20 @@ const extractReceipt = async (imageUrl, {
 
     const remaining = () => (deadlineAt ? deadlineAt - Date.now() : Infinity);
 
+    // Đang trong khoảng nghỉ vì hết hạn mức: trả lời ngay, không gọi. Một lời gọi chắc
+    // chắn bị từ chối chỉ làm tài xế chờ thêm và đẩy hạn mức lún sâu hơn.
+    if (Date.now() < rateLimitedUntil) {
+        meta.latency_ms = 0;
+        meta.attempts = 0;
+        meta.rate_limited = true;
+        return {
+            ok: false,
+            code: 'RATE_LIMIT',
+            error: 'Đã hết hạn mức đọc hóa đơn, đang tạm nghỉ để hạn mức hồi lại.',
+            meta,
+        };
+    }
+
     let last = null;
     let attempts = 0;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -421,6 +452,8 @@ const extractReceipt = async (imageUrl, {
             );
             meta.latency_ms = Date.now() - startedAt;
             meta.attempts = attempt + 1;
+            // Gọi được rồi thì hạn mức đã hồi — mở lại ngay, không chờ hết khoảng nghỉ.
+            rateLimitedUntil = 0;
 
             let parsed;
             try {
@@ -431,6 +464,18 @@ const extractReceipt = async (imageUrl, {
             return { ok: true, extraction: normalizeExtraction(parsed), raw: parsed, meta };
         } catch (err) {
             last = { ...classifyError(err), message: err.message };
+            if (last.code === 'RATE_LIMIT' && RATE_LIMIT_COOLDOWN_MS > 0) {
+                const daNghi = Date.now() < rateLimitedUntil;
+                rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+                if (!daNghi) {
+                    console.warn(
+                        '[receipt] Gemini báo hết hạn mức (429). Tạm nghỉ gọi model '
+                        + `${Math.round(RATE_LIMIT_COOLDOWN_MS / 1000)} giây; hóa đơn trong khoảng này chuyển thẳng `
+                        + 'sang cần-người-xem, không ai bị chặn. Xem hạn mức thật tại '
+                        + 'https://aistudio.google.com/rate-limit',
+                    );
+                }
+            }
             if (!last.retryable || attempt === MAX_ATTEMPTS - 1) break;
             const delay = backoffDelay(attempt);
             // Chờ xong mà không còn đủ thời gian cho một lần thử thì thôi, trả luôn.
@@ -444,7 +489,17 @@ const extractReceipt = async (imageUrl, {
     return { ok: false, code: last?.code ?? 'MODEL_ERROR', error: last?.message ?? 'Không đọc được hóa đơn', meta };
 };
 
+/** Đang tạm nghỉ vì hết hạn mức hay không — để test và để log trạng thái. */
+const isRateLimited = () => Date.now() < rateLimitedUntil;
+
+/** Chỉ dùng trong test: xoá khoảng nghỉ giữa các ca.
+ *  Trạng thái này sống ở mức module nên một ca bật nó lên sẽ dính sang ca sau. */
+const resetRateLimitState = () => { rateLimitedUntil = 0; };
+
 module.exports = {
+    RATE_LIMIT_COOLDOWN_MS,
+    isRateLimited,
+    resetRateLimitState,
     PROMPT_VERSION,
     PROMPT_VERSION_OCR_ASSISTED,
     RESPONSE_SCHEMA,

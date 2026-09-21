@@ -117,9 +117,11 @@ app.use(morgan(isProduction ? ':remote-addr :method :url :status :res[content-le
 }));
 
 // Rate limit chung — chặn spam/DoS cấp API cơ bản
+// Trần này tính theo ĐỊA CHỈ IP, và cũng không tự lớn lên khi nâng máy chủ. Cả một văn
+// phòng sau một đường mạng, hay nhiều tài xế sau cùng một trạm 4G, dùng chung một trần.
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 600,
+    limit: Number(process.env.RATE_LIMIT_MAX || 600),
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Quá nhiều yêu cầu, vui lòng thử lại sau ít phút.' },

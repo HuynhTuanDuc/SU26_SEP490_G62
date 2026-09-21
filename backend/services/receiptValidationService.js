@@ -307,6 +307,12 @@ const runPipeline = async (imageUrl, { profile, allowRecheck = true, deadlineAt:
     ]);
 
     if (!first.ok) {
+        // Lượt đọc hỏng cũng phải có một dòng. Trước đây chỉ lượt THÀNH CÔNG mới được ghi,
+        // nên đúng lúc hệ thống đọc không nổi hóa đơn nào thì log lại im lặng nhất.
+        console.warn(
+            `[receipt] Không đọc được ${shortUrl(imageUrl)} sau ${Date.now() - startedAt}ms: `
+            + `${first.code} (${first.meta?.attempts ?? 0} lượt gọi model) — hóa đơn chuyển sang cần người xem.`,
+        );
         return {
             extraction: null,
             meta: { ...first.meta, image_sha256: first.meta?.image_sha256 ?? loaded.vision.sha256 },
