@@ -13,9 +13,18 @@ describe('receiptVisionExtractor — quyết định thử lại', () => {
         assert.strictEqual(r.retryable, true);
     });
 
-    it('thử lại khi vượt hạn mức', () => {
+    // ĐỔI Ý so với bản đầu: 429 KHÔNG đáng thử lại.
+    //
+    // Lùi của ta là 0,7-2,8 giây, còn cửa sổ hạn mức của Google tính theo PHÚT và theo NGÀY.
+    // Thử lại trong vài giây không bao giờ kịp hồi — nó chỉ bắn thêm hai lời gọi nữa vào
+    // đúng cái hạn mức đang cạn, rồi bắt tài xế chờ thêm chừng ấy giây để nhận cùng một câu
+    // trả lời. Nâng cấu hình máy chủ còn làm chuyện này tệ hơn: hóa đơn tới Gemini dày hơn,
+    // chạm trần sớm hơn, và mỗi lần chạm lại đẻ thêm lời gọi.
+    it('KHÔNG thử lại khi hết hạn mức', () => {
         assert.deepStrictEqual(extractor.classifyError({ status: 429, message: 'Too Many Requests' }),
-            { code: 'RATE_LIMIT', retryable: true });
+            { code: 'RATE_LIMIT', retryable: false });
+        assert.deepStrictEqual(extractor.classifyError({ message: '[429] Resource has been exhausted (quota)' }),
+            { code: 'RATE_LIMIT', retryable: false });
     });
 
     it('thử lại khi mạng chập chờn', () => {
