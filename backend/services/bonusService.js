@@ -26,6 +26,7 @@ const _getUserIdsByRole = async (role) => roleRepository.getUserIdsByRole(role);
 
 // Thưởng Tết/hiếu hỉ/sinh nhật/đặc biệt áp dụng cho MỌI nhân viên đang hoạt động,
 // không chỉ tài xế — chỉ kiểm tra profile còn tồn tại và tài khoản đang active.
+// Bước duyệt kiểm LẠI (bonusRepository.approve): tài khoản có thể bị khoá sau khi tạo phiếu.
 const _assertDriverExists = async (driverId) => {
     const exists = await bonusRepository.staffExists(driverId);
     if (!exists) throw new Error(`Nhân viên #${driverId} không tồn tại hoặc đã bị khóa`);

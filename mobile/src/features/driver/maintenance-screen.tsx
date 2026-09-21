@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, KeyboardAvoidingView, Modal,
     Platform, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View,
@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { useConfirm } from '@/providers/ui-provider';
 import { useMoneyInput } from '@/hooks/use-money-input';
 import { StatusBar } from 'expo-status-bar';
-import { CheckCircle2, Wrench, Clock, ImagePlus, Trash2, X } from 'lucide-react-native';
+import { CheckCircle2, Wrench, Clock, ImagePlus, X } from 'lucide-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { AppText }     from '@/components/app-text';
@@ -48,10 +48,9 @@ const isLostResponse = (err: unknown) => {
     return !status || status >= 500;
 };
 
-function PhotoStrip({
-    title, photos, removable, busy, onRemove,
+function PhotoGrid({
+    photos, removable, busy, onRemove,
 }: {
-    title: string;
     photos: string[];
     removable: boolean;
     busy: boolean;
@@ -59,29 +58,31 @@ function PhotoStrip({
 }) {
     if (photos.length === 0) return null;
     return (
-        <YStack gap={6}>
-            <Text fontSize={12} color={appTheme.colors.textMuted}>{title} ({photos.length} ảnh)</Text>
-            <XStack flexWrap="wrap" gap={8}>
-                {photos.map((uri) => (
-                    <View key={uri}>
-                        <Image source={{ uri }} style={s.billThumb} />
-                        {removable && (
-                            <Pressable
-                                style={[s.removeBtn, busy && { opacity: 0.4 }]}
-                                onPress={() => onRemove(uri)}
-                                disabled={busy}
-                                hitSlop={8}
-                                accessibilityLabel="Xoá ảnh này"
-                            >
-                                <X size={12} color="#fff" />
-                            </Pressable>
-                        )}
-                    </View>
-                ))}
-            </XStack>
-        </YStack>
+        <XStack flexWrap="wrap" gap={8}>
+            {photos.map((uri) => (
+                <View key={uri}>
+                    <Image source={{ uri }} style={s.billThumb} />
+                    {removable && (
+                        <Pressable
+                            style={[s.removeBtn, busy && { opacity: 0.4 }]}
+                            onPress={() => onRemove(uri)}
+                            disabled={busy}
+                            hitSlop={8}
+                            accessibilityLabel="Xoá ảnh này"
+                        >
+                            <X size={12} color="#fff" />
+                        </Pressable>
+                    )}
+                </View>
+            ))}
+        </XStack>
     );
 }
+
+const photoCount = (n: number) => (n > 0 ? ` (${n} ảnh)` : '');
+
+// Trạng thái còn việc cho tài xế (hoặc cần đọc lý do) → mở sẵn thẻ.
+const EXPANDED_BY_DEFAULT: MaintenanceStatus[] = ['requested', 'open', 'rejected'];
 
 function MaintenanceCard({
     record,
@@ -94,7 +95,7 @@ function MaintenanceCard({
     onPhotoRemoved: (vehicleId: number, url: string) => Promise<void>;
     onCompleted:    (vehicleId: number, cost: number) => Promise<void>;
 }) {
-    const [expanded,    setExpanded]    = useState(record.status === 'open' || record.status === 'requested' || record.status === 'rejected');
+    const [expanded,    setExpanded]    = useState(EXPANDED_BY_DEFAULT.includes(record.status));
     const [showCamera,  setShowCamera]  = useState(false);
     const [uploading,   setUploading]   = useState(false);
     const [completing,  setCompleting]  = useState(false);
@@ -102,10 +103,27 @@ function MaintenanceCard({
     const busy = uploading || completing || removing;
     const requestPics = record.request_pics ?? [];
 
-    const { displayValue: cost, rawValue: costRaw, onChangeText: onCostChange } = useMoneyInput(record.cost ?? '');
+    const {
+        displayValue: cost, rawValue: costRaw, onChangeText: onCostChange, setValue: setCost,
+    } = useMoneyInput(record.cost ?? '');
     const { showConfirm } = useConfirm();
 
-    const style = STATUS_STYLE[record.status];
+    // Quản lý duyệt / trả về làm lại / huỷ trong lúc màn hình đang mở: danh sách tự tải lại
+    // (maintenance.assigned) nhưng thẻ vẫn là thẻ cũ cùng key, giữ trạng thái từ lúc mới hiện.
+    // Bị trả về làm lại thì máy chủ đã xoá chi phí và hóa đơn, mà ô nhập vẫn hiện số cũ ngay
+    // dưới dòng "nhập lại chi phí"; thẻ đang thu gọn (lúc chờ xác nhận) thì tài xế không thấy
+    // việc phải làm. Nên đổi trạng thái là đồng bộ lại theo máy chủ.
+    const seenStatus = useRef(record.status);
+    useEffect(() => {
+        if (seenStatus.current === record.status) return;
+        seenStatus.current = record.status;
+        setCost(Math.floor(Number(record.cost)) || 0);
+        if (EXPANDED_BY_DEFAULT.includes(record.status)) setExpanded(true);
+    }, [record.status, record.cost, setCost]);
+
+    // Trạng thái ngoài bảng màu (máy chủ khác phiên bản, dữ liệu cũ...) thì dùng màu trung
+    // tính: tra thiếu khoá thì `style.border` văng lỗi và sập cả màn hình.
+    const style = STATUS_STYLE[record.status] ?? STATUS_STYLE.requested;
     const isOpen = record.status === 'open';
     const isPending = record.status === 'pending_verification';
     const isRequested = record.status === 'requested';
@@ -228,7 +246,7 @@ function MaintenanceCard({
 
                         <View style={[s.badge, { backgroundColor: style.bg, borderColor: style.border }]}>
                             <Text fontSize={11} fontWeight="700" color={style.text}>
-                                {MAINTENANCE_STATUS_LABEL[record.status]}
+                                {MAINTENANCE_STATUS_LABEL[record.status] ?? record.status}
                             </Text>
                         </View>
                     </XStack>
@@ -307,12 +325,33 @@ function MaintenanceCard({
                         </YStack>
                         )}
 
-                        {/* Bill images — cho phép thêm ảnh cả khi đang chờ duyệt */}
+                        {/* Ảnh chụp lúc gửi yêu cầu (báo giá...) và hóa đơn thanh toán là hai
+                            thứ khác nhau — chỉ hóa đơn được đối chiếu với chi phí. Từ bước bảo
+                            dưỡng trở đi, ảnh gửi kèm yêu cầu đứng thành mục riêng, không nằm dưới
+                            tiêu đề "Hóa đơn thanh toán". Chạm dấu × để gỡ ảnh chụp nhầm khi đợt
+                            chưa gửi duyệt. */}
+                        {!isRequested && !isRejected && requestPics.length > 0 && (
+                            <YStack gap={8}>
+                                <Text fontSize={12} color={appTheme.colors.textMuted}>
+                                    Chứng từ gửi kèm yêu cầu{photoCount(requestPics.length)} — không thay cho hóa đơn
+                                </Text>
+                                <PhotoGrid
+                                    photos={requestPics}
+                                    removable={isOpen}
+                                    busy={busy}
+                                    onRemove={handleRemove}
+                                />
+                            </YStack>
+                        )}
+
+                        {/* Lúc chờ duyệt: chứng từ / báo giá. Từ bước bảo dưỡng: hóa đơn. */}
                         {!isRejected && (
                         <YStack gap={8}>
                             <XStack justifyContent="space-between" alignItems="center">
                                 <Text fontSize={12} color={appTheme.colors.textMuted}>
-                                    {isRequested ? 'Chứng từ / báo giá' : 'Hóa đơn thanh toán'}
+                                    {isRequested
+                                        ? `Chứng từ / báo giá${photoCount(requestPics.length)}`
+                                        : `Hóa đơn thanh toán${photoCount(record.bill_pics.length)}`}
                                 </Text>
                                 {(isOpen || isRequested) && (
                                     <Pressable
@@ -336,20 +375,9 @@ function MaintenanceCard({
                                 </Text>
                             )}
 
-                            {/* Ảnh chụp lúc gửi yêu cầu (báo giá...) và hóa đơn thanh toán là hai
-                                thứ khác nhau — chỉ hóa đơn được đối chiếu với chi phí. Chạm dấu ×
-                                để gỡ ảnh chụp nhầm khi đợt chưa gửi duyệt. */}
-                            <PhotoStrip
-                                title="Chứng từ gửi kèm yêu cầu"
-                                photos={requestPics}
+                            <PhotoGrid
+                                photos={isRequested ? requestPics : record.bill_pics}
                                 removable={isOpen || isRequested}
-                                busy={busy}
-                                onRemove={handleRemove}
-                            />
-                            <PhotoStrip
-                                title="Hóa đơn thanh toán"
-                                photos={record.bill_pics}
-                                removable={isOpen}
                                 busy={busy}
                                 onRemove={handleRemove}
                             />
